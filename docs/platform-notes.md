@@ -112,6 +112,19 @@ Measured on NJ100, 16.19, 2026-10-05.
 
 - Shipped host: Pengu Loader **v1.1.6**, activated by a `version.dll` symlink in the `LeagueClient`
   directory pointing at the loader's `core.dll`; plugins live in `<loader>\plugins\<name>\index.js`.
+  winer ships that `core.dll` (`vendor/pengu-loader/`, Authenticode-signed by SignPath Foundation)
+  and, when no loader is linked, writes it to `%LOCALAPPDATA%\app.winer.desktop\pengu` and creates
+  the link itself. A symbolic link needs an elevated process (or Developer Mode); the client loads
+  `version.dll` only when its interface process starts, so a new link waits for
+  `/riotclient/kill-and-restart-ux` or the next launch. The loader writes its `config` and an
+  encoded `datastore` beside `core.dll`.
+- Pengu's own interface lives in `#pengu-root` (in `#lol-uikit-layer-manager`) behind an **open**
+  shadow root, mounted on window load. It shows a welcome dialog while `DataStore` key
+  `pengu-welcome` is not `false`, otherwise a "Pengu Loader is active!" toast (7 s) on every start,
+  and an update notice when a newer Pengu is out. Its toaster's container holds a `<style>` with
+  `.sldt-active`; one child per toast. The plugin sets the key at import, before window load, and
+  hides that toaster's toasts that name Pengu (`plugin/src/pengu.ts`). Pengu also exposes
+  `window.Toast` to plugins through the same toaster.
 - Client CEF is `108.4.13+chromium-108.0.5359.125`. Build the plugin for `chrome108`. CSS nesting,
   `oklch()` and `color-mix()` are unsupported; `@layer`, `:has()`, `@container` work.
 - `init(context)` receives `{ rcp, socket }` only. `window.DataStore` has synchronous
@@ -139,6 +152,16 @@ Measured on NJ100, 16.19, 2026-10-05.
 
 ## Windows host behaviour
 
+- **GitHub through the system proxy.** On the QA host (in China) a direct connection to
+  `github.com` is reset (`os error 10054`); PowerShell gets through because it uses the proxy set in
+  Windows (`ProxyEnable`/`ProxyServer`, a local `127.0.0.1:7897`). A GUI app never sees
+  `HTTPS_PROXY`, and reqwest reads those registry settings only with its `system-proxy` feature, which
+  the workspace turns on for the updater: its background check failed without it and answered
+  `upToDate` with it (2026-10-05). The LCU client and the game-data client (`crates/core/src/net.rs`)
+  call `no_proxy()` and stay direct.
+- `PrintWindow` captures the League client's window as solid black, and `CopyFromScreen` in the idle
+  console session failed with "the handle is invalid" (2026-10-05); check the client page over CDP
+  instead.
 - `std::fs::rename` replaces an open destination; `MoveFileExW(MOVEFILE_REPLACE_EXISTING)` returned
   `ERROR_ACCESS_DENIED` against an open destination. Write temp + `sync_all` + `rename`.
 - Processes started over SSH run in session 0, where WebView2 cannot composite and session 1's windows

@@ -24,7 +24,7 @@ export const en: Record<MessageKey, string> = {
   "connection.searchingHint": "Start the client and sign in; winer connects on its own.",
   "connection.accessDenied": "The client runs as administrator, so winer cannot read it",
   "connection.accessDeniedHint":
-    "The Tencent client is started elevated by WeGame. Restart winer as administrator.",
+    "WeGame starts the Tencent client as administrator; winer asks to restart the same way. Choose Yes when Windows asks.",
   "connection.relaunch": "Restart as administrator",
   "connection.connecting": "Connecting to the client",
   "connection.connectingHint":
@@ -322,27 +322,30 @@ export const en: Record<MessageKey, string> = {
 
   "plugin.title": "In-client",
   "plugin.about":
-    "Draws winer's panels inside the League client through Pengu Loader: teammates' ranks and recent form right in champ select.",
+    "winer ships Pengu Loader: when it connects to the client it sets up the loader and its plugin, and champ select shows every teammate's rank and recent form inside the client.",
   "plugin.loader": "Pengu Loader",
-  "plugin.loaderMissing": "Pengu Loader was not found",
-  "plugin.loaderMissingHint":
-    "Install and activate Pengu Loader, then press Detect again, or enter its folder below.",
-  "plugin.loaderInactive": "Found, but not activated for this client",
-  "plugin.loaderActive": "Activated for this client",
+  "plugin.loaderManaged": "winer's own {version}, activated for this client",
+  "plugin.loaderOwn": "Your own Pengu Loader, activated for this client",
+  "plugin.loaderWaiting": "Set up once winer connects to the client",
+  "plugin.loaderOccupied": "The client folder already has another version.dll; winer left it alone",
+  "plugin.loaderFailed": "Not set up: {error}",
+  "plugin.loaderOff": "Turned off",
+  "plugin.loaderWhere":
+    "Nothing to install: winer activates the Pengu Loader it ships when it connects to the client.",
+  "plugin.enable": "Turn on the in-client features",
+  "plugin.disable": "Turn off the in-client features",
+  "plugin.enabled": "In-client features turned on",
+  "plugin.disabled": "In-client features turned off; this applies from the client's next start",
   "plugin.installed": "Plugin",
   "plugin.notInstalled": "Not installed",
   "plugin.bundled": "Ships with winer: {version}",
   "plugin.connected": "{n} client pages connected",
   "plugin.disconnected": "No client page connected",
-  "plugin.install": "Install plugin",
-  "plugin.update": "Update plugin",
-  "plugin.uninstall": "Remove plugin",
   "plugin.reload": "Reload the client UI",
   "plugin.reloadHint":
-    "Reload the client UI once after installing or updating for the plugin to load.",
+    "After setup or a plugin update the client UI needs one reload; winer reloads it by itself while the client is idle.",
   "plugin.refresh": "Detect again",
-  "plugin.setup": "Setup",
-  "plugin.reinstall": "Reinstall",
+  "plugin.setup": "Status",
   "plugin.features": "In-client features",
   "plugin.teamPanel": "Teammate panel in champ select",
   "plugin.teamPanelHint":
@@ -354,9 +357,8 @@ export const en: Record<MessageKey, string> = {
   "plugin.hidePromotionsHint":
     "Hides the activity centre and esports pop-ups on the client home page.",
   "plugin.dir": "Pengu Loader folder",
-  "plugin.dirHint": "Only when detection fails, e.g. C:\\Pengu Loader.",
-  "plugin.done": "Plugin installed; reload the client UI to load it",
-  "plugin.removed": "Plugin removed",
+  "plugin.dirHint":
+    "Only for a Pengu Loader of your own, e.g. C:\\Pengu Loader; left empty, winer uses its own.",
 
   "settings.title": "Settings",
   "settings.appearance": "Appearance",

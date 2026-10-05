@@ -5,8 +5,9 @@
 winer can only connect to a client that is signed in. Make sure the client is signed in and in the
 lobby, then look at the status bar at the bottom of the window:
 
-- It says the client runs as administrator: the Tencent client is started that way by WeGame; choose
-  **Restart as administrator**.
+- It says the client runs as administrator: the Tencent client is started that way by WeGame, and
+  winer asks to restart as administrator by itself; if you chose **No** in the User Account Control
+  prompt, choose **Restart as administrator** to ask again.
 - Anything else: restart the client once, or choose **Restart the client UI** on the **Tools** page.
   If that does not help, **Settings › About** opens the log folder, and the log says why the
   connection failed.
@@ -15,7 +16,8 @@ lobby, then look at the status bar at the bottom of the window:
 
 winer reads the client's local API address and credentials from the client's process. When the
 client runs as administrator, Windows does not let a program without those rights read it, so winer
-needs them too. When the client runs without them, so can winer.
+needs them too, and asks for them when it finds out. When the client runs without them, so can
+winer. The same rights let winer activate the Pengu Loader it ships in the client folder.
 
 ## Can it get my account banned
 

@@ -7,8 +7,8 @@ host facts in `docs/platform-notes.md`.
 ## Baseline commands
 
 ```bash
-cargo test --workspace        # lcu 12, winer (shell) 5, winer-core 75 — all pass
-pnpm test                     # shared 7, plugin 17, desktop 51 — all pass
+cargo test --workspace        # lcu 12, winer (shell) 6, winer-core 76 — all pass
+pnpm test                     # shared 7, plugin 20, desktop 52 — all pass
 cargo clippy --workspace --all-targets -- -D warnings
 pnpm lint && pnpm typecheck && pnpm format:check && cargo fmt --all --check
 scripts/evidence.sh           # all of the above plus the Windows check, logged with the tree's hash
@@ -23,6 +23,9 @@ scripts/evidence.sh           # all of the above plus the Windows check, logged 
   in a whole-workspace build a reqwest feature the app turns on (`json`) is on for every crate.
 - The shell embeds `plugin/dist/index.js` (`app/src-tauri/build.rs`): a release build without it
   panics, a debug build uses a stub. Run `pnpm build` first.
+- It also embeds Pengu Loader's `core.dll` from `vendor/pengu-loader/`, a third-party binary that is
+  injected into the client: replace it only from a signed upstream release, following that
+  folder's README, and update the hash the `core_dll_is_the_vendored_release` test pins.
 
 ## Windows QA host (real hardware, over SSH)
 

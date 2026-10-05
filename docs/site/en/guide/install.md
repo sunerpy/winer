@@ -50,13 +50,16 @@ gh attestation verify winer_0.0.1_x64-setup.exe --repo sunerpy/winer \
 
 ## Update
 
-Check for updates in **Settings › About** and choose **Update now** when one is available: winer
-installs it and restarts. Every update is signed, and winer installs only an update whose signature
-verifies against the public key built into it.
+winer checks for updates by itself after it starts and every few hours while it runs. When there is
+one, an update button appears at the right of the title bar; open it and choose **Update now**:
+winer installs the update and restarts. **Settings › About** checks on demand. Every update is
+signed, and winer installs only an update whose signature verifies against the public key built
+into it.
 
 ## Uninstall
 
-Uninstall winer from Windows **Settings › Apps › Installed apps**. Settings live in
-`%APPDATA%\app.winer.desktop\settings.json` and logs in `%LOCALAPPDATA%\app.winer.desktop\logs`;
-delete them by hand if you no longer need them. Remove the client plugin first from the
-**In-client** page, or delete Pengu Loader's `plugins\winer` folder.
+First choose **Turn off the in-client features** on the **In-client** page, which removes the plugin
+and the `version.dll` link winer created; then uninstall winer from Windows **Settings › Apps ›
+Installed apps**. Settings live in `%APPDATA%\app.winer.desktop\settings.json`, and the logs and the
+Pengu Loader winer ships in `%LOCALAPPDATA%\app.winer.desktop`; delete them by hand if you no longer
+need them.

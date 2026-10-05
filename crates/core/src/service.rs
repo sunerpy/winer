@@ -537,6 +537,23 @@ impl Service {
         Ok(())
     }
 
+    /// Restarts the client's UI only while the player is idle in it, outside any lobby, queue,
+    /// champ select or game, so a newly linked loader starts without interrupting anything. The
+    /// phase is asked of the client itself: right after connecting, the snapshot may not have it
+    /// yet. Returns whether it restarted.
+    pub async fn restart_client_ui_when_idle(&self) -> Result<bool, CoreError> {
+        let client = self.client()?;
+        let phase: String = client.lcu.get(PHASE).await?;
+        if Phase::parse(&phase) != Phase::None {
+            return Ok(false);
+        }
+        client
+            .lcu
+            .post("/riotclient/kill-and-restart-ux", &json!({}))
+            .await?;
+        Ok(true)
+    }
+
     fn client(&self) -> Result<Client, CoreError> {
         self.inner
             .client

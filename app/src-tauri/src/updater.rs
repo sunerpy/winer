@@ -18,6 +18,10 @@ use crate::{VERSION, events};
 
 /// Download progress is published at most once per this many bytes, and always at the end.
 const PROGRESS_STEP: u64 = 512 * 1024;
+/// The first check on its own waits this long after start, so it never competes with start-up.
+const FIRST_CHECK: Duration = Duration::from_secs(20);
+/// Between checks on its own while winer keeps running.
+const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 
 #[derive(Default)]
 pub(crate) struct Updater {
@@ -88,6 +92,48 @@ fn available(update: &Update) -> UpdateStatus {
         current: update.current_version.clone(),
         notes: update.body.clone().filter(|notes| !notes.trim().is_empty()),
         date: update.date.map(|date| date.date().to_string()),
+    }
+}
+
+/// Checks on its own: soon after start, then every few hours. An update found shows as the title
+/// bar's badge. A failed check stays quiet, to be retried at the next interval, and a check or
+/// install the user started is never interrupted.
+pub(crate) fn check_in_background<R: Runtime>(app: AppHandle<R>) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(FIRST_CHECK).await;
+        loop {
+            quiet_check(&app).await;
+            tokio::time::sleep(CHECK_EVERY).await;
+        }
+    });
+}
+
+async fn quiet_check<R: Runtime>(app: &AppHandle<R>) {
+    let updater = app.state::<Updater>();
+    if updater.begin().is_err() {
+        return;
+    }
+    match find(app).await {
+        Ok(Some(update)) => {
+            info!(version = %update.version, "update available");
+            let status = available(&update);
+            *updater
+                .pending
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(update);
+            updater.finish(app, status);
+        }
+        Ok(None) => updater.finish(
+            app,
+            UpdateStatus::UpToDate {
+                version: VERSION.into(),
+                checked_at: now_ms(),
+            },
+        ),
+        Err(error) => {
+            warn!(error = %describe(&error), "background update check failed");
+            updater.busy.store(false, Ordering::Release);
+        }
     }
 }
 

@@ -40,8 +40,8 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         bench_swap,
         reroll,
         get_plugin_status,
-        install_plugin,
-        uninstall_plugin,
+        enable_plugin,
+        disable_plugin,
         get_app_info,
         relaunch_elevated,
         reveal_logs,
@@ -176,19 +176,37 @@ async fn reroll<R: Runtime>(app: AppHandle<R>) -> Result<()> {
 #[tauri::command]
 async fn get_plugin_status<R: Runtime>(app: AppHandle<R>) -> Result<PluginStatus> {
     let (service, bridge) = (service(&app), app.state::<Bridge>().inner().clone());
-    blocking(move || Ok(plugin_host::status(&service, &bridge))).await
+    blocking(move || {
+        Ok(plugin_host::status(
+            &service,
+            &bridge,
+            &app.state::<plugin_host::Host>(),
+        ))
+    })
+    .await
+}
+
+/// Turns the in-client features on. A loader linked just now starts with the client's interface,
+/// which is restarted for it while the player is idle.
+#[tauri::command]
+async fn enable_plugin<R: Runtime>(app: AppHandle<R>) -> Result<PluginStatus> {
+    let (service, bridge) = (service(&app), app.state::<Bridge>().inner().clone());
+    let (status, linked) = {
+        let (app, service) = (app.clone(), service.clone());
+        blocking(move || plugin_host::enable(&service, &bridge, &app.state::<plugin_host::Host>()))
+            .await?
+    };
+    if linked && let Err(error) = service.restart_client_ui_when_idle().await {
+        tracing::warn!(%error, "client interface not restarted");
+    }
+    Ok(status)
 }
 
 #[tauri::command]
-async fn install_plugin<R: Runtime>(app: AppHandle<R>) -> Result<PluginStatus> {
+async fn disable_plugin<R: Runtime>(app: AppHandle<R>) -> Result<PluginStatus> {
     let (service, bridge) = (service(&app), app.state::<Bridge>().inner().clone());
-    blocking(move || plugin_host::install(&service, &bridge)).await
-}
-
-#[tauri::command]
-async fn uninstall_plugin<R: Runtime>(app: AppHandle<R>) -> Result<PluginStatus> {
-    let (service, bridge) = (service(&app), app.state::<Bridge>().inner().clone());
-    blocking(move || plugin_host::uninstall(&service, &bridge)).await
+    blocking(move || plugin_host::disable(&service, &bridge, &app.state::<plugin_host::Host>()))
+        .await
 }
 
 #[tauri::command]

@@ -10,3 +10,6 @@ packages/shared/src/bindings.ts text eol=lf
 
 # Raw tray pixels, read with include_bytes!.
 *.rgba binary
+
+# Pengu Loader's DLL, embedded byte for byte with include_bytes! and pinned by its hash.
+*.dll binary

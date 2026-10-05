@@ -6,8 +6,11 @@ Sign in to the League client first, then open winer. The status bar at the botto
 shows **Connected** and the region, and the overview shows your summoner, rank and recent form.
 
 The Tencent client is started with administrator rights by WeGame, and a program without them cannot
-read it. winer then says the client runs as administrator: choose **Restart as administrator** and
-confirm the User Account Control prompt.
+read it. winer notices and asks to restart as administrator: choose **Yes** in the User Account
+Control prompt. If you cancelled it, **Restart as administrator** in the window asks again.
+
+Once connected, winer sets up the Pengu Loader it ships and the client plugin by itself; there is
+nothing to do. See [In-client](/en/guide/client).
 
 ## 2. Enter champ select
 
@@ -31,8 +34,8 @@ Each item on the **Automation** page has its own switch and its own modes, for e
 automatically in ranked games only. **By mode** at the top tells you what will actually happen in one
 mode.
 
-## 5. Optional: install the client plugin
+## 5. Teammates' form inside the client
 
-To see teammates' form inside the client's champ select, install
-[Pengu Loader](https://github.com/PenguLoader/PenguLoader), choose **Install plugin** on winer's
-**In-client** page, then **Reload the client UI**. See [In-client](/en/guide/client).
+With the client plugin set up, the client's own champ select shows a line under each teammate's
+name: tier and title, rank, recent win rate and KDA. To turn it off, choose **Turn off the in-client
+features** on the **In-client** page. See [In-client](/en/guide/client).

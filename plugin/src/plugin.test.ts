@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { benchChampion, interceptBenchClicks, liftBenchCooldown } from "./bench";
 import { backoff, parseBootstrap } from "./bridge";
 import { Controller } from "./index";
+import { hidePenguToasts, quietPengu } from "./pengu";
 import { PluginState } from "./state";
 import { ROW_SELECTOR, clearRows, decorateRows, lineKey, panelRows } from "./team";
 
@@ -285,5 +286,57 @@ describe("controller", () => {
     expect(first.owns(3000)).toBe(true);
     expect(second.owns(9000)).toBe(true);
     expect(first.owns(9500)).toBe(false);
+  });
+});
+
+describe("pengu", () => {
+  /** Pengu v1.1's own interface: a host with an open shadow root, its toaster inside. */
+  function penguRoot(...toasts: string[]): { host: HTMLElement; container: HTMLElement } {
+    const host = document.createElement("div");
+    host.id = "pengu-root";
+    const shadow = host.attachShadow({ mode: "open" });
+    const container = document.createElement("div");
+    const style = document.createElement("style");
+    style.textContent = ".sldt-active{z-index:9999;}.sldt-active>*{pointer-events:auto;}";
+    container.append(style);
+    for (const message of toasts) {
+      const toast = document.createElement("div");
+      toast.innerHTML = `<div><div role="status">${message}</div></div>`;
+      container.append(toast);
+    }
+    shadow.append(container);
+    return { host, container };
+  }
+
+  it("marks the welcome dialog as seen", () => {
+    const values = new Map<string, unknown>();
+    const store = {
+      get: (key: string, fallback?: unknown) => (values.has(key) ? values.get(key) : fallback),
+      set: (key: string, value: unknown) => (values.set(key, value), true),
+    };
+    quietPengu(document, store);
+    expect(values.get("pengu-welcome")).toBe(false);
+  });
+
+  it("hides the toasts that name Pengu and keeps every other plugin's", () => {
+    const { container } = penguRoot("Pengu Loader is active!", "Saved your rune page");
+    const [, active, other] = [...container.children] as HTMLElement[];
+    expect(hidePenguToasts(container.parentNode as ParentNode)).toBe(1);
+    expect(active?.style.display).toBe("none");
+    expect(other?.style.display).toBe("");
+    expect(hidePenguToasts(container.parentNode as ParentNode), "hidden once").toBe(0);
+  });
+
+  it("finds Pengu's interface when it is mounted after the plugin and hides what it shows", async () => {
+    quietPengu(document, undefined);
+    const { host, container } = penguRoot();
+    document.body.append(host);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const toast = document.createElement("div");
+    toast.textContent = "New update available - 1.2.0 · open Pengu Loader to get it";
+    container.append(toast);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(toast.style.display).toBe("none");
+    host.remove();
   });
 });

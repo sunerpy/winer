@@ -43,8 +43,8 @@ export interface Commands {
   bench_swap: Command<{ championId: number }, null>;
   reroll: Command<undefined, null>;
   get_plugin_status: Command<undefined, PluginStatus>;
-  install_plugin: Command<undefined, PluginStatus>;
-  uninstall_plugin: Command<undefined, PluginStatus>;
+  enable_plugin: Command<undefined, PluginStatus>;
+  disable_plugin: Command<undefined, PluginStatus>;
   get_app_info: Command<undefined, AppInfo>;
   relaunch_elevated: Command<undefined, null>;
   reveal_logs: Command<undefined, null>;

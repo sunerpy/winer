@@ -49,7 +49,7 @@ home:
             status: available
             link: /rating
           - title: 战力喊话
-            body: 按档位排好的聊天内容，一键发到队伍或只给自己看，也可以每局自动发送；第一行带上红蓝方。
+            body: 按档位排好的聊天内容，一键发到队伍或只给自己看，也可以每局自动发送；第一行带上红蓝方和 winer 署名。
             status: available
             link: /guide/live#战力喊话
           - title: 大乱斗备选席
@@ -87,7 +87,7 @@ home:
       - name: 客户端与工具
         items:
           - title: 客户端插件
-            body: 经由 Pengu Loader 把队友战绩、档位和称号写进选人界面，备选席英雄点击即换。
+            body: winer 自带 Pengu Loader 并自动装好，把队友战绩、档位和称号写进选人界面，备选席英雄点击即换。
             status: available
             link: /guide/client
           - title: 在线状态与签名
@@ -106,7 +106,7 @@ home:
         command: irm https://github.com/sunerpy/winer/releases/latest/download/install.ps1 | iex
         body: 在 PowerShell 里运行，安装包按 SHA256SUMS 校验通过后才会安装；也可以下载安装包双击运行。
       - title: 连接客户端
-        body: 登录客户端后打开 winer。国服客户端以管理员身份运行时，点「以管理员身份重启」。
+        body: 登录客户端后打开 winer。国服客户端以管理员身份运行时，winer 会请求以管理员身份重启，选「是」即可；客户端插件随后自动装好。
       - title: 进入英雄选择
         body: 对局页列出每位队友的战绩和档位，点「发送到队伍」把战力喊话发给队友。
 

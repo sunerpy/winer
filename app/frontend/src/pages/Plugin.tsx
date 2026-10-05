@@ -1,5 +1,5 @@
 import type { PluginSettings, PluginStatus } from "@winer/shared";
-import { Download, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import { Power, PowerOff, RefreshCw, RotateCcw } from "lucide-react";
 import { useState } from "react";
 
 import { errorMessage } from "../lib/backend";
@@ -22,10 +22,11 @@ function StatusPanel({
 }) {
   const t = useT();
   const store = useStore();
+  const auto = useSettings().plugin.auto;
   const connected = useLive((snapshot) => snapshot.connection.status === "connected");
-  const [busy, setBusy] = useState<"install" | "uninstall" | "reload" | null>(null);
+  const [busy, setBusy] = useState<"enable" | "disable" | "reload" | null>(null);
 
-  const run = async (action: "install" | "uninstall" | "reload") => {
+  const run = async (action: "enable" | "disable" | "reload") => {
     setBusy(action);
     try {
       if (action === "reload") {
@@ -33,9 +34,9 @@ function StatusPanel({
         toast(t("tools.restarted"), "ok");
       } else {
         onChange(
-          await store.backend.call(action === "install" ? "install_plugin" : "uninstall_plugin"),
+          await store.backend.call(action === "enable" ? "enable_plugin" : "disable_plugin"),
         );
-        toast(t(action === "install" ? "plugin.done" : "plugin.removed"), "ok");
+        toast(t(action === "enable" ? "plugin.enabled" : "plugin.disabled"), "ok");
       }
     } catch (error) {
       toast(errorMessage(error), "danger");
@@ -56,9 +57,21 @@ function StatusPanel({
     );
   }
 
-  const installed = status.installedVersion;
-  // By content, not version: a rebuilt plugin keeps its version string.
-  const outdated = installed !== null && !status.current;
+  // What the loader row says, worst first: a stated problem, then off, then not there yet.
+  const [tone, state] = status.active
+    ? ([
+        "ok",
+        status.managed
+          ? t("plugin.loaderManaged", { version: status.bundledLoader })
+          : t("plugin.loaderOwn"),
+      ] as const)
+    : !auto
+      ? (["off", t("plugin.loaderOff")] as const)
+      : status.occupied
+        ? (["warn", t("plugin.loaderOccupied")] as const)
+        : status.setupError
+          ? (["danger", t("plugin.loaderFailed", { error: status.setupError })] as const)
+          : (["idle", t("plugin.loaderWaiting")] as const);
   return (
     <Panel
       eyebrow={t("plugin.setup")}
@@ -72,22 +85,18 @@ function StatusPanel({
       <p className="mb-2 max-w-[720px] text-[12.5px] leading-5 text-fg-muted">
         {t("plugin.about")}
       </p>
-      <Row label={t("plugin.loader")} help={status.loaderDir ?? t("plugin.loaderMissingHint")}>
+      <Row label={t("plugin.loader")} help={status.loaderDir ?? t("plugin.loaderWhere")}>
         <span className="flex items-center gap-2 text-[12.5px]">
-          <Lamp tone={!status.loaderDir ? "danger" : status.active ? "ok" : "warn"} />
-          {!status.loaderDir
-            ? t("plugin.loaderMissing")
-            : status.active
-              ? t("plugin.loaderActive")
-              : t("plugin.loaderInactive")}
+          <Lamp tone={tone} />
+          {state}
         </span>
       </Row>
       <Row
         label={t("plugin.installed")}
         help={t("plugin.bundled", { version: status.bundledVersion })}
       >
-        {installed ? (
-          <Badge tone={outdated ? "warning" : "ok"}>{installed}</Badge>
+        {status.installedVersion ? (
+          <Badge tone={status.current ? "ok" : "warning"}>{status.installedVersion}</Badge>
         ) : (
           <Badge>{t("plugin.notInstalled")}</Badge>
         )}
@@ -99,32 +108,33 @@ function StatusPanel({
         </span>
       </Row>
       <div className="flex flex-wrap items-center gap-2 pt-3">
-        {/* The accent marks the one thing to do; a current plugin leaves nothing to do. */}
-        <Button
-          variant={installed && !outdated ? "outline" : "accent"}
-          icon={Download}
-          disabled={!status.loaderDir}
-          loading={busy === "install"}
-          onClick={() => void run("install")}
-        >
-          {!installed ? t("plugin.install") : outdated ? t("plugin.update") : t("plugin.reinstall")}
-        </Button>
-        <Button
-          icon={RotateCcw}
-          disabled={!connected}
-          loading={busy === "reload"}
-          onClick={() => void run("reload")}
-        >
-          {t("plugin.reload")}
-        </Button>
-        {installed && (
+        {auto ? (
+          <>
+            <Button
+              icon={RotateCcw}
+              disabled={!connected}
+              loading={busy === "reload"}
+              onClick={() => void run("reload")}
+            >
+              {t("plugin.reload")}
+            </Button>
+            <Button
+              variant="ghost"
+              icon={PowerOff}
+              loading={busy === "disable"}
+              onClick={() => void run("disable")}
+            >
+              {t("plugin.disable")}
+            </Button>
+          </>
+        ) : (
           <Button
-            variant="ghost"
-            icon={Trash2}
-            loading={busy === "uninstall"}
-            onClick={() => void run("uninstall")}
+            variant="accent"
+            icon={Power}
+            loading={busy === "enable"}
+            onClick={() => void run("enable")}
           >
-            {t("plugin.uninstall")}
+            {t("plugin.enable")}
           </Button>
         )}
         <span className="text-[11.5px] text-fg-subtle">{t("plugin.reloadHint")}</span>

@@ -1,8 +1,10 @@
-//! Installing the in-client plugin into Pengu Loader and handing it the bridge's address.
+//! Pengu Loader and the in-client plugin: the loader winer ships, linking it into the client,
+//! installing the plugin and handing it the bridge's address.
 //!
 //! Pengu Loader v1.1 is a portable folder; it is activated for one client install by a
-//! `version.dll` symlink in the client directory that points at the loader's `core.dll`. Plugins
-//! live in `<loader>\plugins\<name>\index.js`. See `docs/platform-notes.md`.
+//! `version.dll` symlink in the client directory that points at the loader's `core.dll`, which
+//! the client loads when its interface starts. Plugins live in `<loader>\plugins\<name>\index.js`.
+//! See `docs/platform-notes.md`.
 
 use std::{
     fs, io,
@@ -24,6 +26,14 @@ pub struct PluginStatus {
     pub loader_dir: Option<String>,
     /// The loader is linked into the connected client, so plugins load with it.
     pub active: bool,
+    /// The loader is the one winer ships, kept in winer's own data folder.
+    pub managed: bool,
+    /// The version of the loader winer ships.
+    pub bundled_loader: String,
+    /// The client's `version.dll` is a file of something else, so winer links no loader there.
+    pub occupied: bool,
+    /// Why the last automatic setup did not finish, as the system put it.
+    pub setup_error: Option<String>,
     pub installed_version: Option<String>,
     pub bundled_version: String,
     /// The installed plugin is byte-for-byte this build's bundle. Two builds can share a version.
@@ -95,6 +105,76 @@ pub fn is_current(loader: &Path, bundle: &str) -> Option<bool> {
 
 pub fn install(loader: &Path, bundle: &str) -> io::Result<()> {
     write_atomic(&plugin_dir(loader).join("index.js"), bundle.as_bytes())
+}
+
+/// What linking a loader into a client found there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Linked {
+    /// `version.dll` now points at the loader.
+    Created,
+    /// It already pointed at a loader that exists, this one or another the user installed: that
+    /// one stays.
+    Existing,
+    /// A file of that name that is not a link: something else uses it, and it is left alone.
+    Occupied,
+}
+
+/// Puts `core`, Pengu Loader's `core.dll`, in `dir` unless the file there is exactly it. Returns
+/// whether it wrote. The client keeps a loaded loader open, so replacing one fails while the
+/// client runs; the next connection without a client holding it tries again.
+pub fn place_loader(dir: &Path, core: &[u8]) -> io::Result<bool> {
+    let path = dir.join("core.dll");
+    if fs::read(&path).is_ok_and(|existing| existing == core) {
+        return Ok(false);
+    }
+    write_atomic(&path, core)?;
+    Ok(true)
+}
+
+/// Whether the client's `version.dll` is a file that is not a link.
+pub fn occupied(client_dir: &Path) -> bool {
+    fs::symlink_metadata(client_dir.join("version.dll"))
+        .is_ok_and(|meta| !meta.file_type().is_symlink())
+}
+
+/// Activates the loader in `loader` for the client in `client_dir` the way Pengu Loader itself
+/// does: `version.dll` there becomes a symbolic link to `<loader>\core.dll`. A link whose target
+/// is gone is replaced. On Windows a symbolic link needs an elevated process (or Developer Mode).
+pub fn link(client_dir: &Path, loader: &Path) -> io::Result<Linked> {
+    let path = client_dir.join("version.dll");
+    match fs::symlink_metadata(&path) {
+        Ok(meta) if !meta.file_type().is_symlink() => return Ok(Linked::Occupied),
+        Ok(_) if fs::metadata(&path).is_ok() => return Ok(Linked::Existing),
+        Ok(_) => fs::remove_file(&path)?,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    symlink(&loader.join("core.dll"), &path)?;
+    Ok(Linked::Created)
+}
+
+/// Removes the client's `version.dll` when it is a link to `loader`'s core; anything else stays.
+/// Returns whether it removed one.
+pub fn unlink(client_dir: &Path, loader: &Path) -> io::Result<bool> {
+    let path = client_dir.join("version.dll");
+    let ours = fs::read_link(&path)
+        .ok()
+        .and_then(|target| target.parent().map(Path::to_path_buf))
+        .is_some_and(|dir| same_dir(&dir, loader));
+    if ours {
+        fs::remove_file(&path)?;
+    }
+    Ok(ours)
+}
+
+#[cfg(windows)]
+fn symlink(target: &Path, link: &Path) -> io::Result<()> {
+    std::os::windows::fs::symlink_file(target, link)
+}
+
+#[cfg(unix)]
+fn symlink(target: &Path, link: &Path) -> io::Result<()> {
+    std::os::unix::fs::symlink(target, link)
 }
 
 pub fn uninstall(loader: &Path) -> io::Result<()> {
@@ -173,6 +253,57 @@ mod tests {
                 dir: loader.path().to_path_buf(),
                 active: false
             })
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_loader_is_placed_once_and_linked_only_where_nothing_else_is() {
+        let root = tempfile::tempdir().unwrap();
+        let (loader, client) = (root.path().join("pengu"), root.path().join("LeagueClient"));
+        fs::create_dir_all(&client).unwrap();
+        assert!(
+            place_loader(&loader, b"core").unwrap(),
+            "written the first time"
+        );
+        assert!(
+            !place_loader(&loader, b"core").unwrap(),
+            "the same bytes are left alone"
+        );
+        assert!(place_loader(&loader, b"newer").unwrap());
+
+        assert_eq!(link(&client, &loader).unwrap(), Linked::Created);
+        assert_eq!(
+            fs::read_link(client.join("version.dll")).unwrap(),
+            loader.join("core.dll")
+        );
+        assert_eq!(link(&client, &loader).unwrap(), Linked::Existing);
+        assert_eq!(
+            find_loader(Some(&client), None).map(|found| found.active),
+            Some(true)
+        );
+
+        let other = root.path().join("other");
+        assert!(
+            !unlink(&client, &other).unwrap(),
+            "another loader's link is not ours to remove"
+        );
+        assert!(unlink(&client, &loader).unwrap());
+        assert!(fs::symlink_metadata(client.join("version.dll")).is_err());
+
+        std::os::unix::fs::symlink(other.join("core.dll"), client.join("version.dll")).unwrap();
+        assert_eq!(
+            link(&client, &loader).unwrap(),
+            Linked::Created,
+            "a link to a loader that is gone is replaced"
+        );
+        fs::remove_file(client.join("version.dll")).unwrap();
+        fs::write(client.join("version.dll"), b"someone else").unwrap();
+        assert!(occupied(&client));
+        assert_eq!(link(&client, &loader).unwrap(), Linked::Occupied);
+        assert_eq!(
+            fs::read(client.join("version.dll")).unwrap(),
+            b"someone else"
         );
     }
 

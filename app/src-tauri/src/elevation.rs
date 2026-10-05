@@ -1,8 +1,16 @@
 //! Running as administrator. The Tencent client is launched elevated, and an elevated process
 //! does not give its command line (where the LCU credentials are) to a normal one.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use tauri::{AppHandle, Runtime};
+use tracing::{info, warn};
+
 /// Passed to the elevated copy: the pid it replaces, so it starts only once that one is gone.
 const REPLACE: &str = "--replace=";
+
+/// Whether this process has asked for elevation on its own already; a refusal is not repeated.
+static ASKED: AtomicBool = AtomicBool::new(false);
 
 #[cfg(windows)]
 mod imp {
@@ -110,6 +118,23 @@ pub(crate) fn is_elevated() -> bool {
 /// Starts an elevated copy; the caller exits once this returns `Ok`.
 pub(crate) fn relaunch_elevated() -> std::io::Result<()> {
     imp::launch_elevated(&format!("{REPLACE}{}", std::process::id()))
+}
+
+/// The client turned out to run elevated while winer does not: ask Windows, once per process, to
+/// restart winer elevated, and quit when the user agrees. Only the system's consent prompt shows.
+/// A refusal is final for this run; the window keeps its own button for it.
+pub(crate) fn ask_once<R: Runtime>(app: &AppHandle<R>) {
+    if is_elevated() || ASKED.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || match relaunch_elevated() {
+        Ok(()) => {
+            info!("restarting elevated for the elevated client");
+            app.exit(0);
+        }
+        Err(error) => warn!(%error, "not restarted elevated"),
+    });
 }
 
 /// The elevated copy waits for the instance it replaces to exit, or the single-instance guard

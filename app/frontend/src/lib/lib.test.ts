@@ -55,7 +55,13 @@ const SETTINGS = {
     bench: { enabled: false, champions: [] },
     scopes: defaultScopes(),
   },
-  plugin: { teamPanel: true, hidePromotions: false, benchNoCooldown: true, loaderDir: null },
+  plugin: {
+    auto: true,
+    teamPanel: true,
+    hidePromotions: false,
+    benchNoCooldown: true,
+    loaderDir: null,
+  },
 } satisfies Settings;
 
 /** A backend whose events the test fires by hand, with each command's answer settable. */

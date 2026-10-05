@@ -26,11 +26,12 @@ moves between them.
 
 ## Callout
 
-The callout is ready once every teammate's history has loaded: the first line holds the side and the
-opening line, then one line per teammate, best first, for example:
+The callout is ready once every teammate's history has loaded: the first line holds the side,
+"winer rating" and the opening line if you wrote one, then one line per teammate, best first, for
+example:
 
 ```text
-[Blue side]
+[Blue side] winer rating
 Rift Demigod: Ahri Light in the Dark, 60% in 20 games, KDA 4.1, score 7.4 [Patch Champion], the other team is filing a boosting report
 ```
 

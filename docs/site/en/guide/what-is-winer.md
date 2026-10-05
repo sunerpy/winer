@@ -8,9 +8,10 @@ It has two parts:
 
 - **The desktop window**: overview, live game analysis, match history, automation and tools. It is
   there whenever the client runs and stays in the tray when you close it.
-- **The client plugin** (optional): loaded into the client's pages by
+- **The client plugin**: loaded into the client's pages by
   [Pengu Loader](https://github.com/PenguLoader/PenguLoader), it shows teammates' form, tier and
-  title right in champ select, and makes ARAM bench champions swap on a click.
+  title right in champ select, and makes ARAM bench champions swap on a click. winer ships Pengu
+  Loader and sets it up when it connects to the client; it can be turned off.
 
 ## What it does
 
