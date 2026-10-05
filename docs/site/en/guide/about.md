@@ -22,6 +22,9 @@
   restricted. You use it at your own risk.
 - Scores, tiers, titles and callouts are entertainment drawn from match data and say nothing about
   anyone's real skill. Do not use them to insult or harass other players.
+- Rank disguise changes only the rank friends see in the friends list and on your hover card; your
+  real rank, matchmaking and your own profile in the client do not change. What friends see then is
+  not your real rank: do not use it to mislead anyone.
 - winer is provided "as is" under the MIT licence, without warranty of any kind; its authors are not
   liable for any loss from its use.
 
