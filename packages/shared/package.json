@@ -1,0 +1,19 @@
+{
+  "name": "@winer/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "What the desktop window and the in-client plugin share: the generated wire types and their formatting.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "5.0.1"
+  }
+}

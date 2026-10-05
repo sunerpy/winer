@@ -1,0 +1,5 @@
+# Captured fixtures are compared byte for byte by the tests that read them.
+fixtures/** text eol=lf
+
+# The LCU's root certificate is compiled in with include_bytes!.
+*.pem text eol=lf

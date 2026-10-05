@@ -1,0 +1,490 @@
+# Same-run release for a Tauri v2 desktop application.
+#
+# Topology (identical to the Go, Rust and Node profiles): release-please owns
+# the version, the tag and a DRAFT Release; every job below runs in the same
+# workflow run gated on release_created; the terminal job verifies every remote
+# asset and flips the draft. Nothing listens on `push: tags` or `release:`
+# because events created with GITHUB_TOKEN never start workflows.
+#
+# Tauri-specific decisions (references/tauri-release.md):
+# - Builds use the project's own lockfile-pinned Tauri CLI, not
+#   tauri-apps/tauri-action, so latest.json is written exactly once after every
+#   leg has finished and is verified against the configured pubkey before it is
+#   uploaded.
+# - `tauri build --no-bundle` runs the frontend toolchain and Rust build scripts
+#   WITHOUT any signing material; `tauri bundle` is the only step that sees
+#   TAURI_SIGNING_PRIVATE_KEY and the per-OS Apple/Azure secrets.
+# - The signing-key guard in `preflight` fails before any 15-36 minute leg
+#   starts when the updater is enabled but the key secret is missing.
+# - Attestation runs in the no-compile `updater` job over the downloaded bytes,
+#   so no job that executes dependency code holds id-token: write.
+#
+# Out of scope: app stores, Snap/Flatpak/AUR, mobile targets, non-GitHub update
+# servers, certificate procurement, and candidate promotion (deferred until the
+# same-run profile has shipped real releases; see the reference).
+#
+# winer ships for Windows x64 only (.github/release-targets.json): one NSIS leg.
+# Its Rust workspace is the repository root, so the cache and the bundle
+# directory are the root's `target/`. scripts/install.ps1 rides along as a
+# release asset, checksummed and attested like the installer.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Existing draft release tag to rebuild, for example v1.2.3"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # npm | pnpm | bun. The Tauri CLI is invoked through this package manager.
+  PACKAGE_MANAGER: pnpm
+  TAURI_PROJECT_PATH: app/src-tauri
+  RELEASE_TARGETS_FILE: .github/release-targets.json
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      build_artifacts: ${{ steps.gate.outputs.build_artifacts }}
+      tag_name: ${{ steps.gate.outputs.tag_name }}
+      version: ${{ steps.gate.outputs.version }}
+      prerelease: ${{ steps.gate.outputs.prerelease }}
+      release_sha: ${{ steps.gate.outputs.release_sha }}
+    steps:
+      - name: Run release-please
+        id: release
+        if: github.event_name == 'push'
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # Tooling comes from the workflow's own commit on the protected default
+      # branch, never from a tag or a dispatched branch.
+      - name: Checkout release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Resolve release gate
+        id: gate
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag_name }}
+          RELEASE_CREATED: ${{ steps.release.outputs.release_created }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          RUN_REF: ${{ github.ref }}
+          REF_PROTECTED: ${{ github.ref_protected }}
+          DEFAULT_BRANCH: main
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: bash .github/scripts/resolve-release-gate.sh
+
+  preflight:
+    name: Preflight
+    needs: release-please
+    if: needs.release-please.outputs.build_artifacts == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      updater_enabled: ${{ steps.config.outputs.updater_enabled }}
+      pubkey: ${{ steps.config.outputs.pubkey }}
+      product_name: ${{ steps.config.outputs.product_name }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+
+      - name: Verify the tag resolves to the released commit
+        env:
+          RELEASE_SHA: ${{ needs.release-please.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+          head=$(git rev-parse HEAD)
+          if [ "$head" != "$RELEASE_SHA" ]; then
+            echo "::error::checked-out tag commit $head != release commit $RELEASE_SHA"
+            exit 1
+          fi
+
+      - name: Check version source, updater pubkey and bundle targets
+        id: config
+        env:
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: >-
+          python3 .github/scripts/tauri-release.py check-config
+          --project "$TAURI_PROJECT_PATH"
+          --expect-version "$VERSION"
+          --targets-file "$RELEASE_TARGETS_FILE"
+          --github-output "$GITHUB_OUTPUT"
+
+      # Fail closed before any expensive leg starts. Secrets are only compared
+      # to the empty string inside env; the value never reaches the shell.
+      - name: Require the updater signing key when the updater is enabled
+        env:
+          UPDATER_ENABLED: ${{ steps.config.outputs.updater_enabled }}
+          SIGNING_KEY_PRESENT: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+        run: |
+          set -euo pipefail
+          if [ "$UPDATER_ENABLED" = true ] && [ "$SIGNING_KEY_PRESENT" != true ]; then
+            echo "::error::bundle.createUpdaterArtifacts is enabled but the TAURI_SIGNING_PRIVATE_KEY secret is missing"
+            exit 1
+          fi
+
+      - name: Render the bundle matrix
+        id: matrix
+        run: |
+          set -euo pipefail
+          matrix=$(python3 .github/scripts/tauri-release.py matrix --file "$RELEASE_TARGETS_FILE")
+          echo "matrix=$matrix" >>"$GITHUB_OUTPUT"
+
+  bundle:
+    name: Bundle ${{ matrix.target }}
+    needs: [release-please, preflight]
+    if: needs.release-please.outputs.build_artifacts == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.preflight.outputs.matrix) }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+
+      - name: Verify the tag resolves to the released commit
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ needs.release-please.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+          head=$(git rev-parse HEAD)
+          if [ "$head" != "$RELEASE_SHA" ]; then
+            echo "::error::checked-out tag commit $head != release commit $RELEASE_SHA"
+            exit 1
+          fi
+
+      # ubuntu-22.04 is the glibc floor documented by Tauri for Linux bundles.
+      - name: Install Tauri Linux dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-09-12
+        with:
+          toolchain: 1.96.0
+          targets: ${{ matrix.target }}
+
+      # target/ is retained per target: build scripts and C/C++ dependencies sit
+      # outside any compiler cache and dominate Tauri rebuild time.
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ". -> target"
+          shared-key: tauri-release-${{ matrix.target }}
+          cache-on-failure: true
+
+      - name: Set up Bun
+        if: env.PACKAGE_MANAGER == 'bun'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+
+      - name: Set up pnpm
+        if: env.PACKAGE_MANAGER == 'pnpm'
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: package.json
+
+      - name: Set up Node.js
+        if: env.PACKAGE_MANAGER != 'bun'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: package.json
+          cache: ${{ env.PACKAGE_MANAGER }}
+
+      - name: Install dependencies (frozen lockfile)
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$PACKAGE_MANAGER" in
+            npm) npm ci ;;
+            pnpm) pnpm install --frozen-lockfile ;;
+            bun) bun install --frozen-lockfile ;;
+            *) echo "::error::unsupported PACKAGE_MANAGER '$PACKAGE_MANAGER'"; exit 1 ;;
+          esac
+
+      # Phase 1: frontend (build.beforeBuildCommand) and Rust compile. No
+      # signing material is present while dependency code runs.
+      - name: Build (no bundle, no secrets)
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          NODE_OPTIONS: --max_old_space_size=4096
+        run: |
+          set -euo pipefail
+          case "$PACKAGE_MANAGER" in
+            npm) tauri=(npm run tauri --) ;;
+            pnpm) tauri=(pnpm tauri) ;;
+            bun) tauri=(bun run tauri) ;;
+            *) echo "::error::unsupported PACKAGE_MANAGER '$PACKAGE_MANAGER'"; exit 1 ;;
+          esac
+          "${tauri[@]}" build --no-bundle --target "$TARGET"
+
+      # Phase 2: bundling, code signing and updater signatures. The Tauri CLI
+      # imports APPLE_CERTIFICATE into a temporary keychain itself and signs the
+      # updater artifacts with TAURI_SIGNING_PRIVATE_KEY after bundling, so any
+      # bundle.windows.signCommand output is what the .sig covers. Secrets are
+      # scoped to the OS that needs them; empty values are unset because the
+      # bundler treats an empty APPLE_CERTIFICATE as a certificate to import.
+      - name: Bundle and sign
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          BUNDLES: ${{ matrix.bundles }}
+          NODE_OPTIONS: --max_old_space_size=4096
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ matrix.platform == 'macos' && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ matrix.platform == 'macos' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ matrix.platform == 'macos' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_API_KEY: ${{ matrix.platform == 'macos' && secrets.APPLE_API_KEY || '' }}
+          APPLE_API_ISSUER: ${{ matrix.platform == 'macos' && secrets.APPLE_API_ISSUER || '' }}
+          APPLE_API_KEY_CONTENT: ${{ matrix.platform == 'macos' && secrets.APPLE_API_KEY_CONTENT || '' }}
+          AZURE_TENANT_ID: ${{ matrix.platform == 'windows' && secrets.AZURE_TENANT_ID || '' }}
+          AZURE_CLIENT_ID: ${{ matrix.platform == 'windows' && secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ matrix.platform == 'windows' && secrets.AZURE_CLIENT_SECRET || '' }}
+        run: |
+          set -euo pipefail
+          for name in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD \
+            APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY \
+            APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_CONTENT \
+            AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET; do
+            if [ -z "${!name:-}" ]; then
+              unset "$name"
+            fi
+          done
+          if [ -n "${APPLE_API_KEY_CONTENT:-}" ]; then
+            # notarytool wants the App Store Connect key as a file.
+            APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+            printf '%s\n' "$APPLE_API_KEY_CONTENT" >"$APPLE_API_KEY_PATH"
+            export APPLE_API_KEY_PATH
+            unset APPLE_API_KEY_CONTENT
+          fi
+          case "$PACKAGE_MANAGER" in
+            npm) tauri=(npm run tauri --) ;;
+            pnpm) tauri=(pnpm tauri) ;;
+            bun) tauri=(bun run tauri) ;;
+            *) echo "::error::unsupported PACKAGE_MANAGER '$PACKAGE_MANAGER'"; exit 1 ;;
+          esac
+          "${tauri[@]}" bundle --target "$TARGET" --bundles "$BUNDLES"
+
+      # Copies dmg/app.tar.gz/nsis/msi/deb/rpm/AppImage (+ .sig) into dist/ with
+      # collision-free names and records name/size/sha256 per file. Fails when
+      # the updater bundle has no .sig. `python3` is the one interpreter name
+      # present on every hosted image (Ubuntu python-is-python3, Homebrew Python
+      # on macOS, the python3.exe symlink in the Windows toolcache); bare
+      # `python` is not on PATH on macos-15.
+      - name: Collect bundles and evidence
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: >-
+          python3 .github/scripts/tauri-release.py collect
+          --project "$TAURI_PROJECT_PATH"
+          --target "$TARGET"
+          --targets-file "$RELEASE_TARGETS_FILE"
+          --out dist
+          --evidence "evidence/$TARGET.json"
+
+      # The one-line installer resolves the installer by version at run time, so the copy in
+      # this tag is the one published with it.
+      - name: Add the install script
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: cp scripts/install.ps1 dist/install.ps1
+
+      - name: Upload bundles
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tauri-${{ matrix.target }}
+          path: |
+            dist/
+            evidence/
+          if-no-files-found: error
+          retention-days: 1
+
+  updater:
+    name: Updater manifest and assets
+    needs: [release-please, preflight, bundle]
+    if: needs.release-please.outputs.build_artifacts == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      # Tooling only; no project or dependency code executes in this job.
+      - name: Checkout release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download every bundle leg
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: tauri-*
+          path: bundle
+          merge-multiple: true
+
+      - name: Install minisign
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y minisign
+
+      # Decodes the base64 pubkey and each base64 .sig exactly as
+      # tauri-plugin-updater does, then verifies with minisign. A signature made
+      # with a rotated or wrong key stops the release here, not on user devices.
+      - name: Verify every updater signature against the configured pubkey
+        if: needs.preflight.outputs.updater_enabled == 'true'
+        env:
+          PUBKEY: ${{ needs.preflight.outputs.pubkey }}
+        run: >-
+          python3 .github/scripts/tauri-release.py verify-signatures
+          --dist bundle/dist --pubkey "$PUBKEY" --expect-updater
+
+      - name: Read release notes from the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: gh release view "$TAG" --repo "$REPO" --json body --jq .body >body.md
+
+      # Single writer: one latest.json after all legs, URLs pinned to this tag
+      # (never releases/latest/download, which would point at whatever is
+      # published next), every manifest platform required.
+      - name: Build latest.json
+        if: needs.preflight.outputs.updater_enabled == 'true'
+        env:
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: >-
+          python3 .github/scripts/tauri-release.py updater-json
+          --dist bundle/dist
+          --evidence-dir bundle/evidence
+          --repo "$REPO"
+          --tag "$TAG"
+          --version "$VERSION"
+          --notes-file body.md
+          --targets-file "$RELEASE_TARGETS_FILE"
+          --out bundle/dist/latest.json
+
+      - name: Generate SHA256SUMS
+        working-directory: bundle/dist
+        run: |
+          set -euo pipefail
+          files=$(find . -maxdepth 1 -type f -printf '%P\n' | LC_ALL=C sort)
+          if [ -z "$files" ]; then
+            echo "::error::no shipped files were downloaded"
+            exit 1
+          fi
+          printf '%s\n' "$files" | xargs sha256sum >"$RUNNER_TEMP/SHA256SUMS"
+          mv "$RUNNER_TEMP/SHA256SUMS" SHA256SUMS
+
+      - name: Attest shipped files
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: bundle/dist/*
+
+      - name: Attach assets to the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" --repo "$REPO" --clobber bundle/dist/*
+
+      - name: Verify remote assets against SHA256SUMS
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: >-
+          bash .github/scripts/publish-release-draft.sh --verify-only
+          --checksums bundle/dist/SHA256SUMS --expect-name SHA256SUMS --exact
+
+      - name: Upload checksums for the publish job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: checksums
+          path: bundle/dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-release:
+    name: Publish Release
+    needs: [release-please, updater]
+    if: needs.release-please.outputs.build_artifacts == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    environment: release
+    steps:
+      - name: Checkout release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download checksums
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: checksums
+
+      # Re-verifies every remote asset (name, size, sha256 digest), then flips
+      # draft=false and adds --latest unless the release is a prerelease.
+      - name: Publish the completed draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: >-
+          bash .github/scripts/publish-release-draft.sh --publish
+          --checksums SHA256SUMS --expect-name SHA256SUMS --exact

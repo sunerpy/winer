@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "winer",
+  "version": "../../package.json",
+  "identifier": "app.winer.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm --filter @winer/desktop dev",
+    "beforeBuildCommand": "pnpm --filter @winer/plugin build && pnpm --filter @winer/desktop build",
+    "devUrl": "http://localhost:7419",
+    "frontendDist": "../frontend/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "winer",
+        "width": 1240,
+        "height": 800,
+        "minWidth": 1000,
+        "minHeight": 660,
+        "center": true,
+        "visible": false,
+        "decorations": false,
+        "shadow": true,
+        "backgroundColor": "#0b1118",
+        "create": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: http://lcu.localhost lcu:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY5QUJENTU1RUQ3MDlGNTAKUldSUW4zRHRWZFdyK1hURzBWbm9sUC9LbE9RYjc4dGNqdzh3amFIQWZCQ0VJaXZHaVh4cEtXcnQK",
+      "endpoints": ["https://github.com/sunerpy/winer/releases/latest/download/latest.json"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
+    "licenseFile": "../../LICENSE",
+    "shortDescription": "League of Legends client companion",
+    "longDescription": "winer reads the League client's own API to show teammates' form in champ select, keep match history at hand and take the routine clicks off your hands.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["SimpChinese", "English"]
+      }
+    }
+  }
+}

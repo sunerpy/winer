@@ -1,0 +1,156 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  /* The rem stays 16px so every spacing token means what DESIGN.md says. The 字号 setting is a
+     zoom of the whole window instead: chrome, text and icons grow together. */
+  html {
+    font-family: var(--font-ui);
+    font-size: 16px;
+    zoom: var(--ui-zoom);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "kern", "liga", "calt";
+  }
+  body {
+    margin: 0;
+    font-size: 13px;
+    overflow: hidden;
+    background: var(--canvas);
+    color: var(--fg);
+  }
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+  /* Tailwind v4's preflight leaves every control on the arrow cursor, which reads as a frozen app
+     in a desktop window. Zero specificity, so a component's own cursor still wins. */
+  :where(
+    button,
+    summary,
+    a[href],
+    label[for],
+    [role="button"],
+    [role="tab"],
+    [role="option"],
+    [role="radio"],
+    [role="switch"],
+    [role="checkbox"],
+    [role="menuitem"],
+    [role="menuitemradio"]
+  ) {
+    cursor: pointer;
+  }
+  :where(button, input, textarea):disabled,
+  :where([aria-disabled="true"]) {
+    cursor: not-allowed;
+  }
+  /* Chrome is not selectable, data is. */
+  :where(button, label, [role="tab"], [role="button"], nav) {
+    user-select: none;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 1px;
+  }
+  ::selection {
+    background: var(--accent-soft);
+  }
+  td,
+  th {
+    font-variant-numeric: tabular-nums;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--fg-subtle);
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@utility hairline {
+  border: 1px solid var(--border);
+}
+@utility eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+}
+@utility mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+/* A hover background that works on any surface: the foreground at low alpha always moves away
+   from whatever it sits on, where a surface token can land on its own backdrop. */
+@utility hover-wash {
+  &:hover:not(:disabled) {
+    background-color: color-mix(in oklab, var(--fg) 7%, transparent);
+  }
+}
+@utility press-wash {
+  &:active:not(:disabled) {
+    background-color: color-mix(in oklab, var(--fg) 11%, transparent);
+  }
+}
+
+@keyframes winer-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes winer-shimmer {
+  0% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.55;
+  }
+}
+@keyframes winer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes winer-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes winer-fade {
+  from {
+    opacity: 0;
+  }
+}
