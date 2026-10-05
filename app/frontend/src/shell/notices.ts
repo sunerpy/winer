@@ -1,8 +1,9 @@
 import type { NoticeKind } from "@winer/shared";
 import { useEffect, useRef } from "react";
 
-import type { Translate } from "../lib/i18n";
+import type { MessageKey, Translate } from "../lib/i18n";
 import { useT } from "../lib/i18n";
+import { namedStatus } from "../lib/presence";
 import { type Catalog, useCatalog, useNotices } from "../lib/store";
 import { toast } from "../ui";
 
@@ -26,9 +27,22 @@ export function noticeText(kind: NoticeKind, t: Translate, catalog: Catalog | nu
       return t("notice.swapped", { champion: champion(kind.championId) });
     case "calledOut":
       return t("notice.calledOut", { n: kind.lines });
+    case "presenceRestored": {
+      const status = namedStatus(kind.availability);
+      return t("profile.notice.restored", {
+        status: status ? t(`tools.status.${status}` as MessageKey) : kind.availability,
+      });
+    }
+    case "presenceRefused":
+      return t("profile.notice.refused");
     case "failed":
       return t("notice.failed", { message: kind.message });
   }
+}
+
+/** A notice about something winer could not do, drawn in the danger tone. */
+export function isFailure(kind: NoticeKind): boolean {
+  return kind.kind === "failed" || kind.kind === "presenceRefused";
 }
 
 /** Every new notice also pops up as a toast. */
@@ -42,7 +56,7 @@ export function useNoticeToasts(): void {
     if (fresh.length === 0) return;
     seen.current = Math.max(...fresh.map((notice) => notice.id));
     for (const notice of fresh.reverse()) {
-      toast(noticeText(notice.kind, t, catalog), notice.kind.kind === "failed" ? "danger" : "ok");
+      toast(noticeText(notice.kind, t, catalog), isFailure(notice.kind) ? "danger" : "ok");
     }
   }, [notices, t, catalog]);
 }

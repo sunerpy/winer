@@ -6,7 +6,10 @@ import type {
   AppInfo,
   Audience,
   AugmentDetail,
+  BackupChannel,
+  BackupInfo,
   CalloutRule,
+  ChallengeProfile,
   Event,
   GameData,
   General,
@@ -18,6 +21,7 @@ import type {
   PluginStatus,
   Presence,
   Settings,
+  SkinChoice,
   Snapshot,
   UpdateStatus,
 } from "@winer/shared";
@@ -55,6 +59,22 @@ export interface Commands {
   install_update: Command<undefined, null>;
   open_releases: Command<undefined, null>;
   open_docs: Command<{ page: "home" | "rating" }, null>;
+  // The profile tools on the Tools page.
+  get_skins: Command<undefined, SkinChoice[]>;
+  get_profile_background: Command<undefined, number | null>;
+  /** Answers the background the client reports afterwards: the old one where it refused. */
+  set_profile_background: Command<{ skinId: number }, number | null>;
+  get_challenge_profile: Command<undefined, ChallengeProfile>;
+  set_challenge_profile: Command<
+    { challengeIds: number[]; titleId: number | null },
+    ChallengeProfile
+  >;
+  get_game_settings_backups: Command<undefined, BackupInfo[]>;
+  create_game_settings_backup: Command<undefined, BackupInfo>;
+  restore_game_settings_backup: Command<{ id: number; channels: BackupChannel[] }, null>;
+  delete_game_settings_backup: Command<{ id: number }, null>;
+  import_game_settings_backup: Command<{ text: string }, BackupInfo>;
+  reveal_game_settings_backup: Command<{ id: number }, null>;
 }
 
 export type CommandName = keyof Commands;

@@ -4,7 +4,7 @@
 
 use ts_rs::{Config, TS};
 
-use crate::{bridge, plugin, settings, view};
+use crate::{backup, bridge, plugin, profile, settings, view};
 
 pub fn typescript() -> String {
     let config = Config::new().with_large_int("number");
@@ -84,6 +84,18 @@ pub fn typescript() -> String {
         settings::Mode,
         settings::ChampionPool,
         settings::PluginSettings,
+        // The profile tools: background, challenges, rank disguise, remembered status, backups.
+        settings::ProfileSettings,
+        settings::RankDisguise,
+        settings::DisguiseQueue,
+        settings::Division,
+        settings::PresenceRule,
+        profile::SkinChoice,
+        profile::ChallengeProfile,
+        profile::ChallengeToken,
+        profile::TitleChoice,
+        backup::BackupInfo,
+        backup::BackupChannel,
         plugin::PluginStatus,
         bridge::BridgeMessage,
         bridge::PluginMessage,

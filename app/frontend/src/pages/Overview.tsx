@@ -10,7 +10,7 @@ import { MODES, MODE_LABEL, type ScopedRule } from "../lib/modes";
 import { useCatalog, useLive, useNotices, useSettings, useStore } from "../lib/store";
 import { useAsync } from "../lib/useAsync";
 import { useShell } from "../shell/navigation";
-import { noticeText } from "../shell/notices";
+import { isFailure, noticeText } from "../shell/notices";
 import { Button, Card, EmptyState, ErrorNote, Panel, Skeleton, Toggle, toast } from "../ui";
 import { ConnectionBanner, PageBody } from "./common";
 
@@ -295,7 +295,7 @@ function ActivityCard() {
               <span className="mono w-16 shrink-0 text-[11px] text-fg-subtle">
                 {new Date(notice.at).toLocaleTimeString(language, { hour12: false })}
               </span>
-              <span className={notice.kind.kind === "failed" ? "text-danger" : "text-fg"}>
+              <span className={isFailure(notice.kind) ? "text-danger" : "text-fg"}>
                 {noticeText(notice.kind, t, catalog)}
               </span>
             </li>

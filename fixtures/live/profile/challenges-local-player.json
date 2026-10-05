@@ -1,0 +1,916 @@
+{
+  "101000": {
+    "availableIds": [],
+    "capstoneGroupId": 1,
+    "capstoneGroupName": "奇思妙想",
+    "category": "IMAGINATION",
+    "childrenIds": [
+      101300,
+      101200,
+      101100
+    ],
+    "completedIds": [],
+    "currentLevel": "PLATINUM",
+    "currentLevelAchievedTime": 1785008232453,
+    "currentThreshold": 590.0,
+    "currentValue": 755.0,
+    "description": "获取来自【极地斗士】、【极地妙手】、【极地战士】等分组中的成就进度",
+    "descriptionShort": "获取来自【极地斗士】、【极地妙手】、【极地战士】等分组中的成就进度",
+    "friendsAtLevels": [],
+    "gameModes": [],
+    "hasLeaderboard": false,
+    "iconPath": "",
+    "id": 101000,
+    "idListType": "NONE",
+    "isApex": false,
+    "isCapstone": true,
+    "isReverseDirection": false,
+    "levelToIconPath": {
+      "BRONZE": "/lol-game-data/assets/ASSETS/Challenges/Config/101000/Tokens/BRONZE.png",
+      "CHALLENGER": "/lol-game-data/assets/ASSETS/Challenges/Config/101000/Tokens/CHALLENGER.png",
+      "DIAMOND": "/lol-game-data/assets/ASSETS/Challenges/Config/101000/Tokens/DIAMOND.png",
+      "GOLD": "/lol-game-data/assets/ASSETS/Challenges/Config/101000/Tokens/GOLD.png",
+      "GRANDMASTER": "/lol-game-data/assets/ASSETS/Challenges/Config/101000/Tokens/GRANDMASTER.png",
+      "IRON": "/lol-game-data/assets/ASSETS/Challenges/Config/101000/Tokens/IRON.png",
+      "MASTER": "/lol-game-data/assets/ASSETS/Challenges/Config/101000/Tokens/MASTER.png",
+      "PLATINUM": "/lol-game-data/assets/ASSETS/Challenges/Config/101000/Tokens/PLATINUM.png",
+      "SILVER": "/lol-game-data/assets/ASSETS/Challenges/Config/101000/Tokens/SILVER.png"
+    },
+    "name": "极地权威",
+    "nextLevel": "DIAMOND",
+    "nextLevelIconPath": "",
+    "nextThreshold": 1075.0,
+    "parentId": 1,
+    "parentName": "",
+    "percentile": 6.1,
+    "playersInLevel": 0,
+    "pointsAwarded": 40,
+    "position": 0,
+    "previousLevel": "",
+    "previousValue": 0.0,
+    "priority": 1.0,
+    "retireTimestamp": 0,
+    "source": "CHALLENGES",
+    "thresholds": {
+      "BRONZE": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 10
+          }
+        ],
+        "value": 85.0
+      },
+      "DIAMOND": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 60
+          }
+        ],
+        "value": 1075.0
+      },
+      "GOLD": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 25
+          }
+        ],
+        "value": 360.0
+      },
+      "IRON": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 5
+          }
+        ],
+        "value": 40.0
+      },
+      "MASTER": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "TITLE",
+            "name": "极地之神",
+            "quantity": 1
+          },
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 100
+          }
+        ],
+        "value": 1850.0
+      },
+      "PLATINUM": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 40
+          }
+        ],
+        "value": 590.0
+      },
+      "SILVER": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 15
+          }
+        ],
+        "value": 140.0
+      }
+    },
+    "valueMapping": ""
+  },
+  "101101": {
+    "availableIds": [],
+    "capstoneGroupId": 101100,
+    "capstoneGroupName": "极地斗士",
+    "category": "IMAGINATION",
+    "childrenIds": [],
+    "completedIds": [],
+    "currentLevel": "MASTER",
+    "currentLevelAchievedTime": 1780143940283,
+    "currentThreshold": 10.0,
+    "currentValue": 78.0,
+    "description": "在【极地大乱斗】对局中造成分均1800以上的伤害",
+    "descriptionShort": "造成分均1800以上的伤害",
+    "friendsAtLevels": [],
+    "gameModes": [
+      "ARAM",
+      "ARAM",
+      "ARAM",
+      "ARAM",
+      "ARAM",
+      "KIWI",
+      "KIWI",
+      "KIWI",
+      "KIWI_JADE"
+    ],
+    "hasLeaderboard": true,
+    "iconPath": "",
+    "id": 101101,
+    "idListType": "NONE",
+    "isApex": true,
+    "isCapstone": false,
+    "isReverseDirection": false,
+    "levelToIconPath": {
+      "BRONZE": "/lol-game-data/assets/ASSETS/Challenges/Config/101101/Tokens/BRONZE.png",
+      "CHALLENGER": "/lol-game-data/assets/ASSETS/Challenges/Config/101101/Tokens/CHALLENGER.png",
+      "DIAMOND": "/lol-game-data/assets/ASSETS/Challenges/Config/101101/Tokens/DIAMOND.png",
+      "GOLD": "/lol-game-data/assets/ASSETS/Challenges/Config/101101/Tokens/GOLD.png",
+      "GRANDMASTER": "/lol-game-data/assets/ASSETS/Challenges/Config/101101/Tokens/GRANDMASTER.png",
+      "IRON": "/lol-game-data/assets/ASSETS/Challenges/Config/101101/Tokens/IRON.png",
+      "MASTER": "/lol-game-data/assets/ASSETS/Challenges/Config/101101/Tokens/MASTER.png",
+      "PLATINUM": "/lol-game-data/assets/ASSETS/Challenges/Config/101101/Tokens/PLATINUM.png",
+      "SILVER": "/lol-game-data/assets/ASSETS/Challenges/Config/101101/Tokens/SILVER.png"
+    },
+    "name": "伤害爆表",
+    "nextLevel": "GRANDMASTER",
+    "nextLevelIconPath": "",
+    "nextThreshold": 374.0,
+    "parentId": 101100,
+    "parentName": "极地斗士",
+    "percentile": 9.5,
+    "playersInLevel": 5335278,
+    "pointsAwarded": 100,
+    "position": -1333812,
+    "previousLevel": "",
+    "previousValue": 0.0,
+    "priority": 50.0,
+    "retireTimestamp": 0,
+    "source": "EOGD",
+    "thresholds": {
+      "CHALLENGER": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 100
+          }
+        ],
+        "value": 20.0
+      },
+      "DIAMOND": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 60
+          }
+        ],
+        "value": 7.0
+      },
+      "GOLD": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 25
+          }
+        ],
+        "value": 2.0
+      },
+      "GRANDMASTER": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 100
+          }
+        ],
+        "value": 15.0
+      },
+      "MASTER": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 100
+          }
+        ],
+        "value": 10.0
+      },
+      "PLATINUM": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 40
+          }
+        ],
+        "value": 4.0
+      },
+      "SILVER": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 15
+          }
+        ],
+        "value": 1.0
+      }
+    },
+    "valueMapping": ""
+  },
+  "101102": {
+    "availableIds": [],
+    "capstoneGroupId": 101100,
+    "capstoneGroupName": "极地斗士",
+    "category": "IMAGINATION",
+    "childrenIds": [],
+    "completedIds": [],
+    "currentLevel": "NONE",
+    "currentLevelAchievedTime": 0,
+    "currentThreshold": 0.0,
+    "currentValue": 0.0,
+    "description": "在单场【极地大乱斗】对局中获得2个五杀",
+    "descriptionShort": "在单场对局中获得2个五杀",
+    "friendsAtLevels": [],
+    "gameModes": [
+      "ARAM",
+      "ARAM",
+      "ARAM",
+      "ARAM",
+      "ARAM",
+      "KIWI",
+      "KIWI",
+      "KIWI",
+      "KIWI_JADE"
+    ],
+    "hasLeaderboard": false,
+    "iconPath": "",
+    "id": 101102,
+    "idListType": "NONE",
+    "isApex": false,
+    "isCapstone": false,
+    "isReverseDirection": false,
+    "levelToIconPath": {
+      "BRONZE": "/lol-game-data/assets/ASSETS/Challenges/Config/101102/Tokens/BRONZE.png",
+      "CHALLENGER": "/lol-game-data/assets/ASSETS/Challenges/Config/101102/Tokens/CHALLENGER.png",
+      "DIAMOND": "/lol-game-data/assets/ASSETS/Challenges/Config/101102/Tokens/DIAMOND.png",
+      "GOLD": "/lol-game-data/assets/ASSETS/Challenges/Config/101102/Tokens/GOLD.png",
+      "GRANDMASTER": "/lol-game-data/assets/ASSETS/Challenges/Config/101102/Tokens/GRANDMASTER.png",
+      "IRON": "/lol-game-data/assets/ASSETS/Challenges/Config/101102/Tokens/IRON.png",
+      "MASTER": "/lol-game-data/assets/ASSETS/Challenges/Config/101102/Tokens/MASTER.png",
+      "PLATINUM": "/lol-game-data/assets/ASSETS/Challenges/Config/101102/Tokens/PLATINUM.png",
+      "SILVER": "/lol-game-data/assets/ASSETS/Challenges/Config/101102/Tokens/SILVER.png"
+    },
+    "name": "极地五杀x2",
+    "nextLevel": "MASTER",
+    "nextLevelIconPath": "",
+    "nextThreshold": 1.0,
+    "parentId": 101100,
+    "parentName": "极地斗士",
+    "percentile": 100.0,
+    "playersInLevel": 0,
+    "pointsAwarded": 0,
+    "position": 0,
+    "previousLevel": "",
+    "previousValue": 0.0,
+    "priority": 50.0,
+    "retireTimestamp": 0,
+    "source": "EOGD",
+    "thresholds": {
+      "MASTER": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 100
+          }
+        ],
+        "value": 1.0
+      }
+    },
+    "valueMapping": ""
+  },
+  "101206": {
+    "availableIds": [],
+    "capstoneGroupId": 101200,
+    "capstoneGroupName": "极地妙手",
+    "category": "IMAGINATION",
+    "childrenIds": [],
+    "completedIds": [],
+    "currentLevel": "BRONZE",
+    "currentLevelAchievedTime": 1781855502122,
+    "currentThreshold": 0.0,
+    "currentValue": 1.0,
+    "description": "在【极地大乱斗】中导致一个魄罗爆炸",
+    "descriptionShort": "导致一个魄罗爆炸",
+    "friendsAtLevels": [],
+    "gameModes": [
+      "ARAM",
+      "ARAM",
+      "ARAM",
+      "ARAM",
+      "ARAM",
+      "KIWI",
+      "KIWI",
+      "KIWI",
+      "KIWI_JADE"
+    ],
+    "hasLeaderboard": false,
+    "iconPath": "",
+    "id": 101206,
+    "idListType": "NONE",
+    "isApex": false,
+    "isCapstone": false,
+    "isReverseDirection": false,
+    "levelToIconPath": {
+      "BRONZE": "/lol-game-data/assets/ASSETS/Challenges/Config/101206/Tokens/BRONZE.png",
+      "CHALLENGER": "/lol-game-data/assets/ASSETS/Challenges/Config/101206/Tokens/CHALLENGER.png",
+      "DIAMOND": "/lol-game-data/assets/ASSETS/Challenges/Config/101206/Tokens/DIAMOND.png",
+      "GOLD": "/lol-game-data/assets/ASSETS/Challenges/Config/101206/Tokens/GOLD.png",
+      "GRANDMASTER": "/lol-game-data/assets/ASSETS/Challenges/Config/101206/Tokens/GRANDMASTER.png",
+      "IRON": "/lol-game-data/assets/ASSETS/Challenges/Config/101206/Tokens/IRON.png",
+      "MASTER": "/lol-game-data/assets/ASSETS/Challenges/Config/101206/Tokens/MASTER.png",
+      "PLATINUM": "/lol-game-data/assets/ASSETS/Challenges/Config/101206/Tokens/PLATINUM.png",
+      "SILVER": "/lol-game-data/assets/ASSETS/Challenges/Config/101206/Tokens/SILVER.png"
+    },
+    "name": "魄罗破咯",
+    "nextLevel": "",
+    "nextLevelIconPath": "",
+    "nextThreshold": 1.0,
+    "parentId": 101200,
+    "parentName": "极地妙手",
+    "percentile": 4.8,
+    "playersInLevel": 0,
+    "pointsAwarded": 10,
+    "position": 0,
+    "previousLevel": "",
+    "previousValue": 0.0,
+    "priority": 50.0,
+    "retireTimestamp": 0,
+    "source": "EOGD",
+    "thresholds": {
+      "BRONZE": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "TITLE",
+            "name": "魄罗饲养员",
+            "quantity": 1
+          },
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 10
+          }
+        ],
+        "value": 1.0
+      }
+    },
+    "valueMapping": ""
+  },
+  "101304": {
+    "availableIds": [],
+    "capstoneGroupId": 101300,
+    "capstoneGroupName": "极地战士",
+    "category": "IMAGINATION",
+    "childrenIds": [],
+    "completedIds": [],
+    "currentLevel": "MASTER",
+    "currentLevelAchievedTime": 1781851872552,
+    "currentThreshold": 8.0,
+    "currentValue": 12.0,
+    "description": "赢得【极地大乱斗】对局且对局时长低于13分钟",
+    "descriptionShort": "赢得对局且用时在13分钟以内",
+    "friendsAtLevels": [],
+    "gameModes": [
+      "ARAM",
+      "ARAM",
+      "ARAM",
+      "ARAM",
+      "ARAM",
+      "KIWI",
+      "KIWI",
+      "KIWI",
+      "KIWI_JADE"
+    ],
+    "hasLeaderboard": true,
+    "iconPath": "",
+    "id": 101304,
+    "idListType": "NONE",
+    "isApex": true,
+    "isCapstone": false,
+    "isReverseDirection": false,
+    "levelToIconPath": {
+      "BRONZE": "/lol-game-data/assets/ASSETS/Challenges/Config/101304/Tokens/BRONZE.png",
+      "CHALLENGER": "/lol-game-data/assets/ASSETS/Challenges/Config/101304/Tokens/CHALLENGER.png",
+      "DIAMOND": "/lol-game-data/assets/ASSETS/Challenges/Config/101304/Tokens/DIAMOND.png",
+      "GOLD": "/lol-game-data/assets/ASSETS/Challenges/Config/101304/Tokens/GOLD.png",
+      "GRANDMASTER": "/lol-game-data/assets/ASSETS/Challenges/Config/101304/Tokens/GRANDMASTER.png",
+      "IRON": "/lol-game-data/assets/ASSETS/Challenges/Config/101304/Tokens/IRON.png",
+      "MASTER": "/lol-game-data/assets/ASSETS/Challenges/Config/101304/Tokens/MASTER.png",
+      "PLATINUM": "/lol-game-data/assets/ASSETS/Challenges/Config/101304/Tokens/PLATINUM.png",
+      "SILVER": "/lol-game-data/assets/ASSETS/Challenges/Config/101304/Tokens/SILVER.png"
+    },
+    "name": "闪电战",
+    "nextLevel": "GRANDMASTER",
+    "nextLevelIconPath": "",
+    "nextThreshold": 88.0,
+    "parentId": 101300,
+    "parentName": "极地战士",
+    "percentile": 5.800000000000001,
+    "playersInLevel": 3225589,
+    "pointsAwarded": 100,
+    "position": -806384,
+    "previousLevel": "",
+    "previousValue": 0.0,
+    "priority": 1.0,
+    "retireTimestamp": 0,
+    "source": "EOGD",
+    "thresholds": {
+      "CHALLENGER": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 100
+          }
+        ],
+        "value": 20.0
+      },
+      "DIAMOND": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 60
+          }
+        ],
+        "value": 5.0
+      },
+      "GOLD": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 25
+          }
+        ],
+        "value": 1.0
+      },
+      "GRANDMASTER": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 100
+          }
+        ],
+        "value": 10.0
+      },
+      "MASTER": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 100
+          }
+        ],
+        "value": 8.0
+      },
+      "PLATINUM": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 40
+          }
+        ],
+        "value": 3.0
+      }
+    },
+    "valueMapping": ""
+  },
+  "505005": {
+    "availableIds": [
+      4,
+      133,
+      901,
+      10,
+      60042,
+      523,
+      268,
+      15,
+      17,
+      145,
+      18,
+      21,
+      22,
+      29,
+      60067,
+      804,
+      166,
+      42,
+      66602,
+      429,
+      66606,
+      66609,
+      60081,
+      51,
+      66617,
+      60096,
+      67,
+      202,
+      203,
+      3151,
+      81,
+      221,
+      222,
+      96,
+      60004,
+      360,
+      104,
+      60010,
+      235,
+      3947,
+      236,
+      110,
+      60015,
+      60017,
+      60018,
+      498,
+      60021,
+      60022,
+      119,
+      60029,
+      126
+    ],
+    "capstoneGroupId": 505000,
+    "capstoneGroupName": "英雄收藏家",
+    "category": "COLLECTION",
+    "childrenIds": [],
+    "completedIds": [
+      804,
+      901,
+      42,
+      60042,
+      202,
+      235,
+      203,
+      236,
+      15,
+      60015,
+      145,
+      17,
+      81,
+      60081,
+      60017,
+      18,
+      60018,
+      51,
+      21,
+      60021,
+      22,
+      60022,
+      222
+    ],
+    "currentLevel": "DIAMOND",
+    "currentLevelAchievedTime": 1786853636241,
+    "currentThreshold": 20.0,
+    "currentValue": 23.0,
+    "description": "拥有多个射手英雄",
+    "descriptionShort": "拥有多个<em>射手英雄</em>",
+    "friendsAtLevels": [],
+    "gameModes": [],
+    "hasLeaderboard": false,
+    "iconPath": "",
+    "id": 505005,
+    "idListType": "CHAMPION",
+    "isApex": false,
+    "isCapstone": false,
+    "isReverseDirection": false,
+    "levelToIconPath": {
+      "BRONZE": "/lol-game-data/assets/ASSETS/Challenges/Config/505005/Tokens/BRONZE.png",
+      "CHALLENGER": "/lol-game-data/assets/ASSETS/Challenges/Config/505005/Tokens/CHALLENGER.png",
+      "DIAMOND": "/lol-game-data/assets/ASSETS/Challenges/Config/505005/Tokens/DIAMOND.png",
+      "GOLD": "/lol-game-data/assets/ASSETS/Challenges/Config/505005/Tokens/GOLD.png",
+      "GRANDMASTER": "/lol-game-data/assets/ASSETS/Challenges/Config/505005/Tokens/GRANDMASTER.png",
+      "IRON": "/lol-game-data/assets/ASSETS/Challenges/Config/505005/Tokens/IRON.png",
+      "MASTER": "/lol-game-data/assets/ASSETS/Challenges/Config/505005/Tokens/MASTER.png",
+      "PLATINUM": "/lol-game-data/assets/ASSETS/Challenges/Config/505005/Tokens/PLATINUM.png",
+      "SILVER": "/lol-game-data/assets/ASSETS/Challenges/Config/505005/Tokens/SILVER.png"
+    },
+    "name": "射手收藏家",
+    "nextLevel": "MASTER",
+    "nextLevelIconPath": "",
+    "nextThreshold": 30.0,
+    "parentId": 505000,
+    "parentName": "英雄收藏家",
+    "percentile": 11.200000000000001,
+    "playersInLevel": 0,
+    "pointsAwarded": 60,
+    "position": 0,
+    "previousLevel": "",
+    "previousValue": 0.0,
+    "priority": 1.0,
+    "retireTimestamp": 0,
+    "source": "CAP_INVENTORY",
+    "thresholds": {
+      "BRONZE": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 10
+          }
+        ],
+        "value": 3.0
+      },
+      "DIAMOND": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 60
+          }
+        ],
+        "value": 20.0
+      },
+      "GOLD": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 25
+          }
+        ],
+        "value": 10.0
+      },
+      "IRON": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 5
+          }
+        ],
+        "value": 1.0
+      },
+      "MASTER": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 100
+          }
+        ],
+        "value": 30.0
+      },
+      "PLATINUM": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 40
+          }
+        ],
+        "value": 15.0
+      },
+      "SILVER": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 15
+          }
+        ],
+        "value": 5.0
+      }
+    },
+    "valueMapping": ""
+  },
+  "600006": {
+    "availableIds": [],
+    "capstoneGroupId": -1,
+    "capstoneGroupName": "",
+    "category": "LEGACY",
+    "childrenIds": [],
+    "completedIds": [],
+    "currentLevel": "BRONZE",
+    "currentLevelAchievedTime": 1781319189928,
+    "currentThreshold": 15.0,
+    "currentValue": 23.0,
+    "description": "提升你的召唤师等级",
+    "descriptionShort": "提升你的召唤师等级",
+    "friendsAtLevels": [],
+    "gameModes": [],
+    "hasLeaderboard": true,
+    "iconPath": "",
+    "id": 600006,
+    "idListType": "NONE",
+    "isApex": false,
+    "isCapstone": false,
+    "isReverseDirection": false,
+    "levelToIconPath": {
+      "BRONZE": "/lol-game-data/assets/ASSETS/Challenges/Config/600006/Tokens/BRONZE.png",
+      "CHALLENGER": "/lol-game-data/assets/ASSETS/Challenges/Config/600006/Tokens/CHALLENGER.png",
+      "DIAMOND": "/lol-game-data/assets/ASSETS/Challenges/Config/600006/Tokens/DIAMOND.png",
+      "GOLD": "/lol-game-data/assets/ASSETS/Challenges/Config/600006/Tokens/GOLD.png",
+      "GRANDMASTER": "/lol-game-data/assets/ASSETS/Challenges/Config/600006/Tokens/GRANDMASTER.png",
+      "IRON": "/lol-game-data/assets/ASSETS/Challenges/Config/600006/Tokens/IRON.png",
+      "MASTER": "/lol-game-data/assets/ASSETS/Challenges/Config/600006/Tokens/MASTER.png",
+      "PLATINUM": "/lol-game-data/assets/ASSETS/Challenges/Config/600006/Tokens/PLATINUM.png",
+      "SILVER": "/lol-game-data/assets/ASSETS/Challenges/Config/600006/Tokens/SILVER.png"
+    },
+    "name": "在这有段时日了",
+    "nextLevel": "SILVER",
+    "nextLevelIconPath": "",
+    "nextThreshold": 30.0,
+    "parentId": -1,
+    "parentName": "",
+    "percentile": 33.300000000000004,
+    "playersInLevel": 0,
+    "pointsAwarded": 10,
+    "position": 0,
+    "previousLevel": "",
+    "previousValue": 0.0,
+    "priority": 1.0,
+    "retireTimestamp": 0,
+    "source": "SUMMONER",
+    "thresholds": {
+      "BRONZE": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 10
+          }
+        ],
+        "value": 15.0
+      },
+      "CHALLENGER": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 100
+          }
+        ],
+        "value": 500.0
+      },
+      "DIAMOND": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 60
+          }
+        ],
+        "value": 250.0
+      },
+      "GOLD": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 25
+          }
+        ],
+        "value": 65.0
+      },
+      "GRANDMASTER": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 100
+          }
+        ],
+        "value": 400.0
+      },
+      "IRON": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 5
+          }
+        ],
+        "value": 10.0
+      },
+      "MASTER": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 100
+          }
+        ],
+        "value": 350.0
+      },
+      "PLATINUM": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 40
+          }
+        ],
+        "value": 125.0
+      },
+      "SILVER": {
+        "rewards": [
+          {
+            "asset": "",
+            "category": "CHALLENGE_POINTS",
+            "name": "",
+            "quantity": 15
+          }
+        ],
+        "value": 30.0
+      }
+    },
+    "valueMapping": ""
+  }
+}

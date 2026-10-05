@@ -73,6 +73,7 @@ fn setup(app: &mut App, start_hidden: bool) -> Result<(), Box<dyn Error>> {
         &paths.settings,
         tauri::async_runtime::handle().inner().clone(),
     );
+    service.set_backup_dir(app.path().app_local_data_dir()?.join("game-settings"));
     let bridge = tauri::async_runtime::block_on(Bridge::start(service.clone(), VERSION))?;
     app.manage(service.clone());
     app.manage(bridge.clone());

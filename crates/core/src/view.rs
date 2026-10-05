@@ -120,7 +120,7 @@ pub struct Me {
     pub ranked: Ranked,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Tier {
     Iron,
@@ -610,6 +610,13 @@ pub enum NoticeKind {
     CalledOut {
         lines: u32,
     },
+    /// Put the remembered chat status back after the client reset it.
+    PresenceRestored {
+        availability: String,
+    },
+    /// The client kept undoing the remembered status or the disguised rank; winer stopped trying
+    /// until the rule changes or the client reconnects.
+    PresenceRefused,
     Failed {
         action: String,
         message: String,
