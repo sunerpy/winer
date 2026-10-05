@@ -21,6 +21,7 @@ import {
 } from "../../ui";
 import { type RestoreChoice, backupSize, backupTime, restoreChannels } from "./profile";
 
+/** As many as the core keeps (`backup::KEEP`). */
 const KEEP = 10;
 const CHANNEL_LABEL: Record<BackupChannel, MessageKey> = {
   general: "profile.backup.general",
@@ -144,7 +145,12 @@ export function BackupPanel() {
       add(await store.backend.call("import_game_settings_backup", { text }));
       toast(t("profile.backup.imported"), "ok");
     } catch (error) {
-      toast(t("profile.backup.importFailed", { message: errorMessage(error) }), "danger");
+      // The core refuses a file that is not a backup as `invalid`; anything else is the disk's.
+      const message = errorMessage(error);
+      toast(
+        errorCode(error) === "invalid" ? t("profile.backup.importFailed", { message }) : message,
+        "danger",
+      );
     } finally {
       setBusy(null);
     }

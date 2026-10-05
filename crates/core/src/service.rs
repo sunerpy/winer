@@ -1527,6 +1527,7 @@ impl Service {
     pub async fn back_up_game_settings(&self) -> Result<BackupInfo, CoreError> {
         let dir = self.backup_dir()?.to_owned();
         let lcu = self.client()?.lcu;
+        game_settings_ready(&lcu).await?;
         let (general, hotkeys) = tokio::join!(
             lcu.get::<serde_json::Value>(backup::GAME_SETTINGS),
             lcu.get::<serde_json::Value>(backup::INPUT_SETTINGS),
@@ -1569,6 +1570,7 @@ impl Service {
         })
         .await?;
         let file = backup::parse(&text).map_err(CoreError::Invalid)?;
+        game_settings_ready(&lcu).await?;
         for (path, document) in file.patches(&channels).map_err(CoreError::Invalid)? {
             lcu.patch(path, document).await?;
         }
@@ -1617,6 +1619,22 @@ async fn challenge_choices(
         Vec::new()
     });
     Ok((challenges?, titles))
+}
+
+/// Refuses while the client has not read the game's settings yet, as it may not have just after it
+/// started. A client without the endpoint is taken as ready. Not `Busy`: the window words that one
+/// as "not during a game".
+async fn game_settings_ready(lcu: &Lcu) -> Result<(), CoreError> {
+    match lcu.get::<bool>(backup::READY).await {
+        Ok(false) => Err(CoreError::Invalid(
+            "the client has not loaded the game's settings yet; try again in a moment".into(),
+        )),
+        Ok(true) => Ok(()),
+        Err(error) => {
+            debug!(%error, "no game-settings readiness; going ahead");
+            Ok(())
+        }
+    }
 }
 
 /// File work, on the blocking pool.

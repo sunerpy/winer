@@ -20,6 +20,9 @@ pub const GAME_SETTINGS: &str = "/lol-game-settings/v1/game-settings";
 pub const INPUT_SETTINGS: &str = "/lol-game-settings/v1/input-settings";
 /// Writes what was patched to the game's own files.
 pub const SAVE: &str = "/lol-game-settings/v1/save";
+/// `true` once the client has read the game's files; before that both documents are not the
+/// player's yet.
+pub const READY: &str = "/lol-game-settings/v1/ready";
 
 /// One half of the game's settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]

@@ -1,6 +1,6 @@
 // The challenge tokens and the title on the player's profile: three slots, left to right, each
 // any challenge with a level, and one title from the ones the player has.
-import type { ChallengeProfile, ChallengeToken, TitleChoice } from "@winer/shared";
+import type { ChallengeProfile, ChallengeToken, Language, TitleChoice } from "@winer/shared";
 import { tierLabel } from "@winer/shared";
 import { ChevronDown, Plus, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -27,7 +27,7 @@ const SLOTS = [0, 1, 2] as const;
 /** Challenge tokens are drawn for the game's dark ground. */
 const TOKEN_GROUND = "bg-glyph-plate text-glyph-ink";
 
-function levelOf(token: ChallengeToken, language: ReturnType<typeof useLanguage>): string {
+function levelOf(token: ChallengeToken, language: Language): string {
   return token.level ? tierLabel(token.level, language, true) : "";
 }
 
