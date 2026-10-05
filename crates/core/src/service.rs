@@ -1361,7 +1361,8 @@ impl Service {
     }
 
     /// Acts on a change to what winer keeps in the chat presence. A disguise switched off comes
-    /// off at once, a new or changed one goes on, and the client's refusals are counted afresh.
+    /// off at once, anything still on is checked again, and the client's refusals are counted
+    /// afresh.
     fn on_profile_settings(
         &self,
         client: &Client,
@@ -1383,7 +1384,8 @@ impl Service {
                     });
                 }
             });
-        } else if now.enabled && was != now {
+        } else if now.enabled || after.presence.remember {
+            // A changed rule is tried afresh, also after winer gave up on the old one.
             self.keep_presence(client);
         }
     }
