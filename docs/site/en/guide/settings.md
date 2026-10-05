@@ -36,7 +36,8 @@ The rating scheme, custom tiers, roast titles and the basis of every rating: see
 
 ### About
 
-The version, whether winer runs as administrator, the log folder, and **Updates**.
+The version, whether winer runs as administrator, the log folder, and **Updates**. winer checks for
+updates by itself after it starts and while it runs; this checks again on demand.
 
 ## Keyboard shortcuts
 

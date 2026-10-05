@@ -7,6 +7,14 @@ use crate::{
     view::{ChampSelectView, PlayerStats, PlayerSummary, Seat, SeatRating, Side, TimerView},
 };
 
+/// The name every callout carries on its first line, after the side.
+pub fn signature(language: Language) -> &'static str {
+    match language {
+        Language::ZhCn => "winer 战绩鉴定",
+        Language::En => "winer rating",
+    }
+}
+
 /// The side as the callout's first line names it.
 pub fn side_tag(side: Side, language: Language) -> &'static str {
     match (side, language) {
@@ -332,9 +340,10 @@ pub fn ready(view: &ChampSelectView) -> bool {
         && view.my_team.iter().any(|seat| seat.rating.is_some())
 }
 
-/// The opening line, if any, then one line per rated teammate, the best standing first and by
-/// score within a standing. `champion` names a champion id the way players call it (`安妮`, not
-/// `黑暗之女`). Nobody rated means nothing to say, opening line included.
+/// The first line, then one line per rated teammate, the best standing first and by score within
+/// a standing. The first line is the side, winer's name and the user's opening line, if any.
+/// `champion` names a champion id the way players call it (`安妮`, not `黑暗之女`). Nobody rated
+/// means nothing to say, first line included.
 pub fn lines(
     view: &ChampSelectView,
     rule: &CalloutRule,
@@ -363,18 +372,22 @@ pub fn lines(
     if players.is_empty() {
         return players;
     }
-    // The side always leads, on the opening line's own line when there is one.
-    let side = view.side.map(|side| side_tag(side, language));
-    let first = match (side, rule.header.trim()) {
-        (None, "") => None,
-        (None, header) => Some(header.to_owned()),
-        (Some(side), "") => Some(side.to_owned()),
-        (Some(side), header) => Some(match language {
-            Language::ZhCn => format!("{side}{header}"),
-            Language::En => format!("{side} {header}"),
-        }),
+    // The side leads, then winer's name, which every callout carries, then the opening line.
+    let mut first = match (view.side, language) {
+        (Some(side), Language::ZhCn) => {
+            format!("{}{}", side_tag(side, language), signature(language))
+        }
+        (Some(side), Language::En) => {
+            format!("{} {}", side_tag(side, language), signature(language))
+        }
+        (None, _) => signature(language).to_owned(),
     };
-    first.into_iter().chain(players).collect()
+    let header = rule.header.trim();
+    if !header.is_empty() {
+        first.push_str(" · ");
+        first.push_str(header);
+    }
+    std::iter::once(first).chain(players).collect()
 }
 
 fn line(
@@ -587,6 +600,19 @@ mod tests {
         (id == 1).then(|| "安妮".to_owned())
     }
 
+    /// The players' lines, after the first line every callout opens with.
+    fn players(view: &ChampSelectView, rule: &CalloutRule, language: Language) -> Vec<String> {
+        let mut lines = lines(view, rule, language, names);
+        assert!(
+            lines
+                .first()
+                .is_some_and(|first| first.contains(signature(language))),
+            "{lines:?}"
+        );
+        lines.remove(0);
+        lines
+    }
+
     #[test]
     fn lines_fill_the_template_best_tier_first() {
         let view = view(vec![
@@ -594,7 +620,7 @@ mod tests {
             seat("ann", 1, true, Some((7.2, 0))),
             seat("cy", 2, false, Some((5.5, 1))),
         ]);
-        let lines = lines(&view, &CalloutRule::default(), Language::ZhCn, names);
+        let lines = players(&view, &CalloutRule::default(), Language::ZhCn);
         assert_eq!(lines[0], "上等马：安妮 ann 近20场胜率55% KDA 3.5 评分7.2");
         assert!(lines[1].starts_with("中等马：cy "), "{lines:?}");
         assert!(
@@ -647,21 +673,29 @@ mod tests {
         };
         // Labels are resolved when the seats are rated; the line uses the seat's own.
         assert_eq!(
-            lines(&view, &rule, Language::ZhCn, names),
+            players(&view, &rule, Language::ZhCn),
             vec!["bo=下等马 {unknown}".to_owned()]
         );
     }
 
     #[test]
-    fn the_opening_line_leads_and_needs_someone_to_introduce() {
+    fn the_first_line_names_winer_and_needs_someone_to_introduce() {
         let rule = CalloutRule {
-            header: "  winer 战力分析  ".into(),
+            header: "  开局分析  ".into(),
             ..CalloutRule::default()
         };
         let rated = view(vec![seat("ann", 1, false, Some((7.2, 0)))]);
         let lines = lines(&rated, &rule, Language::ZhCn, names);
-        assert_eq!(lines.first().map(String::as_str), Some("winer 战力分析"));
+        assert_eq!(
+            lines.first().map(String::as_str),
+            Some("winer 战绩鉴定 · 开局分析")
+        );
         assert_eq!(lines.len(), 2);
+        assert_eq!(
+            super::lines(&rated, &CalloutRule::default(), Language::En, names)[0],
+            "winer rating",
+            "the name is there without an opening line or a side"
+        );
         let nobody = view(vec![seat("ann", 1, false, None)]);
         assert!(super::lines(&nobody, &rule, Language::ZhCn, names).is_empty());
     }
@@ -678,7 +712,7 @@ mod tests {
             ..CalloutRule::default()
         };
         let lines = lines(&red, &opening, Language::ZhCn, names);
-        assert_eq!(lines[0], "【红色方】冲冲冲");
+        assert_eq!(lines[0], "【红色方】winer 战绩鉴定 · 冲冲冲");
         assert_eq!(
             lines.len(),
             3,
@@ -688,14 +722,14 @@ mod tests {
 
         let bare = super::lines(&red, &CalloutRule::default(), Language::ZhCn, names);
         assert_eq!(
-            bare[0], "【红色方】",
-            "the side stands alone without an opening line"
+            bare[0], "【红色方】winer 战绩鉴定",
+            "the side and the name without an opening line"
         );
         assert_eq!(bare.len(), 3);
         red.side = Some(Side::Blue);
         assert_eq!(
             super::lines(&red, &opening, Language::En, names)[0],
-            "[Blue side] 冲冲冲"
+            "[Blue side] winer rating · 冲冲冲"
         );
         let nobody = view(vec![seat("ann", 1, false, None)]);
         assert!(
@@ -720,7 +754,7 @@ mod tests {
             rating.title = Some("版本答案".into());
         }
         let view = view(vec![titled, seat("bo", 0, false, Some((4.1, 2)))]);
-        let lines = lines(&view, &CalloutRule::default(), Language::ZhCn, names);
+        let lines = players(&view, &CalloutRule::default(), Language::ZhCn);
         assert!(lines[0].ends_with("评分6.0「版本答案」"), "{lines:?}");
         assert!(
             lines[1].ends_with("评分4.1"),
@@ -746,7 +780,7 @@ mod tests {
         let lines = preview(&me, &rule, &General::default(), names);
         assert_eq!(lines.len(), 6, "the opening line and five tiers: {lines:?}");
         assert_eq!(
-            lines[0], "【蓝色方】开局分析",
+            lines[0], "【蓝色方】winer 战绩鉴定 · 开局分析",
             "a side stands in for the game's"
         );
         assert!(
@@ -790,6 +824,8 @@ mod tests {
         let general = General::default();
         let view = live::champ_select_view(&session, stats, &ranking(&rule, &general), "KIWI");
         let lines = lines(&view, &rule, Language::ZhCn, |id| Some(format!("C{id}")));
+        assert!(lines[0].ends_with(signature(Language::ZhCn)), "{lines:?}");
+        let lines = &lines[1..];
         let heads: Vec<&str> = lines
             .iter()
             .map(|line| line.split('：').next().unwrap())
@@ -896,6 +932,7 @@ mod tests {
         );
         let champion = |id: i64| Some(format!("C{id}"));
         let lines = lines(&view, &rule, Language::ZhCn, champion);
+        let lines = &lines[1..];
         let heads: Vec<&str> = lines
             .iter()
             .map(|line| line.split(' ').next().unwrap())

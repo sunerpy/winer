@@ -49,7 +49,7 @@ home:
             status: available
             link: /en/rating
           - title: Callout
-            body: A chat message ranked by tier, sent to the team or to you alone in one click or every game by itself, its first line naming your side.
+            body: A chat message ranked by tier, sent to the team or to you alone in one click or every game by itself, its first line naming your side and winer.
             status: available
             link: /en/guide/live#callout
           - title: ARAM bench
@@ -87,7 +87,7 @@ home:
       - name: Client and tools
         items:
           - title: Client plugin
-            body: Through Pengu Loader, teammates' form, tiers and titles appear in the client's champ select, and bench champions swap on a click.
+            body: winer ships Pengu Loader and sets it up by itself; teammates' form, tiers and titles appear in the client's champ select, and bench champions swap on a click.
             status: available
             link: /en/guide/client
           - title: Status and message
@@ -106,7 +106,7 @@ home:
         command: irm https://github.com/sunerpy/winer/releases/latest/download/install.ps1 | iex
         body: Run it in PowerShell; the installer runs only once it matches SHA256SUMS. Or download the installer and run it.
       - title: Connect
-        body: Sign in to the client, then open winer. When the Tencent client runs as administrator, choose "Restart as administrator".
+        body: Sign in to the client, then open winer. When the Tencent client runs as administrator, winer asks to restart the same way; choose Yes. The client plugin is set up next, by itself.
       - title: Enter champ select
         body: The Live game page lists every teammate's form and tier; "Send to team" posts the callout.
 

@@ -32,8 +32,8 @@ there. The automation switches on the overview list their modes too.
 - **Send to**: the team chat, or only you.
 - **Include myself**: whether your own line is in it.
 - **Rating scheme**: the tier names come from **Settings › Rating**; **Open settings** goes there.
-- **Opening line** and **Line template**: the opening line follows the side on the first line (left
-  blank, the first line is the side alone). The template takes these placeholders: `{standing}` the
+- **Opening line** and **Line template**: the first line is always the side and "winer rating", and
+  the opening line follows them (left blank, nothing does). The template takes these placeholders: `{standing}` the
   tier, `{champion}`, `{name}`, `{games}`, `{winRate}`, `{kda}`, `{score}` the recent-form score,
   `{title}` and `{quip}`. Blank uses the default; a live preview shows the result.
 

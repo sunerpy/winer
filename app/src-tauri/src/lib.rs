@@ -20,6 +20,10 @@ use winer_core::{Service, bridge::Bridge};
 pub(crate) const VERSION: &str = env!("WINER_VERSION");
 /// The in-client plugin, embedded by `build.rs`.
 pub(crate) const PLUGIN_BUNDLE: &str = include_str!(concat!(env!("OUT_DIR"), "/plugin.js"));
+/// Pengu Loader's in-client DLL, which winer links into a client that has no loader yet
+/// (`vendor/pengu-loader/README.md`).
+pub(crate) const PENGU_CORE: &[u8] = include_bytes!("../../../vendor/pengu-loader/core.dll");
+pub(crate) const PENGU_VERSION: &str = "1.1.6";
 /// The release page the window may send the user to; the window never opens a URL it was given.
 pub(crate) const RELEASES_URL: &str = "https://github.com/sunerpy/winer/releases";
 /// The documentation's home; its pages are `DocsPage`'s.
@@ -74,13 +78,17 @@ fn setup(app: &mut App, start_hidden: bool) -> Result<(), Box<dyn Error>> {
     app.manage(bridge.clone());
     app.manage(paths);
     app.manage(updater::Updater::default());
+    app.manage(plugin_host::Host::new(
+        app.path().app_local_data_dir()?.join("pengu"),
+    ));
 
     // Subscribed before the service starts: the core's events are not replayed, and the first
-    // `Connected` is what points an installed plugin at this session's bridge.
+    // `Connected` is what sets up the loader and points the plugin at this session's bridge.
     events::forward(app.handle().clone(), service.clone(), bridge);
     service.start();
     window::create(app)?;
     tray::create(app.handle(), &service.settings())?;
+    updater::check_in_background(app.handle().clone());
     if !(start_hidden && service.settings().general.close_to_tray) {
         window::show(app.handle());
     }

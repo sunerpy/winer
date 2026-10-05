@@ -7,8 +7,10 @@ use std::time::Duration;
 use rustls_platform_verifier::BuilderVerifierExt as _;
 
 /// One client for the whole run, built on first use, so pages of history share a connection. It
-/// trusts the system's own store, so a corporate root the user installed is honoured. Each request
-/// sets its own overall timeout.
+/// trusts the system's own store, so a corporate root the user installed is honoured. It connects
+/// directly, as the client itself does: the shard's server is in the player's own region, and
+/// the system proxy the updater reads is no business of these requests. Each request sets its own
+/// overall timeout.
 pub fn client() -> Result<&'static reqwest::Client, String> {
     static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
     CLIENT.get_or_init(build).as_ref().map_err(Clone::clone)
@@ -23,6 +25,7 @@ fn build() -> Result<reqwest::Client, String> {
         .with_no_client_auth();
     reqwest::Client::builder()
         .tls_backend_preconfigured(tls)
+        .no_proxy()
         .connect_timeout(Duration::from_secs(5))
         .build()
         .map_err(|error| error.to_string())

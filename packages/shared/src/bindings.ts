@@ -360,6 +360,11 @@ export type ChampionPool = { any: Array<number>, top: Array<number>, jungle: Arr
 
 export type PluginSettings = { 
 /**
+ * Whenever a client connects: link the loader winer ships unless one is already linked,
+ * install the plugin, and keep both current. Off, winer only keeps an installed plugin current.
+ */
+auto: boolean, 
+/**
  * The teammate panel in champ select.
  */
 teamPanel: boolean, 
@@ -381,7 +386,23 @@ export type PluginStatus = { loaderDir: string | null,
 /**
  * The loader is linked into the connected client, so plugins load with it.
  */
-active: boolean, installedVersion: string | null, bundledVersion: string, 
+active: boolean, 
+/**
+ * The loader is the one winer ships, kept in winer's own data folder.
+ */
+managed: boolean, 
+/**
+ * The version of the loader winer ships.
+ */
+bundledLoader: string, 
+/**
+ * The client's `version.dll` is a file of something else, so winer links no loader there.
+ */
+occupied: boolean, 
+/**
+ * Why the last automatic setup did not finish, as the system put it.
+ */
+setupError: string | null, installedVersion: string | null, bundledVersion: string, 
 /**
  * The installed plugin is byte-for-byte this build's bundle. Two builds can share a version.
  */

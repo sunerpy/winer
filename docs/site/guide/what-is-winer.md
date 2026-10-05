@@ -6,8 +6,9 @@ winer 是英雄联盟客户端的助手，只做 Windows 版，在腾讯客户�
 它由两部分组成：
 
 - **桌面窗口**：概览、对局分析、战绩、自动化和工具，客户端开着的时候随时可用，关掉窗口后留在托盘。
-- **客户端插件**（可选）：经由 [Pengu Loader](https://github.com/PenguLoader/PenguLoader) 装进客户端页面，
-  在选人界面里直接显示队友的战绩、评级和称号，并让大乱斗的备选席英雄点击即换。
+- **客户端插件**：经由 [Pengu Loader](https://github.com/PenguLoader/PenguLoader) 装进客户端页面，在选人界面里
+  直接显示队友的战绩、评级和称号，并让大乱斗的备选席英雄点击即换。winer 自带 Pengu Loader，连上客户端时自动装好，
+  不想要时可以停用。
 
 ## 它能做什么
 

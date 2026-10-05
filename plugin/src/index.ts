@@ -7,6 +7,7 @@ import { BENCH_STYLE, interceptBenchClicks, liftBenchCooldown } from "./bench";
 import { Bridge } from "./bridge";
 import { h } from "./dom";
 import { text } from "./i18n";
+import { quietPengu } from "./pengu";
 import { PluginState } from "./state";
 import style from "./style.css?inline";
 import { ROW_SELECTOR, clearRows, decorateRows, panelRows } from "./team";
@@ -191,6 +192,8 @@ let controller: Controller | null = null;
 
 function start(): void {
   if (controller || typeof document === "undefined") return;
+  // At import, before window load, which is when Pengu draws its own notices.
+  quietPengu();
   controller = new Controller();
   if (document.readyState === "loading")
     document.addEventListener("DOMContentLoaded", () => controller?.start(), { once: true });

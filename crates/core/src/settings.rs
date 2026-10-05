@@ -464,6 +464,9 @@ impl ChampionPool {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PluginSettings {
+    /// Whenever a client connects: link the loader winer ships unless one is already linked,
+    /// install the plugin, and keep both current. Off, winer only keeps an installed plugin current.
+    pub auto: bool,
     /// The teammate panel in champ select.
     pub team_panel: bool,
     /// Hide the activity centre and esports pop-ups on the client home page.
@@ -478,6 +481,7 @@ pub struct PluginSettings {
 impl Default for PluginSettings {
     fn default() -> Self {
         Self {
+            auto: true,
             team_panel: true,
             hide_promotions: false,
             bench_no_cooldown: true,

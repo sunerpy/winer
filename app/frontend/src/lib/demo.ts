@@ -433,7 +433,7 @@ function champSelect(): ChampSelectView {
     rerollsRemaining: 1,
     side: "blue",
     callout: [
-      "【蓝色方】",
+      "【蓝色方】winer 战绩鉴定",
       "峡谷通天代：阿狸 暗夜里的光 近20场胜率60% KDA 4.1 评分7.4「版本答案」，对面五个人准备举报代练",
       "人形防御塔：李青 野区观光客 近20场胜率55% KDA 3.6 评分6.8，塔在人在，人在塔也在",
       "峡谷公务员：盖伦 峡谷清道夫 近20场胜率50% KDA 2.9 评分5.2，按时上班，准时打卡",
@@ -484,7 +484,13 @@ const DEFAULT_SETTINGS: Settings = {
     bench: { enabled: true, champions: [103, 99, 22] },
     scopes: defaultScopes(),
   },
-  plugin: { teamPanel: true, hidePromotions: false, benchNoCooldown: true, loaderDir: null },
+  plugin: {
+    auto: true,
+    teamPanel: true,
+    hidePromotions: false,
+    benchNoCooldown: true,
+    loaderDir: null,
+  },
 };
 
 export function demoBackend(): Backend {
@@ -494,12 +500,16 @@ export function demoBackend(): Backend {
   const emit = (event: Event) => listeners.forEach((listener) => listener(event));
   let update: UpdateStatus = { state: "upToDate", version: "0.2.0", checkedAt: NOW };
   let plugin: PluginStatus = {
-    loaderDir: "C:\\Pengu Loader",
+    loaderDir: "C:\\Users\\Player\\AppData\\Local\\app.winer.desktop\\pengu",
     active: true,
-    installedVersion: null,
+    managed: true,
+    bundledLoader: "1.1.6",
+    occupied: false,
+    setupError: null,
+    installedVersion: "0.2.0",
     bundledVersion: "0.2.0",
-    current: false,
-    connected: 0,
+    current: true,
+    connected: 2,
   };
 
   const snapshot: Snapshot = {
@@ -590,18 +600,29 @@ export function demoBackend(): Backend {
       const lines = names.map(
         (name) => `${name}：阿狸 暗夜里的光 近20场胜率60% KDA 4.1 评分7.4${title}`,
       );
-      // As the core does: the side leads the first line, the opening line after it.
-      return [`【蓝色方】${rule.header.trim()}`, ...lines];
+      // As the core does: the side and winer's name lead the first line, the opening line after.
+      const header = rule.header.trim();
+      return [`【蓝色方】winer 战绩鉴定${header ? ` · ${header}` : ""}`, ...lines];
     },
     bench_swap: () => null,
     reroll: () => null,
     get_plugin_status: () => plugin,
-    install_plugin: () => {
-      plugin = { ...plugin, installedVersion: plugin.bundledVersion, current: true, connected: 2 };
+    enable_plugin: () => {
+      settings = { ...settings, plugin: { ...settings.plugin, auto: true } };
+      emit({ type: "settings", data: settings });
+      plugin = {
+        ...plugin,
+        active: true,
+        installedVersion: plugin.bundledVersion,
+        current: true,
+        connected: 2,
+      };
       return plugin;
     },
-    uninstall_plugin: () => {
-      plugin = { ...plugin, installedVersion: null, current: false, connected: 0 };
+    disable_plugin: () => {
+      settings = { ...settings, plugin: { ...settings.plugin, auto: false } };
+      emit({ type: "settings", data: settings });
+      plugin = { ...plugin, active: false, installedVersion: null, current: false, connected: 0 };
       return plugin;
     },
     get_app_info: () => ({

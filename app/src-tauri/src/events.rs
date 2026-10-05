@@ -1,15 +1,15 @@
 //! Core events to the window, and the few things the shell does itself when they arrive.
 
-use tauri::{AppHandle, Emitter as _, Runtime};
+use tauri::{AppHandle, Emitter as _, Manager as _, Runtime};
 use tokio::sync::broadcast::error::RecvError;
-use tracing::warn;
+use tracing::{info, warn};
 use winer_core::{
     Service,
     bridge::Bridge,
     view::{Connection, Event, Patch},
 };
 
-use crate::{plugin_host, tray};
+use crate::{elevation, plugin_host, tray};
 
 /// Every core [`Event`], unchanged.
 pub(crate) const EVENT: &str = "winer://event";
@@ -41,15 +41,39 @@ pub(crate) fn forward<R: Runtime>(app: AppHandle<R>, service: Service, bridge: B
 
 fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, event: &Event) {
     match event {
-        // A client came up: point its plugin at this session's bridge.
+        // A client came up: set up the loader and the plugin, and point it at this session's
+        // bridge. A loader linked just now starts with the client's interface, which is restarted
+        // for it while the player is idle; otherwise it starts with the client's next launch.
         Event::Update(update)
             if matches!(
                 update.patch,
                 Patch::Connection(Connection::Connected { .. })
             ) =>
         {
-            let (service, bridge) = (service.clone(), bridge.clone());
-            tauri::async_runtime::spawn_blocking(move || plugin_host::refresh(&service, &bridge));
+            let (app, service, bridge) = (app.clone(), service.clone(), bridge.clone());
+            tauri::async_runtime::spawn(async move {
+                let linked = {
+                    let (app, service) = (app.clone(), service.clone());
+                    tauri::async_runtime::spawn_blocking(move || {
+                        plugin_host::refresh(&service, &bridge, &app.state::<plugin_host::Host>())
+                    })
+                    .await
+                    .unwrap_or(false)
+                };
+                if linked {
+                    match service.restart_client_ui_when_idle().await {
+                        Ok(true) => info!("client interface restarted to load the new loader"),
+                        Ok(false) => info!("the loader starts with the client's next launch"),
+                        Err(error) => warn!(%error, "client interface not restarted"),
+                    }
+                }
+            });
+        }
+        // The client runs elevated and winer does not: restart elevated rather than ask first.
+        Event::Update(update)
+            if matches!(update.patch, Patch::Connection(Connection::AccessDenied)) =>
+        {
+            elevation::ask_once(app);
         }
         Event::Settings(settings) => tray::sync(app, settings),
         _ => {}

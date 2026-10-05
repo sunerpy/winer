@@ -45,11 +45,12 @@ gh attestation verify winer_0.0.1_x64-setup.exe --repo sunerpy/winer \
 
 ## 更新
 
-在 **设置 › 关于** 里检查更新，有新版本时点 **立即更新**：下载完成后 winer 会自动安装并重启。每个更新包都有签名，
-winer 只会安装签名能用内置公钥验证通过的版本。
+winer 启动后和运行期间（每隔几小时）会自动检查更新。有新版本时，窗口标题栏右侧出现 **发现新版本** 按钮，点开后点
+**立即更新**：下载完成后 winer 会自动安装并重启。也可以在 **设置 › 关于** 里手动检查。每个更新包都有签名，winer
+只会安装签名能用内置公钥验证通过的版本。
 
 ## 卸载
 
-在 Windows 的 **设置 › 应用 › 已安装的应用** 里卸载 winer。设置文件保存在
-`%APPDATA%\app.winer.desktop\settings.json`，日志在 `%LOCALAPPDATA%\app.winer.desktop\logs`，卸载后不再需要
-时可以手动删除。客户端插件请在卸载前从 **客户端增强** 页卸载，或者删除 Pengu Loader 的 `plugins\winer` 目录。
+先在 **客户端增强** 页点 **停用客户端增强**，winer 会移除插件和它创建的 `version.dll` 链接；然后在 Windows 的
+**设置 › 应用 › 已安装的应用** 里卸载 winer。设置文件保存在 `%APPDATA%\app.winer.desktop\settings.json`，日志和
+自带的 Pengu Loader 在 `%LOCALAPPDATA%\app.winer.desktop`，卸载后不再需要时可以手动删除。

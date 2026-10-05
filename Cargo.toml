@@ -20,12 +20,20 @@ winer-core = { path = "crates/core" }
 base64 = "=0.22.1"
 futures-util = { version = "=0.3.34", default-features = false, features = ["sink", "std"] }
 getrandom = "=0.4.3"
-reqwest = { version = "=0.13.4", default-features = false, features = ["rustls-no-provider"] }
+# `system-proxy` lets a client read the proxy set in Windows' settings, which a GUI app otherwise
+# never sees (it has no HTTPS_PROXY). It is on for the updater, whose reqwest is this one: in
+# China GitHub is often reachable only through that proxy. The LCU and game-data clients opt out
+# with `no_proxy()`.
+reqwest = { version = "=0.13.4", default-features = false, features = [
+  "rustls-no-provider",
+  "system-proxy",
+] }
 rustls = { version = "=0.23.32", default-features = false, features = ["ring", "std", "tls12"] }
 rustls-platform-verifier = "=0.7.0"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 serde_path_to_error = "=0.1.20"
+sha2 = "=0.10.9"
 thiserror = "=2.0.20"
 tokio = { version = "=1.53.1", default-features = false }
 tokio-rustls = { version = "=0.26.4", default-features = false }

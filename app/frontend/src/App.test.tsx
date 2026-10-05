@@ -263,7 +263,10 @@ describe("App", () => {
     render(<App backend={backend} />);
     await user.click(await screen.findByRole("button", { name: zhCN["overview.open"] }));
 
-    expect(screen.getByText("【蓝色方】"), "the side leads the callout").toBeInTheDocument();
+    expect(
+      screen.getByText("【蓝色方】winer 战绩鉴定"),
+      "the side and winer's name lead the callout",
+    ).toBeInTheDocument();
     expect(screen.getByText(/^峡谷通天代：阿狸/)).toBeInTheDocument();
     expect(screen.getByText(/^纯正牛马：锤石/)).toBeInTheDocument();
     expect(
@@ -283,6 +286,25 @@ describe("App", () => {
     expect(call).toHaveBeenCalledWith("reroll");
   });
 
+  it("sets up the in-client features by itself, and turns them off and on", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.plugin"] }));
+    expect(
+      await screen.findByText("winer 自带的 1.1.6，已为当前客户端激活"),
+      "the loader winer ships is set up with nothing to click",
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /安装插件/ })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: zhCN["plugin.disable"] }));
+    expect(call).toHaveBeenCalledWith("disable_plugin");
+    expect(await screen.findByText(zhCN["plugin.loaderOff"])).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: zhCN["plugin.enable"] }));
+    expect(call).toHaveBeenCalledWith("enable_plugin");
+    expect(await screen.findByRole("button", { name: zhCN["plugin.disable"] })).toBeInTheDocument();
+  });
+
   it("previews the callout as it is written: opening line, scheme and own tiers", async () => {
     const { user, nav } = await renderApp();
     await user.click(within(nav).getByRole("button", { name: zhCN["nav.automation"] }));
@@ -290,7 +312,7 @@ describe("App", () => {
     expect(screen.getByText(/^纯正牛马：阿狸/)).toBeInTheDocument();
 
     await user.type(screen.getByRole("textbox", { name: zhCN["auto.header"] }), "开局分析{Enter}");
-    expect(await screen.findByText("【蓝色方】开局分析")).toBeInTheDocument();
+    expect(await screen.findByText("【蓝色方】winer 战绩鉴定 · 开局分析")).toBeInTheDocument();
 
     // The scheme lives in Settings › Rating; the callout's own row only leads there.
     await user.click(screen.getByRole("button", { name: zhCN["auto.schemeEdit"] }));

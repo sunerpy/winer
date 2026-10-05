@@ -61,12 +61,12 @@ By default one line per teammate:
 For example:
 
 ```text
-[Blue side]
+[Blue side] winer rating
 Rift Demigod: Ahri Light in the Dark, 60% in 20 games, KDA 4.1, score 7.4 [Patch Champion], the other team is filing a boosting report
 Rift Civil Servant: Garen Rift Sweeper, 50% in 20 games, KDA 2.9, score 5.2, not flashy, but every job got done
 ```
 
-- The first line names your side, followed by the opening line if you wrote one.
+- The first line names your side and "winer rating", followed by the opening line if you wrote one.
 - `{title}` is the recent-form title, empty without one; `{quip}` is the tier's quip. Every tier of
   the built-in schemes has one (Rift five has three per tier in Chinese), picked per player and per
   game: the same throughout one champ select, likely another the next game. Custom names have none.
