@@ -11,12 +11,12 @@ use winer_core::{
     plugin::PluginStatus,
     settings::{Audience, CalloutRule, General, Language},
     view::{
-        AppInfo, AugmentDetail, ErrorCode, GameData, IpcError, MatchDetail, MatchPage,
-        PlayerProfile, PlayerSummary, Presence, Snapshot, UpdateStatus,
+        AppInfo, AugmentDetail, ErrorCode, GameData, HotkeyStatus, IpcError, MatchDetail,
+        MatchPage, PlayerProfile, PlayerSummary, Presence, Snapshot, UpdateStatus,
     },
 };
 
-use crate::{Paths, RELEASES_URL, VERSION, elevation, plugin_host, updater};
+use crate::{Paths, RELEASES_URL, VERSION, elevation, hotkey, plugin_host, updater};
 
 type Result<T> = std::result::Result<T, IpcError>;
 
@@ -52,6 +52,9 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         install_update,
         open_releases,
         open_docs,
+        // Social.
+        get_hotkey_status,
+        suspend_hotkey,
     ]
 }
 
@@ -312,6 +315,21 @@ async fn open_docs<R: Runtime>(app: AppHandle<R>, page: DocsPage) -> Result<()> 
         .map_err(internal)
 }
 
+// ---- Social ----
+
+/// The global shortcut as the system holds it; changes arrive as `winer://hotkey` events.
+#[tauri::command]
+async fn get_hotkey_status<R: Runtime>(app: AppHandle<R>) -> Result<HotkeyStatus> {
+    Ok(hotkey::status(&app))
+}
+
+/// Lets the shortcut go while the settings record a new combination (`true`), and takes back the
+/// one the settings name (`false`).
+#[tauri::command]
+async fn suspend_hotkey<R: Runtime>(app: AppHandle<R>, suspended: bool) -> Result<HotkeyStatus> {
+    Ok(hotkey::suspend(&app, suspended).await)
+}
+
 #[cfg(test)]
 mod tests {
     use tauri::test::{MockRuntime, mock_builder, mock_context, noop_assets};
@@ -372,6 +390,11 @@ mod tests {
             );
 
             assert_eq!(get_game_data(handle.clone()).await.unwrap(), None);
+            assert_eq!(
+                get_hotkey_status(handle.clone()).await.unwrap(),
+                HotkeyStatus::default(),
+                "no shortcut state without the shell's setup"
+            );
             let error = get_match_detail(handle.clone(), 1).await.unwrap_err();
             assert_eq!(error.code, ErrorCode::NotConnected);
             let error = find_player(handle.clone(), "  ".into()).await.unwrap_err();

@@ -1,4 +1,4 @@
-// The one seam between the window and the core: every command, typed end to end, and the three
+// The one seam between the window and the core: every command, typed end to end, and the four
 // event channels. The Tauri implementation is the product; `demo.ts` is the browser preview.
 import { invoke } from "@tauri-apps/api/core";
 import { type UnlistenFn, listen } from "@tauri-apps/api/event";
@@ -10,6 +10,7 @@ import type {
   Event,
   GameData,
   General,
+  HotkeyStatus,
   IpcError,
   MatchDetail,
   MatchPage,
@@ -55,6 +56,9 @@ export interface Commands {
   install_update: Command<undefined, null>;
   open_releases: Command<undefined, null>;
   open_docs: Command<{ page: "home" | "rating" }, null>;
+  // Social.
+  get_hotkey_status: Command<undefined, HotkeyStatus>;
+  suspend_hotkey: Command<{ suspended: boolean }, HotkeyStatus>;
 }
 
 export type CommandName = keyof Commands;
@@ -69,6 +73,8 @@ export interface Backend {
   /** The window missed events and must read the snapshot again. */
   onResync(handler: () => void): () => void;
   onUpdate(handler: (status: UpdateStatus) => void): () => void;
+  /** The global shortcut, as the shell holds it after each change. */
+  onHotkey(handler: (status: HotkeyStatus) => void): () => void;
 }
 
 /** `UnlistenFn` is typed `() => void` but implemented async; a failure can arrive either way, and
@@ -101,6 +107,7 @@ export const tauriBackend: Backend = {
   onEvent: (handler) => subscribe<Event>("winer://event", handler),
   onResync: (handler) => subscribe<null>("winer://resync", () => handler()),
   onUpdate: (handler) => subscribe<UpdateStatus>("winer://update", handler),
+  onHotkey: (handler) => subscribe<HotkeyStatus>("winer://hotkey", handler),
 };
 
 function isIpcError(error: unknown): error is IpcError {

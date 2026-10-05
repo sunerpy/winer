@@ -4,10 +4,11 @@ use std::collections::HashMap;
 
 use crate::{
     callout::{self, Ranking},
-    model::{ChampSelectPlayer, ChampSelectSession, GamePlayer, GameflowSession},
+    model::{ChampSelectPlayer, ChampSelectSession, GamePlayer, GameflowSession, Lobby},
     rating,
     view::{
-        ChampSelectView, GameView, PlayerStats, Position, RiotId, Seat, SeatRating, Side, TimerView,
+        ChampSelectView, GameView, LanePreference, LobbyMember, LobbyView, Phase, PlayerStats,
+        Position, RiotId, Seat, SeatRating, Side, TimerView,
     },
 };
 
@@ -243,6 +244,97 @@ pub fn game_view(
         teams,
         sides: has_sides(&data.queue.game_mode),
     })
+}
+
+// ---- Social: the lobby, and the party it leaves for champ select ----
+
+/// The phases in which the client shows the lobby: in it, searching, and the match-found dialog
+/// over it.
+pub fn shows_lobby(phase: Phase) -> bool {
+    matches!(phase, Phase::Lobby | Phase::Matchmaking | Phase::ReadyCheck)
+}
+
+/// The members of `lobby` whose stats the lobby view needs; bots have none.
+pub fn lobby_puuids(lobby: &Lobby) -> Vec<String> {
+    lobby
+        .members
+        .iter()
+        .filter(|member| !member.is_bot && !member.puuid.is_empty())
+        .map(|member| member.puuid.clone())
+        .collect()
+}
+
+/// The party a lobby makes for champ select: every member, unless the lobby is a custom game's,
+/// where everyone in it plays, on both teams.
+pub fn party_of(lobby: &Lobby) -> Vec<String> {
+    if lobby.game_config.is_custom {
+        return Vec::new();
+    }
+    lobby_puuids(lobby)
+}
+
+/// The lobby as drawn, `me` marked, each member with the stats known now.
+pub fn lobby_view(lobby: &Lobby, me: &str, stats: impl Fn(&str) -> PlayerStats) -> LobbyView {
+    let members = lobby
+        .members
+        .iter()
+        .filter(|member| !member.is_bot && !member.puuid.is_empty())
+        .map(|member| {
+            let stats = stats(&member.puuid);
+            let summary = match &stats {
+                PlayerStats::Ready(summary) => Some(summary),
+                _ => None,
+            };
+            let mut positions = Vec::with_capacity(2);
+            for lane in [
+                &member.first_position_preference,
+                &member.second_position_preference,
+            ]
+            .into_iter()
+            .filter_map(|preference| LanePreference::parse(preference))
+            {
+                if !positions.contains(&lane) {
+                    positions.push(lane);
+                }
+            }
+            LobbyMember {
+                name: RiotId::new(&member.game_name, &member.tag_line)
+                    .or_else(|| summary.and_then(|summary| summary.name.clone())),
+                icon_id: if member.summoner_icon_id > 0 {
+                    member.summoner_icon_id
+                } else {
+                    summary.map_or(0, |summary| summary.icon_id)
+                },
+                is_self: !me.is_empty() && member.puuid == me,
+                leader: member.is_leader,
+                positions,
+                score: summary.and_then(|summary| rating::form_score(&summary.recent)),
+                puuid: member.puuid.clone(),
+                stats,
+            }
+        })
+        .collect();
+    LobbyView {
+        queue_id: lobby.game_config.queue_id,
+        custom: lobby.game_config.is_custom,
+        members,
+    }
+}
+
+/// Marks the seats of the local player's party as premade 1, where two or more of it sit in the
+/// team: champ select does not say who queued together, the lobby before it did.
+pub fn mark_party(seats: &mut [Seat], party: &[String]) {
+    let ours = |seat: &Seat| {
+        seat.puuid
+            .as_ref()
+            .is_some_and(|puuid| party.contains(puuid))
+    };
+    if seats.iter().filter(|seat| ours(seat)).count() < 2 {
+        return;
+    }
+    for seat in seats.iter_mut().filter(|seat| ours(seat)) {
+        seat.premade = Some(1);
+    }
 }
 
 /// Party ids shared by two or more players, numbered in order across both teams.
@@ -513,6 +605,122 @@ mod tests {
             Some(1),
             "a grade says it is one"
         );
+    }
+
+    fn ready(puuid: &str, wins: u32) -> PlayerStats {
+        PlayerStats::Ready(Box::new(PlayerSummary {
+            puuid: puuid.into(),
+            name: Some(RiotId {
+                game_name: format!("{puuid}-summoner"),
+                tag_line: "9".into(),
+            }),
+            level: 1,
+            icon_id: 7,
+            private: false,
+            ranked: Ranked::default(),
+            recent: RecentForm {
+                games: 20,
+                wins,
+                kills: 5.0,
+                deaths: 5.0,
+                assists: 5.0,
+                ..RecentForm::default()
+            },
+        }))
+    }
+
+    fn lobby(custom: bool) -> Lobby {
+        serde_json::from_value(serde_json::json!({
+            "gameConfig": {"queueId": 420, "gameMode": "CLASSIC", "isCustom": custom},
+            "members": [
+                {"puuid": "me", "gameName": "Me", "gameTag": "1", "summonerIconId": 29, "isLeader": true,
+                 "firstPositionPreference": "MIDDLE", "secondPositionPreference": "FILL"},
+                {"puuid": "mate", "summonerIconId": 0, "firstPositionPreference": "UTILITY",
+                 "secondPositionPreference": "UTILITY"},
+                {"puuid": "", "isBot": true, "summonerIconId": 1},
+                {"puuid": "late", "gameName": "Late", "tagLine": "2", "firstPositionPreference": "UNSELECTED"}
+            ]
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_lobby_shows_its_members_with_their_lanes_form_and_score() {
+        let stats = |puuid: &str| match puuid {
+            "me" => ready("me", 15),
+            "mate" => ready("mate", 5),
+            _ => PlayerStats::Loading,
+        };
+        let view = lobby_view(&lobby(false), "me", stats);
+        assert_eq!((view.queue_id, view.custom), (420, false));
+        let members: Vec<(&str, bool, bool, Vec<LanePreference>)> = view
+            .members
+            .iter()
+            .map(|member| {
+                (
+                    member.puuid.as_str(),
+                    member.is_self,
+                    member.leader,
+                    member.positions.clone(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            members,
+            vec![
+                (
+                    "me",
+                    true,
+                    true,
+                    vec![LanePreference::Middle, LanePreference::Fill]
+                ),
+                ("mate", false, false, vec![LanePreference::Utility]),
+                ("late", false, false, vec![]),
+            ],
+            "the bot is left out, a lane asked for twice counts once"
+        );
+        assert_eq!(view.members[0].name.as_ref().unwrap().game_name, "Me");
+        assert_eq!(
+            view.members[1].name.as_ref().unwrap().game_name,
+            "mate-summoner",
+            "a member the lobby does not name is named by their summary"
+        );
+        assert_eq!(view.members[1].icon_id, 7);
+        assert_eq!(view.members[2].name.as_ref().unwrap().tag_line, "2");
+        let scores: Vec<Option<f64>> = view.members.iter().map(|member| member.score).collect();
+        assert!(scores[0] > scores[1] && scores[1].is_some() && scores[2].is_none());
+        assert_eq!(view.members[2].stats, PlayerStats::Loading);
+        assert_eq!(lobby_puuids(&lobby(false)), ["me", "mate", "late"]);
+    }
+
+    #[test]
+    fn champ_select_marks_the_party_the_lobby_made_and_a_custom_lobby_makes_none() {
+        let seat = |puuid: &str| Seat {
+            puuid: Some(puuid.into()),
+            name: None,
+            champion_id: 1,
+            intent: false,
+            position: None,
+            spells: [0, 0],
+            is_self: false,
+            premade: None,
+            stats: PlayerStats::Loading,
+            rating: None,
+        };
+        let party = party_of(&lobby(false));
+        let mut team = vec![seat("me"), seat("stranger"), seat("mate")];
+        mark_party(&mut team, &party);
+        let marks: Vec<Option<u8>> = team.iter().map(|seat| seat.premade).collect();
+        assert_eq!(marks, vec![Some(1), None, Some(1)]);
+
+        let mut alone = vec![seat("me"), seat("stranger")];
+        mark_party(&mut alone, &party);
+        assert!(
+            alone.iter().all(|seat| seat.premade.is_none()),
+            "one of the party in the team is no premade"
+        );
+        assert!(party_of(&lobby(true)).is_empty());
+        assert!(shows_lobby(Phase::Matchmaking) && !shows_lobby(Phase::ChampSelect));
     }
 
     #[test]

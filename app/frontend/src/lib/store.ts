@@ -1,10 +1,11 @@
 // The window's mirror of the core: the live snapshot (patched by revision), the settings, the
-// game-data catalog, the updater's status and the recent notices.
+// game-data catalog, the updater's and the hotkey's status and the recent notices.
 import type {
   AugmentInfo,
   AssetInfo,
   ChampionInfo,
   GameData,
+  HotkeyStatus,
   Notice,
   Patch,
   QueueInfo,
@@ -25,6 +26,8 @@ export const EMPTY_SNAPSHOT: Snapshot = {
   phase: "None",
   champSelect: null,
   game: null,
+  friends: null,
+  lobby: null,
 };
 
 export function applyPatch(snapshot: Snapshot, patch: Patch): Snapshot {
@@ -39,7 +42,17 @@ export function applyPatch(snapshot: Snapshot, patch: Patch): Snapshot {
       return { ...snapshot, champSelect: patch.value };
     case "game":
       return { ...snapshot, game: patch.value };
+    case "friends":
+      return { ...snapshot, friends: patch.value };
+    case "lobby":
+      return { ...snapshot, lobby: patch.value };
   }
+}
+
+/** A player's history asked for from inside the client; `id` tells two asks for one player apart. */
+export interface HistoryRequest {
+  puuid: string;
+  id: number;
 }
 
 /** Game data by id, built once per catalog. */
@@ -85,9 +98,14 @@ export class AppStore {
   readonly notices = new Observable<readonly NoticeEntry[]>([]);
   /** What each augment does, by id; `null` until asked for (see `loadAugmentDetails`). */
   readonly augmentDetails = new Observable<ReadonlyMap<number, string> | null>(null);
+  /** The global shortcut as the shell holds it; `null` until it has said. */
+  readonly hotkey = new Observable<HotkeyStatus | null>(null);
+  /** The latest history asked for from inside the client, which the shell's route follows. */
+  readonly historyRequest = new Observable<HistoryRequest | null>(null);
   /** The read whose answer is still wanted; a reset makes an answer already on its way stale. */
   #augmentDetailsRead: Promise<void> | null = null;
   #noticeId = 0;
+  #historyId = 0;
   /** Settings saves run one at a time, in the order they were made. */
   #queue: Promise<void> = Promise.resolve();
   #pending = 0;
@@ -114,10 +132,14 @@ export class AppStore {
         case "gameData":
           void this.loadCatalog();
           break;
+        case "openHistory":
+          this.historyRequest.set({ puuid: event.data.puuid, id: ++this.#historyId });
+          break;
       }
     });
     const offResync = this.backend.onResync(() => void this.resync());
     const offUpdate = this.backend.onUpdate((status) => this.update.set(status));
+    const offHotkey = this.backend.onHotkey((status) => this.hotkey.set(status));
 
     const [snapshot, settings, update] = await Promise.all([
       this.backend.call("get_snapshot"),
@@ -130,11 +152,23 @@ export class AppStore {
     this.#confirm(settings);
     this.update.set(update);
     void this.loadCatalog();
+    void this.loadHotkey();
     return () => {
       offEvent();
       offResync();
       offUpdate();
+      offHotkey();
     };
+  }
+
+  /** The shortcut's state once at start; the shell announces every change after it. */
+  async loadHotkey(): Promise<void> {
+    try {
+      const status = await this.backend.call("get_hotkey_status");
+      if (status) this.hotkey.set(status);
+    } catch {
+      // Settings › 通用 then shows the shortcut without saying whether it took.
+    }
   }
 
   apply(update: Update): void {
@@ -255,6 +289,10 @@ export function useUpdateStatus(): UpdateStatus {
 
 export function useNotices(): readonly NoticeEntry[] {
   return useObservable(useStore().notices);
+}
+
+export function useHotkeyStatus(): HotkeyStatus | null {
+  return useObservable(useStore().hotkey);
 }
 
 /** The augment descriptions, asking for them the first time a component needs one. */

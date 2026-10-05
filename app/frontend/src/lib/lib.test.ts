@@ -29,7 +29,13 @@ const SETTINGS = {
     fontSize: 13,
     reduceMotion: false,
   },
-  general: { closeToTray: true, language: "zh-CN", augmentDetails: true, titles: true },
+  general: {
+    closeToTray: true,
+    language: "zh-CN",
+    augmentDetails: true,
+    titles: true,
+    hotkey: "Ctrl+Shift+W",
+  },
   automation: {
     accept: { enabled: false, delayMs: 1500 },
     pick: {
@@ -61,6 +67,8 @@ const SETTINGS = {
     hidePromotions: false,
     benchNoCooldown: true,
     loaderDir: null,
+    friendStatus: true,
+    lobbyPanel: true,
   },
 } satisfies Settings;
 
@@ -81,6 +89,7 @@ function fakeBackend(answers: Partial<Record<string, unknown>> = {}) {
     },
     onResync: () => () => undefined,
     onUpdate: () => () => undefined,
+    onHotkey: () => () => undefined,
   };
   return { backend, calls, emit: (event: Event) => emit(event) };
 }

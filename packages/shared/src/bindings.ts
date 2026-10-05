@@ -4,13 +4,21 @@ export type Snapshot = {
 /**
  * The revision of the last patch applied; updates at or below it are stale.
  */
-rev: number, connection: Connection, me: Me | null, phase: Phase, champSelect: ChampSelectView | null, game: GameView | null, };
+rev: number, connection: Connection, me: Me | null, phase: Phase, champSelect: ChampSelectView | null, game: GameView | null, 
+/**
+ * `None` until the client has listed the friends once.
+ */
+friends: FriendsView | null, 
+/**
+ * The party, while the client shows the lobby (in it, in queue, match found).
+ */
+lobby: LobbyView | null, };
 
 export type Update = { rev: number, patch: Patch, };
 
-export type Patch = { "key": "connection", "value": Connection } | { "key": "me", "value": Me | null } | { "key": "phase", "value": Phase } | { "key": "champSelect", "value": ChampSelectView | null } | { "key": "game", "value": GameView | null };
+export type Patch = { "key": "connection", "value": Connection } | { "key": "me", "value": Me | null } | { "key": "phase", "value": Phase } | { "key": "champSelect", "value": ChampSelectView | null } | { "key": "game", "value": GameView | null } | { "key": "friends", "value": FriendsView | null } | { "key": "lobby", "value": LobbyView | null };
 
-export type Event = { "type": "update", "data": Update } | { "type": "notice", "data": Notice } | { "type": "settings", "data": Settings } | { "type": "gameData" };
+export type Event = { "type": "update", "data": Update } | { "type": "notice", "data": Notice } | { "type": "settings", "data": Settings } | { "type": "gameData" } | { "type": "openHistory", "data": { puuid: string, } };
 
 export type Connection = { "status": "searching" } | { "status": "accessDenied" } | { "status": "connecting", port: number, } | { "status": "connected", port: number, platformId: string, };
 
@@ -261,6 +269,75 @@ export type IpcError = { code: ErrorCode, message: string, };
 
 export type ErrorCode = "notConnected" | "notFound" | "invalid" | "busy" | "client" | "internal";
 
+export type FriendsView = { 
+/**
+ * In game first (the longest-running game first), then champ select, in queue, the rest.
+ * Offline friends are left out: nothing shows them, and a long list would ride along with
+ * every patch.
+ */
+friends: Array<FriendView>, };
+
+export type FriendView = { puuid: string, name: RiotId | null, iconId: number, 
+/**
+ * `chat`, `away`, `dnd` or `mobile`, as the client shows it beside the name.
+ */
+availability: string, status: FriendStatus, 
+/**
+ * Friends in one game, or one party, share a number from 1, which picks the colour they are
+ * drawn in; a friend playing without other friends has none.
+ */
+group: number | null, };
+
+export type FriendStatus = { "state": "outOfGame" } | { "state": "inQueue", mode: string, queueId: number, since: number, } | { "state": "champSelect", mode: string, queueId: number, since: number, } | { "state": "inGame", mode: string, queueId: number, 
+/**
+ * When the game started, epoch milliseconds; zero when the presence does not say.
+ */
+startedAt: number, 
+/**
+ * The game can be spectated.
+ */
+observable: boolean, };
+
+export type LobbyView = { queueId: number, 
+/**
+ * A custom game's lobby, where everyone in it plays, on both teams.
+ */
+custom: boolean, 
+/**
+ * In the lobby's order, the local player among them; bots are left out.
+ */
+members: Array<LobbyMember>, };
+
+export type LobbyMember = { puuid: string, name: RiotId | null, iconId: number, isSelf: boolean, leader: boolean, 
+/**
+ * The lanes asked for, first choice first; empty in queues without positions.
+ */
+positions: Array<LanePreference>, stats: PlayerStats, 
+/**
+ * Recent form, 0–10 (`rating::form_score`), once the stats are in.
+ */
+score: number | null, };
+
+export type LanePreference = "top" | "jungle" | "middle" | "bottom" | "utility" | "fill";
+
+export type HotkeyStatus = { 
+/**
+ * The combination the settings name (`Ctrl+Shift+W`); `None` while the shortcut is off.
+ */
+shortcut: string | null, 
+/**
+ * The system has it registered for winer right now.
+ */
+active: boolean, 
+/**
+ * Let go while the settings record a new combination.
+ */
+suspended: boolean, 
+/**
+ * Why the system refused it, in its own words; usually another program holds the combination.
+ */
+error: string | null, };
+
 export type Settings = { appearance: Appearance, general: General, automation: Automation, plugin: PluginSettings, };
 
 export type Appearance = { theme: Theme, accent: Accent, density: Density, 
@@ -287,7 +364,12 @@ augmentDetails: boolean,
 /**
  * The roast titles beside a grade (`rating::FormTitle` and the scoreboard's own).
  */
-titles: boolean, };
+titles: boolean, 
+/**
+ * The global shortcut that shows and hides the window, in [`normalize_hotkey`]'s form; `None`
+ * turns it off. A file without the field gets the default; `null` keeps it off.
+ */
+hotkey: string | null, };
 
 export type Language = "zh-CN" | "en";
 
@@ -384,7 +466,17 @@ benchNoCooldown: boolean,
 /**
  * Pengu Loader's directory, when it cannot be found from the client.
  */
-loaderDir: string | null, };
+loaderDir: string | null, 
+/**
+ * In the client's friends list: the mode and running time of a friend's game, and one colour
+ * for the friends playing together.
+ */
+friendStatus: boolean, 
+/**
+ * In the client's lobby: each member's recent form above their banner, and a click that opens
+ * their history in winer.
+ */
+lobbyPanel: boolean, };
 
 export type PluginStatus = { loaderDir: string | null, 
 /**
@@ -418,6 +510,6 @@ connected: number, };
 
 export type BridgeMessage = { "type": "hello", version: string, snapshot: Snapshot, settings: Settings, } | { "type": "event", event: Event, };
 
-export type PluginMessage = { "type": "hello", version: string, context: string, } | { "type": "log", level: LogLevel, message: string, } | { "type": "benchSwap", championId: number, };
+export type PluginMessage = { "type": "hello", version: string, context: string, } | { "type": "log", level: LogLevel, message: string, } | { "type": "benchSwap", championId: number, } | { "type": "openHistory", puuid: string, };
 
 export type LogLevel = "debug" | "info" | "warn" | "error";

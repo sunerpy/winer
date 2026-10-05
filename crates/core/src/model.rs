@@ -411,6 +411,12 @@ pub struct LobbyMember {
     pub is_leader: bool,
     pub first_position_preference: String,
     pub second_position_preference: String,
+    /// The Riot ID; chat calls the tag `gameTag`, the summoner `tagLine`.
+    pub game_name: String,
+    #[serde(alias = "gameTag")]
+    pub tag_line: String,
+    /// A custom game's bot, which has no history.
+    pub is_bot: bool,
 }
 
 /// `/entitlements/v1/token`: the client's access token for its shard's own servers. Not `Debug`,

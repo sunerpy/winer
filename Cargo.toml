@@ -46,6 +46,9 @@ tauri = { version = "=2.11.5", features = ["tray-icon"] }
 tauri-build = "=2.6.3"
 embed-resource = "=3.0.11"
 tauri-plugin-autostart = "=2.5.1"
+# 2.4 wants tauri 2.12 and tauri-plugin 2.7, newer than the set pinned in app/src-tauri; 2.3.2 is
+# the last release that builds against tauri 2.11.5.
+tauri-plugin-global-shortcut = "=2.3.2"
 tauri-plugin-opener = "=2.5.4"
 tauri-plugin-single-instance = "=2.4.3"
 tauri-plugin-updater = { version = "=2.10.1", default-features = false, features = [

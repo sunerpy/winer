@@ -8,6 +8,7 @@ pub mod bindings;
 pub mod bridge;
 pub mod callout;
 pub mod catalog;
+pub mod friends;
 pub mod live;
 pub mod model;
 pub mod net;

@@ -212,6 +212,37 @@
   --feat-blood-soft: color-mix(in oklab, var(--feat-blood) 14%, var(--surface));
 }
 
+/* Groups: friends in one game or party, premade parties in a game. Six colour-blind-safe hues
+ * (after Okabe and Ito), each ≥ 3:1 against canvas, surface and both insets of its theme. Drawn as
+ * a stripe or a dot beside the group's number, never as text. The plugin mirrors Hextech's. */
+:root,
+[data-theme="light"] {
+  --group-1: #b36b00;
+  --group-2: #1f78b4;
+  --group-3: #00805c;
+  --group-4: #a8457d;
+  --group-5: #857400;
+  --group-6: #c2410c;
+}
+[data-theme="dark"],
+[data-theme="hextech"] {
+  --group-1: #e69f00;
+  --group-2: #56b4e9;
+  --group-3: #2ec4a0;
+  --group-4: #cc79a7;
+  --group-5: #f0e442;
+  --group-6: #e8705a;
+}
+/* Graphite's lighter ground takes the same hues a step brighter. */
+[data-theme="graphite"] {
+  --group-1: #f0a818;
+  --group-2: #62bdf0;
+  --group-3: #3fd0ac;
+  --group-4: #dc8fbc;
+  --group-5: #f2e64e;
+  --group-6: #f2846e;
+}
+
 /* Augment rarities, the game's own colours in every theme: a ring around the icon, never text.
  * The game's line-art icons (augments, runes) are light glyphs drawn for its dark ground, so they
  * sit on that ground in every theme; on a light surface they would vanish. */
@@ -295,6 +326,12 @@
   --color-feat-blood-soft: var(--feat-blood-soft);
   --color-side-blue: var(--side-blue);
   --color-side-red: var(--side-red);
+  --color-group-1: var(--group-1);
+  --color-group-2: var(--group-2);
+  --color-group-3: var(--group-3);
+  --color-group-4: var(--group-4);
+  --color-group-5: var(--group-5);
+  --color-group-6: var(--group-6);
   --color-nav: var(--nav);
   --color-nav-active: var(--nav-active);
   --color-thumb: var(--thumb);

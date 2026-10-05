@@ -503,4 +503,43 @@ export const en: Record<MessageKey, string> = {
   "error.title": "This page hit an error",
   "error.hint":
     "Other pages are fine. Retry, or open the log folder and send the newest log to the developers.",
+
+  // Social: friends' games, the lobby, the global shortcut.
+  "social.friends": "Friends",
+  "social.friendsPlaying": "{n} in champ select or a game",
+  "social.friendsEmpty": "No friend is in champ select or a game right now.",
+  "social.friendsLoading": "Reading the friends list",
+  "social.inGame": "In game",
+  "social.champSelect": "Champ select",
+  "social.elapsed": "{time} in",
+  "social.observable": "Spectatable",
+  "social.together": "Together {n}",
+  "social.togetherHint": "Friends with the same colour and number are in one game or one party.",
+  "social.lobby": "Lobby",
+  "social.lobbyHint":
+    "Your party's recent form before the game starts; a player opens their history.",
+  "social.lobbyCustom": "Custom lobby",
+  "social.leader": "Leader",
+  "social.you": "You",
+  "social.score": "Form {score}",
+  "social.fill": "Fill",
+  "social.pluginFriends": "Friends' games in the friends list",
+  "social.pluginFriendsHint":
+    "In the client's friends list on the right: the mode and running time of each friend's game; friends playing together share a colour.",
+  "social.pluginLobby": "Lobby members' form",
+  "social.pluginLobbyHint":
+    "In the client's lobby: recent win rate, KDA and form score above each member's banner; a click on a member opens their history in winer.",
+  "social.hotkey": "Shortcut to bring up winer",
+  "social.hotkeyHint":
+    "Shows or hides winer from anywhere; shown during a game, it stays above the game. The game must run borderless or windowed.",
+  "social.hotkeyOff": "Off",
+  "social.hotkeyRecord": "Set a shortcut",
+  "social.hotkeyChange": "Change the shortcut",
+  "social.hotkeyListening": "Press the keys…",
+  "social.hotkeyListeningHint": "Esc cancels.",
+  "social.hotkeyInvalid": "Use Ctrl, Alt or Win, plus a letter, a digit, an F key or an arrow.",
+  "social.hotkeyClear": "Clear the shortcut",
+  "social.hotkeyActive": "Active",
+  "social.hotkeyFailed":
+    "Not registered: another program probably holds this combination. Try another.",
 };

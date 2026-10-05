@@ -31,6 +31,7 @@ import {
   onRadioKeys,
   toast,
 } from "../../ui";
+import { HotkeyRow } from "./HotkeyRow";
 import { updateLine } from "./UpdateDialog";
 
 const SECTIONS: { id: SettingsSection; label: MessageKey; icon: typeof Palette }[] = [
@@ -278,6 +279,7 @@ function GeneralSection() {
           label={t("settings.closeToTray")}
         />
       </Row>
+      <HotkeyRow />
       <Row label={t("settings.augmentDetails")} help={t("settings.augmentDetailsHint")}>
         <Toggle
           checked={general.augmentDetails}
