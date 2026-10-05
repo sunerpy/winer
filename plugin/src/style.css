@@ -1,0 +1,237 @@
+/* winer inside the client. Chromium 108: no nesting, no color-mix(), no oklch(). The palette is
+ * the desktop's Hextech theme by value (DESIGN.md). */
+
+.winer-inline {
+  display: block;
+  margin-top: 2px;
+  font:
+    500 11px/14px "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    sans-serif;
+  color: #9ba7b3;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.winer-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.winer-rank {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #ece6d6;
+}
+
+.winer-tier {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+
+.winer-muted {
+  color: #748190;
+}
+
+.winer-win {
+  color: #4ccb93;
+}
+
+.winer-loss {
+  color: #f0736a;
+}
+
+.winer-panel {
+  position: fixed;
+  top: 76px;
+  right: 12px;
+  z-index: 9000;
+  width: 300px;
+  border: 1px solid #2e4157;
+  border-radius: 10px;
+  background: #101923;
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(200, 170, 110, 0.08);
+  color: #ece6d6;
+  font:
+    12px/16px "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    sans-serif;
+}
+
+.winer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-bottom: 1px solid #223142;
+  background: transparent;
+  color: #d9bf86;
+  font:
+    600 12px/16px "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    sans-serif;
+  cursor: pointer;
+}
+
+.winer-panel[data-collapsed="true"] .winer-head {
+  border-bottom: 0;
+}
+
+.winer-panel[data-collapsed="true"] .winer-rows {
+  display: none;
+}
+
+.winer-head:hover {
+  background: #162230;
+}
+
+.winer-mark {
+  width: 14px;
+  height: 14px;
+}
+
+.winer-chevron {
+  margin-left: auto;
+  color: #748190;
+  font-size: 10px;
+}
+
+.winer-rows {
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+}
+
+.winer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 6px;
+}
+
+.winer-row + .winer-row {
+  margin-top: 2px;
+}
+
+.winer-row--self {
+  background: #162230;
+  box-shadow: inset 2px 0 0 #c8aa6e;
+}
+
+.winer-icon {
+  flex: none;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px #223142;
+}
+
+.winer-icon--empty {
+  display: inline-block;
+  background: #1b2939;
+}
+
+.winer-who {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.winer-name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.winer-who .winer-line {
+  font-size: 11px;
+  color: #9ba7b3;
+}
+
+.winer-ticks {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+}
+
+.winer-ticks i {
+  display: block;
+  width: 4px;
+  height: 12px;
+  border-radius: 2px;
+  background: #2e4157;
+}
+
+.winer-ticks .winer-tick-win {
+  background: #4ccb93;
+}
+
+.winer-ticks .winer-tick-loss {
+  background: #f0736a;
+}
+
+.winer-standing {
+  padding: 0 4px;
+  border-radius: 3px;
+  font-weight: 700;
+  background: #223142;
+  color: #ece6d6;
+}
+
+.winer-standing--best {
+  background: #4a3d1e;
+  color: #f0d27a;
+}
+
+.winer-standing--good {
+  background: #1b3a2b;
+  color: #7fdcaa;
+}
+
+/* A roast title: an outline, so it never reads as another tier. */
+.winer-title {
+  padding: 0 4px;
+  border: 1px dashed #5b6b7c;
+  border-radius: 3px;
+  color: #f5b45a;
+}
+
+/* The local player's side: the map's own colours, never the result's. */
+.winer-side {
+  padding: 0 4px;
+  border-radius: 3px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.winer-side--blue {
+  background: #2a64c8;
+}
+
+.winer-side--red {
+  background: #c8433c;
+}
+
+.winer-standing--weak {
+  background: #4a3a1a;
+  color: #f5b45a;
+}
+
+.winer-standing--worst {
+  background: #4a2224;
+  color: #ff9d96;
+}

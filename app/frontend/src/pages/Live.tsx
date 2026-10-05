@@ -1,0 +1,327 @@
+import type { Audience, ChampSelectView, GameView, Seat, Side } from "@winer/shared";
+import { Ban, Dices, Eye, Hourglass, Megaphone, Star, Swords } from "lucide-react";
+import { useState } from "react";
+
+import { queueName } from "../game/MatchRow";
+import { TeamBoard } from "../game/TeamBoard";
+import { ChampionIcon } from "../game/icons";
+import { errorMessage } from "../lib/backend";
+import { cx } from "../lib/cx";
+import { type MessageKey, useT } from "../lib/i18n";
+import { everywhere, modeOf } from "../lib/modes";
+import { useCatalog, useLive, useSettings, useStore } from "../lib/store";
+import { useNow } from "../lib/useNow";
+import { useShell } from "../shell/navigation";
+import { Badge, Button, Card, EmptyState, Panel, Segmented, toast } from "../ui";
+import { ConnectionGate, PageBody } from "./common";
+
+const TIMER_PHASES: Record<string, MessageKey> = {
+  PLANNING: "live.planning",
+  BAN_PICK: "live.banPick",
+  FINALIZATION: "live.finalization",
+  GAME_STARTING: "live.gameStarting",
+};
+
+const SIDE_DOT: Record<Side, string> = { blue: "bg-side-blue", red: "bg-side-red" };
+
+function opposite(side: Side | null): Side | null {
+  return side && (side === "blue" ? "red" : "blue");
+}
+
+interface TeamTab {
+  title: string;
+  side: Side | null;
+  seats: Seat[];
+}
+
+/** The analysis board of one team at a time, the local player's first. */
+function Teams({ teams, initial = 0 }: { teams: TeamTab[]; initial?: number }) {
+  const t = useT();
+  const { navigate } = useShell();
+  const [shown, setShown] = useState(initial);
+  const team = teams[shown] ?? teams[0];
+  if (!team) return null;
+  const name = (tab: TeamTab) => (tab.side ? `${tab.title} · ${t(`live.${tab.side}`)}` : tab.title);
+  return (
+    <Panel
+      eyebrow={t("live.board")}
+      title={teams.length === 1 ? undefined : t("live.boardHint")}
+      right={
+        teams.length > 1 ? (
+          <Segmented
+            size="sm"
+            label={t("live.board")}
+            value={String(shown)}
+            options={teams.map((tab, index) => ({ value: String(index), label: name(tab) }))}
+            onChange={(value) => setShown(Number(value))}
+          />
+        ) : (
+          <span className="flex items-center gap-1.5 text-[12px] font-medium text-fg-muted">
+            {team.side && (
+              <span aria-hidden className={cx("size-2 rounded-full", SIDE_DOT[team.side])} />
+            )}
+            {name(team)}
+          </span>
+        )
+      }
+    >
+      <TeamBoard seats={team.seats} onPlayer={(puuid) => navigate({ page: "history", puuid })} />
+    </Panel>
+  );
+}
+
+function BanRow({ label, ids }: { label: string; ids: number[] }) {
+  if (ids.length === 0) return null;
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className="text-[11px] text-fg-subtle">{label}</span>
+      {ids.map((id) => (
+        <ChampionIcon key={id} id={id} size={24} className="grayscale" />
+      ))}
+    </span>
+  );
+}
+
+/** ARAM's bench: every champion is a button that swaps at once, cooldown or not. */
+function Bench({ view }: { view: ChampSelectView }) {
+  const t = useT();
+  const store = useStore();
+  const catalog = useCatalog();
+  const wishlist = useSettings().automation.bench.champions;
+  const [busy, setBusy] = useState<number | "reroll" | null>(null);
+  const run = async (target: number | "reroll") => {
+    setBusy(target);
+    try {
+      if (target === "reroll") await store.backend.call("reroll");
+      else await store.backend.call("bench_swap", { championId: target });
+    } catch (error) {
+      toast(errorMessage(error), "danger");
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <Card padding="sm" className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <span className="flex flex-col gap-0.5">
+        <span className="eyebrow">{t("live.bench")}</span>
+        <span className="text-[11px] text-fg-subtle">{t("live.benchHint")}</span>
+      </span>
+      <ul className="flex min-h-9 flex-wrap items-center gap-1.5">
+        {view.bench.map((id) => {
+          const wished = wishlist.includes(id);
+          const label = t("live.swap", {
+            champion: catalog?.champions.get(id)?.shortName ?? `#${id}`,
+          });
+          return (
+            <li key={id}>
+              <button
+                type="button"
+                aria-label={wished ? `${label} · ${t("live.wished")}` : label}
+                title={wished ? `${label} · ${t("live.wished")}` : label}
+                disabled={busy !== null}
+                onClick={() => void run(id)}
+                className="relative block rounded-6 transition-transform duration-150 hover:-translate-y-px disabled:opacity-60"
+              >
+                <ChampionIcon id={id} size={36} />
+                {wished && (
+                  <Star
+                    aria-hidden
+                    size={13}
+                    strokeWidth={2}
+                    className="absolute -top-1 -right-1 fill-accent text-accent"
+                  />
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {view.rerollsRemaining > 0 && (
+        <Button
+          size="sm"
+          icon={Dices}
+          className="ml-auto"
+          loading={busy === "reroll"}
+          disabled={busy !== null && busy !== "reroll"}
+          onClick={() => void run("reroll")}
+        >
+          {t("live.reroll", { n: view.rerollsRemaining })}
+        </Button>
+      )}
+    </Card>
+  );
+}
+
+/** The team ranked by recent form, as the chat lines it would send. */
+function Callout({ lines, queueId }: { lines: string[]; queueId: number }) {
+  const t = useT();
+  const store = useStore();
+  const catalog = useCatalog();
+  const { callout, scopes } = useSettings().automation;
+  const queue = catalog?.queues.get(queueId);
+  // Goes out by itself only in the modes it is scoped to, as the core decides it.
+  const auto =
+    callout.auto &&
+    (queue
+      ? scopes.callout.includes(modeOf(queue.gameMode, queue.ranked))
+      : everywhere("callout", scopes.callout));
+  const [busy, setBusy] = useState<Audience | null>(null);
+  const send = async (audience: Audience) => {
+    setBusy(audience);
+    try {
+      const sent = await store.backend.call("send_callout", { audience });
+      toast(t("live.sent", { n: sent }), "ok");
+    } catch (error) {
+      toast(errorMessage(error), "danger");
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <Panel
+      eyebrow={t("live.callout")}
+      right={auto ? <Badge tone="accent">{t("live.calloutAuto")}</Badge> : undefined}
+    >
+      <p className="mb-2.5 text-[12px] leading-5 text-fg-muted">{t("live.calloutHint")}</p>
+      {lines.length === 0 ? (
+        <p className="rounded-6 border border-dashed border-border-strong px-3 py-3 text-center text-[12px] text-fg-subtle">
+          {t("live.calloutEmpty")}
+        </p>
+      ) : (
+        <ol className="flex flex-col gap-1 rounded-6 bg-inset px-3 py-2 hairline">
+          {lines.map((line, index) => (
+            <li key={index} className="text-[12.5px] leading-5 break-words text-fg">
+              {line}
+            </li>
+          ))}
+        </ol>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="accent"
+          icon={Megaphone}
+          disabled={lines.length === 0 || busy !== null}
+          loading={busy === "team"}
+          onClick={() => void send("team")}
+        >
+          {t("live.sendTeam")}
+        </Button>
+        <Button
+          size="sm"
+          icon={Eye}
+          disabled={lines.length === 0 || busy !== null}
+          loading={busy === "me"}
+          onClick={() => void send("me")}
+        >
+          {t("live.sendMe")}
+        </Button>
+      </div>
+    </Panel>
+  );
+}
+
+function ChampSelect({ view }: { view: ChampSelectView }) {
+  const t = useT();
+  const catalog = useCatalog();
+  const now = useNow(500, view.timer.endsAt > 0);
+  const seconds =
+    view.timer.endsAt > 0 ? Math.max(0, Math.ceil((view.timer.endsAt - now) / 1000)) : null;
+  const phase = TIMER_PHASES[view.timer.phase];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <span className="flex items-center gap-2.5">
+          <Swords size={16} strokeWidth={2} className="text-accent-text" aria-hidden />
+          <span className="text-[15px] font-semibold text-fg">
+            {queueName(view.queueId, "", catalog, t("phase.ChampSelect"))}
+          </span>
+          {phase && <Badge tone="accent">{t(phase)}</Badge>}
+        </span>
+        {seconds !== null && (
+          <span className="mono flex items-center gap-1.5 text-[13px] text-fg-muted">
+            <Hourglass size={13} strokeWidth={2} aria-hidden />
+            {t("live.timer", { s: seconds })}
+          </span>
+        )}
+        {view.myBans.length + view.theirBans.length > 0 && (
+          <span className="ml-auto flex flex-wrap items-center gap-4">
+            <Ban size={13} strokeWidth={2} aria-hidden className="text-fg-subtle" />
+            <BanRow label={t("live.myTeam")} ids={view.myBans} />
+            <BanRow label={t("live.theirTeam")} ids={view.theirBans} />
+          </span>
+        )}
+      </Card>
+
+      {view.benchEnabled && <Bench view={view} />}
+
+      <Teams
+        teams={[
+          { title: t("live.myTeam"), side: view.side, seats: view.myTeam },
+          ...(view.theirTeam.length > 0
+            ? [{ title: t("live.theirTeam"), side: opposite(view.side), seats: view.theirTeam }]
+            : []),
+        ]}
+      />
+      <Callout lines={view.callout} queueId={view.queueId} />
+    </div>
+  );
+}
+
+function Game({ view }: { view: GameView }) {
+  const t = useT();
+  const catalog = useCatalog();
+  const mine = view.teams.findIndex((team) => team.some((seat) => seat.isSelf));
+  // Whose team is whose; a spectator gets the sides themselves.
+  const teams: TeamTab[] = view.teams.map((seats, index) => {
+    const side: Side | null = view.sides ? (index === 0 ? "blue" : "red") : null;
+    if (mine === -1)
+      return {
+        title: side ? t(`live.${side}`) : t("live.team", { n: index + 1 }),
+        side: null,
+        seats,
+      };
+    return { title: t(index === mine ? "live.myTeam" : "live.theirTeam"), side, seats };
+  });
+  return (
+    <div className="flex flex-col gap-4">
+      <Card className="flex items-center gap-2.5">
+        <Swords size={16} strokeWidth={2} className="text-accent-text" aria-hidden />
+        <span className="text-[15px] font-semibold text-fg">
+          {queueName(view.queueId, "", catalog, t("phase.InProgress"))}
+        </span>
+        <Badge tone="accent">{t("phase.InProgress")}</Badge>
+      </Card>
+      <Teams teams={teams} initial={Math.max(0, mine)} />
+    </div>
+  );
+}
+
+function LiveContent() {
+  const t = useT();
+  const champSelect = useLive((snapshot) => snapshot.champSelect);
+  const game = useLive((snapshot) => snapshot.game);
+  const phase = useLive((snapshot) => snapshot.phase);
+  if (champSelect) return <ChampSelect view={champSelect} />;
+  if (game) return <Game view={game} />;
+  return (
+    <EmptyState icon={Swords} title={t("live.idleTitle")}>
+      <p>{t("live.idle")}</p>
+      <p className="mono mt-2 text-[11px] text-fg-subtle">
+        {t("overview.phase")} · {t(`phase.${phase}`)}
+      </p>
+    </EmptyState>
+  );
+}
+
+export function LivePage() {
+  const t = useT();
+  return (
+    <PageBody>
+      <ConnectionGate offline={t("live.offline")}>
+        <LiveContent />
+      </ConnectionGate>
+    </PageBody>
+  );
+}

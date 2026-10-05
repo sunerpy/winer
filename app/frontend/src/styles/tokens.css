@@ -1,0 +1,324 @@
+/* winer design tokens (DESIGN.md). `data-theme` on <html> picks the palette, `data-mode` the
+ * accent's text tone, `data-accent` the accent. Components reach these only through the
+ * Tailwind utilities declared in `@theme inline` below; a colour literal in TSX is a defect. */
+
+@import "@fontsource-variable/instrument-sans/index.css";
+@import "@fontsource-variable/jetbrains-mono/index.css";
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --canvas: #f2f3f6;
+  --surface: #ffffff;
+  --raised: #ffffff;
+  --inset: #f7f8fa;
+  --inset2: #eef0f3;
+  --border: #e1e4ea;
+  --border-strong: #d2d7df;
+  --fg: #1b1d22;
+  --fg-muted: #5f6570;
+  --fg-subtle: #7d838d;
+  --primary: #1b1d22;
+  --primary-fg: #ffffff;
+  --nav: #eceef2;
+  --nav-active: #e1e5eb;
+  --scrim: rgb(27 29 34 / 0.32);
+  --thumb: #ffffff;
+  --theme-accent: blue;
+  --shadow-pop: 0 8px 24px 0 rgb(27 29 34 / 0.1), 0 0 0 1px rgb(27 29 34 / 0.06);
+  --shadow-win: 0 24px 64px -20px rgb(27 29 34 / 0.28), 0 0 0 1px rgb(27 29 34 / 0.08);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #0c0d11;
+  --surface: #14161b;
+  --raised: #1a1d23;
+  --inset: #1c1f26;
+  --inset2: #22252d;
+  --border: #2a2e37;
+  --border-strong: #363b45;
+  --fg: #f1f2f4;
+  --fg-muted: #9aa1ac;
+  --fg-subtle: #737a86;
+  --primary: #f1f2f4;
+  --primary-fg: #0c0d11;
+  --nav: #111317;
+  --nav-active: #22252d;
+  --scrim: rgb(0 0 0 / 0.55);
+  --shadow-pop: 0 10px 28px 0 rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.04);
+  --shadow-win: 0 24px 64px -16px rgb(0 0 0 / 0.65), 0 0 0 1px rgb(255 255 255 / 0.05);
+}
+
+[data-theme="graphite"] {
+  color-scheme: dark;
+  --canvas: #22252b;
+  --surface: #2a2e35;
+  --raised: #30353d;
+  --inset: #333840;
+  --inset2: #3a4048;
+  --border: #414750;
+  --border-strong: #4c535d;
+  --fg: #eceef1;
+  --fg-muted: #a5acb6;
+  --fg-subtle: #868e99;
+  --primary: #eceef1;
+  --primary-fg: #22252b;
+  --nav: #262a30;
+  --nav-active: #363b43;
+  --scrim: rgb(0 0 0 / 0.5);
+  --shadow-pop: 0 10px 28px 0 rgb(0 0 0 / 0.4);
+  --shadow-win: 0 24px 64px -16px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.04);
+}
+
+/* Navy and gold, after the client: the default. */
+[data-theme="hextech"] {
+  color-scheme: dark;
+  --canvas: #0a1017;
+  --surface: #101923;
+  --raised: #142030;
+  --inset: #162230;
+  --inset2: #1b2939;
+  --border: #223142;
+  --border-strong: #2e4157;
+  --fg: #ece6d6;
+  --fg-muted: #9ba7b3;
+  --fg-subtle: #748190;
+  --primary: #ece6d6;
+  --primary-fg: #0a1017;
+  --nav: #0d151f;
+  --nav-active: #19263a;
+  --scrim: rgb(2 6 10 / 0.6);
+  --shadow-pop: 0 10px 30px 0 rgb(0 0 0 / 0.55), 0 0 0 1px rgb(200 170 110 / 0.06);
+  --shadow-win: 0 28px 72px -18px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(200 170 110 / 0.08);
+  --theme-accent: gold;
+}
+
+/* Semantic colours per mode. */
+[data-mode="light"] {
+  --ok: #2e9e62;
+  --ok-text: #1f7a4a;
+  --danger: #c93a33;
+  --warning: #b7791f;
+  --info: #0968c8;
+  --win: #1f7a4a;
+  --loss: #c93a33;
+  --best: #8a5a00;
+  --side-blue: #1a66c4;
+  --side-red: #c93a33;
+  --thumb: #ffffff;
+  /* Feats (DESIGN.md, Feats): multikills climb blue → violet → orange → gold, a spree is crimson. */
+  --feat-double: #2f6fd6;
+  --feat-triple: #7a4fd8;
+  --feat-quadra: #c2410c;
+  --feat-penta: #a16207;
+  --feat-legend: #be185d;
+  --feat-blood: #c93a33;
+}
+
+[data-mode="dark"] {
+  --ok: #3fc58a;
+  --ok-text: #4ccb93;
+  --danger: #f0736a;
+  --warning: #f2b443;
+  --info: #5aa9ff;
+  --win: #4ccb93;
+  --loss: #f0736a;
+  --best: #f2c14e;
+  --side-blue: #5aa9ff;
+  --side-red: #f0736a;
+  --thumb: #ffffff;
+  --feat-double: #6aa8ff;
+  --feat-triple: #b794ff;
+  --feat-quadra: #ff9a5c;
+  --feat-penta: #ffd166;
+  --feat-legend: #ff6fae;
+  --feat-blood: #ff7a70;
+}
+
+/* Accents: a fill, the text on it, and a text tone per mode (≥ 4.5:1 on canvas, surface, inset). */
+:root,
+[data-accent="blue"],
+[data-accent="default"] {
+  --accent: #339cff;
+  --accent-fg: #000000;
+  --accent-text-light: #036dc0;
+  --accent-text-dark: #5aaefe;
+}
+[data-accent="default"][data-theme="hextech"],
+[data-accent="gold"] {
+  --accent: #c8aa6e;
+  --accent-fg: #1a1408;
+  --accent-text-light: #7f5d14;
+  --accent-text-dark: #d9bf86;
+}
+[data-accent="teal"] {
+  --accent: #0ac8b9;
+  --accent-fg: #001a18;
+  --accent-text-light: #00756c;
+  --accent-text-dark: #3dd6c8;
+}
+[data-accent="green"] {
+  --accent: #04b84c;
+  --accent-fg: #000000;
+  --accent-text-light: #0b7d33;
+  --accent-text-dark: #40c977;
+}
+[data-accent="orange"] {
+  --accent: #fb6a22;
+  --accent-fg: #000000;
+  --accent-text-light: #b04204;
+  --accent-text-dark: #ff8a52;
+}
+[data-accent="pink"] {
+  --accent: #ff66ad;
+  --accent-fg: #000000;
+  --accent-text-light: #bf2776;
+  --accent-text-dark: #ff8cc1;
+}
+[data-accent="purple"] {
+  --accent: #8a45ef;
+  --accent-fg: #ffffff;
+  --accent-text-light: #7c34e0;
+  --accent-text-dark: #b68afd;
+}
+[data-mode="light"] {
+  --accent-text: var(--accent-text-light);
+}
+[data-mode="dark"] {
+  --accent-text: var(--accent-text-dark);
+}
+/* Derived on every element that sets a palette, so a themed subtree (the theme tiles in
+ * settings) mixes its own surface instead of inheriting the root's result. */
+:root,
+[data-theme],
+[data-accent],
+[data-mode] {
+  --accent-soft: color-mix(in oklab, var(--accent) 16%, var(--surface));
+  --ok-soft: color-mix(in oklab, var(--ok) 14%, var(--surface));
+  --danger-soft: color-mix(in oklab, var(--danger) 14%, var(--surface));
+  --warning-soft: color-mix(in oklab, var(--warning) 16%, var(--surface));
+  --info-soft: color-mix(in oklab, var(--info) 14%, var(--surface));
+  --win-soft: color-mix(in oklab, var(--win) 10%, var(--surface));
+  --loss-soft: color-mix(in oklab, var(--loss) 10%, var(--surface));
+  --best-soft: color-mix(in oklab, var(--best) 16%, var(--surface));
+  --feat-double-soft: color-mix(in oklab, var(--feat-double) 15%, var(--surface));
+  --feat-triple-soft: color-mix(in oklab, var(--feat-triple) 15%, var(--surface));
+  --feat-quadra-soft: color-mix(in oklab, var(--feat-quadra) 16%, var(--surface));
+  --feat-penta-soft: color-mix(in oklab, var(--feat-penta) 16%, var(--surface));
+  --feat-penta-strong: color-mix(in oklab, var(--feat-penta) 34%, var(--surface));
+  --feat-legend-soft: color-mix(in oklab, var(--feat-legend) 15%, var(--surface));
+  --feat-legend-strong: color-mix(in oklab, var(--feat-legend) 32%, var(--surface));
+  --feat-blood-soft: color-mix(in oklab, var(--feat-blood) 14%, var(--surface));
+}
+
+/* Augment rarities, the game's own colours in every theme: a ring around the icon, never text.
+ * The game's line-art icons (augments, runes) are light glyphs drawn for its dark ground, so they
+ * sit on that ground in every theme; on a light surface they would vanish. */
+:root {
+  --rarity-silver: #a6b2bf;
+  --rarity-gold: #d9ab52;
+  --rarity-prismatic: #b77cf2;
+  --glyph-plate: #10161d;
+  --glyph-ink: #c3ccd6;
+}
+
+/* Density and size knobs (设置 › 外观). */
+:root {
+  --ui-zoom: 1;
+  --row-h: 32px;
+  --card-pad: 16px;
+}
+:root[data-density="compact"] {
+  --row-h: 28px;
+  --card-pad: 12px;
+}
+:root[data-reduce-motion="true"] *,
+:root[data-reduce-motion="true"] *::before,
+:root[data-reduce-motion="true"] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+@theme inline {
+  --color-*: initial;
+  --color-rarity-silver: var(--rarity-silver);
+  --color-rarity-gold: var(--rarity-gold);
+  --color-rarity-prismatic: var(--rarity-prismatic);
+  --color-glyph-plate: var(--glyph-plate);
+  --color-glyph-ink: var(--glyph-ink);
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  /* Dialogs and menus: above a surface even where a scrim cannot separate dark from dark. */
+  --color-raised: var(--raised);
+  --color-inset: var(--inset);
+  --color-inset2: var(--inset2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-text: var(--accent-text);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-ok-text: var(--ok-text);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-win: var(--win);
+  --color-win-soft: var(--win-soft);
+  --color-loss: var(--loss);
+  --color-loss-soft: var(--loss-soft);
+  --color-best: var(--best);
+  --color-best-soft: var(--best-soft);
+  --color-feat-double: var(--feat-double);
+  --color-feat-double-soft: var(--feat-double-soft);
+  --color-feat-triple: var(--feat-triple);
+  --color-feat-triple-soft: var(--feat-triple-soft);
+  --color-feat-quadra: var(--feat-quadra);
+  --color-feat-quadra-soft: var(--feat-quadra-soft);
+  --color-feat-penta: var(--feat-penta);
+  --color-feat-penta-soft: var(--feat-penta-soft);
+  --color-feat-penta-strong: var(--feat-penta-strong);
+  --color-feat-legend: var(--feat-legend);
+  --color-feat-legend-soft: var(--feat-legend-soft);
+  --color-feat-legend-strong: var(--feat-legend-strong);
+  --color-feat-blood: var(--feat-blood);
+  --color-feat-blood-soft: var(--feat-blood-soft);
+  --color-side-blue: var(--side-blue);
+  --color-side-red: var(--side-red);
+  --color-nav: var(--nav);
+  --color-nav-active: var(--nav-active);
+  --color-thumb: var(--thumb);
+  --color-scrim: var(--scrim);
+  --color-transparent: transparent;
+  --color-white: #ffffff;
+  --color-black: #000000;
+
+  --font-ui:
+    "Instrument Sans Variable", "Instrument Sans", "Microsoft YaHei UI", "Microsoft YaHei",
+    "PingFang SC", "Noto Sans CJK SC", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:
+    "JetBrains Mono Variable", "JetBrains Mono", "Microsoft YaHei UI", "PingFang SC", ui-monospace,
+    "Cascadia Mono", Consolas, monospace;
+
+  --radius-*: initial;
+  --radius-4: 4px;
+  --radius-6: 6px;
+  --radius-10: 10px;
+  --radius-14: 14px;
+  --radius-pill: 999px;
+
+  --shadow-*: initial;
+  --shadow-pop: var(--shadow-pop);
+  --shadow-win: var(--shadow-win);
+  --shadow-thumb: 0 1px 2px 0 rgb(0 0 0 / 0.25);
+}

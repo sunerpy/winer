@@ -1,0 +1,69 @@
+[package]
+name = "winer"
+description = "League of Legends client companion: the Tauri desktop shell."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "winer_app"
+
+[[bin]]
+name = "winer"
+path = "src/main.rs"
+
+[features]
+# Embeds the built frontend (`app/frontend/dist`). `cargo tauri build` turns it on; a plain
+# `cargo build` without it opens a blank window pointed at the dev server.
+custom-protocol = ["tauri/custom-protocol"]
+# Real-machine QA builds only: with WINER_DEVTOOLS_PORT set, WebView2 opens its DevTools port so
+# scripts/windows/cdp.mjs can drive and photograph the window. Never in a release: an open port
+# lets any local process script the window.
+qa = []
+
+[build-dependencies]
+embed-resource.workspace = true
+serde_json.workspace = true
+tauri-build.workspace = true
+# Not used directly. tauri 2.11.5 accepts the 2.12-era runtime and the 2.7-era macros by semver
+# but does not compile against them (changed trait signatures, a missing error variant), so the
+# set it was released with is pinned here where `cargo update` cannot drift it.
+tauri-codegen = "=2.6.3"
+tauri-macros = "=2.6.3"
+tauri-plugin = "=2.6.3"
+tauri-runtime = "=2.11.3"
+tauri-runtime-wry = "=2.11.4"
+tauri-utils = "=2.9.3"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+tauri.workspace = true
+tauri-plugin-autostart.workspace = true
+tauri-plugin-opener.workspace = true
+tauri-plugin-single-instance.workspace = true
+tauri-plugin-updater.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
+tracing.workspace = true
+tracing-appender.workspace = true
+tracing-subscriber.workspace = true
+winer-core.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_Registry",
+  "Win32_System_Threading",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[dev-dependencies]
+tauri = { workspace = true, features = ["test"] }
+tempfile.workspace = true

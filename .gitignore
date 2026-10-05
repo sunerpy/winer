@@ -1,0 +1,30 @@
+# Rust
+/target/
+**/target/
+*.pdb
+
+# Node
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Tauri
+/app/src-tauri/gen/
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Local tooling caches
+.codegraph/
+__pycache__/
+
+# Signing keys. The updater's private key never lives in the tree (docs/updater-key-management.md);
+# these are a backstop against an accidental `cargo tauri signer generate` run here.
+*.key
+*.key.pub
+*.pem.key

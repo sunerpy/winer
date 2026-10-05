@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "profile": "tauri",
+  "targets": [
+    {
+      "bundles": ["nsis"],
+      "cross": false,
+      "platform": "windows",
+      "runner": "windows-2025",
+      "target": "x86_64-pc-windows-msvc",
+      "updater_bundle": "nsis",
+      "updater_platform": "windows-x86_64"
+    }
+  ]
+}

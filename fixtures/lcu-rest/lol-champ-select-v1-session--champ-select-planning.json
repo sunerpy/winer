@@ -1,0 +1,132 @@
+{
+  "body": {
+    "actions": [
+      [
+        {
+          "actorCellId": 0,
+          "championId": 0,
+          "completed": false,
+          "duration": 0,
+          "id": 0,
+          "isAllyAction": true,
+          "isInProgress": true,
+          "pickTurn": 0,
+          "type": "ban"
+        }
+      ],
+      [
+        {
+          "actorCellId": -1,
+          "championId": 0,
+          "completed": false,
+          "duration": 0,
+          "id": 101,
+          "isAllyAction": false,
+          "isInProgress": false,
+          "pickTurn": 0,
+          "type": "ten_bans_reveal"
+        }
+      ],
+      [
+        {
+          "actorCellId": 0,
+          "championId": 0,
+          "completed": false,
+          "duration": 0,
+          "id": 1,
+          "isAllyAction": true,
+          "isInProgress": false,
+          "pickTurn": 0,
+          "type": "pick"
+        }
+      ]
+    ],
+    "allowBattleBoost": false,
+    "allowDuplicatePicks": false,
+    "allowLockedEvents": false,
+    "allowPlayerPickSameChampion": false,
+    "allowRerolling": false,
+    "allowSkinSelection": true,
+    "allowSubsetChampionPicks": false,
+    "bans": {
+      "myTeamBans": [],
+      "numBans": 0,
+      "theirTeamBans": []
+    },
+    "benchChampions": [],
+    "benchEnabled": false,
+    "boostableSkinCount": 0,
+    "chatDetails": {
+      "mucJwtDto": {
+        "channelClaim": "55390a29-fc64-4026-a4b0-7e77966f252b",
+        "domain": "lol-champ-select",
+        "jwt": "REDACTED-TOKEN-0001",
+        "targetRegion": "placeholder"
+      },
+      "multiUserChatId": "55390a29-fc64-4026-a4b0-7e77966f252b",
+      "multiUserChatPassword": "REDACTED-TOKEN-0001"
+    },
+    "counter": 2,
+    "disallowBanningTeammateHoveredChampions": false,
+    "gameId": 901035040216,
+    "hasSimultaneousBans": true,
+    "hasSimultaneousPicks": true,
+    "id": "55390a29-fc64-4026-a4b0-7e77966f252b",
+    "isCustomGame": true,
+    "isLegacyChampSelect": false,
+    "isSpectating": false,
+    "localPlayerCellId": 0,
+    "lockedEventIndex": -1,
+    "myTeam": [
+      {
+        "assignedPosition": "top",
+        "cellId": 0,
+        "championId": 0,
+        "championPickIntent": 0,
+        "gameName": "PlayerOne",
+        "internalName": "playerone",
+        "isAutofilled": false,
+        "isHumanoid": false,
+        "nameVisibilityType": "VISIBLE",
+        "obfuscatedPuuid": "PUUID-0001",
+        "obfuscatedSummonerId": 1001,
+        "pickMode": 0,
+        "pickTurn": 0,
+        "playerAlias": "",
+        "playerType": "",
+        "puuid": "PUUID-0002",
+        "selectedSkinId": 0,
+        "spell1Id": 6,
+        "spell2Id": 7,
+        "summonerId": 1002,
+        "tagLine": "T001",
+        "team": 1,
+        "wardSkinId": -1
+      }
+    ],
+    "pickOrderSwaps": [],
+    "positionSwaps": [],
+    "queueId": 3110,
+    "rerollsRemaining": 0,
+    "showQuitButton": true,
+    "skipChampionSelect": false,
+    "theirTeam": [],
+    "timer": {
+      "adjustedTimeLeftInPhase": 24000,
+      "internalNowInEpochMs": 1787051168744,
+      "isInfinite": false,
+      "phase": "PLANNING",
+      "totalTimeInPhase": 24000
+    },
+    "trades": []
+  },
+  "header": {
+    "confidence": "high",
+    "endpoint": "/lol-champ-select/v1/session",
+    "provenance": "captured",
+    "scenario": "champ-select/planning"
+  },
+  "method": "GET",
+  "path": "/lol-champ-select/v1/session",
+  "status": 200
+}

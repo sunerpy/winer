@@ -1,0 +1,12 @@
+{
+  "ignorePatterns": [
+    "fixtures/**",
+    "CHANGELOG.md",
+    ".release-please-manifest.json",
+    "release-please-config.json",
+    "packages/shared/src/bindings.ts",
+    "target/**",
+    "**/dist/**",
+    "pnpm-lock.yaml"
+  ]
+}

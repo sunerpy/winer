@@ -1,0 +1,28 @@
+{
+  "name": "winer-workspace",
+  "version": "0.0.1",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @winer/desktop dev",
+    "build": "pnpm --filter @winer/plugin build && pnpm --filter @winer/desktop build",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "oxlint --type-aware",
+    "test": "pnpm -r run test",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.5",
+    "oxfmt": "0.70.0",
+    "oxlint": "1.85.0",
+    "oxlint-tsgolint": "7.0.2003",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@9.15.9"
+}

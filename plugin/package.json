@@ -1,0 +1,21 @@
+{
+  "name": "@winer/plugin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The in-client half of winer: a Pengu Loader plugin that draws inside the League client.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.2",
+    "@winer/shared": "workspace:*",
+    "jsdom": "30.1.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.1",
+    "vitest": "5.0.1"
+  }
+}

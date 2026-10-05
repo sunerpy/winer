@@ -1,0 +1,80 @@
+use std::{env, fs, path::PathBuf};
+
+fn main() {
+    embed_plugin_bundle();
+    app_version();
+    windows_manifest();
+    let windows = tauri_build::WindowsAttributes::new_without_app_manifest();
+    if let Err(error) =
+        tauri_build::try_build(tauri_build::Attributes::new().windows_attributes(windows))
+    {
+        panic!("tauri-build: {error:#}");
+    }
+}
+
+/// The application manifest, embedded into every target instead of the app alone, which is all
+/// tauri-build does: the unit-test executables need it as much. Without it Windows loads
+/// comctl32 5.82, which lacks an entry point a dependency imports, and a test executable exits
+/// with STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139) before running a test. The content is
+/// tauri-build's own default manifest: a dependency on Common Controls 6.
+fn windows_manifest() {
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
+    let out = PathBuf::from(env::var_os("OUT_DIR").expect("cargo sets OUT_DIR"));
+    let manifest = out.join("winer.manifest");
+    fs::write(&manifest, MANIFEST).expect("OUT_DIR is writable");
+    let rc = out.join("manifest.rc");
+    // 1 is CREATEPROCESS_MANIFEST_RESOURCE_ID, 24 is RT_MANIFEST.
+    let path = manifest.display().to_string().replace('\\', "\\\\");
+    fs::write(&rc, format!("1 24 \"{path}\"\n")).expect("OUT_DIR is writable");
+    embed_resource::compile_for_everything(&rc, embed_resource::NONE)
+        .manifest_required()
+        .expect("the manifest resource compiles");
+}
+
+const MANIFEST: &str = r#"<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*"
+      />
+    </dependentAssembly>
+  </dependency>
+</assembly>
+"#;
+
+/// The app's version is the root package.json's alone (release-please bumps it there and nowhere
+/// else); `WINER_VERSION` hands it to the code, since the crates keep a static `0.0.0`.
+fn app_version() {
+    let manifest = PathBuf::from("../../package.json");
+    println!("cargo:rerun-if-changed={}", manifest.display());
+    let text = fs::read_to_string(&manifest).expect("the root package.json is readable");
+    let package: serde_json::Value = serde_json::from_str(&text).expect("package.json is JSON");
+    let version = package["version"]
+        .as_str()
+        .expect("package.json has a version");
+    println!("cargo:rustc-env=WINER_VERSION={version}");
+}
+
+/// The in-client plugin ships inside the binary, so installing it needs no download. A release
+/// build refuses to go without it; a debug build gets a stub, so `cargo test` works before the
+/// plugin has been built.
+fn embed_plugin_bundle() {
+    let bundle = PathBuf::from("../../plugin/dist/index.js");
+    println!("cargo:rerun-if-changed={}", bundle.display());
+    let out = PathBuf::from(env::var_os("OUT_DIR").expect("cargo sets OUT_DIR")).join("plugin.js");
+    let code = match fs::read_to_string(&bundle) {
+        Ok(code) => code,
+        Err(_) if env::var("PROFILE").as_deref() == Ok("release") => {
+            panic!("plugin/dist/index.js is missing; run `pnpm --filter @winer/plugin build` first")
+        }
+        Err(_) => "/*! winer-plugin 0.0.0-dev */\nexport function init() {}\n".to_owned(),
+    };
+    fs::write(out, code).expect("OUT_DIR is writable");
+}
