@@ -455,6 +455,9 @@ export const zhCN = {
   "settings.update": "软件更新",
   "settings.checkUpdate": "检查更新",
   "settings.releases": "发布页",
+  "settings.notices": "第三方许可",
+  "settings.noticesHint": "winer 内置的 Pengu Loader 等组件的许可原文。",
+  "settings.noticesShow": "查看许可原文",
   "settings.license": "MIT 许可。winer 不是 Riot Games 的产品，也未获其认可。",
 
   "update.idle": "尚未检查更新",

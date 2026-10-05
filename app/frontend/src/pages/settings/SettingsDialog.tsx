@@ -498,6 +498,16 @@ function AboutSection({ onOpenUpdate }: { onOpenUpdate: () => void }) {
           {t("settings.releases")}
         </Button>
       </Row>
+      <Row label={t("settings.notices")} help={t("settings.noticesHint")}>
+        <details className="w-full">
+          <summary className="cursor-pointer text-[12.5px] text-fg-muted hover:text-fg">
+            {t("settings.noticesShow")}
+          </summary>
+          <pre className="mono mt-2 max-h-56 overflow-auto rounded-6 bg-inset p-3 text-[11px] hairline leading-4 whitespace-pre-wrap text-fg-muted">
+            {info.data?.notices}
+          </pre>
+        </details>
+      </Row>
       <p className="pt-4 text-[11.5px] leading-5 text-fg-subtle">{t("settings.license")}</p>
     </div>
   );

@@ -217,6 +217,7 @@ async fn get_app_info<R: Runtime>(app: AppHandle<R>) -> Result<AppInfo> {
         elevated: elevation::is_elevated(),
         log_dir: paths.log_dir.display().to_string(),
         settings_path: paths.settings.display().to_string(),
+        notices: include_str!("../../../THIRD_PARTY_NOTICES.md").into(),
     })
 }
 

@@ -646,6 +646,8 @@ pub struct AppInfo {
     pub elevated: bool,
     pub log_dir: String,
     pub settings_path: String,
+    /// The licences of the third-party components shipped inside winer (`THIRD_PARTY_NOTICES.md`).
+    pub notices: String,
 }
 
 /// The updater's progress, owned by the shell and broadcast to the window.

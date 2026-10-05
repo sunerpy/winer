@@ -468,6 +468,10 @@ export const en: Record<MessageKey, string> = {
   "settings.update": "Updates",
   "settings.checkUpdate": "Check for updates",
   "settings.releases": "Releases",
+  "settings.notices": "Third-party licences",
+  "settings.noticesHint":
+    "The licence texts of components shipped inside winer, such as Pengu Loader.",
+  "settings.noticesShow": "Show the licence texts",
   "settings.license":
     "MIT licence. winer is not a Riot Games product and is not endorsed by Riot Games.",
 

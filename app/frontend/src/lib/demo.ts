@@ -630,6 +630,8 @@ export function demoBackend(): Backend {
       elevated: true,
       logDir: "C:\\Users\\demo\\AppData\\Local\\app.winer.desktop\\logs",
       settingsPath: "settings.json",
+      notices:
+        "# Third-party notices\n\n## Pengu Loader\n\nMIT License\n\nCopyright (c) 2024 Pengu Loader",
     }),
     relaunch_elevated: () => null,
     reveal_logs: () => null,

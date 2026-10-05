@@ -249,7 +249,11 @@ export type AppInfo = { version: string,
 /**
  * The process runs elevated; required to read an elevated client's credentials.
  */
-elevated: boolean, logDir: string, settingsPath: string, };
+elevated: boolean, logDir: string, settingsPath: string, 
+/**
+ * The licences of the third-party components shipped inside winer (`THIRD_PARTY_NOTICES.md`).
+ */
+notices: string, };
 
 export type UpdateStatus = { "state": "idle" } | { "state": "checking" } | { "state": "upToDate", version: string, checkedAt: number, } | { "state": "available", version: string, current: string, notes: string | null, date: string | null, } | { "state": "downloading", version: string, received: number, total: number | null, } | { "state": "installing", version: string, } | { "state": "failed", message: string, };
 
