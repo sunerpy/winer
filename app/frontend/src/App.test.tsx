@@ -1254,3 +1254,25 @@ describe("loadout", () => {
     expect(within(sources).getByRole("radio", { name: "腾讯 101" })).toBeDisabled();
   });
 });
+
+// The history panel in the client.
+describe("the history panel in the client", () => {
+  it("is switched on its own on the in-client page, on to begin with", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.plugin"] }));
+    const toggle = await screen.findByRole("switch", { name: zhCN["overlay.historyInClient"] });
+    expect(toggle).toBeChecked();
+    expect(screen.getByText(zhCN["overlay.historyInClientHint"])).toBeInTheDocument();
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          plugin: expect.objectContaining({ historyInClient: false, lobbyPanel: true }),
+        }),
+      }),
+    );
+    expect(screen.getByRole("switch", { name: zhCN["social.pluginLobby"] })).toBeChecked();
+  });
+});

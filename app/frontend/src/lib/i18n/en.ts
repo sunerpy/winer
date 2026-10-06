@@ -448,7 +448,7 @@ export const en: Record<MessageKey, string> = {
   "plugin.features": "In-client features",
   "plugin.teamPanel": "Teammate panel in champ select",
   "plugin.teamPanelHint":
-    "In every mode's champ select: each teammate's rank, win rate and recent form, and your side.",
+    "In every mode's champ select: each teammate's rank, win rate and recent form, and your side; a click on a teammate's line shows their history.",
   "plugin.hidePromotions": "Hide home-page promotions",
   "plugin.benchNoCooldown": "Instant bench swaps in the client",
   "plugin.benchNoCooldownHint":
@@ -722,7 +722,7 @@ export const en: Record<MessageKey, string> = {
     "In the client's friends list on the right: the mode and running time of each friend's game; friends playing together share a colour.",
   "social.pluginLobby": "Lobby members' form",
   "social.pluginLobbyHint":
-    "In the client's lobby: recent win rate, KDA and form score above each member's banner; a click on a member opens their history in winer.",
+    "In the client's lobby: recent win rate, KDA and form score above each member's banner; a click on a member shows their history.",
   "social.hotkey": "Shortcut to bring up winer",
   "social.hotkeyHint":
     "Shows or hides winer from anywhere; shown during a game, it stays above the game. The game must run borderless or windowed.",
@@ -736,4 +736,9 @@ export const en: Record<MessageKey, string> = {
   "social.hotkeyActive": "Active",
   "social.hotkeyFailed":
     "Not registered: another program probably holds this combination. Try another.",
+
+  // The history panel in the client.
+  "overlay.historyInClient": "Recent games inside the client",
+  "overlay.historyInClientHint":
+    "A click on a player in the lobby or in champ select shows their latest games in a panel inside the client; off, it opens their history in winer's window.",
 };

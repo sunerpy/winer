@@ -655,6 +655,10 @@ pub struct PluginSettings {
     /// In the client's lobby: each member's recent form above their banner, and a click that opens
     /// their history in winer.
     pub lobby_panel: bool,
+    // The history panel in the client.
+    /// A click on a player in the client's lobby or champ select shows their latest games in a
+    /// panel over the client page; off, the click opens their history in winer's window.
+    pub history_in_client: bool,
 }
 
 impl Default for PluginSettings {
@@ -667,6 +671,8 @@ impl Default for PluginSettings {
             loader_dir: None,
             friend_status: true,
             lobby_panel: true,
+            // The history panel in the client.
+            history_in_client: true,
         }
     }
 }
@@ -1330,6 +1336,21 @@ mod tests {
             old.plugin.friend_status && old.plugin.lobby_panel && !old.plugin.team_panel,
             "a file from before them gets them on and keeps its own switches"
         );
+    }
+
+    // The history panel in the client.
+    #[test]
+    fn the_history_panel_in_the_client_starts_on_and_can_be_switched_off() {
+        assert!(PluginSettings::default().history_in_client);
+        let old: Settings =
+            serde_json::from_str(r#"{"plugin":{"lobbyPanel":false,"teamPanel":true}}"#).unwrap();
+        assert!(
+            old.plugin.history_in_client && !old.plugin.lobby_panel,
+            "a file from before it gets it on and keeps its own switches"
+        );
+        let off: Settings =
+            serde_json::from_str(r#"{"plugin":{"historyInClient":false}}"#).unwrap();
+        assert!(!off.normalized().plugin.history_in_client);
     }
 
     #[test]

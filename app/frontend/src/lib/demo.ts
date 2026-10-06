@@ -707,6 +707,8 @@ const DEFAULT_SETTINGS: Settings = {
     loaderDir: null,
     friendStatus: true,
     lobbyPanel: true,
+    // The history panel in the client.
+    historyInClient: true,
   },
   profile: {
     rankDisguise: { enabled: false, queue: "solo", tier: "DIAMOND", division: "I" },

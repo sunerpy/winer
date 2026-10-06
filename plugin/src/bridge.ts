@@ -27,7 +27,13 @@ export interface BridgeHandlers {
   onHello(snapshot: Snapshot, settings: Settings): void;
   onEvent(event: Event): void;
   onConnection(connected: boolean): void;
+  // The history panel.
+  /** winer's answer to a `history` request. */
+  onHistory(result: HistoryResult): void;
 }
+
+/** winer's answer to a `history` request: the player's latest games, or why there are none. */
+export type HistoryResult = Extract<BridgeMessage, { type: "historyResult" }>;
 
 /** Waits between attempts: quick at first, then every ten seconds while the app is away. */
 export function backoff(attempt: number): number {
@@ -39,6 +45,8 @@ export class Bridge {
   #attempt = 0;
   #timer: ReturnType<typeof setTimeout> | undefined;
   #stopped = false;
+  /** The last history request's id; each answer names the request it answers. */
+  #requests = 0;
 
   constructor(
     private readonly handlers: BridgeHandlers,
@@ -72,6 +80,16 @@ export class Bridge {
     if (this.#socket?.readyState !== WebSocket.OPEN) return false;
     this.#send({ type: "openHistory", puuid });
     return true;
+  }
+
+  // The history panel.
+  /** Asks winer for `puuid`'s latest games. The answer comes to `onHistory` under the id this
+   *  returns; null while there is no connection. */
+  history(puuid: string): number | null {
+    if (this.#socket?.readyState !== WebSocket.OPEN) return null;
+    this.#requests += 1;
+    this.#send({ type: "history", puuid, requestId: this.#requests });
+    return this.#requests;
   }
 
   #send(message: PluginMessage): void {
@@ -112,6 +130,7 @@ export class Bridge {
         return;
       }
       if (data.type === "hello") this.handlers.onHello(data.snapshot, data.settings);
+      else if (data.type === "historyResult") this.handlers.onHistory(data);
       else this.handlers.onEvent(data.event);
     });
     socket.addEventListener("close", () => {

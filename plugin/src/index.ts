@@ -4,9 +4,17 @@
 import type { ChampSelectView, Language, LobbyView, Settings, Snapshot } from "@winer/shared";
 
 import { BENCH_STYLE, interceptBenchClicks, liftBenchCooldown } from "./bench";
-import { Bridge } from "./bridge";
+import { Bridge, type HistoryResult } from "./bridge";
 import { h } from "./dom";
 import { decorateFriends } from "./friends";
+import {
+  HISTORY_PANEL,
+  HistoryPanel,
+  type Subject,
+  type Surface,
+  anchorOf,
+  interceptPlayerClicks,
+} from "./history";
 import { type HomeState, PROMOTIONS, decorateHome, forgetHub } from "./home";
 import { text } from "./i18n";
 import {
@@ -52,6 +60,8 @@ export class Controller {
   #ticking = false;
   #lobbyPanel: FloatingPanel | null = null;
   #lobbyKey = "";
+  // The history panel.
+  readonly history: HistoryPanel;
 
   constructor(private readonly doc: Document = document) {
     this.bridge = new Bridge(
@@ -59,9 +69,14 @@ export class Controller {
         onHello: (snapshot, settings) => this.state.hello(snapshot, settings),
         onEvent: (event) => this.state.event(event),
         onConnection: (connected) => this.state.connection(connected),
+        onHistory: (result) => this.#answered(result),
       },
       { version: WINER_PLUGIN_VERSION, context: this.context },
     );
+    this.history = new HistoryPanel(this.doc, this.context, {
+      request: (puuid) => this.bridge.history(puuid),
+      openInWiner: (puuid) => void this.openHistory(puuid),
+    });
   }
 
   start(): void {
@@ -70,7 +85,8 @@ export class Controller {
     }
     this.state.subscribe(() => this.schedule());
     interceptBenchClicks(this.doc, (championId) => this.swap(championId));
-    interceptAvatarClicks(this.doc, (puuid) => this.openHistory(puuid));
+    interceptAvatarClicks(this.doc, (puuid, card) => this.pick(puuid, card));
+    interceptPlayerClicks(this.doc, (puuid, line) => this.pick(puuid, line));
     new MutationObserver(() => this.schedule()).observe(this.doc.documentElement, {
       childList: true,
       subtree: true,
@@ -108,6 +124,7 @@ export class Controller {
     this.#home(settings);
     this.#bench(Boolean(settings?.plugin.benchNoCooldown) && snapshot?.phase === "ChampSelect");
     this.#social(snapshot, settings);
+    this.#historyPanel();
 
     const view =
       settings?.plugin.teamPanel && snapshot?.phase === "ChampSelect" ? snapshot.champSelect : null;
@@ -140,13 +157,14 @@ export class Controller {
 
   // ---- Social: friends' games in the friends list, the party in the lobby ----
 
-  /** Asks winer for `puuid`'s history, from a click on a lobby member. Only the drawing context
-   *  acts, so one click is one request. */
+  /** Asks winer to show `puuid`'s history in its window: for a click on a player while the history
+   *  panel is off, or the panel's own link. Only the drawing context acts, so one click is one
+   *  request. */
   openHistory(puuid: string): boolean {
     if (this.doc.documentElement.dataset.winerOwner !== this.context) return false;
     const sent = this.bridge.openHistory(puuid);
     if (this.state.connected)
-      this.bridge.log("info", `lobby click: ${sent ? "history asked for" : "not sent"}`);
+      this.bridge.log("info", `player click: ${sent ? "history asked for in winer" : "not sent"}`);
     return sent;
   }
 
@@ -170,7 +188,7 @@ export class Controller {
       this.#hideLobbyPanel();
       return;
     }
-    const open = (puuid: string) => void this.openHistory(puuid);
+    const open = (puuid: string, anchor: Element) => void this.pick(puuid, anchor);
     const cards = decorateLobby(this.doc, lobby, language, open);
     // The match-found dialog has the screen to itself: the panel would only sit in its way.
     if (cards > 0 || snapshot?.phase === "ReadyCheck") this.#hideLobbyPanel();
@@ -183,7 +201,11 @@ export class Controller {
     );
   }
 
-  #showLobbyPanel(view: LobbyView, language: Language, open: (puuid: string) => void): void {
+  #showLobbyPanel(
+    view: LobbyView,
+    language: Language,
+    open: (puuid: string, anchor: Element) => void,
+  ): void {
     removePanels(this.doc, "lobby", this.context);
     if (!this.#lobbyPanel?.host.isConnected) {
       this.#lobbyPanel = floatingPanel(this.doc, text(language, "lobby"), this.context);
@@ -290,13 +312,104 @@ export class Controller {
     const key = JSON.stringify([language, view.side, view.myTeam]);
     if (key !== this.#panelKey) {
       this.#panelKey = key;
-      this.#panel.body.replaceChildren(panelRows(view, language));
+      const open = (puuid: string, anchor: Element) => void this.pick(puuid, anchor);
+      this.#panel.body.replaceChildren(panelRows(view, language, open));
     }
   }
 
   #hidePanel(): void {
     removePanels(this.doc, "team");
     this.#panel = null;
+  }
+
+  // ---- The history panel: a player's latest games over the client page ----
+
+  /** A click on a player in the lobby or in champ select. With 在客户端里查看战绩 on, their latest
+   *  games in the panel beside `element` (a second click on them closes it); off, their history in
+   *  winer's window. Only the drawing context acts, so one click is one request. Says whether it
+   *  took the click. */
+  pick(puuid: string, element?: Element | null): boolean {
+    if (this.doc.documentElement.dataset.winerOwner !== this.context) return false;
+    const settings = this.state.settings;
+    if (!settings?.plugin.historyInClient) return this.openHistory(puuid);
+    const surface = this.#surface();
+    const subject = surface ? this.#subject(puuid) : null;
+    const done =
+      surface && subject
+        ? this.history.toggle(subject, surface, anchorOf(element), settings.general.language)
+        : null;
+    if (this.state.connected)
+      this.bridge.log(
+        "info",
+        `player click: ${done ? `history panel ${done} (${surface})` : "no history panel"}`,
+      );
+    return done !== null;
+  }
+
+  /** winer's answer for the panel; what it held goes to the desktop log, once per answer drawn. */
+  #answered(result: HistoryResult): void {
+    if (this.history.answer(result) && this.state.connected)
+      this.bridge.log(
+        "info",
+        result.page
+          ? `history panel: ${result.page.games.length} games`
+          : `history panel: no games (${result.error?.code ?? "?"})`,
+      );
+  }
+
+  /** The screen a click on a player comes from now: champ select or the lobby, where winer draws
+   *  its lines; none while the match-found dialog has the screen. */
+  #surface(): Surface | null {
+    const { snapshot, settings } = this.state;
+    if (!snapshot || !settings) return null;
+    if (snapshot.phase === "ChampSelect")
+      return settings.plugin.teamPanel && snapshot.champSelect ? "champSelect" : null;
+    if (snapshot.phase === "ReadyCheck") return null;
+    return settings.plugin.lobbyPanel && snapshot.lobby ? "lobby" : null;
+  }
+
+  /** The player as the view shows them, for the panel's summary. */
+  #subject(puuid: string): Subject | null {
+    const snapshot = this.state.snapshot;
+    const member = snapshot?.lobby?.members.find((candidate) => candidate.puuid === puuid);
+    if (member)
+      return {
+        puuid,
+        name: member.name,
+        iconId: member.iconId,
+        stats: member.stats,
+        rating: null,
+        score: member.score,
+      };
+    const select = snapshot?.champSelect;
+    const seat = select
+      ? [...select.myTeam, ...select.theirTeam].find((candidate) => candidate.puuid === puuid)
+      : undefined;
+    if (!seat) return null;
+    const summary = seat.stats.state === "ready" ? seat.stats : null;
+    return {
+      puuid,
+      name: seat.name ?? summary?.name ?? null,
+      iconId: summary?.iconId ?? 0,
+      stats: seat.stats,
+      rating: seat.rating,
+      score: seat.rating?.score ?? null,
+    };
+  }
+
+  /** Keeps the panel to the screen it was opened on: it closes when the client leaves that screen,
+   *  when the match-found dialog comes up and when the option goes off; meanwhile its summary
+   *  follows the view. Clears a panel the page's other context left. */
+  #historyPanel(): void {
+    removePanels(this.doc, HISTORY_PANEL, this.context);
+    if (!this.history.isOpen) return;
+    const settings = this.state.settings;
+    const puuid = this.history.puuid;
+    if (!settings?.plugin.historyInClient || !puuid || this.#surface() !== this.history.surface) {
+      this.history.close();
+      return;
+    }
+    this.history.refresh(this.#subject(puuid), settings.general.language);
   }
 }
 

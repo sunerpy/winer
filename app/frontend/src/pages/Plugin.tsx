@@ -219,6 +219,14 @@ function FeaturesPanel() {
           label={t("social.pluginLobby")}
         />
       </Row>
+      {/* The history panel in the client. */}
+      <Row label={t("overlay.historyInClient")} help={t("overlay.historyInClientHint")}>
+        <Toggle
+          checked={plugin.historyInClient}
+          onChange={(historyInClient) => save((value) => ({ ...value, historyInClient }))}
+          label={t("overlay.historyInClient")}
+        />
+      </Row>
       <Row label={t("plugin.hidePromotions")} help={t("plugin.hidePromotionsHint")}>
         <Toggle
           checked={plugin.hidePromotions}

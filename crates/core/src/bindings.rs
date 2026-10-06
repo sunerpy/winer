@@ -132,6 +132,8 @@ pub fn typescript() -> String {
         builds::AugmentTier,
         builds::AugmentOption,
     );
+    // The history panel in the client.
+    declare!(bridge::PanelHistory, bridge::PanelGame);
     out
 }
 
