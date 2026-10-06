@@ -110,8 +110,8 @@ describe("store", () => {
     const store = new AppStore(backend);
     await store.start();
     await store.loadHotkey();
-    expect(store.hotkey.get()).toMatchObject({ shortcut: "Ctrl+Shift+W", active: true });
-    announce({ shortcut: "Ctrl+Shift+W", active: false, suspended: false, error: "taken" });
+    expect(store.hotkey.get()).toMatchObject({ shortcut: "Alt+Backquote", active: true });
+    announce({ shortcut: "Alt+Backquote", active: false, suspended: false, error: "taken" });
     expect(store.hotkey.get()?.error).toBe("taken");
   });
 });

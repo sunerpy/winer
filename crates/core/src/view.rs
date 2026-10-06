@@ -855,7 +855,7 @@ impl LanePreference {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct HotkeyStatus {
-    /// The combination the settings name (`Ctrl+Shift+W`); `None` while the shortcut is off.
+    /// The combination the settings name (`Alt+Backquote`); `None` while the shortcut is off.
     pub shortcut: Option<String>,
     /// The system has it registered for winer right now.
     pub active: bool,

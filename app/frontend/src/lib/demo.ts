@@ -640,7 +640,7 @@ const DEFAULT_SETTINGS: Settings = {
     language: "zh-CN",
     augmentDetails: true,
     titles: true,
-    hotkey: "Ctrl+Shift+W",
+    hotkey: "Alt+Backquote",
   },
   automation: {
     accept: { enabled: true, delayMs: 1500 },

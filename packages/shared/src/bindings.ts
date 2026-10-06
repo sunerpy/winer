@@ -334,7 +334,7 @@ export type LanePreference = "top" | "jungle" | "middle" | "bottom" | "utility" 
 
 export type HotkeyStatus = { 
 /**
- * The combination the settings name (`Ctrl+Shift+W`); `None` while the shortcut is off.
+ * The combination the settings name (`Alt+Backquote`); `None` while the shortcut is off.
  */
 shortcut: string | null, 
 /**

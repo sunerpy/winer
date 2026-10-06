@@ -34,7 +34,7 @@ const SETTINGS = {
     language: "zh-CN",
     augmentDetails: true,
     titles: true,
-    hotkey: "Ctrl+Shift+W",
+    hotkey: "Alt+Backquote",
   },
   automation: {
     accept: { enabled: false, delayMs: 1500 },

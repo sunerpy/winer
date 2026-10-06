@@ -115,8 +115,10 @@ impl Default for General {
 
 // ---- Social: the hotkey's combinations ----
 
-/// Not bound by the game, the client or Windows by default.
-pub const DEFAULT_HOTKEY: &str = "Ctrl+Shift+W";
+/// Not bound by the game, the client or Windows by default. The first choice, Ctrl+Shift+W, was
+/// already held by another program on the QA host (2026-10-06), as was Ctrl+Shift+Q; this one was
+/// free there.
+pub const DEFAULT_HOTKEY: &str = "Alt+Backquote";
 
 /// The keys a combination can end in besides letters, digits and F1–F24, by the names
 /// [`normalize_hotkey`] writes. Each is one the shell's shortcut parser accepts.

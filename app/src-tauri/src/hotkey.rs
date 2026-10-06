@@ -284,8 +284,8 @@ mod tests {
         }
         assert_eq!(
             parse(DEFAULT_HOTKEY),
-            parse("control+shift+KeyW"),
-            "the default is Ctrl+Shift+W"
+            parse("alt+Backquote"),
+            "the default is Alt+`"
         );
         assert!(parse("Ctrl+Nonsense").is_err());
     }

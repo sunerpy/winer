@@ -778,7 +778,8 @@ describe("social", () => {
     const call = vi.spyOn(backend, "call");
     const { user } = await renderApp(backend);
     const dialog = await openGeneralSettings(user);
-    expect(within(dialog).getByText("Ctrl")).toBeInTheDocument();
+    expect(within(dialog).getByText("Alt")).toBeInTheDocument();
+    expect(within(dialog).getByText("`")).toBeInTheDocument();
     expect(await within(dialog).findByText(zhCN["social.hotkeyActive"])).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole("button", { name: zhCN["social.hotkeyChange"] }));
@@ -823,7 +824,7 @@ describe("social", () => {
     const { user } = await renderApp(
       demoWith({
         get_hotkey_status: () => ({
-          shortcut: "Ctrl+Shift+W",
+          shortcut: "Alt+Backquote",
           active: false,
           suspended: false,
           error: "HotKey already registered",
