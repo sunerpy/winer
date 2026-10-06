@@ -28,6 +28,25 @@ export function noticeText(kind: NoticeKind, t: Translate, catalog: Catalog | nu
       return t("notice.calledOut", { n: kind.lines });
     case "failed":
       return t("notice.failed", { message: kind.message });
+    // Runes, spells and item sets.
+    case "loadoutApplied": {
+      const name = champion(kind.championId);
+      const runes = kind.runes === "written";
+      const what = runes && kind.spells ? "both" : runes ? "runes" : "spells";
+      const applied =
+        runes || kind.spells
+          ? t(kind.recommended ? "loadout.notice.recommended" : "loadout.notice.remembered", {
+              champion: name,
+              what: t(`loadout.what.${what}`),
+            })
+          : null;
+      if (kind.runes !== "noPage") return applied ?? "";
+      return applied
+        ? t("loadout.notice.noPageToo", { applied })
+        : t("loadout.notice.noPage", { champion: name });
+    }
+    case "itemSetWritten":
+      return t("loadout.notice.itemSet", { champion: champion(kind.championId) });
   }
 }
 

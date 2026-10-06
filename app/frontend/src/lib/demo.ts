@@ -20,6 +20,13 @@ import type {
 } from "@winer/shared";
 
 import type { ArgsOf, Backend, CommandName, Commands } from "./backend";
+import {
+  DEMO_AUGMENTS,
+  DEMO_ITEMS,
+  DEMO_PERKS,
+  DEMO_SPELLS,
+  demoLoadoutHandlers,
+} from "./demoLoadout";
 import { FEAT_ORDER } from "./feats";
 import { defaultScopes } from "./modes";
 import { TIER_NAMES } from "./tiers";
@@ -50,14 +57,15 @@ const GAME_DATA: GameData = {
     alias,
     icon: "",
   })),
-  items: [],
-  spells: [],
-  perks: [],
+  items: DEMO_ITEMS,
+  spells: DEMO_SPELLS,
+  perks: DEMO_PERKS,
   augments: [
     { id: 1004, name: "回归基本功", icon: "", rarity: "prismatic" },
     { id: 2103, name: "狙神飞星", icon: "", rarity: "gold" },
     { id: 1116, name: "闪现向前", icon: "", rarity: "gold" },
     { id: 2102, name: "高压锅", icon: "", rarity: "silver" },
+    ...DEMO_AUGMENTS,
   ],
   queues: [
     { id: 420, name: "排位赛 单排/双排", gameMode: "CLASSIC", ranked: true },
@@ -483,6 +491,8 @@ const DEFAULT_SETTINGS: Settings = {
     },
     bench: { enabled: true, champions: [103, 99, 22] },
     scopes: defaultScopes(),
+    loadout: { enabled: false, recommended: true },
+    itemSets: false,
   },
   plugin: {
     auto: true,
@@ -491,6 +501,7 @@ const DEFAULT_SETTINGS: Settings = {
     benchNoCooldown: true,
     loaderDir: null,
   },
+  builds: { enabled: true, riftSource: "tencent" },
 };
 
 export function demoBackend(): Backend {
@@ -646,6 +657,7 @@ export function demoBackend(): Backend {
     install_update: () => null,
     open_releases: () => null,
     open_docs: () => null,
+    ...demoLoadoutHandlers(() => settings),
   };
 
   return {

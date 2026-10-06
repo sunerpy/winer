@@ -6,17 +6,23 @@ import type {
   AppInfo,
   Audience,
   AugmentDetail,
+  Build,
   CalloutRule,
   Event,
   GameData,
   General,
   IpcError,
+  LoadoutSummary,
   MatchDetail,
   MatchPage,
+  Mode,
+  PageOutcome,
   PlayerProfile,
   PlayerSummary,
   PluginStatus,
+  Position,
   Presence,
+  RunePage,
   Settings,
   Snapshot,
   UpdateStatus,
@@ -55,6 +61,14 @@ export interface Commands {
   install_update: Command<undefined, null>;
   open_releases: Command<undefined, null>;
   open_docs: Command<{ page: "home" | "rating" }, null>;
+  // Runes, spells, builds and item sets.
+  get_build: Command<{ championId: number; mode: Mode; lane: Position | null }, Build>;
+  apply_runes: Command<{ championId: number; page: RunePage }, PageOutcome>;
+  apply_spells: Command<{ spells: [number, number] }, null>;
+  write_item_set: Command<{ championId: number; mode: Mode; lane: Position | null }, null>;
+  clear_item_sets: Command<undefined, number>;
+  get_loadout_summary: Command<undefined, LoadoutSummary>;
+  clear_loadouts: Command<undefined, LoadoutSummary>;
 }
 
 export type CommandName = keyof Commands;

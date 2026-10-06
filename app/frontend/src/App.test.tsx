@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { GameView, Mode, Seat } from "@winer/shared";
+import type { ChampSelectView, GameView, Mode, Seat, Snapshot } from "@winer/shared";
 
 import { App } from "./App";
 import type { Backend, CommandName } from "./lib/backend";
@@ -375,5 +375,312 @@ describe("App", () => {
     await user.click(within(dialog).getByRole("tab", { name: zhCN["settings.general"] }));
     await user.click(within(dialog).getByRole("button", { name: "English" }));
     expect(await screen.findByRole("navigation", { name: en["nav.label"] })).toBeInTheDocument();
+  });
+});
+
+describe("loadout", () => {
+  const seat = (championId: number, isSelf: boolean, position: Seat["position"]): Seat => ({
+    puuid: isSelf ? "demo-me" : `p-${championId}`,
+    name: { gameName: isSelf ? "暗夜里的光" : `p${championId}`, tagLine: "1" },
+    championId,
+    intent: false,
+    position,
+    spells: [4, 12],
+    isSelf,
+    premade: null,
+    rating: null,
+    stats: { state: "loading" },
+  });
+  const connected = { status: "connected", port: 1, platformId: "NJ100" } as const;
+
+  /** The demo client in a ranked champ select, the local player on Ahri in the middle lane. */
+  const ranked: ChampSelectView = {
+    gameId: 2,
+    queueId: 420,
+    timer: { phase: "BAN_PICK", endsAt: 0, totalMs: 0 },
+    myTeam: [seat(103, true, "middle"), seat(64, false, "jungle")],
+    theirTeam: [],
+    myBans: [],
+    theirBans: [],
+    benchEnabled: false,
+    bench: [],
+    rerollsRemaining: 0,
+    callout: [],
+    side: "blue",
+  };
+  const live = (snapshot: Partial<Snapshot>): Snapshot => ({
+    ...EMPTY_SNAPSHOT,
+    rev: 1,
+    connection: connected,
+    ...snapshot,
+  });
+
+  async function openLive(backend: Backend) {
+    const rendered = await renderApp(backend);
+    await rendered.user.click(within(rendered.nav).getByRole("button", { name: zhCN["nav.live"] }));
+    return rendered;
+  }
+
+  it("shows the build of the champion in champ select, Hextech ARAM's augments by rarity", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openLive(backend);
+    expect(await screen.findByText("数据：腾讯掌上英雄联盟")).toBeInTheDocument();
+    expect(call).toHaveBeenCalledWith("get_build", {
+      championId: 103,
+      mode: "hextech",
+      lane: null,
+    });
+    expect(screen.getByText("九尾妖狐 · 阿狸")).toBeInTheDocument();
+    const tabs = screen.getByRole("radiogroup", { name: zhCN["loadout.tabs"] });
+    expect(
+      within(tabs)
+        .getAllByRole("radio")
+        .map((tab) => tab.textContent),
+      "Tencent's Hextech numbers have no runes or spells",
+    ).toEqual(["出装", "技能加点", "强化符文"]);
+    expect(screen.queryByRole("radiogroup", { name: zhCN["loadout.lane"] })).toBeNull();
+
+    await user.click(within(tabs).getByRole("radio", { name: "强化符文" }));
+    const prismatic = screen.getByRole("region", { name: "棱彩" });
+    expect(within(prismatic).getByText("连拨击锤")).toBeInTheDocument();
+    expect(
+      await within(prismatic).findByText(
+        "你的终极技能已被封印。获得35%技能伤害、治疗效果、护盾和70技能急速。",
+      ),
+      "what it does, from ARAM.GG",
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("region").map((region) => region.getAttribute("aria-label")),
+    ).toEqual(["棱彩", "金色", "银色"]);
+    await user.type(screen.getByRole("textbox", { name: zhCN["loadout.augmentFilter"] }), "无尽");
+    expect(screen.getByText("升级：无尽之刃")).toBeInTheDocument();
+    expect(screen.queryByText("连拨击锤")).toBeNull();
+
+    await user.click(within(tabs).getByRole("radio", { name: "出装" }));
+    expect(screen.getByRole("region", { name: zhCN["loadout.core"] })).toHaveTextContent("20.2%");
+    expect(screen.getAllByRole("img", { name: "卢登的伙伴" }).length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: zhCN["loadout.writeItemSet"] }));
+    expect(call).toHaveBeenCalledWith("write_item_set", {
+      championId: 103,
+      mode: "hextech",
+      lane: null,
+    });
+    expect(await screen.findByText(zhCN["loadout.itemSetWritten"])).toBeInTheDocument();
+  });
+
+  it("sets up runes and spells from a ranked champ select, by lane, and names the matchups", async () => {
+    let refuse = false;
+    const backend = demoWith({
+      get_snapshot: () => live({ phase: "ChampSelect", champSelect: ranked }),
+      apply_runes: () => (refuse ? "noPage" : "written"),
+    });
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openLive(backend);
+    expect(await screen.findByText("数据：腾讯 101 · 16.19")).toBeInTheDocument();
+    expect(screen.getByText("样本 1,241,522 场")).toBeInTheDocument();
+    expect(call).toHaveBeenCalledWith("get_build", {
+      championId: 103,
+      mode: "ranked",
+      lane: "middle",
+    });
+    const lanes = screen.getByRole("radiogroup", { name: zhCN["loadout.lane"] });
+    expect(within(lanes).getByRole("radio", { name: "中单" })).toBeChecked();
+    const tabs = screen.getByRole("radiogroup", { name: zhCN["loadout.tabs"] });
+
+    await user.click(within(tabs).getByRole("radio", { name: "符文" }));
+    expect(screen.getAllByRole("img", { name: "电刑" }).length).toBeGreaterThan(0);
+    const [first, second] = screen.getAllByRole("button", { name: zhCN["loadout.applyRunes"] });
+    await user.click(first as HTMLElement);
+    expect(call).toHaveBeenCalledWith("apply_runes", {
+      championId: 103,
+      page: {
+        primaryStyle: 8100,
+        subStyle: 8200,
+        perks: [8112, 8126, 8138, 8135, 8210, 8237, 5008, 5008, 5001],
+      },
+    });
+    expect(await screen.findByText(zhCN["loadout.runesWritten"])).toBeInTheDocument();
+    refuse = true;
+    await user.click(second as HTMLElement);
+    expect(await screen.findByText(zhCN["loadout.runesNoPage"])).toBeInTheDocument();
+    expect(screen.queryByText(zhCN["loadout.runesWritten"]), "one outcome at a time").toBeNull();
+
+    await user.click(within(tabs).getByRole("radio", { name: "召唤师技能" }));
+    await user.click(
+      screen.getAllByRole("button", { name: zhCN["loadout.applySpells"] })[0] as HTMLElement,
+    );
+    expect(call).toHaveBeenCalledWith("apply_spells", { spells: [4, 14] });
+    expect(await screen.findByText(zhCN["loadout.spellsApplied"])).toBeInTheDocument();
+
+    await user.click(within(tabs).getByRole("radio", { name: "对位" }));
+    expect(screen.getByRole("region", { name: "优势对位" })).toHaveTextContent("探险家54.1%");
+    expect(screen.getByRole("region", { name: "劣势对位" })).toHaveTextContent("影流之主44.0%");
+
+    await user.click(within(lanes).getByRole("radio", { name: "上单" }));
+    expect(call).toHaveBeenCalledWith("get_build", {
+      championId: 103,
+      mode: "ranked",
+      lane: "top",
+    });
+    await waitFor(() => expect(within(lanes).getByRole("radio", { name: "上单" })).toBeChecked());
+  });
+
+  it("opens on the augments during a Hextech ARAM game, where they are picked", async () => {
+    const game: GameView = {
+      gameId: 3,
+      queueId: 2400,
+      teams: [[seat(103, true, null), seat(22, false, null)], [seat(99, false, null)]],
+      sides: true,
+    };
+    await openLive(demoWith({ get_snapshot: () => live({ phase: "InProgress", game }) }));
+    const tabs = await screen.findByRole("radiogroup", { name: zhCN["loadout.tabs"] });
+    await waitFor(() =>
+      expect(within(tabs).getByRole("radio", { name: "强化符文" })).toBeChecked(),
+    );
+    expect(await screen.findByRole("region", { name: "棱彩" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: zhCN["loadout.applyRunes"] }),
+      "a running game's runes are set",
+    ).toBeNull();
+  });
+
+  it("looks a champion up outside a game, Arena by its placements", async () => {
+    const backend = demoWith({ get_snapshot: () => live({ phase: "None" }) });
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openLive(backend);
+    expect(await screen.findByText(zhCN["live.idleTitle"])).toBeInTheDocument();
+    expect(screen.getByText(zhCN["loadout.lookupHint"])).toBeInTheDocument();
+    expect(call).not.toHaveBeenCalledWith("get_build", expect.anything());
+
+    const choose = screen.getByRole("button", { name: zhCN["loadout.choose"] });
+    await waitFor(() => expect(choose, "the catalog names the champions").toBeEnabled());
+    await user.click(choose);
+    const picker = screen.getByRole("dialog", { name: zhCN["loadout.choose"] });
+    await user.type(within(picker).getByRole("textbox", { name: zhCN["auto.search"] }), "艾希");
+    await user.click(within(picker).getByRole("button", { name: /艾希/ }));
+    expect(screen.queryByRole("dialog", { name: zhCN["loadout.choose"] })).toBeNull();
+    expect(await screen.findByText("寒冰射手 · 艾希")).toBeInTheDocument();
+    expect(call).toHaveBeenCalledWith("get_build", { championId: 22, mode: "ranked", lane: null });
+    const lanes = await screen.findByRole("radiogroup", { name: zhCN["loadout.lane"] });
+    await waitFor(() =>
+      expect(
+        within(lanes).getByRole("radio", { name: "中单" }),
+        "the lane the source chose",
+      ).toBeChecked(),
+    );
+
+    const modes = screen.getByRole("radiogroup", { name: zhCN["loadout.mode"] });
+    expect(
+      within(modes)
+        .getAllByRole("radio")
+        .map((mode) => mode.textContent),
+    ).toEqual(["召唤师峡谷", "极地大乱斗", "海克斯大乱斗", "斗魂竞技场"]);
+    await user.click(within(modes).getByRole("radio", { name: "斗魂竞技场" }));
+    expect(call).toHaveBeenCalledWith("get_build", { championId: 22, mode: "arena", lane: null });
+    const tabs = await screen.findByRole("radiogroup", { name: zhCN["loadout.tabs"] });
+    await user.click(await within(tabs).findByRole("radio", { name: "强化符文" }));
+    expect(await screen.findByText("平均第 4.14 名")).toBeInTheDocument();
+    expect(screen.getByText("第一名 20.1%")).toBeInTheDocument();
+    expect(screen.getByText(zhCN["loadout.placementHint"])).toBeInTheDocument();
+  });
+
+  it("says when the numbers did not come, and tries again", async () => {
+    let failures = 1;
+    const demo = demoBackend();
+    const backend = demoWith({
+      get_snapshot: () => live({ phase: "ChampSelect", champSelect: ranked }),
+      get_build: (args: Parameters<Backend["call"]>[1]) => {
+        if (failures-- > 0) throw { code: "client", message: "lol-api-champion.op.gg: timed out" };
+        return demo.call("get_build", args as never);
+      },
+    });
+    const { user } = await openLive(backend);
+    expect(await screen.findByText(zhCN["loadout.failed"])).toBeInTheDocument();
+    expect(screen.getByText("lol-api-champion.op.gg: timed out")).toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: zhCN["loadout.tabs"] })).toBeNull();
+    await user.click(screen.getByRole("button", { name: zhCN["common.retry"] }));
+    expect(await screen.findByText("数据：腾讯 101 · 16.19")).toBeInTheDocument();
+  });
+
+  it("has no panel and fetches nothing while builds are off", async () => {
+    const settings = await demoBackend().call("get_settings");
+    const backend = demoWith({
+      get_settings: () => ({ ...settings, builds: { ...settings.builds, enabled: false } }),
+    });
+    const call = vi.spyOn(backend, "call");
+    await openLive(backend);
+    expect(await screen.findByText(/^峡谷通天代：阿狸/)).toBeInTheDocument();
+    expect(screen.queryByText(zhCN["loadout.panel"])).toBeNull();
+    expect(call).not.toHaveBeenCalledWith("get_build", expect.anything());
+  });
+
+  it("scopes the rune and spell memory and the item sets, and takes back what winer wrote", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.automation"] }));
+
+    await user.click(await screen.findByRole("switch", { name: zhCN["loadout.rule"] }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          automation: expect.objectContaining({
+            loadout: { enabled: true, recommended: true },
+          }),
+        }),
+      }),
+    );
+    const scopes = screen.getAllByRole("group", { name: zhCN["auto.scope"] });
+    const chips = scopes.map((group) =>
+      within(group)
+        .getAllByRole("button")
+        .map((chip) => chip.textContent),
+    );
+    expect(chips, "no rune page in Arena; no shop of its own in other modes").toEqual(
+      expect.arrayContaining([
+        ["排位", "匹配", "极地大乱斗", "海克斯大乱斗", "其他模式"],
+        ["排位", "匹配", "极地大乱斗", "海克斯大乱斗", "斗魂竞技场"],
+      ]),
+    );
+
+    expect(await screen.findByText("已记住 3 套")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: zhCN["loadout.forget"] }));
+    expect(call).toHaveBeenCalledWith("clear_loadouts");
+    expect(await screen.findByText("已记住 0 套")).toBeInTheDocument();
+
+    expect(screen.getByText(zhCN["loadout.experimental"])).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: zhCN["loadout.itemSets"] })).not.toBeChecked();
+    await user.click(screen.getByRole("button", { name: zhCN["loadout.clearItemSets"] }));
+    expect(call).toHaveBeenCalledWith("clear_item_sets");
+    expect(await screen.findByText("已清除 0 个 winer 装备方案")).toBeInTheDocument();
+
+    const byMode = screen.getByRole("radiogroup", { name: zhCN["auto.byMode"] });
+    await user.click(within(byMode).getByRole("radio", { name: "斗魂竞技场" }));
+    expect(screen.queryByRole("switch", { name: zhCN["loadout.rule"] })).toBeNull();
+    expect(screen.getByRole("switch", { name: zhCN["loadout.itemSets"] })).toBeInTheDocument();
+  });
+
+  it("switches builds and their Summoner's Rift source in settings", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await renderApp(backend);
+    fireEvent.keyDown(window, { key: ",", ctrlKey: true });
+    const dialog = screen.getByRole("dialog", { name: zhCN["settings.title"] });
+    await user.click(within(dialog).getByRole("tab", { name: zhCN["settings.general"] }));
+    const sources = within(dialog).getByRole("radiogroup", { name: zhCN["loadout.riftSource"] });
+    await user.click(within(sources).getByRole("radio", { name: "OP.GG" }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({ builds: { enabled: true, riftSource: "opGg" } }),
+      }),
+    );
+    await user.click(within(dialog).getByRole("switch", { name: zhCN["loadout.builds"] }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({ builds: { enabled: false, riftSource: "opGg" } }),
+      }),
+    );
+    expect(within(sources).getByRole("radio", { name: "腾讯 101" })).toBeDisabled();
   });
 });

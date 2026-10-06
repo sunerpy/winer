@@ -54,6 +54,8 @@ const SETTINGS = {
     },
     bench: { enabled: false, champions: [] },
     scopes: defaultScopes(),
+    loadout: { enabled: false, recommended: true },
+    itemSets: false,
   },
   plugin: {
     auto: true,
@@ -62,6 +64,7 @@ const SETTINGS = {
     benchNoCooldown: true,
     loaderDir: null,
   },
+  builds: { enabled: true, riftSource: "tencent" },
 } satisfies Settings;
 
 /** A backend whose events the test fires by hand, with each command's answer settable. */

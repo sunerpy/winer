@@ -31,6 +31,7 @@ import {
   onRadioKeys,
   toast,
 } from "../../ui";
+import { BuildSettingsRows } from "./BuildSettings";
 import { updateLine } from "./UpdateDialog";
 
 const SECTIONS: { id: SettingsSection; label: MessageKey; icon: typeof Palette }[] = [
@@ -287,6 +288,7 @@ function GeneralSection() {
           label={t("settings.augmentDetails")}
         />
       </Row>
+      <BuildSettingsRows />
       <Row label={t("settings.autostart")} help={t("settings.autostartHint")}>
         <Toggle
           checked={autostart.data ?? false}
