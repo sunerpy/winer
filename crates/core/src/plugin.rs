@@ -20,6 +20,12 @@ pub const PLUGIN_NAME: &str = "winer";
 /// The first line of a bundle names its version: `/*! winer-plugin 0.2.0 */`.
 const BANNER: &str = "/*! winer-plugin ";
 
+/// Windows' `ERROR_PRIVILEGE_NOT_HELD`: only an elevated process (or Developer Mode) may create a
+/// symbolic link. Windows says "the client" lacks the privilege, meaning the calling process.
+const ERROR_PRIVILEGE_NOT_HELD: i32 = 1314;
+/// Windows' `ERROR_ACCESS_DENIED`, as a client folder that only administrators may write answers.
+const ERROR_ACCESS_DENIED: i32 = 5;
+
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginStatus {
@@ -34,6 +40,9 @@ pub struct PluginStatus {
     pub occupied: bool,
     /// Why the last automatic setup did not finish, as the system put it.
     pub setup_error: Option<String>,
+    /// That setup failed because only an administrator can link the loader into the client, and
+    /// winer runs without those rights: restarting it elevated once creates the link.
+    pub needs_elevation: bool,
     pub installed_version: Option<String>,
     pub bundled_version: String,
     /// The installed plugin is byte-for-byte this build's bundle. Two builds can share a version.
@@ -139,7 +148,8 @@ pub fn occupied(client_dir: &Path) -> bool {
 
 /// Activates the loader in `loader` for the client in `client_dir` the way Pengu Loader itself
 /// does: `version.dll` there becomes a symbolic link to `<loader>\core.dll`. A link whose target
-/// is gone is replaced. On Windows a symbolic link needs an elevated process (or Developer Mode).
+/// is gone is replaced. On Windows a symbolic link needs an elevated process (or Developer Mode);
+/// [`needs_elevation`] tells that refusal from other failures.
 pub fn link(client_dir: &Path, loader: &Path) -> io::Result<Linked> {
     let path = client_dir.join("version.dll");
     match fs::symlink_metadata(&path) {
@@ -151,6 +161,18 @@ pub fn link(client_dir: &Path, loader: &Path) -> io::Result<Linked> {
     }
     symlink(&loader.join("core.dll"), &path)?;
     Ok(Linked::Created)
+}
+
+/// Whether [`link`] failed for want of administrator rights that a process running without them
+/// can ask for: Windows refused the symbolic link itself (1314), or the client's folder refused to
+/// be written (5). An elevated process gains nothing by asking, so neither counts for it. Only the
+/// error's code is read, the same on every platform.
+pub fn needs_elevation(error: &io::Error, elevated: bool) -> bool {
+    !elevated
+        && matches!(
+            error.raw_os_error(),
+            Some(ERROR_PRIVILEGE_NOT_HELD | ERROR_ACCESS_DENIED)
+        )
 }
 
 /// Removes the client's `version.dll` when it is a link to `loader`'s core; anything else stays.
@@ -240,6 +262,31 @@ mod tests {
         uninstall(loader.path()).unwrap();
         uninstall(loader.path()).unwrap();
         assert_eq!(installed_version(loader.path()), None);
+    }
+
+    #[test]
+    fn only_a_refusal_an_elevated_restart_lifts_asks_for_one() {
+        let os = io::Error::from_raw_os_error;
+        assert!(
+            needs_elevation(&os(1314), false),
+            "the privilege to create a symbolic link"
+        );
+        assert!(
+            needs_elevation(&os(5), false),
+            "a client folder only administrators may write"
+        );
+        for code in [1314, 5] {
+            assert!(
+                !needs_elevation(&os(code), true),
+                "already elevated, a restart changes nothing: {code}"
+            );
+        }
+        assert!(!needs_elevation(&os(32), false), "a file in use");
+        assert!(!needs_elevation(&os(3), false), "a path that is gone");
+        assert!(
+            !needs_elevation(&io::Error::from(io::ErrorKind::PermissionDenied), false),
+            "no code, nothing to go on"
+        );
     }
 
     #[test]

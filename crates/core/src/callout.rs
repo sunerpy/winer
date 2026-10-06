@@ -25,15 +25,45 @@ pub fn side_tag(side: Side, language: Language) -> &'static str {
     }
 }
 
-/// The line written for each player when the user has not written their own.
+/// The line written for each player when the user has not written their own. It names the seat,
+/// not the champion: champions change during champ select, seats do not.
 pub fn template(language: Language) -> &'static str {
     match language {
         Language::ZhCn => {
-            "{standing}：{champion} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}"
+            "{standing}：{seat} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}"
         }
         Language::En => {
-            "{standing}: {champion} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}"
+            "{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}"
         }
+    }
+}
+
+/// The default line up to 0.0.2, which named the champion where the seat now stands.
+const FORMER_TEMPLATES: [(Language, &str); 2] = [
+    (
+        Language::ZhCn,
+        "{standing}：{champion} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}",
+    ),
+    (
+        Language::En,
+        "{standing}: {champion} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}",
+    ),
+];
+
+/// The language whose former default line `template` is, character for character.
+pub(crate) fn former_default(template: &str) -> Option<Language> {
+    FORMER_TEMPLATES
+        .iter()
+        .find(|(_, former)| *former == template)
+        .map(|(language, _)| *language)
+}
+
+/// A player's place in their team as champ select lists it, counted from 1: `1L` in Chinese (the
+/// players' own shorthand for the list's first row), `P1` in English.
+pub fn seat_label(seat: usize, language: Language) -> String {
+    match language {
+        Language::ZhCn => format!("{seat}L"),
+        Language::En => format!("P{seat}"),
     }
 }
 
@@ -342,6 +372,7 @@ pub fn ready(view: &ChampSelectView) -> bool {
 
 /// The first line, then one line per rated teammate, the best standing first and by score within
 /// a standing. The first line is the side, winer's name and the user's opening line, if any.
+/// A teammate's seat is their place in `view.my_team`, which lists the team as champ select does.
 /// `champion` names a champion id the way players call it (`安妮`, not `黑暗之女`). Nobody rated
 /// means nothing to say, first line included.
 pub fn lines(
@@ -354,20 +385,25 @@ pub fn lines(
         "" => template(language),
         own => own,
     };
-    let mut rated: Vec<(&Seat, &SeatRating)> = view
+    // Seats are counted before anyone is left out, so they stay the ones champ select shows.
+    let mut rated: Vec<(usize, &Seat, &SeatRating)> = view
         .my_team
         .iter()
-        .filter(|seat| rule.include_self || !seat.is_self)
-        .filter_map(|seat| Some((seat, seat.rating.as_ref()?)))
+        .enumerate()
+        .filter(|(_, seat)| rule.include_self || !seat.is_self)
+        .filter_map(|(index, seat)| Some((index + 1, seat, seat.rating.as_ref()?)))
         .collect();
     rated.sort_by(|a, b| {
-        a.1.tier
-            .cmp(&b.1.tier)
-            .then(b.1.score.total_cmp(&a.1.score))
+        a.2.tier
+            .cmp(&b.2.tier)
+            .then(b.2.score.total_cmp(&a.2.score))
     });
     let players: Vec<String> = rated
         .into_iter()
-        .filter_map(|(seat, rating)| line(template, seat, rating, &champion))
+        .filter_map(|(number, seat, rating)| {
+            let seat_label = seat_label(number, language);
+            line(template, &seat_label, seat, rating, &champion)
+        })
         .collect();
     if players.is_empty() {
         return players;
@@ -392,6 +428,7 @@ pub fn lines(
 
 fn line(
     template: &str,
+    seat_label: &str,
     seat: &Seat,
     rating: &SeatRating,
     champion: &impl Fn(i64) -> Option<String>,
@@ -409,6 +446,7 @@ fn line(
         .unwrap_or_default();
     let values = [
         ("{standing}", rating.label.clone()),
+        ("{seat}", seat_label.to_owned()),
         ("{champion}", champion(seat.champion_id).unwrap_or_default()),
         ("{name}", name),
         ("{games}", form.games.to_string()),
@@ -457,7 +495,8 @@ fn line(
 
 /// What `rule` would send, shown with the user's own recent form in every tier, so names and
 /// template can be judged before a champ select. Their most played champion stands in for
-/// `{champion}`, and the blue side for whichever the game gives.
+/// `{champion}`, the blue side for whichever the game gives, and the tiers take the seats in
+/// order, so the sample lines read 1L, 2L, … from the best tier down.
 pub fn preview(
     me: &PlayerSummary,
     rule: &CalloutRule,
@@ -614,19 +653,80 @@ mod tests {
     }
 
     #[test]
-    fn lines_fill_the_template_best_tier_first() {
+    fn lines_fill_the_template_best_tier_first_and_name_each_seat() {
         let view = view(vec![
             seat("bo", 0, false, Some((4.1, 2))),
             seat("ann", 1, true, Some((7.2, 0))),
             seat("cy", 2, false, Some((5.5, 1))),
         ]);
-        let lines = players(&view, &CalloutRule::default(), Language::ZhCn);
-        assert_eq!(lines[0], "上等马：安妮 ann 近20场胜率55% KDA 3.5 评分7.2");
-        assert!(lines[1].starts_with("中等马：cy "), "{lines:?}");
-        assert!(
-            lines[2].starts_with("下等马：bo 近20场"),
-            "an unknown champion leaves no double space: {lines:?}"
+        assert_eq!(
+            players(&view, &CalloutRule::default(), Language::ZhCn),
+            [
+                "上等马：2L ann 近20场胜率55% KDA 3.5 评分7.2",
+                "中等马：3L cy 近20场胜率55% KDA 3.5 评分5.5",
+                "下等马：1L bo 近20场胜率55% KDA 3.5 评分4.1",
+            ],
+            "the seat is the place in champ select's list, whatever order the lines take"
         );
+        // The labels were resolved in Chinese when the seats were rated; the line is English.
+        assert_eq!(
+            players(&view, &CalloutRule::default(), Language::En)[0],
+            "上等马: P2 ann, 55% in 20 games, KDA 3.5, score 7.2"
+        );
+    }
+
+    #[test]
+    fn the_default_line_names_the_seat_and_the_player_not_the_champion() {
+        assert_eq!(
+            template(Language::ZhCn),
+            "{standing}：{seat} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}"
+        );
+        assert_eq!(
+            template(Language::En),
+            "{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}"
+        );
+        let seats: Vec<String> = (1..=5)
+            .map(|seat| seat_label(seat, Language::ZhCn))
+            .collect();
+        assert_eq!(seats, ["1L", "2L", "3L", "4L", "5L"]);
+        let seats: Vec<String> = (1..=5).map(|seat| seat_label(seat, Language::En)).collect();
+        assert_eq!(seats, ["P1", "P2", "P3", "P4", "P5"]);
+    }
+
+    #[test]
+    fn a_template_of_the_users_own_can_still_name_the_champion() {
+        let view = view(vec![
+            seat("bo", 0, false, Some((4.1, 2))),
+            seat("ann", 1, false, Some((7.2, 0))),
+        ]);
+        let rule = CalloutRule {
+            template: "{standing}：{champion} {name} {seat}".into(),
+            ..CalloutRule::default()
+        };
+        assert_eq!(
+            players(&view, &rule, Language::ZhCn),
+            ["上等马：安妮 ann 2L", "下等马：bo 1L"],
+            "an unknown champion leaves no double space"
+        );
+    }
+
+    #[test]
+    fn only_the_former_default_lines_count_as_former_defaults() {
+        assert_eq!(
+            former_default(
+                "{standing}：{champion} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}"
+            ),
+            Some(Language::ZhCn)
+        );
+        assert_eq!(
+            former_default(
+                "{standing}: {champion} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}"
+            ),
+            Some(Language::En)
+        );
+        assert_eq!(former_default(template(Language::ZhCn)), None);
+        assert_eq!(former_default("{standing}：{champion} {name}"), None);
+        assert_eq!(former_default(""), None);
     }
 
     #[test]
@@ -667,14 +767,15 @@ mod tests {
             seat("bo", 1, false, Some((3.0, 2))),
         ]);
         let rule = CalloutRule {
-            template: "{name}={standing} {unknown}".into(),
+            template: "{name}={standing}@{seat} {unknown}".into(),
             include_self: false,
             ..CalloutRule::default()
         };
-        // Labels are resolved when the seats are rated; the line uses the seat's own.
+        // Labels are resolved when the seats are rated; the line uses the seat's own. Leaving
+        // oneself out does not renumber the others.
         assert_eq!(
             players(&view, &rule, Language::ZhCn),
-            vec!["bo=下等马 {unknown}".to_owned()]
+            vec!["bo=下等马@2L {unknown}".to_owned()]
         );
     }
 
@@ -784,7 +885,23 @@ mod tests {
             "a side stands in for the game's"
         );
         assert!(
-            lines[1].starts_with("独角马：ann ") && lines[5].starts_with("纯牛马："),
+            lines[1].starts_with("独角马：1L ann ") && lines[5].starts_with("纯牛马：5L ann "),
+            "{lines:?}"
+        );
+        for (index, line) in lines[1..].iter().enumerate() {
+            assert!(
+                line.contains(&format!("：{}L ann 近20场", index + 1)),
+                "the seats in order: {lines:?}"
+            );
+        }
+        let english = General {
+            language: Language::En,
+            ..General::default()
+        };
+        let lines = preview(&me, &rule, &english, names);
+        assert!(
+            lines[1].starts_with("Unicorn: P1 ann, ")
+                && lines[5].starts_with("Pack mule: P5 ann, "),
             "{lines:?}"
         );
     }
@@ -839,6 +956,10 @@ mod tests {
                 "移动眼位",
                 "纯正牛马"
             ]
+        );
+        assert!(
+            lines[0].starts_with("峡谷通天代：5L P4 近20场胜率70%"),
+            "the best form sits in the fifth cell: {lines:?}"
         );
         for (tier, line) in lines.iter().enumerate() {
             let said = quips(TierSet::RiftFive, Language::ZhCn)[tier];
@@ -937,18 +1058,28 @@ mod tests {
             .iter()
             .map(|line| line.split(' ').next().unwrap())
             .collect();
+        // Seats follow the cells, 0 to 4, whatever tier each lands in.
         assert_eq!(
             heads,
             [
-                "独角马：C4",
-                "上等马：C3",
-                "中等马：C1",
-                "下等马：C5",
-                "纯牛马：C2"
+                "独角马：4L",
+                "上等马：3L",
+                "中等马：1L",
+                "下等马：5L",
+                "纯牛马：2L"
             ],
             "{lines:?}"
         );
-        assert!(lines[0].contains("P3 近20场胜率85%"), "{lines:?}");
+        assert!(
+            lines[0].starts_with("独角马：4L P3 近20场胜率85%"),
+            "{lines:?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .all(|line| (1..=5).all(|id| !line.contains(&format!("C{id}")))),
+            "no champion in the default line: {lines:?}"
+        );
     }
 
     #[test]

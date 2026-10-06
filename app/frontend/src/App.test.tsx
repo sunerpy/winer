@@ -240,7 +240,7 @@ describe("App", () => {
     // The demo champ select is Hextech ARAM.
     const { user } = await renderApp(scoped(["ranked", "normal"]));
     await user.click(await screen.findByRole("button", { name: zhCN["overview.open"] }));
-    expect(screen.getByText(/^峡谷通天代：阿狸/)).toBeInTheDocument();
+    expect(screen.getByText(/^峡谷通天代：1L 暗夜里的光/)).toBeInTheDocument();
     expect(screen.queryByText(zhCN["live.calloutAuto"])).toBeNull();
     cleanup();
 
@@ -267,10 +267,13 @@ describe("App", () => {
       screen.getByText("【蓝色方】winer 战绩鉴定"),
       "the side and winer's name lead the callout",
     ).toBeInTheDocument();
-    expect(screen.getByText(/^峡谷通天代：阿狸/)).toBeInTheDocument();
-    expect(screen.getByText(/^纯正牛马：锤石/)).toBeInTheDocument();
     expect(
-      screen.getByText(/^峡谷通天代：阿狸/),
+      screen.getByText(/^峡谷通天代：1L 暗夜里的光/),
+      "the seat and the player, not the champion",
+    ).toBeInTheDocument();
+    expect(screen.getByText(/^纯正牛马：5L 眼位守护者/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/^峡谷通天代：1L/),
       "the title and the quip ride along",
     ).toHaveTextContent("评分7.4「版本答案」，对面五个人准备举报代练");
     await user.click(screen.getByRole("button", { name: zhCN["live.sendTeam"] }));
@@ -305,11 +308,61 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: zhCN["plugin.disable"] })).toBeInTheDocument();
   });
 
+  /** The demo's loader, not linked: the last setup failed with `setupError`. */
+  async function unlinked(setupError: string, needsElevation: boolean) {
+    const status = await demoBackend().call("get_plugin_status");
+    const backend = demoWith({
+      get_plugin_status: () => ({
+        ...status,
+        loaderDir: null,
+        active: false,
+        managed: false,
+        installedVersion: null,
+        current: false,
+        connected: 0,
+        setupError,
+        needsElevation,
+      }),
+    });
+    const call = vi.spyOn(backend, "call");
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.plugin"] }));
+    return { user, call };
+  }
+
+  it("says why activating the loader needs administrator rights once, and restarts elevated", async () => {
+    const refused = "客户端没有所需的特权。 (os error 1314)";
+    const { user, call } = await unlinked(refused, true);
+    expect(await screen.findByText(zhCN["plugin.loaderNeedsAdmin"])).toBeInTheDocument();
+    expect(screen.getByText(zhCN["plugin.needsAdmin"])).toBeInTheDocument();
+    expect(
+      screen.queryByText(new RegExp(refused.replace(/[()]/g, "\\$&"))),
+      "not the system's words, which call winer the client",
+    ).toBeNull();
+    await user.click(screen.getByRole("button", { name: zhCN["connection.relaunch"] }));
+    expect(call).toHaveBeenCalledWith("relaunch_elevated");
+  });
+
+  it("keeps the system's words for any other setup failure, with a line of context", async () => {
+    await unlinked("拒绝访问。 (os error 5)", false);
+    expect(await screen.findByText("没有装好：拒绝访问。 (os error 5)")).toBeInTheDocument();
+    expect(screen.getByText(zhCN["plugin.loaderFailedHint"])).toBeInTheDocument();
+    expect(screen.queryByText(zhCN["plugin.needsAdmin"])).toBeNull();
+    expect(screen.queryByRole("button", { name: zhCN["connection.relaunch"] })).toBeNull();
+  });
+
   it("previews the callout as it is written: opening line, scheme and own tiers", async () => {
     const { user, nav } = await renderApp();
     await user.click(within(nav).getByRole("button", { name: zhCN["nav.automation"] }));
-    expect(await screen.findByText(/^峡谷通天代：阿狸/)).toBeInTheDocument();
-    expect(screen.getByText(/^纯正牛马：阿狸/)).toBeInTheDocument();
+    expect(await screen.findByText(/^峡谷通天代：1L /)).toBeInTheDocument();
+    expect(screen.getByText(/^纯正牛马：5L /)).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: zhCN["auto.template"] }),
+      "a blank template shows the default, which names the seat",
+    ).toHaveAttribute(
+      "placeholder",
+      "{standing}：{seat} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}",
+    );
 
     await user.type(screen.getByRole("textbox", { name: zhCN["auto.header"] }), "开局分析{Enter}");
     expect(await screen.findByText("【蓝色方】winer 战绩鉴定 · 开局分析")).toBeInTheDocument();
@@ -322,12 +375,12 @@ describe("App", () => {
       "true",
     );
     await user.click(within(dialog).getByRole("radio", { name: /^峡谷食物链/ }));
-    expect(await screen.findByText(/^峡谷之王：阿狸/)).toBeInTheDocument();
+    expect(await screen.findByText(/^峡谷之王：1L /)).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole("radio", { name: /^自定义/ }));
     await user.type(within(dialog).getByRole("textbox", { name: "第 1 档" }), "大腿{Enter}");
     await user.type(within(dialog).getByRole("textbox", { name: "第 2 档" }), "挂件{Enter}");
-    expect(await screen.findByText(/^挂件：阿狸/)).toBeInTheDocument();
+    expect(await screen.findByText(/^挂件：2L /)).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole("button", { name: zhCN["common.close"] }));
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -339,7 +392,7 @@ describe("App", () => {
     const call = vi.spyOn(backend, "call");
     const { user, nav } = await renderApp(backend);
     await user.click(within(nav).getByRole("button", { name: zhCN["nav.automation"] }));
-    expect(await screen.findByText(/^峡谷通天代：阿狸/)).toHaveTextContent("「版本答案」");
+    expect(await screen.findByText(/^峡谷通天代：1L /)).toHaveTextContent("「版本答案」");
 
     fireEvent.keyDown(window, { key: ",", ctrlKey: true });
     const dialog = screen.getByRole("dialog", { name: zhCN["settings.title"] });
@@ -353,7 +406,7 @@ describe("App", () => {
 
     await user.click(within(dialog).getByRole("switch", { name: zhCN["rating.titles"] }));
     await waitFor(() =>
-      expect(screen.getByText(/^峡谷通天代：阿狸/)).not.toHaveTextContent("「版本答案」"),
+      expect(screen.getByText(/^峡谷通天代：1L /)).not.toHaveTextContent("「版本答案」"),
     );
     expect(call).toHaveBeenCalledWith(
       "preview_callout",

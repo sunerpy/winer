@@ -9,8 +9,9 @@ into the client's interface. winer ships it; there is nothing else to install.
 The first time winer connects to the client, it:
 
 1. puts the Pengu Loader it ships in winer's own data folder and activates it with a `version.dll`
-   link in the client folder, the way Pengu Loader activates itself. This needs administrator
-   rights, which the Tencent client asks of winer anyway;
+   link in the client folder, the way Pengu Loader activates itself. Windows lets only an
+   administrator create such a link, so the first activation needs administrator rights once (see
+   the next section);
 2. installs winer's plugin, which then updates with winer;
 3. reloads the client UI once, while the client is idle (no lobby, queue, champ select or game), so
    the plugin starts at once; otherwise it starts with the client's next launch. Reloading restarts
@@ -19,6 +20,20 @@ The first time winer connects to the client, it:
 Pengu Loader's own welcome window and start-up notices do not appear. If Pengu Loader is already
 installed, winer keeps using yours and only installs the plugin. If the client folder already has a
 different `version.dll`, winer leaves it alone and the **In-client** page says so.
+
+## The first activation needs administrator rights
+
+Activating Pengu Loader creates a link in the client folder, and Windows lets only a program running
+as administrator create one. So the first time, if winer is not running as administrator, it asks
+to restart as administrator by itself: choose **Yes** in the User Account Control prompt, and the
+activation completes once winer has restarted and connected to the client again.
+
+If you chose **No**, the **In-client** page says that administrator rights are needed, and
+**Restart as administrator** asks again. Once the link exists, winer keeps using it when it runs
+without administrator rights and does not ask again.
+
+When the client itself runs as administrator (the Tencent client does when WeGame starts it), winer
+has already asked for those rights to connect to it, so the activation asks nothing more.
 
 ## What you see in the client
 

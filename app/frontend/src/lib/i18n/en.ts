@@ -124,7 +124,7 @@ export const en: Record<MessageKey, string> = {
   "auto.previewOffline": "Connect the client to see a preview.",
   "auto.template": "Line template",
   "auto.templateHint":
-    "One line per teammate, with {standing} {champion} {name} {games} {winRate} {kda} {score} {title} {quip}. Blank uses the default.",
+    "One line per teammate, with {standing} {seat} {name} {champion} {games} {winRate} {kda} {score} {title} {quip}; {seat} is the place in your team's list in champ select, P1 to P5. Blank uses the default.",
   "auto.reset": "Reset",
   "auto.section.bench": "Bench",
   "auto.bench": "Take wishlist champions",
@@ -329,6 +329,11 @@ export const en: Record<MessageKey, string> = {
   "plugin.loaderWaiting": "Set up once winer connects to the client",
   "plugin.loaderOccupied": "The client folder already has another version.dll; winer left it alone",
   "plugin.loaderFailed": "Not set up: {error}",
+  "plugin.loaderFailedHint":
+    "That is the reason Windows gave; winer tries again each time it connects to the client.",
+  "plugin.loaderNeedsAdmin": "Needs administrator rights to activate",
+  "plugin.needsAdmin":
+    "Activating Pengu Loader creates a link in the client's folder, and Windows lets only an administrator create one, so the first activation needs administrator rights once; after that it does not. winer has asked to restart as administrator; if you chose No when Windows asked, Restart as administrator asks again.",
   "plugin.loaderOff": "Turned off",
   "plugin.loaderWhere":
     "Nothing to install: winer activates the Pengu Loader it ships when it connects to the client.",

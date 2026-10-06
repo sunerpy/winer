@@ -27,12 +27,13 @@ moves between them.
 ## Callout
 
 The callout is ready once every teammate's history has loaded: the first line holds the side,
-"winer rating" and the opening line if you wrote one, then one line per teammate, best first, for
-example:
+"winer rating" and the opening line if you wrote one, then one line per teammate, best first. Each
+line names the teammate's place in your team's list in champ select (P1 to P5, from the top) and
+their name, for example:
 
 ```text
 [Blue side] winer rating
-Rift Demigod: Ahri Light in the Dark, 60% in 20 games, KDA 4.1, score 7.4 [Patch Champion], the other team is filing a boosting report
+Rift Demigod: P1 Light in the Dark, 60% in 20 games, KDA 4.1, score 7.4 [Patch Champion], the other team is filing a boosting report
 ```
 
 - **Send to team**: posts it to the team chat of champ select, where your teammates see it.

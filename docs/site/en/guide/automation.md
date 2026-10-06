@@ -34,8 +34,10 @@ there. The automation switches on the overview list their modes too.
 - **Rating scheme**: the tier names come from **Settings › Rating**; **Open settings** goes there.
 - **Opening line** and **Line template**: the first line is always the side and "winer rating", and
   the opening line follows them (left blank, nothing does). The template takes these placeholders: `{standing}` the
-  tier, `{champion}`, `{name}`, `{games}`, `{winRate}`, `{kda}`, `{score}` the recent-form score,
-  `{title}` and `{quip}`. Blank uses the default; a live preview shows the result.
+  tier, `{seat}` the place in your team's list in champ select (P1 to P5, from the top), `{name}`,
+  `{champion}`, `{games}`, `{winRate}`, `{kda}`, `{score}` the recent-form score, `{title}` and
+  `{quip}`. Blank uses the default, which names the seat and the player rather than a champion that
+  can still change; a live preview shows the result.
 
 ## After the game
 

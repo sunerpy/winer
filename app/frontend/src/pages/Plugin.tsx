@@ -1,5 +1,5 @@
 import type { PluginSettings, PluginStatus } from "@winer/shared";
-import { Power, PowerOff, RefreshCw, RotateCcw } from "lucide-react";
+import { Power, PowerOff, RefreshCw, RotateCcw, ShieldAlert } from "lucide-react";
 import { useState } from "react";
 
 import { errorMessage } from "../lib/backend";
@@ -7,7 +7,26 @@ import { useT } from "../lib/i18n";
 import { useLive, useSettings, useStore } from "../lib/store";
 import { useAsync } from "../lib/useAsync";
 import { Badge, Button, Card, Input, Lamp, Panel, Row, Skeleton, Toggle, toast } from "../ui";
-import { PageBody } from "./common";
+import { PageBody, useRelaunch } from "./common";
+
+/** Only an administrator can link the loader into the client: why, and the restart that does it. */
+function ElevationNote() {
+  const t = useT();
+  const relaunch = useRelaunch();
+  return (
+    <div
+      role="status"
+      className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-6 bg-warning-soft px-3 py-2.5 hairline"
+    >
+      <p className="min-w-0 flex-1 basis-[320px] text-[12.5px] leading-5 text-fg">
+        {t("plugin.needsAdmin")}
+      </p>
+      <Button variant="primary" size="sm" icon={ShieldAlert} onClick={relaunch}>
+        {t("connection.relaunch")}
+      </Button>
+    </div>
+  );
+}
 
 function StatusPanel({
   status,
@@ -33,10 +52,13 @@ function StatusPanel({
         await store.backend.call("restart_client_ui");
         toast(t("tools.restarted"), "ok");
       } else {
-        onChange(
-          await store.backend.call(action === "enable" ? "enable_plugin" : "disable_plugin"),
+        const next = await store.backend.call(
+          action === "enable" ? "enable_plugin" : "disable_plugin",
         );
-        toast(t(action === "enable" ? "plugin.enabled" : "plugin.disabled"), "ok");
+        onChange(next);
+        // Turned on, but the loader waits for administrator rights: the page says why.
+        if (action === "enable" && next.needsElevation) toast(t("plugin.loaderNeedsAdmin"), "info");
+        else toast(t(action === "enable" ? "plugin.enabled" : "plugin.disabled"), "ok");
       }
     } catch (error) {
       toast(errorMessage(error), "danger");
@@ -57,21 +79,31 @@ function StatusPanel({
     );
   }
 
-  // What the loader row says, worst first: a stated problem, then off, then not there yet.
-  const [tone, state] = status.active
+  // What the loader row says, worst first: a stated problem, then off, then not there yet. A
+  // refusal for want of administrator rights is explained in a note above the rows rather than in
+  // the system's words, which call winer "the client"; any other failure keeps them, with context.
+  const needsAdmin = auto && !status.active && !status.occupied && status.needsElevation;
+  const [tone, state, note] = status.active
     ? ([
         "ok",
         status.managed
           ? t("plugin.loaderManaged", { version: status.bundledLoader })
           : t("plugin.loaderOwn"),
+        null,
       ] as const)
     : !auto
-      ? (["off", t("plugin.loaderOff")] as const)
+      ? (["off", t("plugin.loaderOff"), null] as const)
       : status.occupied
-        ? (["warn", t("plugin.loaderOccupied")] as const)
-        : status.setupError
-          ? (["danger", t("plugin.loaderFailed", { error: status.setupError })] as const)
-          : (["idle", t("plugin.loaderWaiting")] as const);
+        ? (["warn", t("plugin.loaderOccupied"), null] as const)
+        : status.needsElevation
+          ? (["warn", t("plugin.loaderNeedsAdmin"), null] as const)
+          : status.setupError
+            ? ([
+                "danger",
+                t("plugin.loaderFailed", { error: status.setupError }),
+                t("plugin.loaderFailedHint"),
+              ] as const)
+            : (["idle", t("plugin.loaderWaiting"), null] as const);
   return (
     <Panel
       eyebrow={t("plugin.setup")}
@@ -85,10 +117,14 @@ function StatusPanel({
       <p className="mb-2 max-w-[720px] text-[12.5px] leading-5 text-fg-muted">
         {t("plugin.about")}
       </p>
+      {needsAdmin && <ElevationNote />}
       <Row label={t("plugin.loader")} help={status.loaderDir ?? t("plugin.loaderWhere")}>
-        <span className="flex items-center gap-2 text-[12.5px]">
-          <Lamp tone={tone} />
-          {state}
+        <span className="flex flex-col items-end gap-0.5 text-right">
+          <span className="flex items-center gap-2 text-[12.5px]">
+            <Lamp tone={tone} />
+            {state}
+          </span>
+          {note && <span className="text-[11.5px] leading-4 text-fg-subtle">{note}</span>}
         </span>
       </Row>
       <Row

@@ -325,8 +325,9 @@ auto: boolean, audience: Audience, includeSelf: boolean,
  */
 header: string, 
 /**
- * One line per player, with `{standing}`, `{champion}`, `{name}`, `{games}`, `{winRate}`,
- * `{kda}` and `{score}`. Empty means the language's default (`callout::template`).
+ * One line per player, with `{standing}`, `{seat}` (the place in champ select's list: `1L`,
+ * `P1`), `{name}`, `{champion}`, `{games}`, `{winRate}`, `{kda}`, `{score}`, `{title}` and
+ * `{quip}`. Empty means the language's default (`callout::template`).
  */
 template: string, 
 /**
@@ -402,7 +403,12 @@ occupied: boolean,
 /**
  * Why the last automatic setup did not finish, as the system put it.
  */
-setupError: string | null, installedVersion: string | null, bundledVersion: string, 
+setupError: string | null, 
+/**
+ * That setup failed because only an administrator can link the loader into the client, and
+ * winer runs without those rights: restarting it elevated once creates the link.
+ */
+needsElevation: boolean, installedVersion: string | null, bundledVersion: string, 
 /**
  * The installed plugin is byte-for-byte this build's bundle. Two builds can share a version.
  */

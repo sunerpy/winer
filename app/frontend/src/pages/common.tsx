@@ -1,4 +1,5 @@
-// Pieces every page uses: the page frame and what to show while the client is not connected.
+// Pieces every page uses: the page frame, what to show while the client is not connected, and the
+// restart as administrator.
 import { PlugZap, ShieldAlert } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -16,7 +17,8 @@ export function PageBody({ children, className }: { children: ReactNode; classNa
   );
 }
 
-function useRelaunch() {
+/** Restarts winer as administrator; the system asks first, and a refusal shows as a toast. */
+export function useRelaunch() {
   const store = useStore();
   return () =>
     void store.backend
