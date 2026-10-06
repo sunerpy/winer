@@ -605,7 +605,7 @@ export const zhCN = {
   "loadout.runesNoPage":
     "没有写入：没有空位放 winer 的符文页，当前页又是你自己的。删掉一页符文页，或者选中客户端的临时页后再试。",
   "loadout.spellsApplied": "已换上这两个召唤师技能。",
-  "loadout.itemSetWritten": "已写入装备方案，下一局起在游戏内商店的推荐里能看到。",
+  "loadout.itemSetWritten": "已写入装备方案，游戏内商店的装备方案里能找到它。",
   "loadout.priority": "主升",
   "loadout.sequence": "前 {n} 级的加点",
   "loadout.good": "优势对位",
@@ -645,7 +645,8 @@ export const zhCN = {
   "loadout.itemSetsHint":
     "锁定英雄后，把配装推荐写成这个英雄的装备方案。只改 winer 自己写的方案，你自己的方案原样保留。",
   "loadout.experimental": "实验性",
-  "loadout.itemSetsNote": "暂不推荐使用：写入的装备方案要到下一局才会出现在游戏内商店里。",
+  "loadout.itemSetsNote":
+    "暂不推荐使用，仍在试验中：选人时写入的方案本局就在游戏内商店里，游戏开始后再写入的要到下一局。",
   "loadout.itemSetsNeedBuilds": "需要先在 设置 › 通用 打开配装推荐。",
   "loadout.clearItemSets": "清除 winer 装备方案",
   "loadout.clearedItemSets": "已清除 {n} 个 winer 装备方案",

@@ -624,7 +624,7 @@ export const en: Record<MessageKey, string> = {
   "loadout.runesNoPage":
     "Not written: there is no room for winer's rune page and the current page is one of yours. Delete a page, or select the client's temporary page, and try again.",
   "loadout.spellsApplied": "These two summoner spells are taken.",
-  "loadout.itemSetWritten": "Item set written; the in-game shop suggests it from your next game.",
+  "loadout.itemSetWritten": "Item set written; find it among the in-game shop's item sets.",
   "loadout.priority": "Max order",
   "loadout.sequence": "Points for the first {n} levels",
   "loadout.good": "Good matchups",
@@ -666,7 +666,7 @@ export const en: Record<MessageKey, string> = {
     "Once your champion is locked in, writes the build as the champion's item set. Only winer's own sets change; yours stay as they are.",
   "loadout.experimental": "Experimental",
   "loadout.itemSetsNote":
-    "Not recommended yet: an item set written now shows in the in-game shop from the next game.",
+    "Not recommended yet, still an experiment: a set written in champ select is in that game's shop; one written after the game started, from the next game.",
   "loadout.itemSetsNeedBuilds": "Needs Builds turned on in Settings › General.",
   "loadout.clearItemSets": "Remove winer's item sets",
   "loadout.clearedItemSets": "Removed {n} of winer's item sets",

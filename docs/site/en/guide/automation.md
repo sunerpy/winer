@@ -53,8 +53,9 @@ summoner spells for Jhin"; a failure says why. Nothing is posted to chat.
 
 - **Write item sets** (experimental): once your champion is locked in, writes the items of the
   [build](/en/guide/live#builds) as the champion's item set: starting items, boots, core items and
-  late options, each named with the source and patch. Off by default and not recommended yet: the
-  client puts a new item set in the in-game shop from the next game on.
+  late options, each named with the source and patch. Off by default and not recommended yet, still an
+  experiment: a set written in champ select is in that game's shop, one written after the game
+  started only from the next game.
 - A champion keeps one of winer's item sets per map, named after the champion: Ranked and Normal
   share Summoner's Rift and the two ARAMs the Howling Abyss. Your own item sets stay as they are.
 - Needs **Builds** on in **Settings › General**.

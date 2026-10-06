@@ -113,6 +113,6 @@ nothing is fetched.
 ### Writing the item set
 
 **Write the item set** in **Items** writes the items as the champion's item set, named after the
-champion ("winer · Jhin"), which the in-game shop suggests. The client reads a new item set from
-the next game on. Writing it by itself, and removing it, are in
+champion ("winer · Jhin"), which the in-game shop lists. One written in champ select is there in
+that game; one written after the game started, from the next game. Writing it by itself, and removing it, are in
 [Automation](/en/guide/automation#item-sets).
