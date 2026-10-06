@@ -357,3 +357,84 @@
 .winer-row--button:hover {
   background: #162230;
 }
+
+/* The home page while 隐藏首页推广 is on: winer's note in the hub's own box, centred on the
+ * activity centre's dark ground. A card in the page's flow, so flat: surface and hairline. */
+.winer-home {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 24px;
+  color: #ece6d6;
+  font:
+    13px/20px "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    sans-serif;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+}
+
+.winer-home-card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 440px;
+  padding: 16px;
+  border: 1px solid #223142;
+  border-radius: 10px;
+  background: #101923;
+}
+
+.winer-home-mark {
+  color: #d9bf86;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.winer-home-text {
+  margin: 0;
+}
+
+.winer-home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 4px;
+}
+
+.winer-home-show {
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid #2e4157;
+  border-radius: 6px;
+  background: transparent;
+  color: #ece6d6;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.winer-home-show:hover {
+  border-color: #c8aa6e;
+  background: #162230;
+}
+
+.winer-home-show:focus-visible {
+  outline: 2px solid #c8aa6e;
+  outline-offset: 2px;
+}
+
+/* fg-muted rather than fg-subtle, which falls just under 4.5:1 on the surface for 12px text. */
+.winer-home-hint {
+  color: #9ba7b3;
+  font-size: 12px;
+}

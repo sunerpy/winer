@@ -18,6 +18,13 @@ const STRINGS = {
   open: ["在 winer 中查看战绩", "Open their history in winer"],
   lobby: ["房间成员", "Lobby"],
   premade: ["开黑", "Party"],
+  // The home page while 隐藏首页推广 is on.
+  homeHidden: [
+    "首页推广已按 winer 的“隐藏首页推广”选项隐藏。",
+    "Home-page promotions are hidden by winer's “Hide home-page promotions” option.",
+  ],
+  homeShow: ["暂时显示", "Show for now"],
+  homeShowHint: ["客户端重启后恢复隐藏", "Hidden again when the client restarts"],
 } as const;
 
 export function text(language: Language, key: keyof typeof STRINGS): string {

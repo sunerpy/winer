@@ -640,7 +640,8 @@ pub struct PluginSettings {
     pub auto: bool,
     /// The teammate panel in champ select.
     pub team_panel: bool,
-    /// Hide the activity centre and esports pop-ups on the client home page.
+    /// Hide the esports pop-ups, and put a short note in place of the home page's news and events
+    /// hub; the note brings the hub back until the client restarts.
     pub hide_promotions: bool,
     /// In the client's own champ select, a click on an ARAM bench champion swaps at once: the
     /// plugin lifts the cooldown and winer carries the swap out.

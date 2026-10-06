@@ -445,7 +445,7 @@ export const en: Record<MessageKey, string> = {
   "plugin.benchNoCooldownHint":
     "ARAM and Hextech ARAM only, the modes with a bench: a click on a bench champion in the client swaps it in at once, without the cooldown. winer must be running.",
   "plugin.hidePromotionsHint":
-    "Hides the activity centre and esports pop-ups on the client home page.",
+    "Hides the esports pop-up and puts a short note in place of the news and events on the client's home page; “Show for now” on the note brings them back until the client restarts.",
   "plugin.dir": "Pengu Loader folder",
   "plugin.dirHint":
     "Only for a Pengu Loader of your own, e.g. C:\\Pengu Loader; left empty, winer uses its own.",
