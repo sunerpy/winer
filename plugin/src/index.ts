@@ -13,6 +13,7 @@ import {
   type FloatingPanel,
   clearLobby,
   decorateLobby,
+  removePanels,
   floatingPanel,
   interceptAvatarClicks,
   lobbyRows,
@@ -183,6 +184,7 @@ export class Controller {
   }
 
   #showLobbyPanel(view: LobbyView, language: Language, open: (puuid: string) => void): void {
+    removePanels(this.doc, "lobby", this.context);
     if (!this.#lobbyPanel?.host.isConnected) {
       this.#lobbyPanel = floatingPanel(this.doc, text(language, "lobby"), this.context);
       this.#lobbyKey = "";
@@ -196,7 +198,7 @@ export class Controller {
   }
 
   #hideLobbyPanel(): void {
-    this.#lobbyPanel?.host.remove();
+    removePanels(this.doc, "lobby");
     this.#lobbyPanel = null;
   }
 
@@ -254,6 +256,7 @@ export class Controller {
   }
 
   #showPanel(view: ChampSelectView, language: Language): void {
+    removePanels(this.doc, "team", this.context);
     if (!this.#panel?.host.isConnected) {
       const head = h(
         "button",
@@ -264,7 +267,12 @@ export class Controller {
       const body = h("div");
       const host = h(
         "section",
-        { class: "winer-panel", "data-winer-context": this.context, "data-collapsed": "false" },
+        {
+          class: "winer-panel",
+          "data-winer-context": this.context,
+          "data-winer-panel": "team",
+          "data-collapsed": "false",
+        },
         head,
         body,
       );
@@ -287,7 +295,7 @@ export class Controller {
   }
 
   #hidePanel(): void {
-    this.#panel?.host.remove();
+    removePanels(this.doc, "team");
     this.#panel = null;
   }
 }

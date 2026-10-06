@@ -15,7 +15,7 @@ import { innermost } from "./find";
 import { clearFriends, decorateFriends, friendLine } from "./friends";
 import { groupSlot } from "./groups";
 import { Controller } from "./index";
-import { clearLobby, decorateLobby, interceptAvatarClicks, lobbyLine } from "./lobby";
+import { clearLobby, decorateLobby, interceptAvatarClicks, lobbyLine, removePanels } from "./lobby";
 import { FRIENDS_LIST, LOBBY } from "./selectors";
 import { lineKey, statsLine } from "./team";
 
@@ -308,6 +308,32 @@ describe("lobby", () => {
       expect(line.previousElementSibling?.className).toBe("player-achievements-container");
     }
     clearLobby(document);
+  });
+
+  it("clears a panel the page's other context left behind", () => {
+    for (const context of ["a", "b"]) {
+      document.body.insertAdjacentHTML(
+        "beforeend",
+        `<section class="winer-panel" data-winer-panel="lobby" data-winer-context="${context}"></section>`,
+      );
+    }
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<section class="winer-panel" data-winer-panel="team" data-winer-context="a"></section>`,
+    );
+    removePanels(document, "lobby", "b");
+    expect(
+      [...document.querySelectorAll<HTMLElement>(".winer-panel")].map((panel) => [
+        panel.dataset.winerPanel,
+        panel.dataset.winerContext,
+      ]),
+    ).toEqual([
+      ["lobby", "b"],
+      ["team", "a"],
+    ]);
+    removePanels(document, "lobby");
+    expect(document.querySelectorAll('[data-winer-panel="lobby"]')).toHaveLength(0);
+    document.querySelectorAll(".winer-panel").forEach((panel) => panel.remove());
   });
 
   it("opens a history from a click on the avatar and leaves the client's controls to it", () => {

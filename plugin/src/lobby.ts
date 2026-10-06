@@ -206,3 +206,12 @@ export function lobbyRows(
     }),
   );
 }
+
+/** Removes the `kind` panels on the page but `keep`'s. The drawing role can pass from one of the
+ *  page's two contexts to the other (docs/platform-notes.md), and the one that lost it no longer
+ *  renders, so the one drawing clears whatever the other left behind. */
+export function removePanels(doc: Document, kind: string, keep?: string): void {
+  doc.querySelectorAll<HTMLElement>(`.winer-panel[data-winer-panel="${kind}"]`).forEach((panel) => {
+    if (keep === undefined || panel.dataset.winerContext !== keep) panel.remove();
+  });
+}
