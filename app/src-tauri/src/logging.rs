@@ -254,7 +254,11 @@ fn list(dir: &Path) -> Vec<Found> {
         .flatten()
         .filter_map(|entry| {
             let name = Name::parse(entry.file_name().to_str()?)?;
-            let metadata = entry.metadata().ok().filter(fs::Metadata::is_file)?;
+            // Not the listing's own metadata: on Windows its size is updated only when a file is
+            // closed, so the file being written would read as empty.
+            let metadata = fs::symlink_metadata(entry.path())
+                .ok()
+                .filter(fs::Metadata::is_file)?;
             Some(Found {
                 name,
                 path: entry.path(),
