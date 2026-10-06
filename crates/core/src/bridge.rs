@@ -39,7 +39,7 @@ use ts_rs::TS;
 use crate::{
     CoreError, Service,
     settings::Settings,
-    view::{Award, Event, GameData, IpcError, MatchPage, Snapshot},
+    view::{Award, Event, GameData, GameKind, IpcError, MatchPage, Snapshot},
 };
 
 /// Core → plugin. Built, serialized and dropped at once, so the variants' sizes do not matter.
@@ -330,8 +330,9 @@ impl BridgeMessage {
 }
 
 /// The panel's games from a page of history: the newest [`PANEL_GAMES`], each queue named as the
-/// client's catalog names it.
-pub fn panel_history(page: MatchPage, data: Option<&GameData>) -> PanelHistory {
+/// client's catalog names it; with `hide_custom`, the newest that are not custom games, as the
+/// History page shows them.
+pub fn panel_history(page: MatchPage, data: Option<&GameData>, hide_custom: bool) -> PanelHistory {
     let queue = |id: i64| {
         data.and_then(|data| data.queues.iter().find(|queue| queue.id == id))
             .map(|queue| queue.name.trim().to_owned())
@@ -342,6 +343,7 @@ pub fn panel_history(page: MatchPage, data: Option<&GameData>) -> PanelHistory {
         games: page
             .games
             .into_iter()
+            .filter(|game| !(hide_custom && game.kind == GameKind::Custom))
             .take(PANEL_GAMES as usize)
             .map(|game| PanelGame {
                 game_id: game.game_id,
@@ -362,18 +364,29 @@ pub fn panel_history(page: MatchPage, data: Option<&GameData>) -> PanelHistory {
     }
 }
 
-/// `puuid`'s latest games, looked up as the History page looks up its first page.
+/// `puuid`'s latest games, looked up as the History page looks up its first page. While the History
+/// page hides custom games the panel does too, and reads twice as many to fill its list.
 async fn panel_lookup(service: &Service, puuid: &str) -> Result<PanelHistory, IpcError> {
     if puuid.len() > PUUID_MAX {
         return Err(
             CoreError::Invalid(format!("not a player id ({} characters)", puuid.len())).into(),
         );
     }
-    let lookup = service.match_history(puuid, 0, PANEL_GAMES);
+    let hide_custom = service.settings().history.hide_custom_games;
+    let count = if hide_custom {
+        2 * PANEL_GAMES
+    } else {
+        PANEL_GAMES
+    };
+    let lookup = service.match_history(puuid, 0, count);
     let page = tokio::time::timeout(PANEL_TIMEOUT, lookup)
         .await
         .map_err(|_| CoreError::Remote("the games did not arrive in time".into()))??;
-    Ok(panel_history(page, service.game_data().as_deref()))
+    Ok(panel_history(
+        page,
+        service.game_data().as_deref(),
+        hide_custom,
+    ))
 }
 
 /// The answer to one lookup more than a connection may have under way.
@@ -613,7 +626,7 @@ mod tests {
             ..GameData::default()
         };
 
-        let panel = panel_history(page.clone(), Some(&data));
+        let panel = panel_history(page.clone(), Some(&data), false);
         assert_eq!(panel.puuid, "PUUID-0010");
         assert_eq!(
             panel
@@ -646,11 +659,60 @@ mod tests {
         let wire = serde_json::to_string(&BridgeMessage::history_result(1, Ok(panel))).unwrap();
         assert!(wire.len() < 4096, "a small answer: {} bytes", wire.len());
         assert!(
-            panel_history(page, None)
+            panel_history(page, None, false)
                 .games
                 .iter()
                 .all(|game| game.queue.is_empty()),
             "no catalog, no names"
+        );
+    }
+
+    #[test]
+    fn the_panel_leaves_custom_games_out_while_the_history_page_hides_them() {
+        let game: Game = fixture("live/responses/match-history-game-sgp-twin.json");
+        let summary = analysis::match_summary(
+            "PUUID-0010",
+            &game,
+            &Roles::new(),
+            &analysis::QueueKinds::new(),
+        )
+        .expect("the player is in the game");
+        // Twenty games, newest first: the three newest and every fifth one custom.
+        let games = (0..20)
+            .map(|n| MatchSummary {
+                game_id: n,
+                kind: if n < 3 || n % 5 == 0 {
+                    GameKind::Custom
+                } else {
+                    GameKind::Matched
+                },
+                ..summary.clone()
+            })
+            .collect();
+        let page = MatchPage {
+            puuid: "PUUID-0010".into(),
+            begin: 0,
+            games,
+            has_more: true,
+            source: HistorySource::Server,
+        };
+        let ids = |panel: PanelHistory| {
+            panel
+                .games
+                .iter()
+                .map(|game| game.game_id)
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(
+            ids(panel_history(page.clone(), None, true)),
+            [3, 4, 6, 7, 8, 9, 11, 12, 13, 14],
+            "the newest ten that are not custom"
+        );
+        assert_eq!(
+            ids(panel_history(page, None, false)),
+            (0..i64::from(PANEL_GAMES)).collect::<Vec<_>>(),
+            "shown, a custom game is listed as any other"
         );
     }
 
