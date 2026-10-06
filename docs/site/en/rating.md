@@ -121,16 +121,28 @@ Remakes and teams of one earn no title.
 Each part is compared with the game's average player and counts for at most three of them; a part
 whose game average is below 1 is left out (vision in ARAM, for example).
 
-| Part                                             | Weight |
-| ------------------------------------------------ | ------ |
-| takedowns (kills + 0.7 × assists)                | 0.30   |
-| damage to champions                              | 0.25   |
-| damage taken (mitigated included)                | 0.12   |
-| gold                                             | 0.10   |
-| damage to objectives                             | 0.08   |
-| vision                                           | 0.05   |
-| crowd control                                    | 0.05   |
-| survival (`(average deaths + 1) / (deaths + 1)`) | 0.05   |
+WeGame does not publish how it scores. winer's weights were fitted on games WeGame scored, so that
+winer's MVP and SVP are WeGame's as often as possible: in 126 Summoner's Rift games (ranked and
+normal) the MVP matches in 85% and the SVP in 83%; in 139 Hextech ARAM games, 76% and 70%. With the
+earlier single set of weights for every mode these were 68% / 58% and 68% / 56%. Most of the rest
+comes from WeGame comparing a player with others on the same champion, which one game cannot show.
+
+The two kinds of game weigh differently: a map with lanes counts farming and vision; in ARAM nobody
+farms, and gold says more.
+
+| Part                                             | Summoner's Rift | ARAM and Hextech ARAM |
+| ------------------------------------------------ | --------------- | --------------------- |
+| gold                                             | 0.36            | 0.28                  |
+| survival (`(average deaths + 1) / (deaths + 1)`) | 0.19            | 0.25                  |
+| kills                                            | 0.12            | 0.12                  |
+| assists                                          | 0.09            | 0.12                  |
+| damage to champions                              | 0.09            | 0.12                  |
+| damage taken                                     | 0.05            | 0.09                  |
+| minions and monsters                             | 0.06            | —                     |
+| vision                                           | 0.04            | —                     |
+| crowd control                                    | —               | 0.02                  |
+
+Arena, URF and the other modes use the Summoner's Rift column.
 
 The weighted mean x (how many average players the line was worth) goes into
 `10 / (1 + e^(−4 × (x − c)))` with `c = 1 − ln(1.5) / 4`, which puts exactly one average player at

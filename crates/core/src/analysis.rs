@@ -259,9 +259,9 @@ fn contribution(stats: &Stats) -> Contribution {
         deaths: stats.deaths,
         assists: stats.assists,
         damage: stats.total_damage_dealt_to_champions,
-        tanked: stats.total_damage_taken + stats.damage_self_mitigated,
+        tanked: stats.total_damage_taken,
         gold: stats.gold_earned,
-        objectives: stats.damage_dealt_to_objectives,
+        minions: stats.total_minions_killed + stats.neutral_minions_killed,
         vision: stats.vision_score,
         crowd_control: stats.time_ccing_others,
     }
@@ -373,6 +373,7 @@ pub fn match_detail(game: &Game) -> MatchDetail {
                 .iter()
                 .map(|(_, _, contribution)| *contribution)
                 .collect::<Vec<_>>(),
+            rating::Weights::of(&game.game_mode),
         );
         let won: Vec<bool> = placed.iter().map(|(team, _, _)| teams[*team].win).collect();
         for (((team, slot, _), score), award) in placed

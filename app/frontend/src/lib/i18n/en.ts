@@ -249,7 +249,7 @@ export const en: Record<MessageKey, string> = {
   "augment.prismatic": "Prismatic",
   "history.share": "{p} of team",
   "history.scoreHint":
-    "winer score (0–10): takedowns, damage, damage taken, gold, objectives, vision, crowd control and survival against the game's average player, who scores 6.0.",
+    "winer score (0–10): gold, survival, kills, assists, damage and damage taken (on the Rift also farming and vision) against the game's average player, who scores 6.0; the weights are calibrated on WeGame's MVP and SVP.",
   "history.version": "Patch",
   "history.awardMvp": "MVP: the best score on the winning side",
   "history.awardSvp": "SVP: the best score on the losing side",
@@ -478,7 +478,7 @@ export const en: Record<MessageKey, string> = {
   "rating.basis.tiers":
     "Rift five, the horses, the food chain and custom names rank the team by recent form and split it evenly over the tiers, so five players in five tiers get one each; Rift grades use fixed bands and no comparison: S+ from 7.6, S 6.8, A 5.9, B 5.3, C 4.8, D 4.3, E 3.8, lower is F.",
   "rating.basis.game":
-    "One game's score (scoreboard): takedowns, damage, damage taken, gold, objectives, vision, crowd control and survival, each against the game's average, which scores 6.0; its grade is S+ from 9.0, S 8.0, A 7.0, B 6.0, C 5.0, D 4.0, E 3.0.",
+    "One game's score (scoreboard): gold, survival, kills, assists, damage and damage taken, on the Rift also farming and vision, each against the game's average, which scores 6.0, with one set of weights for the Rift and one for ARAM, both calibrated on WeGame; its grade is S+ from 9.0, S 8.0, A 7.0, B 6.0, C 5.0, D 4.0, E 3.0.",
   "rating.basis.titles":
     "Titles: recent streaks, KDA, deaths and assists per game; on the scoreboard the game's damage share, kill participation, damage taken and gold share.",
   "rating.docs": "Full explanation",
