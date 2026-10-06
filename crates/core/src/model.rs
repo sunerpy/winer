@@ -514,7 +514,13 @@ pub struct Queue {
     pub game_mode: String,
     pub map_id: i64,
     pub is_ranked: bool,
+    /// `PvP`, `VersusAi` or `Custom`.
     pub category: String,
+    // History: what a queue's games say about a player (`catalog::queue_kind`).
+    /// The queue's own type: `RANKED_SOLO_5x5`, `ARAM_BOT`, `NIGHTMARE_BOT`, …
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub is_custom: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]

@@ -11,6 +11,7 @@ pub mod builds;
 pub mod callout;
 pub mod catalog;
 pub mod friends;
+pub mod history;
 pub mod live;
 pub mod loadout;
 pub mod model;

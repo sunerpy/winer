@@ -140,6 +140,7 @@ Primitives (`app/frontend/src/ui`), each with its states:
 | CommitInput  | an Input that saves on blur or Enter, never per key                              | commits only when the text changed while focused; a saved value comes back normalized                                                  |
 | Dialog       | sized frame `min(absolute, viewport)`, lifted surface, corner ✕                  | focus trapped (edges only), Esc and scrim close, focus restored by the shell                                                           |
 | Popover      | a layer of its own (portal, fixed), anchored to its trigger                      | prefers a side, flips when that side has no room, never leaves the window; closes on an outside pointer or Esc                         |
+| Hint         | a 20px help glyph (14px circle-help) beside a figure; a Popover with the rule    | the glyph's name is the question, also its tooltip; the panel takes the focus when it opens and gives it back on Esc                   |
 | Toast        | bottom-right stack, auto-dismiss 4s                                              | ok · danger · info                                                                                                                     |
 | Pager        | ‹ · page numbers · ›, mono 12px, the current page in `accent-soft`               | the first, the last known and two either side of the current; a trailing … while more pages may follow; ‹ and › disable at the ends    |
 | EmptyState   | glyph, title, one sentence saying what to do, optional action                    |                                                                                                                                        |
@@ -169,7 +170,18 @@ while the client is not connected), `ProfileIcon` (circle), `AssetIcon` (items, 
   or 50 games (remembered), cut from what has arrived: a filter
   fills its page from as many requests as it takes. A Pager under the list, the range (第 11–20
   场, and 共 N 场 once the last page is known) beside the filters. Turning a page closes the open
-  scoreboard and brings the list's head into view.
+  scoreboard and brings the list's head into view. Beside the filters a Toggle, 隐藏自定义对局 (on
+  by default, kept in the settings), with what it hides as a mono count; a page of nothing but
+  custom games says so and offers to show them. A player seen a moment ago is drawn at once from
+  what was shown, on the page left, and checked for new games behind it; a scoreboard opened
+  before opens without a skeleton.
+- **Player header.** The profile, both ranks, then recent form under a label that says what it
+  counts (近 18 场 · 所有模式, in the ranks' 11px `fg-subtle`) with a Hint giving the rule: the
+  games looked at, the modes counted, the remakes and the games passed over. Then 近期战力: the
+  tier Badge and title chip of champ select and the quip as a `fg-subtle` line, with a Hint saying
+  how one player's tier is read. A summary of form anywhere (the overview's 近期状态, a team
+  board's 近 N 场) names the same scope, as a label or a tooltip; ranked wins and losses say they
+  are the queue's.
 - **Team board.** Champ select and the running game show one team at a time in a Panel (对局分析),
   the local player's team first; a Segmented switches to the other where both are known. One row
   per player: champion, name, tier and party badges, rank, recent win rate, KDA and streak on the

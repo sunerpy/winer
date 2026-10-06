@@ -2,12 +2,14 @@ import { averageLine, duration, riotId, type FriendView, type Settings } from "@
 import { ArrowRight, Eye, Swords } from "lucide-react";
 import { useMemo } from "react";
 
+import { FormLabel } from "../game/FormRules";
 import { GroupBadge, groupStripe } from "../game/groups";
 import { MatchRow } from "../game/MatchRow";
 import { ChampionIcon, ProfileIcon } from "../game/icons";
 import { FormLine, KdaValue, RankBadge, ResultStrip, StreakBadge, WinRate } from "../game/stats";
 import { errorMessage } from "../lib/backend";
 import { cx } from "../lib/cx";
+import { useCached } from "../lib/historyCache";
 import { useLanguage, useT } from "../lib/i18n";
 import { MODES, MODE_LABEL, type ScopedRule } from "../lib/modes";
 import { useCatalog, useLive, useNotices, useSettings, useStore } from "../lib/store";
@@ -57,7 +59,10 @@ function MeCard() {
             <dd className="mt-1 flex flex-col gap-1">
               <RankBadge rank={rank} />
               {rank && (
-                <span className="text-[11.5px] text-fg-muted">
+                <span
+                  className="text-[11.5px] text-fg-muted"
+                  title={t("history.rankedRecord", { queue: t(label) })}
+                >
                   <span className="mono">
                     {rank.wins}
                     {t("common.win")} {rank.losses}
@@ -78,17 +83,29 @@ function FormCard() {
   const t = useT();
   const store = useStore();
   const puuid = useLive((snapshot) => snapshot.me?.puuid);
-  const summary = useAsync(
+  // History: the History page's header keeps the same summary.
+  const summary = useCached(
+    puuid ? store.history.summary(puuid, puuid) : undefined,
     () => store.backend.call("get_player_summary", { puuid: puuid ?? "" }),
-    [puuid],
-    Boolean(puuid),
+    (value) => store.history.putSummary(puuid ?? "", value),
+    { refresh: true, deps: [puuid], enabled: Boolean(puuid) },
   );
   const form = summary.data?.recent;
+  // What the numbers count, for the rule beside them.
+  const standing = useAsync(
+    () => store.backend.call("get_player_standing", { puuid: puuid ?? "" }),
+    [puuid],
+    Boolean(puuid) && summary.data !== undefined,
+  );
 
   return (
     <Panel
       eyebrow={t("overview.form")}
-      title={form && form.games > 0 ? t("common.recent", { n: form.games }) : undefined}
+      title={
+        form && form.games > 0 ? (
+          <FormLabel form={form} scope={standing.data?.scope ?? null} />
+        ) : undefined
+      }
       right={form && <StreakBadge streak={form.streak} />}
       className="col-span-12 @[900px]:col-span-7"
     >
@@ -417,11 +434,16 @@ function RecentMatches() {
   const store = useStore();
   const { navigate } = useShell();
   const puuid = useLive((snapshot) => snapshot.me?.puuid);
+  const hideCustom = useSettings().history.hideCustomGames;
+  // History: ten asked for, so five remain where custom games are hidden.
   const page = useAsync(
-    () => store.backend.call("get_match_history", { puuid: puuid ?? "", begin: 0, count: 5 }),
+    () => store.backend.call("get_match_history", { puuid: puuid ?? "", begin: 0, count: 10 }),
     [puuid],
     Boolean(puuid),
   );
+  const games = (page.data?.games ?? [])
+    .filter((game) => !(hideCustom && game.kind === "custom"))
+    .slice(0, 5);
   const now = Date.now();
   return (
     <Panel
@@ -434,9 +456,9 @@ function RecentMatches() {
       }
       className="col-span-12"
     >
-      {page.data && page.data.games.length > 0 ? (
+      {games.length > 0 ? (
         <div className="flex flex-col gap-1.5">
-          {page.data.games.map((game) => (
+          {games.map((game) => (
             <MatchRow
               key={game.gameId}
               game={game}
@@ -460,7 +482,12 @@ function RecentMatches() {
           onRetry={page.reload}
         />
       ) : (
-        <EmptyState compact title={t("history.empty")} />
+        <EmptyState
+          compact
+          title={
+            page.data && page.data.games.length > 0 ? t("history.emptyHidden") : t("history.empty")
+          }
+        />
       )}
     </Panel>
   );

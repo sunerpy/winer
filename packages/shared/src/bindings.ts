@@ -163,7 +163,11 @@ export type MatchSummary = { gameId: number, queueId: number, gameMode: string, 
 /**
  * Seconds.
  */
-duration: number, line: PlayerLine, };
+duration: number, line: PlayerLine, 
+/**
+ * Against players, against the computer, or a custom game (`analysis::game_kind`).
+ */
+kind: GameKind, };
 
 export type MatchDetail = { gameId: number, queueId: number, gameMode: string, gameVersion: string, startedAt: number, duration: number, teams: Array<TeamDetail>, };
 
@@ -354,7 +358,11 @@ export type Settings = { appearance: Appearance, general: General, automation: A
 /**
  * The build panel and where its numbers come from (`builds`).
  */
-builds: BuildSettings, };
+builds: BuildSettings, 
+/**
+ * History: what the history lists show.
+ */
+history: HistorySettings, };
 
 export type Appearance = { theme: Theme, accent: Accent, density: Density, 
 /**
@@ -770,3 +778,40 @@ export type AugmentOption = { id: number,
  * From the client's own catalog.
  */
 rarity: Rarity, tier: AugmentTier | null, rates: Rates, };
+
+export type GameKind = "matched" | "bots" | "custom";
+
+export type FormScope = { 
+/**
+ * Games in the client's list the form was read from.
+ */
+listed: number, 
+/**
+ * Custom games passed over on the way to the newest twenty.
+ */
+custom: number, 
+/**
+ * Games against the computer passed over likewise.
+ */
+bots: number, 
+/**
+ * Remakes among the games looked at: shown, never counted.
+ */
+remakes: number, };
+
+export type PlayerStanding = { scope: FormScope, 
+/**
+ * Absent without a counted game.
+ */
+rating: SeatRating | null, 
+/**
+ * The fixed band of 峡谷八档 (`rating::FORM_GRADES`), 0 (S+) to 7 (F), the tier was read from.
+ */
+band: number | null, };
+
+export type HistorySettings = { 
+/**
+ * Custom games stay out of the lists. On by default: practice and lobbies among friends are
+ * not the games a history is opened for, and they push those down the first page.
+ */
+hideCustomGames: boolean, };

@@ -179,6 +179,24 @@ Measured on NJ100, 16.19, 2026-10-05.
 - Turned into the LCU's shape (`crates/core/src/sgp.rs`), a game reads exactly as
   `/lol-match-history/v1/games/{id}` does for the analysis (the test
   `a_page_from_the_server_describes_its_game_as_the_client_does`, on both captures of one game).
+  So a scoreboard opened from a server page is drawn from that page's game, with no request.
+
+## Kinds of game
+
+Read-only, GZ100, 16.19.821.7343, 2026-10-06 (`fixtures/live/ranked/queues.json`,
+`fixtures/live/history/client-list-gz100.json`).
+
+- `/lol-game-queues/v1/queues` lists 141 queues: `category` `PvP` (106), `Custom` (20, each also
+  `isCustom: true`) and `VersusAi` (15). Co-op vs AI is `VersusAi`, `type` `BOT`, `ARAM_BOT` or
+  `RIOTSCRIPT_BOT`; the ones open now are 870, 880 and 890 (入门级, 新手级, 一般级, on `SWIFTPLAY`).
+  Doom Bots (`NIGHTMARE_BOT`, 4210–4260) and Jade's co-op (`JADE_BOT`, 4320) are filed under
+  `PvP`: only their `type` says the opponent is the computer.
+- A custom game in a match list carries `gameType: CUSTOM_GAME` and the custom queue's own id
+  (3220 for an all-random ARAM lobby, 3270 for a Hextech ARAM one), not 0. The tutorial's games
+  are `TUTORIAL_GAME` by Riot's documented types; none was seen here.
+- The client's own list on GZ100 answered 30 games to `begIndex=0&endIndex=19` (NJ100 had
+  answered 20): what it holds, whatever the range. Two of those 30 were custom and three remakes
+  (`gameEndedInEarlySurrender`, 130–168 s).
 
 ## Public build statistics
 

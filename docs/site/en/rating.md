@@ -16,8 +16,13 @@ reproduce the client's, WeGame's or another tool's ratings. The scheme and the t
 
 ## Recent form (0–10)
 
-- The latest 20 games the client returns, custom games left out, so a history with custom games
-  counts fewer than 20.
+- The newest 20 games played against other players among the recent games the client lists. Custom
+  games (the practice tool included) and games against the computer are left out and take no place
+  among the 20. Which games are against the computer is the client's own queue catalog's word: queues
+  in its co-op vs AI category, and queues whose type names the computer as the opponent (Doom Bots,
+  for one); the tutorial counts as well. The Tencent client lists its latest 20 to 30 games only, so
+  with many of these the count is below 20.
+- Remakes among the 20 are shown, and count toward no win, KDA, streak or form.
 - Half win rate, half KDA: `10 × (0.5 × win rate + 0.5 × (1 − e^(−KDA/3)))`. KDA 3.0 counts as
   0.63, 6.0 as 0.86.
 - Few games pull it toward 5.0: `form = c × raw + (1 − c) × 5.0`, with `c = games / (games + 5)`, so
@@ -49,6 +54,22 @@ whose history is hidden or failed to load gets no tier.
 | Grade | S+    | S     | A     | B     | C     | D     | E     | F     |
 | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- |
 | Form  | ≥ 7.6 | ≥ 6.8 | ≥ 5.9 | ≥ 5.3 | ≥ 4.8 | ≥ 4.3 | ≥ 3.8 | < 3.8 |
+
+### One player alone
+
+The History page shows a player's tier, title and quip too, worked out as in champ select. Ranking
+in the team needs a team, though: one player ranked against themselves always lands in the middle
+tier. So with one player alone, the player first takes Rift grades' fixed band, and the eight
+grades are then spread in order over the scheme's tiers the way a team is: grade g (S+ is 0) lands
+in the tier that `(g + ½) / 8 × tiers` falls in. For the default Rift five:
+
+| Rift grades | S+, S        | A            | B, C               | D            | E, F           |
+| ----------- | ------------ | ------------ | ------------------ | ------------ | -------------- |
+| Rift five   | Rift Demigod | Human Turret | Rift Civil Servant | Walking Ward | Pure Workhorse |
+
+Under Rift grades the tier is the grade, as in champ select. Under the other schemes the same
+player's tier in champ select also depends on the teammates, and can differ from the History
+page's.
 
 ## Callout
 

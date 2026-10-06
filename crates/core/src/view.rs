@@ -398,6 +398,8 @@ pub struct MatchSummary {
     /// Seconds.
     pub duration: i64,
     pub line: PlayerLine,
+    /// Against players, against the computer, or a custom game (`analysis::game_kind`).
+    pub kind: GameKind,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
@@ -517,6 +519,10 @@ pub struct GameData {
     #[serde(skip)]
     #[ts(skip)]
     pub roles: crate::rating::Roles,
+    /// History: each queue's kind of game (`catalog::queue_kind`), for what form leaves out.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub kinds: crate::analysis::QueueKinds,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
@@ -868,6 +874,49 @@ pub struct HotkeyStatus {
     pub suspended: bool,
     /// Why the system refused it, in its own words; usually another program holds the combination.
     pub error: Option<String>,
+}
+
+// ---- History: what the numbers count, and a player rated alone (`analysis.rs`, `history.rs`) ----
+
+/// Who a game was played against, as far as form goes: only games against other players through
+/// matchmaking say how someone plays.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum GameKind {
+    /// Against other players, through matchmaking.
+    #[default]
+    Matched,
+    /// Against the computer: co-op vs AI, Doom Bots, the tutorial.
+    Bots,
+    /// A lobby set up by hand, the practice tool included.
+    Custom,
+}
+
+/// What a recent form was read from and what it leaves out (`analysis::form_scope`). The games it
+/// looks at are `RecentForm::matches`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FormScope {
+    /// Games in the client's list the form was read from.
+    pub listed: u32,
+    /// Custom games passed over on the way to the newest twenty.
+    pub custom: u32,
+    /// Games against the computer passed over likewise.
+    pub bots: u32,
+    /// Remakes among the games looked at: shown, never counted.
+    pub remakes: u32,
+}
+
+/// A player's standing on the History page: what their form counts, and the tier, title and quip
+/// it earns on its own (`history::standing`).
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerStanding {
+    pub scope: FormScope,
+    /// Absent without a counted game.
+    pub rating: Option<SeatRating>,
+    /// The fixed band of 峡谷八档 (`rating::FORM_GRADES`), 0 (S+) to 7 (F), the tier was read from.
+    pub band: Option<u8>,
 }
 
 #[cfg(test)]

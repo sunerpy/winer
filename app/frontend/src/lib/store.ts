@@ -17,6 +17,7 @@ import type {
 import { createContext, useContext, useEffect } from "react";
 
 import type { Backend } from "./backend";
+import { HistoryCache } from "./historyCache";
 import { Observable, useObservable } from "./observable";
 
 export const EMPTY_SNAPSHOT: Snapshot = {
@@ -102,6 +103,8 @@ export class AppStore {
   readonly hotkey = new Observable<HotkeyStatus | null>(null);
   /** The latest history asked for from inside the client, which the shell's route follows. */
   readonly historyRequest = new Observable<HistoryRequest | null>(null);
+  /** History: what the History page has shown, for the signed-in account (`historyCache.ts`). */
+  readonly history = new HistoryCache();
   /** The read whose answer is still wanted; a reset makes an answer already on its way stale. */
   #augmentDetailsRead: Promise<void> | null = null;
   #noticeId = 0;
@@ -146,7 +149,7 @@ export class AppStore {
       this.backend.call("get_settings"),
       this.backend.call("get_update_status"),
     ]);
-    this.live.set(snapshot);
+    this.#setLive(snapshot);
     for (const pending of held) this.apply(pending);
     held = null;
     this.#confirm(settings);
@@ -174,12 +177,19 @@ export class AppStore {
   apply(update: Update): void {
     const current = this.live.get();
     if (update.rev <= current.rev) return;
-    this.live.set({ ...applyPatch(current, update.patch), rev: update.rev });
+    this.#setLive({ ...applyPatch(current, update.patch), rev: update.rev });
   }
 
   async resync(): Promise<void> {
-    this.live.set(await this.backend.call("get_snapshot"));
+    this.#setLive(await this.backend.call("get_snapshot"));
     void this.loadCatalog();
+  }
+
+  /** Every live state goes through here. History: the cache is the signed-in account's before
+   *  anything is drawn for it. */
+  #setLive(snapshot: Snapshot): void {
+    this.history.scope(snapshot.me?.puuid ?? null);
+    this.live.set(snapshot);
   }
 
   async loadCatalog(): Promise<void> {

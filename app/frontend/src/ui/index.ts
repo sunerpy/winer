@@ -3,6 +3,7 @@ export { Button, IconButton } from "./Button";
 export { Card, Panel, Row } from "./Card";
 export { Dialog } from "./Dialog";
 export { EmptyState, ErrorNote, Skeleton } from "./EmptyState";
+export { Hint } from "./Hint";
 export { CommitInput, Input, Slider } from "./Input";
 export { type PageItem, Pager, pageItems } from "./Pager";
 export { Popover, type Placement, placePanel, useDismiss } from "./Popover";

@@ -77,6 +77,7 @@ const SETTINGS = {
     presence: { remember: false, availability: "chat", statusMessage: null, mobileMessage: false },
   },
   builds: { enabled: true, riftSource: "tencent" },
+  history: { hideCustomGames: true },
 } satisfies Settings;
 
 /** A backend whose events the test fires by hand, with each command's answer settable. */

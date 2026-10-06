@@ -8,14 +8,17 @@ import type {
   ChampSelectView,
   Event,
   Feat,
+  FormScope,
   FriendsView,
   GameData,
+  GameKind,
   HotkeyStatus,
   LobbyView,
   MatchDetail,
   MatchPage,
   MatchSummary,
   PlayerLine,
+  PlayerStanding,
   PlayerSummary,
   PluginStatus,
   Presence,
@@ -84,6 +87,9 @@ const GAME_DATA: GameData = {
     { id: 430, name: "匹配模式", gameMode: "CLASSIC", ranked: false },
     { id: 450, name: "极地大乱斗", gameMode: "ARAM", ranked: false },
     { id: 2400, name: "海克斯大乱斗", gameMode: "KIWI", ranked: false },
+    // History: a custom lobby's queue and co-op vs AI, as the Tencent client names them.
+    { id: 3220, name: "嚎哭深渊 全随机", gameMode: "ARAM", ranked: false },
+    { id: 870, name: "入门级", gameMode: "SWIFTPLAY", ranked: false },
   ],
 };
 
@@ -267,11 +273,93 @@ function scoreboard(gameId: number): MatchDetail {
   };
 }
 
+// ---- History: games form leaves out, and a player rated alone ----
+
+/** Games of a demo player's history not played against players through matchmaking, by place:
+ *  the demo player's past their first fifty, the player the search finds at the top. */
+const LEFT_OUT: Record<string, Record<number, GameKind>> = {
+  [DEMO_PLAYER]: { 52: "custom", 55: "bots", 60: "custom" },
+  "demo-3": { 0: "custom", 3: "custom", 7: "bots" },
+};
+
+const kindOf = (puuid: string, index: number): GameKind => LEFT_OUT[puuid]?.[index] ?? "matched";
+
+/** Sixty games to show whatever is hidden: a player's custom games come on top of them. */
+function historyLength(puuid: string): number {
+  return 60 + Object.values(LEFT_OUT[puuid] ?? {}).filter((kind) => kind === "custom").length;
+}
+
+/** The newest twenty games against players among `games`, and what was passed over on the way,
+ *  as the core reads form (`analysis::recent_form`). */
+function formGames(games: MatchSummary[]): { counted: MatchSummary[]; scope: FormScope } {
+  const scope: FormScope = { listed: games.length, custom: 0, bots: 0, remakes: 0 };
+  const counted: MatchSummary[] = [];
+  for (const game of games) {
+    if (counted.length === 20) break;
+    if (game.kind === "custom") scope.custom += 1;
+    else if (game.kind === "bots") scope.bots += 1;
+    else counted.push(game);
+  }
+  return { counted, scope };
+}
+
+/** The core's form bands (`rating::FORM_GRADES`), S+ to E; below them F. */
+const FORM_GRADES = [7.6, 6.8, 5.9, 5.3, 4.8, 4.3, 3.8];
+/** One quip per tier of the default five, from the core's own (`callout.rs`). */
+const RIFT_FIVE_QUIPS = [
+  "对面五个人准备举报代练",
+  "稳得离谱，能C还能活",
+  "无功无过，绩效合格",
+  "站在哪里，哪里就有视野",
+  "队友看完战绩陷入沉思",
+];
+
+/** A player rated alone as the core does it (`history::rate_alone`): the fixed band of the form
+ *  score, spread over the scheme's tiers the way a team is. */
+function standingOf(summary: PlayerSummary, scope: FormScope, settings: Settings): PlayerStanding {
+  const form = summary.recent;
+  if (form.games === 0) return { scope, rating: null, band: null };
+  const kda = (form.kills + form.assists) / Math.max(1, form.deaths);
+  const raw = 10 * (0.5 * (form.wins / form.games) + 0.5 * (1 - Math.exp(-kda / 3)));
+  const confidence = form.games / (form.games + 5);
+  const score = Math.round((confidence * raw + (1 - confidence) * 5) * 10) / 10;
+  const found = FORM_GRADES.findIndex((floor) => score >= floor);
+  const band = found === -1 ? FORM_GRADES.length : found;
+  const rule = settings.automation.callout;
+  const own = rule.customTiers.map((name) => name.trim()).filter(Boolean);
+  const names =
+    rule.tiers !== "custom"
+      ? TIER_NAMES[rule.tiers]["zh-CN"]
+      : own.length >= 2
+        ? own
+        : TIER_NAMES.horses["zh-CN"];
+  const graded = rule.tiers === "grades";
+  const tier = graded
+    ? Math.min(band, names.length - 1)
+    : Math.min(names.length - 1, Math.floor(((band + 0.5) / 8) * names.length - 1e-9));
+  const title = form.streak >= 3 ? "版本答案" : form.deaths >= 8 ? "黑白电视机资深会员" : null;
+  return {
+    scope,
+    band,
+    rating: {
+      score,
+      tier,
+      tiers: names.length,
+      label: names[tier] ?? "",
+      grade: graded ? tier : null,
+      title: settings.general.titles && form.games >= 5 ? title : null,
+      quip: rule.tiers === "riftFive" ? (RIFT_FIVE_QUIPS[tier] ?? null) : null,
+    },
+  };
+}
+
 function history(puuid: string, name: string, seed: number, count: number): MatchSummary[] {
   const pick = random(seed);
   return Array.from({ length: count }, (_, index) => {
     const win = pick() > 0.45;
-    const queueId = [420, 2400, 430, 2400, 440][Math.floor(pick() * 5)] ?? 420;
+    const kind = kindOf(puuid, index);
+    const drawn = [420, 2400, 430, 2400, 440][Math.floor(pick() * 5)] ?? 420;
+    const queueId = kind === "custom" ? 3220 : kind === "bots" ? 870 : drawn;
     const gameId = 9_000_000_000 + seed * 100 + index;
     const own = line(pick, puuid, name, win, champion(pick));
     const score = standIn(own);
@@ -292,17 +380,29 @@ function history(puuid: string, name: string, seed: number, count: number): Matc
     return {
       gameId,
       queueId,
-      gameMode: queueId === 2400 ? "KIWI" : "CLASSIC",
+      gameMode:
+        queueId === 2400
+          ? "KIWI"
+          : queueId === 3220
+            ? "ARAM"
+            : queueId === 870
+              ? "SWIFTPLAY"
+              : "CLASSIC",
       startedAt: NOW - (index + 1) * 3_600_000 * (1 + pick() * 5),
       duration: 1200 + Math.floor(pick() * 900),
       // Hextech ARAM is played with augments instead of runes.
       line: queueId === 2400 ? { ...played, augments: [1004, 2103, 1116, 2102] } : played,
+      kind,
     };
   });
 }
 
+/** What a demo player's form counts: their thirty newest games, as a client lists them. */
+const scopeOf = (puuid: string, name: string, seed: number): FormScope =>
+  formGames(history(puuid, name, seed, 30)).scope;
+
 function summary(puuid: string, name: string, seed: number, rank: Rank | null): PlayerSummary {
-  const games = history(puuid, name, seed, 20);
+  const games = formGames(history(puuid, name, seed, 30)).counted;
   const matches: RecentMatch[] = games.map((game) => ({
     gameId: game.gameId,
     queueId: game.queueId,
@@ -366,8 +466,14 @@ const TEAM: [string, string, Rank | null, Seat["position"]][] = [
   ["demo-5", "眼位守护者", null, "utility"],
 ];
 
+/** The seed a demo player's summary is drawn from. */
+const seedOf = (puuid: string): number => {
+  const index = TEAM.findIndex(([id]) => id === puuid);
+  return index === -1 ? puuid.length : index + 3;
+};
+
 const SUMMARIES = new Map(
-  TEAM.map(([puuid, name, tierRank], index) => [puuid, summary(puuid, name, index + 3, tierRank)]),
+  TEAM.map(([puuid, name, tierRank]) => [puuid, summary(puuid, name, seedOf(puuid), tierRank)]),
 );
 
 /** Five players in the default five Rift tiers, as the core ranks them: one in each tier. */
@@ -713,6 +819,7 @@ const DEFAULT_SETTINGS: Settings = {
     presence: { remember: false, availability: "chat", statusMessage: null, mobileMessage: false },
   },
   builds: { enabled: true, riftSource: "tencent" },
+  history: { hideCustomGames: true },
 };
 
 export function demoBackend(): Backend {
@@ -822,7 +929,12 @@ export function demoBackend(): Backend {
     },
     get_game_data: () => GAME_DATA,
     get_match_history: ({ puuid, begin, count }): MatchPage => {
-      const all = history(puuid, SUMMARIES.get(puuid)?.name?.gameName ?? "对手", puuid.length, 60);
+      const all = history(
+        puuid,
+        SUMMARIES.get(puuid)?.name?.gameName ?? "对手",
+        puuid.length,
+        historyLength(puuid),
+      );
       return {
         puuid,
         begin,
@@ -855,7 +967,7 @@ export function demoBackend(): Backend {
       };
     },
     get_player_summary: ({ puuid }) =>
-      SUMMARIES.get(puuid) ?? summary(puuid, "对手", puuid.length, rank("GOLD", "III", 40)),
+      SUMMARIES.get(puuid) ?? summary(puuid, "对手", seedOf(puuid), rank("GOLD", "III", 40)),
     get_presence: () => presence,
     set_availability: ({ availability }) => {
       presence = { ...presence, availability };
@@ -983,6 +1095,13 @@ export function demoBackend(): Backend {
     get_hotkey_status: () => hotkey,
     suspend_hotkey: ({ suspended }) => setHotkey(hotkey.shortcut, suspended),
     ...demoLoadoutHandlers(() => settings),
+    // History.
+    get_player_standing: ({ puuid }) => {
+      const player =
+        SUMMARIES.get(puuid) ?? summary(puuid, "对手", seedOf(puuid), rank("GOLD", "III", 40));
+      const name = player.name?.gameName ?? "对手";
+      return standingOf(player, scopeOf(puuid, name, seedOf(puuid)), settings);
+    },
   };
 
   return {

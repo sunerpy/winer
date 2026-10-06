@@ -358,6 +358,18 @@ pub fn form_score(form: &RecentForm) -> Option<f64> {
     Some(round1(confidence * raw + (1.0 - confidence) * 5.0))
 }
 
+/// The tier of `count`, best first, that the fixed grade `grade` (0 S+ to 7 F, [`FORM_GRADES`])
+/// falls in when the eight grades are spread over the tiers the way [`tiers`] spreads a team: each
+/// grade stands at the middle of its slice, `(grade + ½) / 8`. Five tiers take S+ and S, A, B and C,
+/// D, E and F; eight are the grades themselves. For one player on their own, where there is no team
+/// to rank against.
+pub fn tier_of_grade(grade: u8, count: usize) -> u8 {
+    let grades = GRADE_LETTERS.len() as f64;
+    let count = count.max(1);
+    let point = (f64::from(grade.min(7)) + 0.5) / grades * count as f64;
+    ((point - 1e-9).floor().max(0.0) as usize).min(count - 1) as u8
+}
+
 /// Splits players into `count` tiers by score, best first (tier 0). Each player stands at the
 /// middle of their slice of the ranking, `(place + ½) / n`, and takes the tier that point falls in
 /// (a point on a boundary goes to the better tier): five players in three tiers split 2 / 1 / 2,
@@ -635,6 +647,34 @@ mod tests {
         assert!(strong > 7.0 && weak < 4.5, "{strong} {weak}");
         // One lucky game is not a 100% player.
         assert!(form_score(&form(1, 1, 5.0, 1.0, 5.0)).unwrap() < strong);
+    }
+
+    #[test]
+    fn one_players_grade_spreads_over_a_schemes_tiers_like_a_team() {
+        let spread = |count| {
+            (0..8)
+                .map(|grade| tier_of_grade(grade, count))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            spread(5),
+            [0, 0, 1, 2, 2, 3, 4, 4],
+            "S+ S | A | B C | D | E F"
+        );
+        assert_eq!(
+            spread(8),
+            [0, 1, 2, 3, 4, 5, 6, 7],
+            "峡谷八档 is the grades"
+        );
+        assert_eq!(spread(3), [0, 0, 0, 1, 1, 2, 2, 2]);
+        assert_eq!(spread(7), [0, 1, 2, 3, 3, 4, 5, 6]);
+        let middling = form_score(&recent(20, 10, 5.0, 5.0, 10.0, 0)).unwrap();
+        assert_eq!(
+            tier_of_grade(grade(middling, &FORM_GRADES), 5),
+            2,
+            "a middling player is the middle of five"
+        );
+        assert_eq!(tier_of_grade(9, 5), 4, "past F is still the last tier");
     }
 
     #[test]

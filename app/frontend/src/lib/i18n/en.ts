@@ -297,6 +297,41 @@ export const en: Record<MessageKey, string> = {
   "feat.doubleWhy": "Best streak of the game: a double kill.",
   "history.placement": "#{n}",
   "history.offline": "Connect the client to look up games.",
+  // History: what the numbers count, custom games, a player rated alone.
+  "history.formLabel": "Last {n} · all modes",
+  "history.formHint": "How these numbers are counted",
+  "history.formWindow":
+    "The newest {window} of the {listed} recent games the client lists (20 at most), every mode, not only ranked.",
+  "history.formWindowShort":
+    "The newest {window} of the recent games the client lists (20 at most), every mode, not only ranked.",
+  "history.formModes": "The {n} counted: {modes}.",
+  "history.formMode": "{mode} {n}",
+  "history.formModeJoin": ", ",
+  "history.formRemakes":
+    "{n} remakes among them show as grey ticks and count toward nothing: not wins, KDA, streak or form.",
+  "history.formLeftOut":
+    "Left out, without taking a place among the 20: custom games ({custom} passed over this time) and games against the computer, the tutorial included ({bots} passed over).",
+  "history.formLeftOutShort":
+    "Left out, without taking a place among the 20: custom games and games against the computer, the tutorial included.",
+  "history.formSame": "Champ select's ratings, titles and callout read the same numbers.",
+  "history.formRuleShort":
+    "Last {n}: every mode; custom games, games against the computer and remakes left out",
+  "history.rankedRecord": "{queue}: wins and losses from the client's rank data, not recent form.",
+  "history.standing": "Recent form",
+  "history.standingHint": "How the tier is set",
+  "history.standingScore":
+    "Form {score} (0–10): half win rate, half KDA over the games counted; few games pull it toward 5.0.",
+  "history.standingAlone":
+    "In champ select, {scheme} ranks the team's five by form. Alone there is nobody to rank against, so the player takes Rift grades' fixed band first ({grade}), and the eight grades are spread in order over {scheme}'s {tiers} tiers: “{label}”. In champ select the tier also depends on the teammates and can differ.",
+  "history.standingGraded":
+    "Rift grades use fixed bands, not teammates: {grade}, “{label}”, as in champ select.",
+  "history.standingWords":
+    "Titles and quips follow champ select's rules; titles can be turned off in Settings › Rating.",
+  "history.hideCustom": "Hide custom games",
+  "history.hiddenCustom": "{n} hidden",
+  "history.emptyHidden": "Only custom games here, hidden as set.",
+  "history.showCustom": "Show custom games",
+  "history.refreshFailed": "Could not read the newest games; these are the last ones read.",
 
   "tools.title": "Tools",
   "tools.social": "Social",
@@ -488,7 +523,7 @@ export const en: Record<MessageKey, string> = {
     "Titles from the numbers: three wins in a row is “Patch Champion”, the top damage in a loss is “The Dean”.",
   "rating.basis": "How it is rated",
   "rating.basis.form":
-    "Recent form (0–10): the last 20 games, customs left out, half win rate and half KDA; few games pull it toward 5.0, so a lucky game or two cannot rank first.",
+    "Recent form (0–10): the last 20 games, custom games, games against the computer and remakes left out, half win rate and half KDA; few games pull it toward 5.0, so a lucky game or two cannot rank first.",
   "rating.basis.tiers":
     "Rift five, the horses, the food chain and custom names rank the team by recent form and split it evenly over the tiers, so five players in five tiers get one each; Rift grades use fixed bands and no comparison: S+ from 7.6, S 6.8, A 5.9, B 5.3, C 4.8, D 4.3, E 3.8, lower is F.",
   "rating.basis.game":

@@ -132,6 +132,13 @@ pub fn typescript() -> String {
         builds::AugmentTier,
         builds::AugmentOption,
     );
+    // History: what the numbers count, custom games, a player rated alone.
+    declare!(
+        view::GameKind,
+        view::FormScope,
+        view::PlayerStanding,
+        settings::HistorySettings,
+    );
     out
 }
 

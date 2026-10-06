@@ -6,15 +6,43 @@ The **History** page opens on your own games. Type `name#tag` (for example `Ligh
 to look up anyone; choosing a name in the game analysis or on a scoreboard opens that player's
 history too.
 
+## The player
+
+The top of the page is the player: their solo/duo and flex ranks, their recent form, and the tier
+that form earns.
+
+- **Recent form** reads "Last 18 · all modes": the newest 20 of the recent games the client lists,
+  every mode, not only ranked. Custom games and games against the computer (the tutorial included)
+  are left out and take no place among the 20; remakes show as grey ticks and count toward no win,
+  KDA or streak. The question mark beside it says how it went this time: how many games the client
+  listed, how many of each mode were counted, how many custom and computer games were passed over.
+- **Recent form's tier** is the tier, roast title and quip champ select shows. With one player
+  alone there is no team to rank against, so the tier is read from fixed bands; the question mark
+  shows how, and [How rating works](/en/rating#one-player-alone) has the rule.
+
+The overview's Recent form reads the same numbers and says "Last N · all modes" as well; the wins
+and losses on its rank cards are ranked games, not recent form.
+
 ## Pages and filters
 
 Games come in pages of 10, 15, 25 or 50, and the choice is remembered. Filter by **All, Ranked,
 Normal, ARAM, Other** at the top; a filtered page is still full.
 
+Beside them, **Hide custom games** is on by default: custom games (the practice tool included) stay
+out of the list and out of the overview's recent games, and the switch says how many it hid. Off,
+they show like any other game; the choice is remembered. Either way they never count toward recent
+form.
+
 The Tencent client's own history API returns the latest 20 games only. winer asks the region's
 match-history server instead, with the client's own sign-in, so it pages through the whole history;
 when that server cannot be reached it falls back to the client's 20 games and says so under the
 list.
+
+Histories seen a moment ago are kept for a while: going back to a player shows their profile and
+games at once, on the page you left, while winer checks for new games in the background, and a
+scoreboard opened before opens without being read again. The newest page is kept for a minute and a
+half at most, and after one of your games ends it is read again the next time it is shown; signing
+in to another account empties all of it.
 
 ## Each game
 

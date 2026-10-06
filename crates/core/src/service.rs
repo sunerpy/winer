@@ -27,10 +27,11 @@ use crate::{
     backup::{self, BackupChannel, BackupFile, BackupInfo},
     callout, catalog,
     friends::{self, FRIENDS, Friend},
+    history::{HistoryCache, NEWEST_TTL, Page as HistoryPage, rate_alone},
     live,
     model::{
-        ChampSelectSession, ChatMe, Conversation, Entitlements, GameQueue, GameflowSession, Lobby,
-        MatchList, RankedStats, ReadyCheck, Summoner,
+        ChampSelectSession, ChatMe, Conversation, Entitlements, Game, GameQueue, GameflowSession,
+        Lobby, MatchList, RankedStats, ReadyCheck, Summoner,
     },
     profile::{
         self, Admit, ChallengeProfile, ChallengeSummary, ClientBanner, ClientChallenge,
@@ -43,8 +44,8 @@ use crate::{
     sgp,
     view::{
         AugmentDetail, Connection, ErrorCode, Event, GameData, HistorySource, IpcError,
-        MatchDetail, MatchPage, Me, Notice, NoticeKind, Patch, Phase, PlayerProfile, PlayerStats,
-        PlayerSummary, Presence, QueueInfo, Snapshot, Update,
+        MatchDetail, MatchPage, Me, Notice, NoticeKind, Patch, Phase, PlayerProfile,
+        PlayerStanding, PlayerStats, PlayerSummary, Presence, QueueInfo, Snapshot, Update,
     },
 };
 
@@ -156,6 +157,8 @@ struct Inner {
     backups: OnceLock<PathBuf>,
     /// Remembered runes and spells, and the build panel's numbers (`loadout`).
     loadout: loadout::LoadoutState,
+    /// History: pages, whole games and Riot ID lookups, for the signed-in account (`history`).
+    history: Mutex<HistoryCache>,
 }
 
 /// One live connection to one client process.
@@ -213,8 +216,28 @@ impl Live {
 
 enum PlayerEntry {
     Loading,
-    Ready(Arc<PlayerSummary>, Instant),
+    /// When it was fetched; `None` once the player has finished a game since.
+    Ready(Arc<PlayerRecord>, Option<Instant>),
     Failed(String, Instant),
+}
+
+/// What a player's summary is worked out from, as the client sent it. The summary is read from it
+/// each time it is shown, so it follows the catalog: which queues are played against the computer
+/// is known only once the catalog has arrived, which can be after the record.
+struct PlayerRecord {
+    summoner: Summoner,
+    ranked: Option<RankedStats>,
+    games: Vec<Game>,
+}
+
+impl PlayerEntry {
+    /// A record fetched within `max_age`, and no game of the player's has ended since.
+    fn fresh(&self, max_age: Duration) -> Option<&Arc<PlayerRecord>> {
+        match self {
+            Self::Ready(record, Some(at)) if at.elapsed() < max_age => Some(record),
+            _ => None,
+        }
+    }
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -259,6 +282,7 @@ impl Service {
                 augment_details: tokio::sync::Mutex::new(HashMap::new()),
                 backups: OnceLock::new(),
                 loadout: loadout::LoadoutState::new(loadouts),
+                history: Mutex::new(HistoryCache::default()),
             }),
         }
     }
@@ -306,7 +330,9 @@ impl Service {
 
     /// `count` of `puuid`'s games from the `begin`-th newest. On a Tencent shard they come from its
     /// match-history server; the client's own history only stands in for the first page, because
-    /// it answers every page with the same newest twenty (`sgp`).
+    /// it answers every page with the same newest twenty (`sgp`). Pages are kept for a while
+    /// (`history`), so going back to a player, paging back and the overview's short list ask for
+    /// nothing again.
     pub async fn match_history(
         &self,
         puuid: &str,
@@ -316,58 +342,62 @@ impl Service {
         segment(puuid)?;
         let count = count.clamp(1, 50);
         let client = self.client()?;
-        let data = lock(&client.data).clone();
-        let no_roles = crate::rating::Roles::new();
-        let roles = data.as_deref().map_or(&no_roles, |data| &data.roles);
-        let summaries = |games: &[crate::model::Game]| -> Vec<_> {
-            games
-                .iter()
-                .filter_map(|game| analysis::match_summary(puuid, game, roles))
-                .collect()
-        };
-        match server_history(&client, puuid, begin, count).await {
-            Some(Ok(page)) => {
-                return Ok(MatchPage {
-                    puuid: puuid.to_owned(),
-                    begin,
-                    games: summaries(&page.games),
-                    has_more: page.returned as u32 >= count,
-                    source: HistorySource::Server,
-                });
-            }
-            Some(Err(error)) if begin > 0 => return Err(error),
-            Some(Err(error)) => warn!(%error, "no match-history server, showing the client's own"),
-            None => {}
-        }
         let me = lock(&client.live).me.clone();
-        let tencent = sgp::base(&client.platform_id).is_some() || client.platform_id.is_empty();
-        if tencent && begin > 0 {
-            // The client's window is the first page, whatever range is asked.
-            return Ok(MatchPage {
-                puuid: puuid.to_owned(),
-                begin,
-                games: Vec::new(),
-                has_more: false,
-                source: HistorySource::Client,
-            });
-        }
-        let list = history(&client.lcu, puuid, &me, begin, count).await?;
-        let games = summaries(&list.games.games);
+        self.scope_account(&me);
+        let kept = lock(&self.inner.history).page(&me, puuid, begin, count, Instant::now());
+        let page = match kept {
+            Some(page) => page,
+            None => {
+                let (page, keep) = fetch_history(&client, puuid, &me, begin, count).await?;
+                if keep {
+                    lock(&self.inner.history).put_page(
+                        &me,
+                        puuid,
+                        begin,
+                        page.clone(),
+                        Instant::now(),
+                    );
+                }
+                page
+            }
+        };
+        self.same_account(&client, &me)?;
+        let data = lock(&client.data).clone().unwrap_or_default();
         Ok(MatchPage {
             puuid: puuid.to_owned(),
             begin,
-            has_more: !tencent && games.len() as u32 >= count,
-            games,
-            source: HistorySource::Client,
+            games: page
+                .entries
+                .iter()
+                .flatten()
+                .filter_map(|game| analysis::match_summary(puuid, game, &data.roles, &data.kinds))
+                .collect(),
+            has_more: page.more,
+            source: page.source,
         })
     }
 
+    /// One game's scoreboard. A game that came with a page of the shard's server is drawn from that
+    /// page; any other is asked of the client once (`history`).
     pub async fn match_detail(&self, game_id: i64) -> Result<MatchDetail, CoreError> {
         let client = self.client()?;
-        let game = client
-            .lcu
-            .get(&format!("/lol-match-history/v1/games/{game_id}"))
-            .await?;
+        let me = lock(&client.live).me.clone();
+        self.scope_account(&me);
+        let kept = lock(&self.inner.history).game(&me, game_id);
+        let game = match kept {
+            Some(game) => game,
+            None => {
+                let game: Arc<Game> = Arc::new(
+                    client
+                        .lcu
+                        .get(&format!("/lol-match-history/v1/games/{game_id}"))
+                        .await?,
+                );
+                lock(&self.inner.history).put_game(&me, game.clone());
+                game
+            }
+        };
+        self.same_account(&client, &me)?;
         let data = lock(&client.data).clone();
         let no_roles = crate::rating::Roles::new();
         Ok(analysis::match_detail(
@@ -376,7 +406,8 @@ impl Service {
         ))
     }
 
-    /// Looks a player up by Riot ID, `name#tag`.
+    /// Looks a player up by Riot ID, `name#tag`; the same ID again within a few minutes is not
+    /// asked for again (`history::FOUND_TTL`).
     pub async fn find_player(&self, riot_id: &str) -> Result<PlayerProfile, CoreError> {
         let riot_id = riot_id.trim();
         let (name, tag) = riot_id.rsplit_once('#').unwrap_or((riot_id, ""));
@@ -385,7 +416,13 @@ impl Service {
                 "enter a Riot ID such as name#tag".into(),
             ));
         }
-        let lcu = self.client()?.lcu;
+        let client = self.client()?;
+        let me = lock(&client.live).me.clone();
+        self.scope_account(&me);
+        if let Some(found) = lock(&self.inner.history).found(&me, riot_id, Instant::now()) {
+            return Ok(found);
+        }
+        let lcu = client.lcu.clone();
         let query = query_value(&format!("{}#{}", name.trim(), tag.trim()));
         let summoner: Summoner = match lcu
             .get(&format!("/lol-summoner/v1/summoners?name={query}"))
@@ -405,24 +442,15 @@ impl Service {
             .await
             .ok()
             .flatten();
-        Ok(analysis::profile(&summoner, ranked.as_ref()))
+        let profile = analysis::profile(&summoner, ranked.as_ref());
+        self.same_account(&client, &me)?;
+        lock(&self.inner.history).put_found(&me, riot_id, profile.clone(), Instant::now());
+        Ok(profile)
     }
 
     pub async fn player_summary(&self, puuid: &str) -> Result<PlayerSummary, CoreError> {
-        segment(puuid)?;
-        if let Some(PlayerEntry::Ready(summary, at)) = lock(&self.inner.players).get(puuid)
-            && at.elapsed() < PLAYER_TTL
-        {
-            return Ok((**summary).clone());
-        }
-        let client = self.client()?;
-        let me = lock(&client.live).me.clone();
-        let summary = load_summary(&client.lcu, puuid, &me).await?;
-        lock(&self.inner.players).insert(
-            puuid.to_owned(),
-            PlayerEntry::Ready(Arc::new(summary.clone()), Instant::now()),
-        );
-        Ok(summary)
+        let record = self.player_record(puuid).await?;
+        Ok(self.summarize(&record))
     }
 
     /// A game-data asset such as a champion icon. Only `/lol-game-data/assets/` is served: the
@@ -830,6 +858,7 @@ impl Service {
             .ok()
             .flatten();
         lock(&client.live).me = summoner.puuid.clone();
+        self.scope_account(&summoner.puuid);
         self.patch(Patch::Me(Some(Me {
             name: analysis::riot_id(&summoner),
             puuid: summoner.puuid,
@@ -851,6 +880,8 @@ impl Service {
                 let _ = service.inner.events.send(Event::GameData);
                 // Friends' modes are named from the catalog's queues.
                 service.render_friends(&client);
+                // History: so are the games form leaves out, which ratings shown before need.
+                service.render(&client);
                 if complete {
                     return;
                 }
@@ -861,6 +892,9 @@ impl Service {
 
     async fn on_phase(&self, client: &Client, phase: Phase) {
         let previous = std::mem::replace(&mut lock(&client.live).phase, phase);
+        if game_over(previous, phase) {
+            self.forget_newest(client);
+        }
         self.patch(Patch::Phase(phase));
         if profile::after_a_game(previous, phase) {
             self.open_presence_window(client);
@@ -1091,23 +1125,26 @@ impl Service {
     }
 
     fn player_stats(&self, puuid: &str) -> PlayerStats {
-        match lock(&self.inner.players).get(puuid) {
-            Some(PlayerEntry::Ready(summary, _)) => {
-                PlayerStats::Ready(Box::new((**summary).clone()))
+        let record = match lock(&self.inner.players).get(puuid) {
+            Some(PlayerEntry::Ready(record, _)) => record.clone(),
+            Some(PlayerEntry::Failed(message, _)) => {
+                return PlayerStats::Failed {
+                    message: message.clone(),
+                };
             }
-            Some(PlayerEntry::Failed(message, _)) => PlayerStats::Failed {
-                message: message.clone(),
-            },
-            Some(PlayerEntry::Loading) | None => PlayerStats::Loading,
-        }
+            Some(PlayerEntry::Loading) | None => return PlayerStats::Loading,
+        };
+        PlayerStats::Ready(Box::new(self.summarize(&record)))
     }
 
     fn ensure_player(&self, client: &Client, puuid: String) {
+        let me = lock(&client.live).me.clone();
+        self.scope_account(&me);
         {
             let mut players = lock(&self.inner.players);
             let fresh = match players.get(&puuid) {
                 Some(PlayerEntry::Loading) => true,
-                Some(PlayerEntry::Ready(_, at)) => at.elapsed() < PLAYER_TTL,
+                Some(entry @ PlayerEntry::Ready(..)) => entry.fresh(PLAYER_TTL).is_some(),
                 Some(PlayerEntry::Failed(_, at)) => at.elapsed() < FAILED_PLAYER_TTL,
                 None => false,
             };
@@ -1115,7 +1152,7 @@ impl Service {
                 return;
             }
             if players.len() > 500 {
-                players.retain(|_, entry| matches!(entry, PlayerEntry::Ready(_, at) if at.elapsed() < PLAYER_TTL));
+                players.retain(|_, entry| entry.fresh(PLAYER_TTL).is_some());
             }
             players.insert(puuid.clone(), PlayerEntry::Loading);
         }
@@ -1123,16 +1160,24 @@ impl Service {
         self.spawn(async move {
             let entry = {
                 let _slot = service.inner.player_slots.acquire().await;
-                let me = lock(&client.live).me.clone();
-                match load_summary(&client.lcu, &puuid, &me).await {
-                    Ok(summary) => PlayerEntry::Ready(Arc::new(summary), Instant::now()),
+                match load_record(&client.lcu, &puuid, &me).await {
+                    Ok(record) => PlayerEntry::Ready(Arc::new(record), Some(Instant::now())),
                     Err(error) => {
                         debug!(%error, "player stats unavailable");
                         PlayerEntry::Failed(error.to_string(), Instant::now())
                     }
                 }
             };
-            lock(&service.inner.players).insert(puuid, entry);
+            let current = service.same_account(&client, &me).is_ok();
+            {
+                let mut players = lock(&service.inner.players);
+                if current {
+                    players.insert(puuid, entry);
+                } else if matches!(players.get(&puuid), Some(PlayerEntry::Loading)) {
+                    // Fetched for an account that has signed out since: the next one asks again.
+                    players.remove(&puuid);
+                }
+            }
             service.render(&client);
         });
     }
@@ -1972,6 +2017,111 @@ impl Service {
     }
 }
 
+// ---- History: a player's record and standing, and the caches behind the history pages ----
+
+impl Service {
+    /// What `puuid`'s form counts, and the tier, title and quip it earns on its own under the
+    /// rating settings (`history::rate_alone`).
+    pub async fn player_standing(&self, puuid: &str) -> Result<PlayerStanding, CoreError> {
+        let record = self.player_record(puuid).await?;
+        let summary = self.summarize(&record);
+        let data = self.game_data().unwrap_or_default();
+        let settings = self.settings();
+        let rated = rate_alone(
+            &summary,
+            &callout::ranking(&settings.automation.callout, &settings.general),
+        );
+        Ok(PlayerStanding {
+            scope: analysis::form_scope(&record.summoner.puuid, &record.games, &data.kinds),
+            band: rated.as_ref().map(|(_, band)| *band),
+            rating: rated.map(|(rating, _)| rating),
+        })
+    }
+
+    /// `puuid`'s record, the one champ select and the window share. The window takes it while it
+    /// is as fresh as the newest page of games beside it (`history::NEWEST_TTL`), else fetches it,
+    /// so the form above a list never lags the list.
+    async fn player_record(&self, puuid: &str) -> Result<Arc<PlayerRecord>, CoreError> {
+        segment(puuid)?;
+        let client = self.client()?;
+        let me = lock(&client.live).me.clone();
+        self.scope_account(&me);
+        if let Some(record) = lock(&self.inner.players)
+            .get(puuid)
+            .and_then(|entry| entry.fresh(NEWEST_TTL))
+        {
+            return Ok(record.clone());
+        }
+        let record = Arc::new(load_record(&client.lcu, puuid, &me).await?);
+        self.same_account(&client, &me)?;
+        lock(&self.inner.players).insert(
+            puuid.to_owned(),
+            PlayerEntry::Ready(record.clone(), Some(Instant::now())),
+        );
+        Ok(record)
+    }
+
+    /// A record's summary under the catalog as it is now.
+    fn summarize(&self, record: &PlayerRecord) -> PlayerSummary {
+        let data = self.game_data().unwrap_or_default();
+        analysis::summary(
+            &record.summoner,
+            record.ranked.as_ref(),
+            &record.games,
+            &data.kinds,
+        )
+    }
+
+    /// Makes every cache the signed-in account's: another account's pages, games, lookups and
+    /// players' records go, so nothing fetched for one is shown to the next.
+    fn scope_account(&self, me: &str) {
+        if lock(&self.inner.history).scope(me) {
+            lock(&self.inner.players).clear();
+        }
+    }
+
+    /// Refuses an answer fetched for an account that has signed out since.
+    fn same_account(&self, client: &Client, me: &str) -> Result<(), CoreError> {
+        if self.is_current(client) && lock(&client.live).me == me {
+            Ok(())
+        } else {
+            Err(CoreError::Busy("the signed-in account changed".into()))
+        }
+    }
+
+    /// A game just ended: the local player and everyone in it have a new game in their history, so
+    /// their newest pages and records are asked for again. A view showing them keeps the record it
+    /// has until the new one arrives.
+    fn forget_newest(&self, client: &Client) {
+        let played: Vec<String> = {
+            let live = lock(&client.live);
+            std::iter::once(live.me.clone())
+                .chain(live.gameflow.iter().flat_map(live::game_puuids))
+                .collect()
+        };
+        lock(&self.inner.history).expire_newest(played.iter().map(String::as_str));
+        let mut players = lock(&self.inner.players);
+        for puuid in &played {
+            if let Some(PlayerEntry::Ready(_, at)) = players.get_mut(puuid) {
+                *at = None;
+            }
+        }
+    }
+}
+
+/// A step out of a game that was played, its stats and its end screen included: somewhere along
+/// it the game lands in its players' histories.
+fn game_over(previous: Phase, phase: Phase) -> bool {
+    let played = |phase: Phase| {
+        phase.in_game()
+            || matches!(
+                phase,
+                Phase::WaitingForStats | Phase::PreEndOfGame | Phase::EndOfGame
+            )
+    };
+    previous != phase && played(previous) && !phase.in_game()
+}
+
 /// The id of champ select's chat room, once it is open.
 async fn champ_select_chat(lcu: &Lcu) -> Result<Option<String>, CoreError> {
     let conversations: Vec<Conversation> = lcu.get("/lol-chat/v1/conversations").await?;
@@ -2040,6 +2190,57 @@ fn queue_mode(client: &Client, queue_id: i64) -> Option<Mode> {
 /// The kind of game a gameflow session's queue is; `None` while it names none.
 fn gameflow_mode(queue: &GameQueue) -> Option<Mode> {
     (!queue.game_mode.is_empty()).then(|| Mode::of(&queue.game_mode, queue.is_ranked))
+}
+
+/// One page of `puuid`'s history from wherever the shard keeps it, and whether it is worth keeping:
+/// a Tencent client standing in for its shard's server is asked again next time, in case the
+/// server is back.
+async fn fetch_history(
+    client: &Client,
+    puuid: &str,
+    me: &str,
+    begin: u32,
+    count: u32,
+) -> Result<(HistoryPage, bool), CoreError> {
+    match server_history(client, puuid, begin, count).await {
+        Some(Ok(page)) => {
+            let more = page.entries.len() as u32 >= count;
+            let entries = page
+                .entries
+                .into_iter()
+                .map(|entry| entry.map(Arc::new))
+                .collect();
+            let page = HistoryPage {
+                entries,
+                more,
+                source: HistorySource::Server,
+            };
+            return Ok((page, true));
+        }
+        Some(Err(error)) if begin > 0 => return Err(error),
+        Some(Err(error)) => warn!(%error, "no match-history server, showing the client's own"),
+        None => {}
+    }
+    let tencent = sgp::base(&client.platform_id).is_some() || client.platform_id.is_empty();
+    if tencent && begin > 0 {
+        // The client's window is the first page, whatever range is asked.
+        let page = HistoryPage {
+            entries: Vec::new(),
+            more: false,
+            source: HistorySource::Client,
+        };
+        return Ok((page, false));
+    }
+    let games = history(&client.lcu, puuid, me, begin, count)
+        .await?
+        .games
+        .games;
+    let page = HistoryPage {
+        more: !tencent && games.len() as u32 >= count,
+        entries: games.into_iter().map(|game| Some(Arc::new(game))).collect(),
+        source: HistorySource::Client,
+    };
+    Ok((page, !tencent))
 }
 
 /// One page from the shard's match-history server, with the client's own access token for it;
@@ -2121,13 +2322,14 @@ fn history_paths(
     Ok((page(segment(puuid)?), fallback))
 }
 
-async fn load_summary(lcu: &Lcu, puuid: &str, me: &str) -> Result<PlayerSummary, CoreError> {
+async fn load_record(lcu: &Lcu, puuid: &str, me: &str) -> Result<PlayerRecord, CoreError> {
     let summoner_path = format!("/lol-summoner/v2/summoners/puuid/{}", segment(puuid)?);
     let ranked_path = format!("/lol-ranked/v1/ranked-stats/{puuid}");
     let (summoner, ranked, history) = tokio::join!(
         lcu.get::<Summoner>(&summoner_path),
         lcu.get_optional::<RankedStats>(&ranked_path),
-        // Wider than the form's twenty, so custom games (left out of form) do not shrink it.
+        // Wider than the form's twenty, so games form leaves out do not shrink it where the client
+        // has more (a Tencent client answers with what it holds whatever the range).
         history(lcu, puuid, me, 0, 30),
     );
     let summoner = summoner?;
@@ -2135,12 +2337,11 @@ async fn load_summary(lcu: &Lcu, puuid: &str, me: &str) -> Result<PlayerSummary,
         debug!(%error, "match history unavailable");
     }
     // A private profile refuses history and rank; the identity alone is still worth showing.
-    let games = history.map(|list| list.games.games).unwrap_or_default();
-    Ok(analysis::summary(
-        &summoner,
-        ranked.ok().flatten().as_ref(),
-        &games,
-    ))
+    Ok(PlayerRecord {
+        summoner,
+        ranked: ranked.ok().flatten(),
+        games: history.map(|list| list.games.games).unwrap_or_default(),
+    })
 }
 
 /// Rejects anything that could change the meaning of the URL it is placed in.
@@ -2602,5 +2803,87 @@ mod tests {
     fn a_restore_refused_in_a_game_says_busy() {
         let error = IpcError::from(CoreError::Busy("in a game".into()));
         assert_eq!(error.code, ErrorCode::Busy);
+    }
+
+    // History.
+
+    fn record(puuid: &str) -> PlayerEntry {
+        PlayerEntry::Ready(
+            Arc::new(PlayerRecord {
+                summoner: Summoner {
+                    puuid: puuid.into(),
+                    ..Summoner::default()
+                },
+                ranked: None,
+                games: Vec::new(),
+            }),
+            Some(Instant::now()),
+        )
+    }
+
+    #[test]
+    fn every_step_out_of_a_played_game_counts_and_nothing_before_it() {
+        use Phase::*;
+        for (previous, phase) in [
+            (InProgress, WaitingForStats),
+            (WaitingForStats, PreEndOfGame),
+            (PreEndOfGame, EndOfGame),
+            (EndOfGame, Lobby),
+            (Reconnect, None),
+        ] {
+            assert!(game_over(previous, phase), "{previous:?} → {phase:?}");
+        }
+        for (previous, phase) in [
+            (ChampSelect, Lobby),
+            (GameStart, InProgress),
+            (InProgress, Reconnect),
+            (Lobby, Matchmaking),
+            (EndOfGame, EndOfGame),
+        ] {
+            assert!(!game_over(previous, phase), "{previous:?} → {phase:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_game_that_ended_makes_its_players_due_and_another_account_sees_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        let client = quiet_client(Phase::EndOfGame);
+        let player = |puuid: &str| crate::model::GamePlayer {
+            puuid: puuid.into(),
+            ..crate::model::GamePlayer::default()
+        };
+        lock(&client.live).gameflow = Some(GameflowSession {
+            phase: "EndOfGame".into(),
+            game_data: crate::model::GameData {
+                team_one: vec![player("me"), player("mate")],
+                team_two: vec![player("foe")],
+                ..crate::model::GameData::default()
+            },
+        });
+        service.scope_account("me");
+        for puuid in ["me", "mate", "foe", "stranger"] {
+            lock(&service.inner.players).insert(puuid.into(), record(puuid));
+        }
+        service.forget_newest(&client);
+        let fresh = |puuid: &str| {
+            lock(&service.inner.players)
+                .get(puuid)
+                .and_then(|entry| entry.fresh(PLAYER_TTL))
+                .is_some()
+        };
+        assert!(!fresh("me") && !fresh("mate") && !fresh("foe"));
+        assert!(fresh("stranger"), "not in the game");
+        assert!(
+            matches!(service.player_stats("mate"), PlayerStats::Ready(_)),
+            "a view keeps what it has until the new record arrives"
+        );
+
+        service.scope_account("someone-else");
+        assert!(matches!(
+            service.player_stats("stranger"),
+            PlayerStats::Loading
+        ));
+        assert_eq!(lock(&service.inner.history).viewer(), "someone-else");
     }
 }

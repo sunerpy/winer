@@ -67,7 +67,10 @@ function MemberRow({
               <RankBadge rank={bestRank(summary.ranked).rank} short />
               {form.games > 0 && (
                 <>
-                  <span className="inline-flex items-center gap-1">
+                  <span
+                    className="inline-flex items-center gap-1"
+                    title={t("history.formRuleShort", { n: form.games })}
+                  >
                     <span className="mono">{t("common.recent", { n: form.games })}</span>
                     <WinRate wins={form.wins} games={form.games} />
                   </span>

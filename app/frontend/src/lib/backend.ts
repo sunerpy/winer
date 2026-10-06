@@ -22,6 +22,7 @@ import type {
   Mode,
   PageOutcome,
   PlayerProfile,
+  PlayerStanding,
   PlayerSummary,
   PluginStatus,
   Position,
@@ -97,6 +98,9 @@ export interface Commands {
   clear_item_sets: Command<undefined, number>;
   get_loadout_summary: Command<undefined, LoadoutSummary>;
   clear_loadouts: Command<undefined, LoadoutSummary>;
+  // History.
+  /** What a player's form counts, and the tier, title and quip it earns on its own. */
+  get_player_standing: Command<{ puuid: string }, PlayerStanding>;
 }
 
 export type CommandName = keyof Commands;
