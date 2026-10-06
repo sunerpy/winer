@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.7](https://github.com/sunerpy/winer/compare/v0.0.6...v0.0.7) (2026-10-06)
+
+
+### Bug Fixes
+
+* read each rotating mode's own games for its form ([#15](https://github.com/sunerpy/winer/issues/15)) ([866ffe7](https://github.com/sunerpy/winer/commit/866ffe78a8077acb8f01d5e375647b0ad408cd46))
+
 ## [0.0.6](https://github.com/sunerpy/winer/compare/v0.0.5...v0.0.6) (2026-10-06)
 
 
