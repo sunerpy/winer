@@ -64,7 +64,7 @@ pub fn summary(
     ranked_stats: Option<&RankedStats>,
     games: &[Game],
     catalog: &Catalog,
-    focus: Option<ModeFamily>,
+    focus: Option<&Focus>,
 ) -> PlayerSummary {
     let profile = profile(summoner, ranked_stats);
     PlayerSummary {
@@ -102,6 +102,36 @@ pub struct Catalog<'a> {
     pub roles: &'a Roles,
 }
 
+/// The kind of game a form is narrowed to, the one being played: Summoner's Rift, the two ARAMs and
+/// Arena are a kind each, and every rotating mode (URF, One for All, …) is a kind of its own.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Focus(String);
+
+impl Focus {
+    /// The focus of a game or queue of `game_mode` (`CLASSIC`, `KIWI`, `URF`, …); `None` for none.
+    pub fn of(game_mode: &str) -> Option<Self> {
+        let mode = game_mode.trim().to_ascii_uppercase();
+        if mode.is_empty() {
+            return None;
+        }
+        Some(Self(match ModeFamily::of(&mode) {
+            ModeFamily::Rift => "CLASSIC".into(),
+            ModeFamily::Aram => "ARAM".into(),
+            ModeFamily::Arena => "CHERRY".into(),
+            ModeFamily::Other => mode,
+        }))
+    }
+
+    pub fn family(&self) -> ModeFamily {
+        ModeFamily::of(&self.0)
+    }
+
+    /// Whether a game of `game_mode` is of this kind.
+    pub fn covers(&self, game_mode: &str) -> bool {
+        Self::of(game_mode).as_ref() == Some(self)
+    }
+}
+
 /// `puuid`'s row of `game`: theirs by identity, or the only one a client's list page carries,
 /// whose identity can be masked.
 fn row_of<'a>(game: &'a Game, puuid: &str) -> Option<&'a Participant> {
@@ -128,7 +158,7 @@ pub fn recent_form(
     puuid: &str,
     games: &[Game],
     catalog: &Catalog,
-    focus: Option<ModeFamily>,
+    focus: Option<&Focus>,
 ) -> RecentForm {
     form(puuid, games, catalog, focus).0
 }
@@ -136,11 +166,11 @@ pub fn recent_form(
 /// Whether `games` already hold the window [`recent_form`] reads with `focus`: [`RECENT_GAMES`]
 /// games against other players, of the focused kind of game where there is one. Fetching a record
 /// stops here.
-pub fn window_filled(games: &[Game], kinds: &QueueKinds, focus: Option<ModeFamily>) -> bool {
+pub fn window_filled(games: &[Game], kinds: &QueueKinds, focus: Option<&Focus>) -> bool {
     games
         .iter()
         .filter(|game| game_kind(game, kinds) == GameKind::Matched)
-        .filter(|game| focus.is_none_or(|family| ModeFamily::of(&game.game_mode) == family))
+        .filter(|game| focus.is_none_or(|focus| focus.covers(&game.game_mode)))
         .count()
         >= RECENT_GAMES
 }
@@ -233,7 +263,7 @@ fn form(
     puuid: &str,
     games: &[Game],
     catalog: &Catalog,
-    focus: Option<ModeFamily>,
+    focus: Option<&Focus>,
 ) -> (RecentForm, FormScope) {
     let mut newest: Vec<&Game> = games.iter().collect();
     newest.sort_by_key(|game| Reverse(game.game_creation));
@@ -259,11 +289,11 @@ fn form(
     };
     let games: Vec<&Game> = matched
         .into_iter()
-        .filter(|game| focus.is_none_or(|family| ModeFamily::of(&game.game_mode) == family))
+        .filter(|game| focus.is_none_or(|focus| focus.covers(&game.game_mode)))
         .take(RECENT_GAMES)
         .collect();
     let reads = reads(&games);
-    let family = focus;
+    let family = focus.map(Focus::family);
 
     let counted: Vec<&Read> = reads.iter().filter(|read| !read.game.remake).collect();
     let total = counted.len() as u32;
@@ -870,25 +900,61 @@ mod tests {
             kinds: &QueueKinds::new(),
             roles: &Roles::new(),
         };
-        let aram = recent_form("p", &games, &catalog, Some(ModeFamily::Aram));
+        let aram = recent_form("p", &games, &catalog, Focus::of("KIWI").as_ref());
         assert_eq!(
             (aram.family, aram.games, aram.wins),
             (Some(ModeFamily::Aram), 5, 0)
         );
-        let rift = recent_form("p", &games, &catalog, Some(ModeFamily::Rift));
+        let rift = recent_form("p", &games, &catalog, Focus::of("CLASSIC").as_ref());
         assert_eq!((rift.family, rift.games), (Some(ModeFamily::Rift), 10));
         assert!(rift.score > aram.score);
         let every = recent_form("p", &games, &catalog, None);
         assert_eq!((every.family, every.games), (None, 15));
         // Four Arena games are few, and still only Arena's.
         games.extend((0..4).map(|at| mode(game(50 + at, true, 1, 1, 3, false), "CHERRY")));
-        let arena = recent_form("p", &games, &catalog, Some(ModeFamily::Arena));
+        let arena = recent_form("p", &games, &catalog, Focus::of("CHERRY").as_ref());
         assert_eq!((arena.family, arena.games), (Some(ModeFamily::Arena), 4));
-        let none = recent_form("p", &games, &catalog, Some(ModeFamily::Other));
+        let none = recent_form("p", &games, &catalog, Focus::of("URF").as_ref());
         assert_eq!(
             (none.family, none.games, none.score),
             (Some(ModeFamily::Other), 0, None),
             "no game of the mode, no strength in it"
+        );
+    }
+
+    #[test]
+    fn every_rotating_mode_is_a_kind_of_its_own_and_the_two_arams_one() {
+        let urf = Focus::of("URF").unwrap();
+        assert!(urf.covers("urf") && !urf.covers("ONEFORALL") && !urf.covers("CLASSIC"));
+        assert_eq!(urf.family(), ModeFamily::Other);
+        let aram = Focus::of("KIWI").unwrap();
+        assert!(
+            aram.covers("ARAM") && aram.covers("KIWI"),
+            "ARAM and Hextech ARAM are one"
+        );
+        assert!(
+            Focus::of("SWIFTPLAY").unwrap().covers("CLASSIC"),
+            "swiftplay is the Rift"
+        );
+        assert_eq!(Focus::of(" "), None);
+        let mode = |mut game: Game, mode: &str| {
+            game.game_mode = mode.into();
+            game
+        };
+        let games = [
+            mode(game(3, true, 9, 1, 1, false), "URF"),
+            mode(game(2, false, 1, 9, 1, false), "ONEFORALL"),
+            mode(game(1, true, 9, 1, 1, false), "URF"),
+        ];
+        let catalog = Catalog {
+            kinds: &QueueKinds::new(),
+            roles: &Roles::new(),
+        };
+        let form = recent_form("p", &games, &catalog, Some(&urf));
+        assert_eq!(
+            (form.family, form.games, form.wins),
+            (Some(ModeFamily::Other), 2, 2),
+            "One for All is not URF"
         );
     }
 
@@ -907,17 +973,21 @@ mod tests {
         games.push(custom);
         games.push(mode(game(60, true, 1, 1, 1, false), "CLASSIC"));
         assert!(
-            !window_filled(&games, &kinds, Some(ModeFamily::Aram)),
+            !window_filled(&games, &kinds, Focus::of("ARAM").as_ref()),
             "a custom game takes no place"
         );
         assert!(
             window_filled(&games, &kinds, None),
             "twenty against players"
         );
-        assert!(!window_filled(&games, &kinds, Some(ModeFamily::Rift)));
+        assert!(!window_filled(
+            &games,
+            &kinds,
+            Focus::of("CLASSIC").as_ref()
+        ));
         games.push(mode(game(70, false, 1, 1, 1, true), "ARAM"));
         assert!(
-            window_filled(&games, &kinds, Some(ModeFamily::Aram)),
+            window_filled(&games, &kinds, Focus::of("ARAM").as_ref()),
             "a remake is in the window, shown and not counted"
         );
     }

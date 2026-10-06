@@ -49,7 +49,7 @@ use crate::{
     sgp,
     view::{
         AugmentDetail, Connection, ErrorCode, Event, GameData, HistorySource, IpcError,
-        MatchDetail, MatchPage, Me, ModeFamily, Notice, NoticeKind, Patch, Phase, PlayerProfile,
+        MatchDetail, MatchPage, Me, Notice, NoticeKind, Patch, Phase, PlayerProfile,
         PlayerStanding, PlayerStats, PlayerSummary, Presence, QueueInfo, Snapshot, Update,
     },
 };
@@ -245,7 +245,7 @@ struct PlayerRecord {
     ranked: Option<RankedStats>,
     games: Vec<Game>,
     /// The kind of game the games were fetched to fill a form of (`None`: every kind).
-    focus: Option<ModeFamily>,
+    focus: Option<analysis::Focus>,
     /// The games are all there are: the history ended, or the client's own list stood in.
     complete: bool,
 }
@@ -253,8 +253,10 @@ struct PlayerRecord {
 impl PlayerRecord {
     /// Whether the record holds what a form read within `focus` needs: fetched for it, holding its
     /// whole window anyway, or all the history there is.
-    fn serves(&self, focus: Option<ModeFamily>, kinds: &analysis::QueueKinds) -> bool {
-        self.complete || self.focus == focus || analysis::window_filled(&self.games, kinds, focus)
+    fn serves(&self, focus: Option<&analysis::Focus>, kinds: &analysis::QueueKinds) -> bool {
+        self.complete
+            || self.focus.as_ref() == focus
+            || analysis::window_filled(&self.games, kinds, focus)
     }
 }
 
@@ -1024,9 +1026,9 @@ impl Service {
             }
             live.champ_select = Some(session.clone());
         }
-        let focus = queue_family(lock(&client.data).as_deref(), session.queue_id, "");
+        let focus = queue_focus(lock(&client.data).as_deref(), session.queue_id, "");
         for puuid in live::champ_select_puuids(&session) {
-            self.ensure_player(client, puuid, focus);
+            self.ensure_player(client, puuid, focus.clone());
         }
         self.render(client);
         self.automate(client);
@@ -1053,10 +1055,10 @@ impl Service {
         drop(live);
         let focus = session.as_ref().and_then(|session| {
             let queue = &session.game_data.queue;
-            queue_family(lock(&client.data).as_deref(), queue.id, &queue.game_mode)
+            queue_focus(lock(&client.data).as_deref(), queue.id, &queue.game_mode)
         });
         for puuid in session.iter().flat_map(live::game_puuids) {
-            self.ensure_player(client, puuid, focus);
+            self.ensure_player(client, puuid, focus.clone());
         }
         self.render(client);
     }
@@ -1077,7 +1079,9 @@ impl Service {
         let (rule, language) = (&settings.automation.callout, settings.general.language);
         let ranking = callout::ranking(rule, &settings.general);
         // Each player's form is read within the kind of game being played.
-        let stats = |focus: Option<ModeFamily>| move |puuid: &str| self.player_stats(puuid, focus);
+        let stats = |focus: Option<analysis::Focus>| {
+            move |puuid: &str| self.player_stats(puuid, focus.as_ref())
+        };
         let mut mode = None;
         let view = champ_select.map(|session| {
             let data = lock(&client.data).clone();
@@ -1085,7 +1089,7 @@ impl Service {
             let queue = queue_info(data.as_deref(), session.queue_id);
             mode = queue.map(QueueInfo::mode);
             let game_mode = queue.map_or("", |queue| queue.game_mode.as_str());
-            let focus = queue_family(data.as_deref(), session.queue_id, "");
+            let focus = queue_focus(data.as_deref(), session.queue_id, "");
             let mut view = live::champ_select_view(&session, stats(focus), &ranking, game_mode);
             live::mark_party(&mut view.my_team, &party);
             let champion = |id: i64| {
@@ -1112,7 +1116,7 @@ impl Service {
         }
         if let Some(session) = gameflow {
             let queue = &session.game_data.queue;
-            let focus = queue_family(lock(&client.data).as_deref(), queue.id, &queue.game_mode);
+            let focus = queue_focus(lock(&client.data).as_deref(), queue.id, &queue.game_mode);
             let mut view = live::game_view(&session, &me, stats(focus), &ranking);
             // Callout: the lines the shortcut types into the game's chat, both teams by champion.
             if let Some(view) = view.as_mut() {
@@ -1168,7 +1172,7 @@ impl Service {
     }
 
     /// A player's stats as known now, the form read within `focus` ([`analysis::recent_form`]).
-    fn player_stats(&self, puuid: &str, focus: Option<ModeFamily>) -> PlayerStats {
+    fn player_stats(&self, puuid: &str, focus: Option<&analysis::Focus>) -> PlayerStats {
         let record = match lock(&self.inner.players).get(puuid) {
             Some(PlayerEntry::Ready(record, _)) => record.clone(),
             Some(PlayerEntry::Failed(message, _)) => {
@@ -1182,7 +1186,7 @@ impl Service {
     }
 
     /// Fetches `puuid`'s record unless a fresh one holds what a form read within `focus` needs.
-    fn ensure_player(&self, client: &Client, puuid: String, focus: Option<ModeFamily>) {
+    fn ensure_player(&self, client: &Client, puuid: String, focus: Option<analysis::Focus>) {
         let me = lock(&client.live).me.clone();
         self.scope_account(&me);
         let shown = caches::players_shown(client);
@@ -1192,7 +1196,7 @@ impl Service {
             let fresh = match players.get(&puuid) {
                 Some(PlayerEntry::Loading) => true,
                 Some(entry @ PlayerEntry::Ready(record, _)) => {
-                    entry.fresh(PLAYER_TTL).is_some() && record.serves(focus, &kinds)
+                    entry.fresh(PLAYER_TTL).is_some() && record.serves(focus.as_ref(), &kinds)
                 }
                 Some(PlayerEntry::Failed(_, at)) => at.elapsed() < FAILED_PLAYER_TTL,
                 None => false,
@@ -2040,14 +2044,14 @@ impl Service {
         }
         let focus = lobby.as_ref().and_then(|lobby| {
             let config = &lobby.game_config;
-            queue_family(
+            queue_focus(
                 lock(&client.data).as_deref(),
                 config.queue_id,
                 &config.game_mode,
             )
         });
         for puuid in lobby.iter().flat_map(live::lobby_puuids) {
-            self.ensure_player(client, puuid, focus);
+            self.ensure_player(client, puuid, focus.clone());
         }
         self.render_lobby(client);
     }
@@ -2070,12 +2074,14 @@ impl Service {
         let view = lobby.filter(|_| live::shows_lobby(phase)).map(|lobby| {
             // The queue the lobby is set up for decides the kind of game its members are read in.
             let config = &lobby.game_config;
-            let focus = queue_family(
+            let focus = queue_focus(
                 lock(&client.data).as_deref(),
                 config.queue_id,
                 &config.game_mode,
             );
-            live::lobby_view(&lobby, &me, |puuid| self.player_stats(puuid, focus))
+            live::lobby_view(&lobby, &me, |puuid| {
+                self.player_stats(puuid, focus.as_ref())
+            })
         });
         self.patch(Patch::Lobby(view));
     }
@@ -2180,7 +2186,7 @@ impl Service {
     }
 
     /// A record's summary under the catalog as it is now, the form read within `focus`.
-    fn summarize(&self, record: &PlayerRecord, focus: Option<ModeFamily>) -> PlayerSummary {
+    fn summarize(&self, record: &PlayerRecord, focus: Option<&analysis::Focus>) -> PlayerSummary {
         let data = self.game_data().unwrap_or_default();
         analysis::summary(
             &record.summoner,
@@ -2453,7 +2459,7 @@ async fn load_record(
     client: &Client,
     puuid: &str,
     me: &str,
-    focus: Option<ModeFamily>,
+    focus: Option<analysis::Focus>,
 ) -> Result<PlayerRecord, CoreError> {
     let lcu = &client.lcu;
     let summoner_path = format!("/lol-summoner/v2/summoners/puuid/{}", segment(puuid)?);
@@ -2461,7 +2467,7 @@ async fn load_record(
     let (summoner, ranked, (games, complete)) = tokio::join!(
         lcu.get::<Summoner>(&summoner_path),
         lcu.get_optional::<RankedStats>(&ranked_path),
-        record_games(client, puuid, me, focus),
+        record_games(client, puuid, me, focus.as_ref()),
     );
     // A private profile refuses history and rank; the identity alone is still worth showing.
     Ok(PlayerRecord {
@@ -2480,7 +2486,7 @@ async fn record_games(
     client: &Client,
     puuid: &str,
     me: &str,
-    focus: Option<ModeFamily>,
+    focus: Option<&analysis::Focus>,
 ) -> (Vec<Game>, bool) {
     let kinds = catalog_kinds(client);
     let paged = page_through(
@@ -2545,9 +2551,9 @@ where
 
 /// The kind of game a queue is played as, for the form of the players in it: the catalog's word on
 /// `queue_id`, else the mode the session names; `None` while neither says.
-fn queue_family(data: Option<&GameData>, queue_id: i64, game_mode: &str) -> Option<ModeFamily> {
+fn queue_focus(data: Option<&GameData>, queue_id: i64, game_mode: &str) -> Option<analysis::Focus> {
     let mode = queue_info(data, queue_id).map_or(game_mode, |queue| queue.game_mode.as_str());
-    (!mode.is_empty()).then(|| ModeFamily::of(mode))
+    analysis::Focus::of(mode)
 }
 
 /// Each queue's kind of game in the connected client's catalog; empty before it arrives.
@@ -3197,7 +3203,7 @@ mod tests {
             async move { Some(Ok(page)) }
         };
         let rift = page_through(&fetch, |games| {
-            analysis::window_filled(games, &kinds, Some(ModeFamily::Rift))
+            analysis::window_filled(games, &kinds, analysis::Focus::of("CLASSIC").as_ref())
         })
         .await;
         assert!(matches!(&rift, Paged::Games(games, false) if games.len() == 20));
@@ -3205,7 +3211,7 @@ mod tests {
 
         asked.lock().unwrap().clear();
         let aram = page_through(&fetch, |games| {
-            analysis::window_filled(games, &kinds, Some(ModeFamily::Aram))
+            analysis::window_filled(games, &kinds, analysis::Focus::of("KIWI").as_ref())
         })
         .await;
         assert!(matches!(&aram, Paged::Games(games, false) if games.len() == 60));
@@ -3271,21 +3277,21 @@ mod tests {
                 .flatten()
                 .collect()
         };
-        let fetched = record(Some(ModeFamily::Aram), false, aram(20));
-        assert!(fetched.serves(Some(ModeFamily::Aram), &kinds));
+        let fetched = record(analysis::Focus::of("KIWI"), false, aram(20));
+        assert!(fetched.serves(analysis::Focus::of("ARAM").as_ref(), &kinds));
         assert!(
             fetched.serves(None, &kinds),
             "twenty games against players fill every-kind's window"
         );
         assert!(
-            !fetched.serves(Some(ModeFamily::Rift), &kinds),
+            !fetched.serves(analysis::Focus::of("CLASSIC").as_ref(), &kinds),
             "a Rift form pages again"
         );
         let few = record(None, false, aram(8));
-        assert!(!few.serves(Some(ModeFamily::Aram), &kinds));
+        assert!(!few.serves(analysis::Focus::of("KIWI").as_ref(), &kinds));
         let all = record(None, true, aram(8));
         assert!(
-            all.serves(Some(ModeFamily::Rift), &kinds),
+            all.serves(analysis::Focus::of("CLASSIC").as_ref(), &kinds),
             "there is no more to fetch"
         );
     }
