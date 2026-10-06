@@ -117,6 +117,11 @@ export const en: Record<MessageKey, string> = {
   "auto.audience.team": "Team chat",
   "auto.audience.me": "Only me",
   "auto.calloutSelf": "Include myself",
+  "auto.calloutStyle": "Callout style",
+  "auto.calloutStyleHint":
+    "Compact: one line a player, the same fields in the same order, easy to compare. Rich: the tier's emoji, the title and the quip as well. Emoji show in the client's chat only; lines typed in a game have none.",
+  "auto.style.compact": "Compact",
+  "auto.style.rich": "Rich",
   "auto.header": "Opening line",
   "auto.headerHint": "Sent as its own line before the players'; blank sends none.",
   "auto.preview": "Preview",
@@ -124,7 +129,7 @@ export const en: Record<MessageKey, string> = {
   "auto.previewOffline": "Connect the client to see a preview.",
   "auto.template": "Line template",
   "auto.templateHint":
-    "One line per teammate, with {standing} {seat} {name} {champion} {games} {winRate} {kda} {score} {title} {quip}; {seat} is the place in your team's list in champ select, P1 to P5. Blank uses the default.",
+    "One line per teammate, with {emoji} {standing} {seat} {name} {champion} {games} {winRate} {kda} {score} {title} {quip}; {seat} is the place in your team's list in champ select, P1 to P5, and {emoji} the tier's emoji. Blank uses the chosen style's default.",
   "auto.reset": "Reset",
   "auto.section.bench": "Bench",
   "auto.bench": "Take wishlist champions",
@@ -520,7 +525,7 @@ export const en: Record<MessageKey, string> = {
   "rating.tierSlot": "Tier {n}",
   "rating.titles": "Roast titles",
   "rating.titlesHint":
-    "Titles from the numbers: three wins in a row is “Patch Champion”, the top damage in a loss is “The Dean”.",
+    "Titles from the numbers, leaning the way the tier does: above the middle only praise, such as “Patch Champion” for three wins in a row; only below it a “Grey-screen Regular”. Kills, deaths and assists are set against the same mode's average player.",
   "rating.basis": "How it is rated",
   "rating.basis.form":
     "Recent form (0–10): the last 20 games, custom games, games against the computer and remakes left out, half win rate and half KDA; few games pull it toward 5.0, so a lucky game or two cannot rank first.",

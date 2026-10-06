@@ -318,6 +318,29 @@ const RIFT_FIVE_QUIPS = [
   "队友看完战绩陷入沉思",
 ];
 
+type Lean = "above" | "middle" | "below";
+
+/** Where a tier stands against its scheme's middle, as the core's `rating::lean` reads it. */
+function leanOf(tier: number, tiers: number, graded: boolean): Lean {
+  if (graded) return tier <= 2 ? "above" : tier >= 5 ? "below" : "middle";
+  const order = 2 * tier + 1 - tiers;
+  return order < 0 ? "above" : order > 0 ? "below" : "middle";
+}
+
+/** The demo's title for each leaning, as `rating::form_title` gives an unremarkable player. */
+const DEMO_TITLES: Record<Lean, string> = {
+  above: "靠谱队友",
+  middle: "正常发挥",
+  below: "陪跑选手",
+};
+
+/** As the core's `callout::tier_emoji`: the best tier crowned, the worst done for. */
+function tierEmoji(tier: number, tiers: number, graded: boolean): string {
+  if (tier === 0) return "👑";
+  if (tier === tiers - 1) return "💀";
+  return { above: "🔥", middle: "👌", below: "😅" }[leanOf(tier, tiers, graded)];
+}
+
 /** A player rated alone as the core does it (`history::rate_alone`): the fixed band of the form
  *  score, spread over the scheme's tiers the way a team is. */
 function standingOf(summary: PlayerSummary, scope: FormScope, settings: Settings): PlayerStanding {
@@ -341,7 +364,17 @@ function standingOf(summary: PlayerSummary, scope: FormScope, settings: Settings
   const tier = graded
     ? Math.min(band, names.length - 1)
     : Math.min(names.length - 1, Math.floor(((band + 0.5) / 8) * names.length - 1e-9));
-  const title = form.streak >= 3 ? "版本答案" : form.deaths >= 8 ? "黑白电视机资深会员" : null;
+  const lean = leanOf(tier, names.length, graded);
+  const title =
+    lean === "above"
+      ? form.streak >= 3
+        ? "版本答案"
+        : "靠谱队友"
+      : lean === "below"
+        ? form.streak <= -3
+          ? "排位慈善家"
+          : "陪跑选手"
+        : "正常发挥";
   return {
     scope,
     band,
@@ -563,12 +596,12 @@ function champSelect(): ChampSelectView {
     rerollsRemaining: 1,
     side: "blue",
     callout: [
-      "【蓝色方】winer 战绩鉴定",
-      "峡谷通天代：1L 暗夜里的光，近20场胜率60%，KDA 4.1，战力7.4「版本答案」，对面五个人准备举报代练",
-      "人形防御塔：3L 野区观光客，近20场胜率55%，KDA 3.6，战力6.8，塔在人在，人在塔也在",
-      "峡谷公务员：2L 峡谷清道夫，近20场胜率50%，KDA 2.9，战力5.2，按时上班，准时打卡",
-      "移动眼位：4L 补刀不漏一个，近20场胜率45%，KDA 2.4，战力4.6「峡谷慈善家」，站在哪里，哪里就有视野",
-      "纯正牛马：5L 眼位守护者，近20场胜率40%，KDA 2.0，战力3.9「黑白电视机资深会员」，勤勤恳恳地给对面创造游戏体验",
+      "📢【蓝色方】winer 战绩鉴定",
+      "👑 峡谷通天代：1L 暗夜里的光，近20场胜率60%，KDA 4.1，战力7.4「版本答案」，对面五个人准备举报代练",
+      "🔥 人形防御塔：3L 野区观光客，近20场胜率55%，KDA 3.6，战力6.8「靠谱队友」，塔在人在，人在塔也在",
+      "👌 峡谷公务员：2L 峡谷清道夫，近20场胜率50%，KDA 2.9，战力5.2「正常发挥」，按时上班，准时打卡",
+      "😅 移动眼位：4L 补刀不漏一个，近20场胜率45%，KDA 2.4，战力4.6「峡谷慈善家」，站在哪里，哪里就有视野",
+      "💀 纯正牛马：5L 眼位守护者，近20场胜率40%，KDA 2.0，战力3.9「黑白电视机资深会员」，勤勤恳恳地给对面创造游戏体验",
     ],
   };
 }
@@ -613,8 +646,8 @@ export function demoGame(): GameView {
     allyCallout: [
       "【我方·蓝色方】winer 战绩鉴定",
       "峡谷通天代：阿狸，近20场胜率60%，KDA 4.1，战力7.4「版本答案」，对面五个人准备举报代练",
-      "人形防御塔：李青，近20场胜率55%，KDA 3.6，战力6.8，塔在人在，人在塔也在",
-      "峡谷公务员：盖伦，近20场胜率50%，KDA 2.9，战力5.2，按时上班，准时打卡",
+      "人形防御塔：李青，近20场胜率55%，KDA 3.6，战力6.8「靠谱队友」，塔在人在，人在塔也在",
+      "峡谷公务员：盖伦，近20场胜率50%，KDA 2.9，战力5.2「正常发挥」，按时上班，准时打卡",
       "移动眼位：金克丝，近20场胜率45%，KDA 2.4，战力4.6「峡谷慈善家」，站在哪里，哪里就有视野",
       "纯正牛马：锤石，近20场胜率40%，KDA 2.0，战力3.9「黑白电视机资深会员」，勤勤恳恳地给对面创造游戏体验",
     ],
@@ -857,6 +890,7 @@ const DEFAULT_SETTINGS: Settings = {
       targetTemplate: "",
       allyTemplate: "",
       gameTeams: "enemies",
+      style: "rich",
     },
     bench: { enabled: true, champions: [103, 99, 22] },
     scopes: defaultScopes(),
@@ -1061,15 +1095,20 @@ export function demoBackend(): Backend {
     send_callout: () => champSelect().callout.length,
     preview_callout: ({ rule, general }) => {
       const names = tierNames(rule);
-      const title = general.titles ? "「版本答案」" : "";
-      // As the core does: the tiers take the seats in order, 1L for the best.
-      const lines = names.map(
-        (name, index) =>
-          `${name}：${index + 1}L 暗夜里的光，近20场胜率60%，KDA 4.1，战力7.4${title}`,
-      );
+      const graded = rule.tiers === "grades";
+      // As the core does: the tiers take the seats in order, 1L for the best, each with a title of
+      // its own leaning and, in the rich style, its emoji.
+      const lines = names.map((name, index) => {
+        const lean = leanOf(index, names.length, graded);
+        const title = general.titles ? `「${DEMO_TITLES[lean]}」` : "";
+        return rule.style === "compact"
+          ? `${index + 1}L ${name}｜胜率60%｜KDA 4.1｜战力7.4｜暗夜里的光`
+          : `${tierEmoji(index, names.length, graded)} ${name}：${index + 1}L 暗夜里的光，近20场胜率60%，KDA 4.1，战力7.4${title}`;
+      });
       // As the core does: the side and winer's name lead the first line, the opening line after.
       const header = rule.header.trim();
-      return [`【蓝色方】winer 战绩鉴定${header ? ` · ${header}` : ""}`, ...lines];
+      const first = `【蓝色方】winer 战绩鉴定${header ? ` · ${header}` : ""}`;
+      return [rule.style === "compact" ? first : `📢${first}`, ...lines];
     },
     bench_swap: () => null,
     reroll: () => null,
@@ -1175,15 +1214,22 @@ export function demoBackend(): Backend {
     // the user in every tier of the team on the blue side, by champion, typed as one press would.
     preview_game_callout: ({ rule, general }) => {
       const names = tierNames(rule);
-      const title = general.titles ? "「版本答案」" : "";
+      const graded = rule.tiers === "grades";
+      const title = (index: number) =>
+        general.titles ? `「${DEMO_TITLES[leanOf(index, names.length, graded)]}」` : "";
       const enemies = [
         "【敌方·红色方】winer 战绩鉴定",
-        `小心 阿狸：${names[0]}，近20场胜率60%，KDA 4.1${title}`,
+        `小心 阿狸：${names[0]}，近20场胜率60%，KDA 4.1${title(0)}`,
         `对面 阿狸：${names[names.length - 1]}，近20场胜率60%，可以多抓`,
       ];
+      // No emoji in the game's chat.
       const allies = [
         "【我方·蓝色方】winer 战绩鉴定",
-        ...names.map((name) => `${name}：阿狸，近20场胜率60%，KDA 4.1，战力7.4${title}`),
+        ...names.map((name, index) =>
+          rule.style === "compact"
+            ? `${name} 阿狸｜胜率60%｜KDA 4.1｜战力7.4`
+            : `${name}：阿狸，近20场胜率60%，KDA 4.1，战力7.4${title(index)}`,
+        ),
       ];
       return typedLines(enemies, allies, rule.gameTeams);
     },

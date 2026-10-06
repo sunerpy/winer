@@ -114,6 +114,11 @@ export const zhCN = {
   "auto.audience.team": "队伍聊天",
   "auto.audience.me": "仅自己可见",
   "auto.calloutSelf": "包含自己",
+  "auto.calloutStyle": "喊话样式",
+  "auto.calloutStyleHint":
+    "精简：每人一行，同样几项按同样的顺序，方便对比；丰富：带档位表情、称号和评语。表情只在客户端的聊天里显示，游戏里输入的喊话不带表情。",
+  "auto.style.compact": "精简",
+  "auto.style.rich": "丰富",
   "auto.header": "开场白",
   "auto.headerHint": "在队友那几行之前单独发一行，留空不发。",
   "auto.preview": "预览",
@@ -121,7 +126,7 @@ export const zhCN = {
   "auto.previewOffline": "连接客户端后显示预览。",
   "auto.template": "每行内容",
   "auto.templateHint":
-    "每位队友一行，可用 {standing} {seat} {name} {champion} {games} {winRate} {kda} {score} {title} {quip}；{seat} 是选人界面里我方从上往下的位置（1L 到 5L）。留空用默认。",
+    "每位队友一行，可用 {emoji} {standing} {seat} {name} {champion} {games} {winRate} {kda} {score} {title} {quip}；{seat} 是选人界面里我方从上往下的位置（1L 到 5L），{emoji} 是档位的表情。留空用所选样式的默认格式。",
   "auto.reset": "恢复默认",
   "auto.section.bench": "备选席",
   "auto.bench": "自动换心愿英雄",
@@ -499,7 +504,8 @@ export const zhCN = {
   "rating.customTiersHint": "从好到差填 2 到 5 个名称，空着的跳过。",
   "rating.tierSlot": "第 {n} 档",
   "rating.titles": "毒舌称号",
-  "rating.titlesHint": "按数据特征给出称号：比如三连胜叫“版本答案”，输了但伤害第一叫“院长”。",
+  "rating.titlesHint":
+    "按数据特征给出称号，和档位同一个方向：中游以上的只有夸的，比如三连胜叫“版本答案”，中游以下的才会被叫“黑白电视机资深会员”；击杀、死亡和助攻都和同一模式的平均水平比。",
   "rating.basis": "评价依据",
   "rating.basis.form":
     "近期战力（0–10）：最近 20 场（不含自定义、人机和重开局）的胜率和 KDA 各占一半；场次少时向 5.0 收拢，一两场的好成绩排不到前面。",

@@ -500,7 +500,12 @@ allyTemplate: string,
 /**
  * Whose lines a press of the shortcut types in the game.
  */
-gameTeams: GameTeams, };
+gameTeams: GameTeams, 
+/**
+ * The default line of each player (`callout::template`) and of each teammate in the game
+ * (`callout::ally_template`): one short line to compare, or emoji, title and quip as well.
+ */
+style: CalloutStyle, };
 
 export type Audience = "team" | "me";
 
@@ -933,6 +938,8 @@ error: string | null, };
 export type CalloutSkip = "notNow" | "nothingToSay" | "inGameOff" | "notInFront" | "keysHeld" | "blocked" | "unsupported";
 
 export type GameTeams = "enemies" | "allies" | "both";
+
+export type CalloutStyle = "compact" | "rich";
 
 export type GameKind = "matched" | "bots" | "custom";
 

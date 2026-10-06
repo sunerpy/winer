@@ -44,11 +44,19 @@ open their history.
 The callout is ready once every teammate's history has loaded: the first line holds the side,
 "winer rating" and the opening line if you wrote one, then one line per teammate, best first. Each
 line names the teammate's place in your team's list in champ select (P1 to P5, from the top) and
-their name, for example:
+their name. The default, rich style adds the tier's emoji, the title and the quip, for example:
+
+```text
+📢 [Blue side] winer rating
+👑 Rift Demigod: P1 Light in the Dark, 60% in 20 games, KDA 4.1, form 7.4 [Patch Champion], the other team is filing a boosting report
+```
+
+With **Callout style** set to compact in **Automation › Callout**, each player gets one short line,
+the same fields in the same order, to compare at a glance:
 
 ```text
 [Blue side] winer rating
-Rift Demigod: P1 Light in the Dark, 60% in 20 games, KDA 4.1, form 7.4 [Patch Champion], the other team is filing a boosting report
+P1 Rift Demigod | 60% | KDA 4.1 | form 7.4 | Light in the Dark
 ```
 
 - **Send to team**: posts it to the team chat of champ select, where your teammates see it.

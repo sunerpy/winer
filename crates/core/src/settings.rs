@@ -478,6 +478,10 @@ pub struct CalloutRule {
     pub ally_template: String,
     /// Whose lines a press of the shortcut types in the game.
     pub game_teams: GameTeams,
+    // ---- How each player's line reads ----
+    /// The default line of each player (`callout::template`) and of each teammate in the game
+    /// (`callout::ally_template`): one short line to compare, or emoji, title and quip as well.
+    pub style: CalloutStyle,
 }
 
 impl Default for CalloutRule {
@@ -496,6 +500,7 @@ impl Default for CalloutRule {
             target_template: String::new(),
             ally_template: String::new(),
             game_teams: GameTeams::default(),
+            style: CalloutStyle::default(),
         }
     }
 }
@@ -541,6 +546,19 @@ pub enum Audience {
     Team,
     /// Shown in this client only.
     Me,
+}
+
+/// How the callout writes each player when the user has not written their own line.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum CalloutStyle {
+    /// One short line a player, the same fields in the same order: seat, tier, win rate, KDA,
+    /// form and name, so the lines compare at a glance.
+    Compact,
+    /// The tier's emoji in champ select, then the tier, the player, their numbers, the title and
+    /// the tier's quip.
+    #[default]
+    Rich,
 }
 
 /// Whose lines the callout's shortcut types into the game's chat (`callout::typed`), at most
@@ -971,10 +989,11 @@ impl Settings {
     fn migrated(mut self) -> Self {
         let language = self.general.language;
         let callout = &mut self.automation.callout;
+        // A former default was the rich style's line before it had emoji and styles.
         migrate(
             &mut callout.template,
             callout::former_default,
-            callout::template,
+            |language| callout::template(CalloutStyle::Rich, language),
             language,
         );
         migrate(
@@ -1140,14 +1159,14 @@ mod tests {
         assert_eq!(loaded("zh-CN", &format!("  {ZH_0_0_2} ")).template, "");
         assert_eq!(
             loaded("zh-CN", EN_0_0_2).template,
-            callout::template(Language::En),
+            callout::template(CalloutStyle::Rich, Language::En),
             "an English line under the Chinese window stays English"
         );
         assert_eq!(loaded("zh-CN", ZH_0_0_3).template, "", "0.0.3's line too");
         assert_eq!(loaded("en", EN_0_0_3).template, "");
         assert_eq!(
             loaded("en", ZH_0_0_3).template,
-            callout::template(Language::ZhCn)
+            callout::template(CalloutStyle::Rich, Language::ZhCn)
         );
 
         for own in [

@@ -67,13 +67,18 @@ summoner spells for Jhin"; a failure says why. Nothing is posted to chat.
   [the game analysis](/en/guide/live#callout) once every teammate's history has loaded.
 - **Send to**: the team chat, or only you.
 - **Include myself**: whether your own line is in it.
+- **Callout style**: **Rich** (the default) puts the tier's emoji first (👑 for the best tier, 💀 for
+  the worst) and adds the title and the quip; **Compact** gives each player one short line, seat,
+  tier, win rate, KDA, form and name in the same order, to compare at a glance. Emoji show in the
+  client's chat only; lines typed in a game have none.
 - **Rating scheme**: the tier names come from **Settings › Rating**; **Open settings** goes there.
 - **Opening line** and **Line template**: the first line is always the side and "winer rating", and
-  the opening line follows them (left blank, nothing does). The template takes these placeholders: `{standing}` the
-  tier, `{seat}` the place in your team's list in champ select (P1 to P5, from the top), `{name}`,
-  `{champion}`, `{games}`, `{winRate}`, `{kda}`, `{score}` the recent-form score, `{title}` and
-  `{quip}`. Blank uses the default, which names the seat and the player rather than a champion that
-  can still change; a live preview shows the result.
+  the opening line follows them (left blank, nothing does). The template takes these placeholders:
+  `{emoji}` the tier's emoji, `{standing}` the tier, `{seat}` the place in your team's list in champ
+  select (P1 to P5, from the top), `{name}`, `{champion}`, `{games}`, `{winRate}`, `{kda}`, `{score}`
+  the recent-form score, `{title}` and `{quip}`. Blank uses the chosen style's default, which names
+  the seat and the player rather than a champion that can still change; a live preview shows the
+  result.
 - **Shortcut to send the callout**: none by default. Once set, pressing it in champ select posts the
   callout to the team chat, as **Send to team** on the Live game page does; in a game, with
   **In-game sending** on, it types the in-game lines chosen below into the game's team chat. It
@@ -138,8 +143,10 @@ Watch Kha'Zix: Rift Demigod, 65% in 20 games, KDA 4.6
 Go after Yasuo: Pure Workhorse, 35% in 20 games
 [My team · Blue side] winer rating
 Rift Demigod: Ahri, 60% in 20 games, KDA 4.1, form 7.4 [Patch Champion], the other team is filing a boosting report
-Human Turret: Lee Sin, 55% in 20 games, KDA 3.6, form 6.8, absurdly steady: carries and survives
+Human Turret: Lee Sin, 55% in 20 games, KDA 3.6, form 6.8 [Reliable Teammate], absurdly steady: carries and survives
 ```
+
+In the compact style a teammate's line reads "Human Turret Lee Sin | 55% | KDA 3.6 | form 6.8".
 
 A live preview shows what one press types, with your own recent form.
 

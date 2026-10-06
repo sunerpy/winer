@@ -148,6 +148,8 @@ pub fn typescript() -> String {
         view::CalloutSkip,
         settings::GameTeams
     );
+    // The callout's two ways of writing a player.
+    declare!(settings::CalloutStyle);
     // History: what the numbers count, custom games, a player rated alone.
     declare!(
         view::GameKind,

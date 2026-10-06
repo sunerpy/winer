@@ -1,4 +1,12 @@
-import type { Audience, Automation, CalloutRule, GameTeams, Mode, Scopes } from "@winer/shared";
+import type {
+  Audience,
+  Automation,
+  CalloutRule,
+  CalloutStyle,
+  GameTeams,
+  Mode,
+  Scopes,
+} from "@winer/shared";
 import { TriangleAlert } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
@@ -28,12 +36,20 @@ import { PageBody } from "./common";
 import { CalloutHotkeyRow } from "./settings/HotkeyRow";
 
 const WISHLIST_LIMIT = 20;
-/** The core's default line (`callout::template`), shown as the placeholder of a blank template. */
-const DEFAULT_TEMPLATE: Record<"zh-CN" | "en", string> = {
-  "zh-CN":
-    "{standing}：{seat} {name}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
-  en: "{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}",
+/** The core's default line of each style (`callout::template`), shown as the placeholder of a
+ *  blank template. */
+const DEFAULT_TEMPLATE: Record<CalloutStyle, Record<"zh-CN" | "en", string>> = {
+  compact: {
+    "zh-CN": "{seat} {standing}｜胜率{winRate}｜KDA {kda}｜战力{score}｜{name}",
+    en: "{seat} {standing} | {winRate} | KDA {kda} | form {score} | {name}",
+  },
+  rich: {
+    "zh-CN":
+      "{emoji}{standing}：{seat} {name}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
+    en: "{emoji}{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}",
+  },
 };
+const STYLES: readonly CalloutStyle[] = ["compact", "rich"];
 // Callout: the in-game lines' defaults (`callout::watch_template`, `callout::target_template`,
 // `callout::ally_template`), every player by champion.
 const DEFAULT_WATCH: Record<"zh-CN" | "en", string> = {
@@ -44,9 +60,16 @@ const DEFAULT_TARGET: Record<"zh-CN" | "en", string> = {
   "zh-CN": "对面 {champion}：{standing}，近{games}场胜率{winRate}，可以多抓",
   en: "Go after {champion}: {standing}, {winRate} in {games} games",
 };
-const DEFAULT_ALLY: Record<"zh-CN" | "en", string> = {
-  "zh-CN": "{standing}：{champion}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
-  en: "{standing}: {champion}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}",
+const DEFAULT_ALLY: Record<CalloutStyle, Record<"zh-CN" | "en", string>> = {
+  compact: {
+    "zh-CN": "{standing} {champion}｜胜率{winRate}｜KDA {kda}｜战力{score}",
+    en: "{standing} {champion} | {winRate} | KDA {kda} | form {score}",
+  },
+  rich: {
+    "zh-CN":
+      "{standing}：{champion}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
+    en: "{standing}: {champion}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}",
+  },
 };
 const GAME_TEAMS: readonly GameTeams[] = ["enemies", "allies", "both"];
 
@@ -258,7 +281,7 @@ function GameCallout({
             id="callout-ally"
             value={rule.allyTemplate}
             maxLength={200}
-            placeholder={DEFAULT_ALLY[language]}
+            placeholder={DEFAULT_ALLY[rule.style][language]}
             onCommit={(allyTemplate) => onChange((value) => ({ ...value, allyTemplate }))}
             className="min-w-0 flex-1"
           />
@@ -331,6 +354,15 @@ function CalloutPanel({
           label={t("auto.calloutSelf")}
         />
       </Row>
+      <Row label={t("auto.calloutStyle")} help={t("auto.calloutStyleHint")}>
+        <Segmented<CalloutStyle>
+          size="sm"
+          label={t("auto.calloutStyle")}
+          value={rule.style}
+          options={STYLES.map((value) => ({ value, label: t(`auto.style.${value}`) }))}
+          onChange={(style) => onChange((value) => ({ ...value, style }))}
+        />
+      </Row>
       <CalloutHotkeyRow />
       <Row label={t("auto.scheme")} help={t("auto.schemeHint")}>
         <span className="flex items-center gap-2">
@@ -360,7 +392,7 @@ function CalloutPanel({
             id="callout-template"
             value={rule.template}
             maxLength={200}
-            placeholder={DEFAULT_TEMPLATE[language]}
+            placeholder={DEFAULT_TEMPLATE[rule.style][language]}
             onCommit={(template) => onChange((value) => ({ ...value, template }))}
             className="min-w-0 flex-1"
           />
