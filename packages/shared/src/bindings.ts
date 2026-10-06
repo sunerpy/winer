@@ -502,7 +502,12 @@ friendStatus: boolean,
  * In the client's lobby: each member's recent form above their banner, and a click that opens
  * their history in winer.
  */
-lobbyPanel: boolean, };
+lobbyPanel: boolean, 
+/**
+ * A click on a player in the client's lobby or champ select shows their latest games in a
+ * panel over the client page; off, the click opens their history in winer's window.
+ */
+historyInClient: boolean, };
 
 export type ProfileSettings = { rankDisguise: RankDisguise, presence: PresenceRule, };
 
@@ -644,9 +649,9 @@ current: boolean,
  */
 connected: number, };
 
-export type BridgeMessage = { "type": "hello", version: string, snapshot: Snapshot, settings: Settings, } | { "type": "event", event: Event, };
+export type BridgeMessage = { "type": "hello", version: string, snapshot: Snapshot, settings: Settings, } | { "type": "event", event: Event, } | { "type": "historyResult", requestId: number, page: PanelHistory | null, error: IpcError | null, };
 
-export type PluginMessage = { "type": "hello", version: string, context: string, } | { "type": "log", level: LogLevel, message: string, } | { "type": "benchSwap", championId: number, } | { "type": "openHistory", puuid: string, };
+export type PluginMessage = { "type": "hello", version: string, context: string, } | { "type": "log", level: LogLevel, message: string, } | { "type": "benchSwap", championId: number, } | { "type": "openHistory", puuid: string, } | { "type": "history", puuid: string, requestId: number, };
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -770,3 +775,27 @@ export type AugmentOption = { id: number,
  * From the client's own catalog.
  */
 rarity: Rarity, tier: AugmentTier | null, rates: Rates, };
+
+export type PanelHistory = { puuid: string, 
+/**
+ * Newest first, at most [`PANEL_GAMES`].
+ */
+games: Array<PanelGame>, };
+
+export type PanelGame = { gameId: number, queueId: number, 
+/**
+ * The queue's name in the client's catalog (`极地大乱斗`); empty where the catalog has none.
+ */
+queue: string, championId: number, win: boolean, remake: boolean, kills: number, deaths: number, assists: number, 
+/**
+ * Epoch milliseconds.
+ */
+startedAt: number, 
+/**
+ * Seconds.
+ */
+duration: number, award: Award | null, 
+/**
+ * Arena placement, 1–8.
+ */
+placement: number | null, };

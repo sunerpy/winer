@@ -438,3 +438,287 @@
   color: #9ba7b3;
   font-size: 12px;
 }
+
+/* The history panel: a player's latest games over the client page, beside the line clicked. A
+ * floating card, so it is lifted; the rows take the window's history rows' tints by value
+ * (`win-soft`, `loss-soft`: 10% of the result's colour in the surface). Small text is fg-muted:
+ * fg-subtle falls just under 4.5:1 on the surface. */
+.winer-panel[data-winer-panel="history"] {
+  right: auto;
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  max-height: calc(100vh - 16px);
+  outline: none;
+}
+
+.winer-history-top {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 8px 8px 12px;
+  border-bottom: 1px solid #223142;
+}
+
+.winer-history-who {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.winer-history-who .winer-name {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.winer-tag {
+  margin-left: 2px;
+  color: #9ba7b3;
+  font-weight: 400;
+}
+
+.winer-icon--round {
+  border-radius: 50%;
+}
+
+.winer-history-summary {
+  flex-wrap: wrap;
+  row-gap: 2px;
+  font-size: 11px;
+  line-height: 15px;
+  color: #9ba7b3;
+}
+
+.winer-history-close {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #9ba7b3;
+  font:
+    600 12px/24px "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    sans-serif;
+  cursor: pointer;
+}
+
+.winer-history-close:hover {
+  background: rgba(236, 230, 214, 0.08);
+  color: #ece6d6;
+}
+
+.winer-history-body {
+  flex: 1;
+  min-height: 0;
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.winer-history-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 6px;
+  color: #9ba7b3;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.winer-history-note--failed .winer-history-message {
+  color: #f0736a;
+}
+
+.winer-history-detail {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.winer-history-retry {
+  box-sizing: border-box;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid #2e4157;
+  border-radius: 6px;
+  background: transparent;
+  color: #ece6d6;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.winer-history-retry:hover {
+  border-color: #c8aa6e;
+  background: #162230;
+}
+
+.winer-games {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.winer-game {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 9px;
+  border-radius: 6px;
+  background: #162230;
+  box-shadow: inset 3px 0 0 #2e4157;
+}
+
+.winer-game--win {
+  background: #162b2e;
+  box-shadow: inset 3px 0 0 #4ccb93;
+}
+
+.winer-game--loss {
+  background: #26222a;
+  box-shadow: inset 3px 0 0 #f0736a;
+}
+
+.winer-game-what {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.winer-game-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.winer-game-result {
+  flex: none;
+  color: #9ba7b3;
+  font-weight: 700;
+}
+
+.winer-game--win .winer-game-result {
+  color: #4ccb93;
+}
+
+.winer-game--loss .winer-game-result {
+  color: #f0736a;
+}
+
+.winer-game-queue {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.winer-game-place {
+  flex: none;
+  color: #9ba7b3;
+}
+
+.winer-game-when {
+  overflow: hidden;
+  color: #9ba7b3;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.winer-game-kda {
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.winer-game-slash {
+  color: #9ba7b3;
+  font-weight: 400;
+}
+
+/* MVP solid in the accent, SVP raised with a hairline, as on the window's history rows. */
+.winer-award {
+  flex: none;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+}
+
+.winer-award--mvp {
+  background: #c8aa6e;
+  color: #1a1408;
+}
+
+.winer-award--svp {
+  background: #142030;
+  color: #ece6d6;
+  box-shadow: inset 0 0 0 1px #2e4157;
+}
+
+.winer-history-foot {
+  flex: none;
+  padding: 7px 12px 9px;
+  border-top: 1px solid #223142;
+}
+
+.winer-history-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #d9bf86;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.winer-history-link:hover {
+  text-decoration: underline;
+}
+
+.winer-history-close:focus-visible,
+.winer-history-retry:focus-visible,
+.winer-history-link:focus-visible {
+  outline: 2px solid #c8aa6e;
+  outline-offset: 2px;
+}
+
+/* A teammate's line in champ select names its player: a click opens their history. Only the
+ * line's own text takes the click; the row around it stays the client's. */
+.winer-inline[data-winer-puuid] {
+  width: max-content;
+  max-width: 100%;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.winer-inline[data-winer-puuid]:hover {
+  color: #ece6d6;
+}
+
+/* A fallback panel's own row keeps its highlight as a button. */
+.winer-row--self.winer-row--button {
+  background: #162230;
+}

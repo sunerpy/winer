@@ -1,6 +1,7 @@
 // The party in the client's lobby: above each member's banner, one compact line of their recent
-// form (win rate, KDA, form score) that opens their history in winer when clicked, as a click on the
-// member's avatar does. Where the members cannot be found, a compact panel lists the same.
+// form (win rate, KDA, form score) that opens their history when clicked, as a click on the
+// member's avatar does: in the history panel over the client (`history.ts`) or in winer's window.
+// Where the members cannot be found, a compact panel lists the same.
 import {
   formatKda,
   kda,
@@ -78,7 +79,7 @@ export function decorateLobby(
   root: ParentNode,
   view: LobbyView,
   language: Language,
-  open: (puuid: string) => void,
+  open: (puuid: string, card: Element) => void,
 ): number {
   const cards = innermost(root, LOBBY.member, identifiable);
   const kept = new Set<Element>();
@@ -97,8 +98,9 @@ export function decorateLobby(
       line.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const puuid = line?.closest(`[${CARD_ATTRIBUTE}]`)?.getAttribute(CARD_ATTRIBUTE);
-        if (puuid) open(puuid);
+        const owner = line?.closest(`[${CARD_ATTRIBUTE}]`);
+        const puuid = owner?.getAttribute(CARD_ATTRIBUTE);
+        if (owner && puuid) open(puuid, owner);
       });
       const under = first(card, LOBBY.under);
       const banner = first(card, LOBBY.banner);
@@ -125,8 +127,12 @@ export function clearLobby(root: ParentNode): void {
 }
 
 /** Opens a member's history from a click on their avatar, in the capture phase; a click on the
- *  client's own controls there passes through. `open` says whether it took the click. */
-export function interceptAvatarClicks(doc: Document, open: (puuid: string) => boolean): () => void {
+ *  client's own controls there passes through. `open` gets the member's card and says whether it
+ *  took the click. */
+export function interceptAvatarClicks(
+  doc: Document,
+  open: (puuid: string, card: Element) => boolean,
+): () => void {
   const onClick = (event: MouseEvent) => {
     if (!(event.target instanceof Element)) return;
     const card = event.target.closest(`[${CARD_ATTRIBUTE}]`);
@@ -135,7 +141,7 @@ export function interceptAvatarClicks(doc: Document, open: (puuid: string) => bo
     const avatar = LOBBY.avatar
       .map((selector) => event.target instanceof Element && event.target.closest(selector))
       .find((found) => found && card.contains(found));
-    if (!avatar || !open(puuid)) return;
+    if (!avatar || !open(puuid, card)) return;
     event.preventDefault();
     event.stopImmediatePropagation();
   };
@@ -179,7 +185,7 @@ export function floatingPanel(doc: Document, title: string, context: string): Fl
 export function lobbyRows(
   view: LobbyView,
   language: Language,
-  open: (puuid: string) => void,
+  open: (puuid: string, row: Element) => void,
 ): HTMLElement {
   return h(
     "ol",
@@ -201,7 +207,7 @@ export function lobbyRows(
           h("span", { class: "winer-line" }, lobbyLine(member, language)),
         ),
       );
-      button.addEventListener("click", () => open(member.puuid));
+      button.addEventListener("click", () => open(member.puuid, button));
       return h("li", {}, button);
     }),
   );

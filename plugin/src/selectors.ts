@@ -6,7 +6,9 @@
 // client really uses. Each list is tried in order, and where a guess matches a group of entries as
 // well as each entry, the entries are kept (`find.ts`). One more guess goes with these: the lobby
 // panel's offset from the client's right edge (`style.css`, `[data-winer-panel="lobby"]`), which
-// keeps it clear of the friends list.
+// keeps it clear of the friends list. And the history panel goes beside the member's card or the
+// teammate's row it was opened from (`history.ts`, `placement`): where that lands on the client's
+// page, and whether Pengu's root lies over it there, is not measured either.
 //
 // The home page (`HOME`, `PROMOTION_POPUPS`): measured on the Tencent client, 16.19, 2026-10-06,
 // over the client page's debug port.

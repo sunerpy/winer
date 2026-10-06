@@ -187,6 +187,14 @@ while the client is not connected), `ProfileIcon` (circle), `AssetIcon` (items, 
   a neutral badge led by its colour, with the number. A row opens the friend's history. In the
   client, a friend in a game gets the same `mode · time` line under their name in Hextech gold,
   and a group the same stripe; the lobby's members get one line of form above their banner.
+- **History in the client.** A click on a lobby member (their line or picture) or a champ-select
+  teammate's line opens a 320px card beside them over the client page, in the plugin's panel
+  frame: profile icon, Riot ID (the tag in `fg-muted`), the line's summary as chips (tier, title,
+  rank, win rate, KDA, form score, streak), then the latest ten games as rows tinted `win-soft` /
+  `loss-soft` with a 3px edge of the result's colour: champion, 胜 / 负 in that colour, queue, age
+  and length, K / D / A, MVP and SVP as on the history rows; 在 winer 中查看完整战绩 at the foot.
+  One card at a time; it takes the focus and gives it back, and Esc, its ✕, a second click on the
+  player, leaving the lobby or champ select, and the match-found dialog close it.
 - **Sides.** On a map of two sides a team carries its side: the board's switch says 我方 · 红色方,
   a lone team a `side-blue` or `side-red` dot and its name. The callout's first line names the side
   (【蓝色方】) before the opening line. In the client the local player's line starts with the same

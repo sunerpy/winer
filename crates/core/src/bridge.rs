@@ -5,6 +5,10 @@
 //! [`crate::plugin`]). The plugin fetches that sibling file, connects to
 //! `ws://127.0.0.1:<port>/?token=<token>` and from then on receives the same [`Event`]s as the
 //! window. A connection with any other token is refused during the HTTP upgrade.
+//!
+//! The plugin can also ask for a player's latest games ([`PluginMessage::History`]); the answer
+//! comes back on the same socket ([`BridgeMessage::HistoryResult`]), for the history panel the
+//! plugin draws over the client page.
 
 use std::{
     net::Ipv4Addr,
@@ -12,13 +16,14 @@ use std::{
         Arc,
         atomic::{AtomicU32, Ordering},
     },
+    time::Duration,
 };
 
 use futures_util::{SinkExt as _, StreamExt as _};
 use serde::{Deserialize, Serialize};
 use tokio::{
     net::{TcpListener, TcpStream},
-    sync::broadcast::error::RecvError,
+    sync::{broadcast::error::RecvError, mpsc},
 };
 use tokio_tungstenite::{
     accept_hdr_async,
@@ -32,15 +37,19 @@ use tracing::{debug, info, warn};
 use ts_rs::TS;
 
 use crate::{
-    Service,
+    CoreError, Service,
     settings::Settings,
-    view::{Event, Snapshot},
+    view::{Award, Event, GameData, IpcError, MatchPage, Snapshot},
 };
 
 /// Core → plugin. Built, serialized and dropped at once, so the variants' sizes do not matter.
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum BridgeMessage {
     /// The whole state, first on every connection and again whenever the plugin fell behind.
     Hello {
@@ -50,6 +59,14 @@ pub enum BridgeMessage {
     },
     Event {
         event: Event,
+    },
+    // The history panel in the client.
+    /// The answer to [`PluginMessage::History`] under its `request_id`: the player's latest games,
+    /// or why there are none. Exactly one of `page` and `error` is set.
+    HistoryResult {
+        request_id: u32,
+        page: Option<PanelHistory>,
+        error: Option<IpcError>,
     },
 }
 
@@ -78,6 +95,14 @@ pub enum PluginMessage {
     /// The user clicked a lobby member in the client: the window comes up on their history.
     OpenHistory {
         puuid: String,
+    },
+    // The history panel in the client.
+    /// The user clicked a player in the client's lobby or champ select while the history panel is
+    /// on: winer looks up their latest games and answers with a [`BridgeMessage::HistoryResult`]
+    /// carrying the same `request_id`.
+    History {
+        puuid: String,
+        request_id: u32,
     },
 }
 
@@ -164,6 +189,9 @@ impl Bridge {
         };
         let mut outgoing = Some(hello());
         let mut context = String::from("?");
+        // The history panel: lookups run off the loop and hand their answers back through here.
+        let (answers, mut answered) = mpsc::channel::<BridgeMessage>(PANEL_LOOKUPS);
+        let mut lookups: usize = 0;
 
         loop {
             if let Some(message) = outgoing.take() {
@@ -179,6 +207,10 @@ impl Bridge {
                     Err(RecvError::Lagged(_)) => outgoing = Some(hello()),
                     Err(RecvError::Closed) => break,
                 },
+                Some(answer) = answered.recv() => {
+                    lookups = lookups.saturating_sub(1);
+                    outgoing = Some(answer);
+                }
                 message = incoming.next() => match message {
                     Some(Ok(Message::Text(text))) => match serde_json::from_str::<PluginMessage>(&text) {
                         Ok(PluginMessage::Hello { version, context: id }) => {
@@ -191,6 +223,13 @@ impl Bridge {
                             if let Err(error) = service.open_history(&puuid) {
                                 warn!(%error, "history asked for from the client not opened");
                             }
+                        }
+                        Ok(PluginMessage::History { puuid, request_id }) if lookups < PANEL_LOOKUPS => {
+                            lookups += 1;
+                            answer_history(&service, puuid, request_id, answers.clone());
+                        }
+                        Ok(PluginMessage::History { request_id, .. }) => {
+                            outgoing = Some(history_busy(request_id));
                         }
                         Err(error) => debug!(%error, "unreadable plugin message"),
                     },
@@ -229,6 +268,142 @@ fn log(context: &str, level: LogLevel, message: &str) {
         LogLevel::Warn => warn!(target: "plugin", %context, "{message}"),
         LogLevel::Error => tracing::error!(target: "plugin", %context, "{message}"),
     }
+}
+
+// ---- The history panel in the client ----
+
+/// Games the history panel lists: the newest of the History page's first page.
+pub const PANEL_GAMES: u32 = 10;
+/// Lookups one connection may have under way at once; one more is answered as busy.
+const PANEL_LOOKUPS: usize = 4;
+/// The longest one lookup may take: the shard's server (20 s at most) and then the client's own
+/// history.
+const PANEL_TIMEOUT: Duration = Duration::from_secs(30);
+/// A puuid is 78 characters; nothing much longer is one.
+const PUUID_MAX: usize = 128;
+
+/// A player's latest games, as the history panel in the client lists them.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PanelHistory {
+    pub puuid: String,
+    /// Newest first, at most [`PANEL_GAMES`].
+    pub games: Vec<PanelGame>,
+}
+
+/// One game in the history panel, from the player's side.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PanelGame {
+    pub game_id: i64,
+    pub queue_id: i64,
+    /// The queue's name in the client's catalog (`极地大乱斗`); empty where the catalog has none.
+    pub queue: String,
+    pub champion_id: i64,
+    pub win: bool,
+    pub remake: bool,
+    pub kills: i64,
+    pub deaths: i64,
+    pub assists: i64,
+    /// Epoch milliseconds.
+    pub started_at: i64,
+    /// Seconds.
+    pub duration: i64,
+    pub award: Option<Award>,
+    /// Arena placement, 1–8.
+    pub placement: Option<i64>,
+}
+
+impl BridgeMessage {
+    /// The answer to the history request `request_id`.
+    fn history_result(request_id: u32, result: Result<PanelHistory, IpcError>) -> Self {
+        let (page, error) = match result {
+            Ok(page) => (Some(page), None),
+            Err(error) => (None, Some(error)),
+        };
+        Self::HistoryResult {
+            request_id,
+            page,
+            error,
+        }
+    }
+}
+
+/// The panel's games from a page of history: the newest [`PANEL_GAMES`], each queue named as the
+/// client's catalog names it.
+pub fn panel_history(page: MatchPage, data: Option<&GameData>) -> PanelHistory {
+    let queue = |id: i64| {
+        data.and_then(|data| data.queues.iter().find(|queue| queue.id == id))
+            .map(|queue| queue.name.trim().to_owned())
+            .unwrap_or_default()
+    };
+    PanelHistory {
+        puuid: page.puuid,
+        games: page
+            .games
+            .into_iter()
+            .take(PANEL_GAMES as usize)
+            .map(|game| PanelGame {
+                game_id: game.game_id,
+                queue_id: game.queue_id,
+                queue: queue(game.queue_id),
+                champion_id: game.line.champion_id,
+                win: game.line.win,
+                remake: game.line.remake,
+                kills: game.line.kills,
+                deaths: game.line.deaths,
+                assists: game.line.assists,
+                started_at: game.started_at,
+                duration: game.duration,
+                award: game.line.award,
+                placement: game.line.placement,
+            })
+            .collect(),
+    }
+}
+
+/// `puuid`'s latest games, looked up as the History page looks up its first page.
+async fn panel_lookup(service: &Service, puuid: &str) -> Result<PanelHistory, IpcError> {
+    if puuid.len() > PUUID_MAX {
+        return Err(
+            CoreError::Invalid(format!("not a player id ({} characters)", puuid.len())).into(),
+        );
+    }
+    let lookup = service.match_history(puuid, 0, PANEL_GAMES);
+    let page = tokio::time::timeout(PANEL_TIMEOUT, lookup)
+        .await
+        .map_err(|_| CoreError::Remote("the games did not arrive in time".into()))??;
+    Ok(panel_history(page, service.game_data().as_deref()))
+}
+
+/// The answer to one lookup more than a connection may have under way.
+fn history_busy(request_id: u32) -> BridgeMessage {
+    let busy = CoreError::Busy("winer is still reading other games".into());
+    BridgeMessage::history_result(request_id, Err(busy.into()))
+}
+
+/// Looks the player up off the socket's loop and hands the answer back to it.
+fn answer_history(
+    service: &Service,
+    puuid: String,
+    request_id: u32,
+    answers: mpsc::Sender<BridgeMessage>,
+) {
+    let service = service.clone();
+    tokio::spawn(async move {
+        let result = panel_lookup(&service, &puuid).await;
+        match &result {
+            Ok(page) => info!(
+                games = page.games.len(),
+                "history for the panel in the client"
+            ),
+            Err(error) => warn!(error = %error.message, "no history for the panel in the client"),
+        }
+        // The plugin may have gone meanwhile; then the answer goes nowhere.
+        let _ = answers
+            .send(BridgeMessage::history_result(request_id, result))
+            .await;
+    });
 }
 
 fn query_token(query: &str) -> Option<&str> {
@@ -345,5 +520,171 @@ mod tests {
         assert_eq!(event["event"]["type"], "settings");
         assert_eq!(event["event"]["data"]["plugin"]["teamPanel"], false);
         assert_eq!(bridge.connected(), 1);
+    }
+
+    // ---- The history panel in the client ----
+
+    use crate::{
+        analysis,
+        model::Game,
+        rating::Roles,
+        test_support::fixture,
+        view::{HistorySource, MatchSummary, QueueInfo},
+    };
+    use serde_json::{Value, json};
+
+    #[test]
+    fn history_requests_decode_and_their_answers_name_the_request() {
+        let asked: PluginMessage =
+            serde_json::from_str(r#"{"type":"history","puuid":"p-1","requestId":7}"#).unwrap();
+        assert_eq!(
+            asked,
+            PluginMessage::History {
+                puuid: "p-1".into(),
+                request_id: 7
+            }
+        );
+        assert!(
+            serde_json::from_str::<PluginMessage>(r#"{"type":"history","puuid":"p-1"}"#).is_err(),
+            "an answer needs an id to go under"
+        );
+
+        let failed = BridgeMessage::history_result(7, Err(CoreError::NotConnected.into()));
+        assert_eq!(
+            serde_json::to_value(&failed).unwrap(),
+            json!({
+                "type": "historyResult",
+                "requestId": 7,
+                "page": null,
+                "error": {"code": "notConnected", "message": "the League client is not connected"},
+            })
+        );
+        let found = BridgeMessage::history_result(
+            8,
+            Ok(PanelHistory {
+                puuid: "p".into(),
+                games: Vec::new(),
+            }),
+        );
+        assert_eq!(
+            serde_json::to_value(&found).unwrap(),
+            json!({"type": "historyResult", "requestId": 8, "page": {"puuid": "p", "games": []}, "error": null})
+        );
+        let busy = serde_json::to_value(history_busy(9)).unwrap();
+        assert_eq!(
+            (&busy["requestId"], &busy["error"]["code"], &busy["page"]),
+            (&json!(9), &json!("busy"), &Value::Null),
+            "one lookup too many is answered at once, as busy"
+        );
+    }
+
+    #[test]
+    fn the_panel_lists_the_newest_games_of_the_first_page_with_their_queues_named() {
+        let game: Game = fixture("live/responses/match-history-game-sgp-twin.json");
+        let summary = analysis::match_summary("PUUID-0010", &game, &Roles::new())
+            .expect("the player is in the game");
+        // Twelve games, newest first, every other one in a queue the catalog does not know.
+        let games = (0..12)
+            .map(|n| MatchSummary {
+                game_id: n,
+                queue_id: if n % 2 == 0 { 2400 } else { 0 },
+                ..summary.clone()
+            })
+            .collect();
+        let page = MatchPage {
+            puuid: "PUUID-0010".into(),
+            begin: 0,
+            games,
+            has_more: true,
+            source: HistorySource::Server,
+        };
+        let data = GameData {
+            queues: vec![QueueInfo {
+                id: 2400,
+                name: "海克斯大乱斗 ".into(),
+                game_mode: "KIWI".into(),
+                ranked: false,
+            }],
+            ..GameData::default()
+        };
+
+        let panel = panel_history(page.clone(), Some(&data));
+        assert_eq!(panel.puuid, "PUUID-0010");
+        assert_eq!(
+            panel
+                .games
+                .iter()
+                .map(|game| game.game_id)
+                .collect::<Vec<_>>(),
+            (0..i64::from(PANEL_GAMES)).collect::<Vec<_>>(),
+            "the newest games, in order, no more than the panel lists"
+        );
+        let [first, second, ..] = panel.games.as_slice() else {
+            panic!("ten games expected, got {}", panel.games.len());
+        };
+        assert_eq!(first.queue, "海克斯大乱斗", "the catalog's name, trimmed");
+        assert_eq!(second.queue, "", "a queue the catalog does not know");
+        assert_eq!(
+            (first.kills, first.deaths, first.assists),
+            (14, 12, 45),
+            "the player's own line"
+        );
+        let line = &summary.line;
+        assert_eq!(
+            (first.champion_id, first.win, first.remake, first.award),
+            (line.champion_id, line.win, line.remake, line.award)
+        );
+        assert_eq!(
+            (first.started_at, first.duration, first.placement),
+            (summary.started_at, summary.duration, line.placement)
+        );
+        let wire = serde_json::to_string(&BridgeMessage::history_result(1, Ok(panel))).unwrap();
+        assert!(wire.len() < 4096, "a small answer: {} bytes", wire.len());
+        assert!(
+            panel_history(page, None)
+                .games
+                .iter()
+                .all(|game| game.queue.is_empty()),
+            "no catalog, no names"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_history_request_is_answered_under_its_id_and_bad_ids_are_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(
+            dir.path().join("settings.json"),
+            tokio::runtime::Handle::current(),
+        );
+        let bridge = Bridge::start(service, "9.9.9").await.unwrap();
+        let url = format!("ws://127.0.0.1:{}/?token={}", bridge.port(), bridge.token());
+        let (mut socket, _) = connect_async(url).await.unwrap();
+        socket.next().await.unwrap().unwrap(); // hello
+        let long = "a".repeat(PUUID_MAX + 1);
+        for (id, puuid) in [(1, "abc-123"), (2, "../lol-login"), (3, long.as_str())] {
+            let message = json!({"type": "history", "puuid": puuid, "requestId": id}).to_string();
+            socket.send(Message::text(message)).await.unwrap();
+        }
+        let mut answers = Vec::new();
+        while answers.len() < 3 {
+            let message = socket.next().await.unwrap().unwrap();
+            let value: Value = serde_json::from_str(message.to_text().unwrap()).unwrap();
+            assert_eq!(value["type"], "historyResult");
+            answers.push((
+                value["requestId"].as_u64().unwrap(),
+                value["error"]["code"].clone(),
+                value["page"].clone(),
+            ));
+        }
+        answers.sort_by_key(|answer| answer.0);
+        assert_eq!(
+            answers,
+            vec![
+                (1, json!("notConnected"), Value::Null),
+                (2, json!("invalid"), Value::Null),
+                (3, json!("invalid"), Value::Null),
+            ],
+            "no client: said so; a malformed or overlong id: refused before any request"
+        );
     }
 }

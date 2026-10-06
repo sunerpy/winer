@@ -434,7 +434,7 @@ export const zhCN = {
   "plugin.features": "客户端内功能",
   "plugin.teamPanel": "选人阶段队友面板",
   "plugin.teamPanelHint":
-    "所有模式的英雄选择界面里，显示每位队友的段位、胜率、近期战绩和自己所在的红蓝方。",
+    "所有模式的英雄选择界面里，显示每位队友的段位、胜率、近期战绩和自己所在的红蓝方；点队友的这一行可以查看他的战绩。",
   "plugin.hidePromotions": "隐藏首页推广",
   "plugin.benchNoCooldown": "在客户端里秒换备选席英雄",
   "plugin.benchNoCooldownHint":
@@ -699,7 +699,7 @@ export const zhCN = {
     "在客户端右侧的好友列表里，给游戏中的好友加上模式和已进行的时间；一起玩的好友带同一种颜色。",
   "social.pluginLobby": "房间里的队友战绩",
   "social.pluginLobbyHint":
-    "在客户端的组队房间里，每位成员的横幅上方显示近期胜率、KDA 和战力分；点成员会在 winer 里打开他的战绩。",
+    "在客户端的组队房间里，每位成员的横幅上方显示近期胜率、KDA 和战力分；点成员可以查看他的战绩。",
   "social.hotkey": "唤起 winer 的快捷键",
   "social.hotkeyHint":
     "在任何地方按下都能显示或隐藏 winer；游戏中唤出时，窗口会保持在游戏上方。游戏需要使用无边框或窗口模式。",
@@ -712,6 +712,11 @@ export const zhCN = {
   "social.hotkeyClear": "清除快捷键",
   "social.hotkeyActive": "已生效",
   "social.hotkeyFailed": "注册失败：这个组合键可能已被其他程序占用，请换一个。",
+
+  // The history panel in the client.
+  "overlay.historyInClient": "在客户端里查看战绩",
+  "overlay.historyInClientHint":
+    "在组队房间或英雄选择界面点一名玩家时，直接在客户端里弹出他最近的对局；关闭后改为在 winer 的窗口里打开他的战绩。",
 } as const;
 
 export type MessageKey = keyof typeof zhCN;

@@ -15,6 +15,7 @@ import {
   type Language,
   type PlayerSummary,
   type Seat,
+  type SeatRating,
   type Side,
 } from "@winer/shared";
 
@@ -27,12 +28,14 @@ import { text } from "./i18n";
 export const ROW_SELECTOR = ".party.visible .summoner-wrapper.visible.left";
 export const NAME_SELECTOR = ".player-name-wrapper";
 const INLINE_CLASS = "winer-inline";
+/** On a line: whose it is, for a click on it (the lobby's cards carry the same). */
+const PUUID_ATTRIBUTE = "data-winer-puuid";
 
 function summaryOf(seat: Seat): PlayerSummary | null {
   return seat.stats.state === "ready" ? seat.stats : null;
 }
 
-function rankChip(summary: PlayerSummary, language: Language): HTMLElement {
+export function rankChip(summary: PlayerSummary, language: Language): HTMLElement {
   const rank = summary.ranked.solo ?? summary.ranked.flex;
   if (!rank) return h("span", { class: "winer-muted" }, text(language, "unranked"));
   return h(
@@ -43,14 +46,13 @@ function rankChip(summary: PlayerSummary, language: Language): HTMLElement {
   );
 }
 
-function rateClass(ratio: number | null): string {
+export function rateClass(ratio: number | null): string {
   if (ratio === null) return "winer-muted";
   return ratio >= 0.55 ? "winer-win" : ratio <= 0.45 ? "winer-loss" : "";
 }
 
 /** The tier, its grade letter first where the scheme grades; the score and the quip on hover. */
-function standingChip(seat: Seat): HTMLElement | null {
-  const rating = seat.rating;
+export function standingChip(rating: SeatRating | null): HTMLElement | null {
   if (!rating) return null;
   const grade = rating.grade === null ? undefined : GRADE_LETTERS[rating.grade];
   return h(
@@ -64,8 +66,8 @@ function standingChip(seat: Seat): HTMLElement | null {
 }
 
 /** The roast title recent games earned (`版本答案`), while titles are on. */
-function titleChip(seat: Seat): HTMLElement | null {
-  const title = seat.rating?.title;
+export function titleChip(rating: SeatRating | null): HTMLElement | null {
+  const title = rating?.title;
   return title ? h("span", { class: "winer-title" }, title) : null;
 }
 
@@ -109,8 +111,8 @@ export function statsLine(seat: Seat, language: Language, side: Side | null = nu
     { class: "winer-line" },
     chip,
     party,
-    standingChip(seat),
-    titleChip(seat),
+    standingChip(seat.rating),
+    titleChip(seat.rating),
     rankChip(summary, language),
     form.games > 0 && h("span", { class: rateClass(ratio) }, percent(ratio)),
     form.games > 0 && h("span", {}, `KDA ${formatKda(kda(form.kills, form.deaths, form.assists))}`),
@@ -157,7 +159,8 @@ export function lineKey(seat: Seat, language: Language, side: Side | null = null
   ].join("|");
 }
 
-/** Writes one line under each party row's name. Returns how many rows it found. */
+/** Writes one line under each party row's name. Returns how many rows it found. A line names its
+ *  player (`data-winer-puuid`), so a click on it opens their history (`history.ts`). */
 export function decorateRows(root: ParentNode, view: ChampSelectView, language: Language): number {
   const rows = [...root.querySelectorAll<HTMLElement>(ROW_SELECTOR)];
   rows.forEach((row, index) => {
@@ -174,6 +177,17 @@ export function decorateRows(root: ParentNode, view: ChampSelectView, language: 
       line.dataset.key = key;
       line.replaceChildren(statsLine(seat, language, view.side));
     }
+    // The history panel. Written only when it changed, as the line is.
+    const puuid = seat.puuid ?? "";
+    if ((line.getAttribute(PUUID_ATTRIBUTE) ?? "") !== puuid) {
+      if (puuid) line.setAttribute(PUUID_ATTRIBUTE, puuid);
+      else line.removeAttribute(PUUID_ATTRIBUTE);
+    }
+    const title = puuid ? text(language, "open") : "";
+    if ((line.getAttribute("title") ?? "") !== title) {
+      if (title) line.setAttribute("title", title);
+      else line.removeAttribute("title");
+    }
   });
   return rows.length;
 }
@@ -182,16 +196,19 @@ export function clearRows(root: ParentNode): void {
   root.querySelectorAll(`.${INLINE_CLASS}`).forEach((line) => line.remove());
 }
 
-/** The fallback panel's rows: icon, name, rank and form, last ten results. */
-export function panelRows(view: ChampSelectView, language: Language): HTMLElement {
+/** The fallback panel's rows: icon, name, rank and form, last ten results. With `open`, a known
+ *  player's row is a button that opens their history, as the lobby panel's rows are. */
+export function panelRows(
+  view: ChampSelectView,
+  language: Language,
+  open?: (puuid: string, anchor: Element) => void,
+): HTMLElement {
   return h(
     "ol",
     { class: "winer-rows" },
     ...view.myTeam.map((seat) => {
       const summary = summaryOf(seat);
-      return h(
-        "li",
-        { class: seat.isSelf ? "winer-row winer-row--self" : "winer-row" },
+      const content = [
         championIcon(seat.championId, 28),
         h(
           "span",
@@ -204,7 +221,17 @@ export function panelRows(view: ChampSelectView, language: Language): HTMLElemen
           statsLine(seat, language, view.side),
         ),
         summary ? resultTicks(summary) : null,
+      ];
+      const kind = seat.isSelf ? "winer-row winer-row--self" : "winer-row";
+      const puuid = seat.puuid;
+      if (!open || !puuid) return h("li", { class: kind }, ...content);
+      const button = h(
+        "button",
+        { type: "button", class: `${kind} winer-row--button`, title: text(language, "open") },
+        ...content,
       );
+      button.addEventListener("click", () => open(puuid, button));
+      return h("li", {}, button);
     }),
   );
 }
