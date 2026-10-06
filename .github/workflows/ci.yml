@@ -6,6 +6,10 @@
 # release workflow's bundle leg is the proof that the installer builds. The frontend and the release
 # configuration jobs build and test nothing for any platform (Node and Python tooling, the same
 # output on every OS), so they stay on the cheaper Ubuntu runners.
+#
+# A release PR and the squash commit it lands as change nothing but release-please's version bump,
+# on code CI has just tested on main: `Changes` proves that (.github/scripts/release-fast-lane.py)
+# and then the Rust and frontend jobs are skipped. Every other run builds and tests everything.
 name: CI
 
 on:
@@ -30,8 +34,38 @@ env:
   RUST_BACKTRACE: "1"
 
 jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      fast: ${{ steps.lane.outputs.fast }}
+    steps:
+      # The head and its parent, which is the base of a release-please commit.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Decide whether this is only release-please's version bump
+        id: lane
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          REPO: ${{ github.repository }}
+          RUN_REF: ${{ github.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 .github/scripts/release-fast-lane.py
+
   frontend:
     name: Frontend
+    needs: changes
+    if: needs.changes.outputs.fast != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -71,6 +105,8 @@ jobs:
 
   windows:
     name: Rust (Windows)
+    needs: changes
+    if: needs.changes.outputs.fast != 'true'
     runs-on: windows-2025
     timeout-minutes: 45
     steps:
@@ -146,15 +182,24 @@ jobs:
       - name: Validate the release target manifest
         run: python3 .github/scripts/tauri-release.py matrix --file "$RELEASE_TARGETS_FILE"
 
+      - name: Test the release fast lane's rules
+        run: python3 .github/scripts/release-fast-lane.py --self-test
+
   ci-success:
     name: CI Success
-    needs: [frontend, windows, config]
+    needs: [changes, frontend, windows, config]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # A skip passes only for the two jobs the fast lane leaves out, and only once `Changes` has
+      # proved the run is a version bump; any other skip fails.
       - name: Require every CI job to succeed
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
+          FAST: ${{ needs.changes.outputs.fast }}
         run: |
-          jq -e 'all(.[]; .result == "success")' <<<"$NEEDS_JSON"
+          jq -e --arg fast "$FAST" '
+            .changes.result == "success" and .config.result == "success" and
+            ([.frontend.result, .windows.result] | all(
+              . == "success" or (. == "skipped" and $fast == "true")))' <<<"$NEEDS_JSON"
