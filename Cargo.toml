@@ -75,3 +75,17 @@ all = { level = "warn", priority = -1 }
 codegen-units = 1
 lto = "thin"
 strip = "debuginfo"
+
+# A release rebuilds winer's own three crates only (every dependency comes from the cache), and one
+# codegen unit leaves each of them a single LLVM thread: 5m10s on the 4-core release runner for
+# 0.0.5. Four units, one per core, halve that; the dependencies keep one. Measured on four jobs
+# (2026-10-07): 121 s and a 21.4 MB winer.exe with one unit, 67 s and 22.8 MB with four, 61 s and
+# 23.3 MB with sixteen.
+[profile.release.package.winer]
+codegen-units = 4
+
+[profile.release.package.winer-core]
+codegen-units = 4
+
+[profile.release.package.lcu]
+codegen-units = 4
