@@ -1,12 +1,13 @@
 //! The callout: in champ select every rated teammate's standing and recent form, one chat line
-//! each; in the game, the enemy to watch and the one to go after. Rating the seats is `live`'s job;
-//! this module only names the standings and writes the lines.
+//! each; in the game, the enemy to watch and the one to go after, and the team's lines again, every
+//! player named by their champion. Rating the seats is `live`'s job; this module only names the
+//! standings and writes the lines.
 
 use std::cmp::Ordering;
 
 use crate::{
     rating::{self, FormTitle},
-    settings::{CalloutRule, General, Language, TierSet},
+    settings::{CalloutRule, GameTeams, General, Language, TierSet},
     view::{
         CalloutSkip, ChampSelectView, GameView, Phase, PlayerStats, PlayerSummary, Seat,
         SeatRating, Side, TimerView,
@@ -69,7 +70,12 @@ const FORMER_TEMPLATES: [(Language, &str); 4] = [
 
 /// The language whose former default line `template` is, character for character.
 pub(crate) fn former_default(template: &str) -> Option<Language> {
-    FORMER_TEMPLATES
+    former(&FORMER_TEMPLATES, template)
+}
+
+/// The language `template` is one of `formers` in, character for character.
+fn former(formers: &[(Language, &str)], template: &str) -> Option<Language> {
+    formers
         .iter()
         .find(|(_, former)| *former == template)
         .map(|(language, _)| *language)
@@ -398,16 +404,58 @@ pub fn lines(
     language: Language,
     champion: impl Fn(i64) -> Option<String>,
 ) -> Vec<String> {
-    let template = match rule.template.trim() {
-        "" => template(language),
+    let template = own_or(&rule.template, template(language));
+    let players = rated_lines(
+        &view.my_team,
+        rule.include_self,
+        template,
+        language,
+        &champion,
+    );
+    if players.is_empty() {
+        return players;
+    }
+    // The side leads, then winer's name, which every callout carries, then the opening line.
+    let mut first = first_line(view.side.map(|side| side_tag(side, language)), language);
+    let header = rule.header.trim();
+    if !header.is_empty() {
+        first.push_str(" · ");
+        first.push_str(header);
+    }
+    std::iter::once(first).chain(players).collect()
+}
+
+/// The user's own template, or `default` where they left it blank.
+fn own_or<'a>(own: &'a str, default: &'a str) -> &'a str {
+    match own.trim() {
+        "" => default,
         own => own,
-    };
-    // Seats are counted before anyone is left out, so they stay the ones champ select shows.
-    let mut rated: Vec<(usize, &Seat, &SeatRating)> = view
-        .my_team
+    }
+}
+
+/// A callout's first line: the side's tag, if any, then winer's name, which every callout carries.
+fn first_line(tag: Option<&str>, language: Language) -> String {
+    match (tag, language) {
+        (Some(tag), Language::ZhCn) => format!("{tag}{}", signature(language)),
+        (Some(tag), Language::En) => format!("{tag} {}", signature(language)),
+        (None, _) => signature(language).to_owned(),
+    }
+}
+
+/// One line per rated player of `team` under `template`, the best standing first and by score
+/// within a standing; the local player only with `include_self`. A player's seat is their place in
+/// `team`, counted from 1 before anyone is left out, so it stays the one the client shows.
+fn rated_lines(
+    team: &[Seat],
+    include_self: bool,
+    template: &str,
+    language: Language,
+    champion: &impl Fn(i64) -> Option<String>,
+) -> Vec<String> {
+    let mut rated: Vec<(usize, &Seat, &SeatRating)> = team
         .iter()
         .enumerate()
-        .filter(|(_, seat)| rule.include_self || !seat.is_self)
+        .filter(|(_, seat)| include_self || !seat.is_self)
         .filter_map(|(index, seat)| Some((index + 1, seat, seat.rating.as_ref()?)))
         .collect();
     rated.sort_by(|a, b| {
@@ -415,32 +463,18 @@ pub fn lines(
             .cmp(&b.2.tier)
             .then(b.2.score.total_cmp(&a.2.score))
     });
-    let players: Vec<String> = rated
+    rated
         .into_iter()
         .filter_map(|(number, seat, rating)| {
-            let seat_label = seat_label(number, language);
-            line(template, &seat_label, seat, rating, &champion)
+            line(
+                template,
+                &seat_label(number, language),
+                seat,
+                rating,
+                champion,
+            )
         })
-        .collect();
-    if players.is_empty() {
-        return players;
-    }
-    // The side leads, then winer's name, which every callout carries, then the opening line.
-    let mut first = match (view.side, language) {
-        (Some(side), Language::ZhCn) => {
-            format!("{}{}", side_tag(side, language), signature(language))
-        }
-        (Some(side), Language::En) => {
-            format!("{} {}", side_tag(side, language), signature(language))
-        }
-        (None, _) => signature(language).to_owned(),
-    };
-    let header = rule.header.trim();
-    if !header.is_empty() {
-        first.push_str(" · ");
-        first.push_str(header);
-    }
-    std::iter::once(first).chain(players).collect()
+        .collect()
 }
 
 fn line(
@@ -461,10 +495,17 @@ fn line(
         .or(summary.name.as_ref())
         .map(|name| name.game_name.clone())
         .unwrap_or_default();
+    // A seat without a champion the catalog names (none picked yet, the catalog not loaded) goes
+    // by the player's name instead, unless the line names the player anyway: whoever a line is
+    // about, it says so.
+    let champion = champion(seat.champion_id)
+        .filter(|champion| !champion.is_empty())
+        .or_else(|| (!template.contains("{name}")).then(|| name.clone()))
+        .unwrap_or_default();
     let values = [
         ("{standing}", rating.label.clone()),
         ("{seat}", seat_label.to_owned()),
-        ("{champion}", champion(seat.champion_id).unwrap_or_default()),
+        ("{champion}", champion),
         ("{name}", name),
         ("{games}", form.games.to_string()),
         (
@@ -587,7 +628,7 @@ pub fn preview(
     )
 }
 
-// ---- In the game: the other team, typed into the game's chat by the callout's shortcut ----
+// ---- In the game: both teams by champion, typed into the game's chat by the callout's shortcut ----
 
 /// The other team's side, as the in-game callout's first line names it.
 pub fn enemy_tag(side: Side, language: Language) -> &'static str {
@@ -599,15 +640,24 @@ pub fn enemy_tag(side: Side, language: Language) -> &'static str {
     }
 }
 
-/// The line about the enemy to watch, when the user has not written their own. In the game the
-/// champion is what identifies a player: it no longer changes, and it is what the map shows.
+/// The local team's side, as the first of its in-game lines names it.
+pub fn ally_tag(side: Side, language: Language) -> &'static str {
+    match (side, language) {
+        (Side::Blue, Language::ZhCn) => "【我方·蓝色方】",
+        (Side::Red, Language::ZhCn) => "【我方·红色方】",
+        (Side::Blue, Language::En) => "[My team · Blue side]",
+        (Side::Red, Language::En) => "[My team · Red side]",
+    }
+}
+
+/// The line about the enemy to watch, when the user has not written their own. In the game a
+/// player goes by their champion: it no longer changes, and it is what the map and the scoreboard
+/// show, so the line names the champion alone (`line` puts the player's name where none is known).
 pub fn watch_template(language: Language) -> &'static str {
     match language {
-        Language::ZhCn => {
-            "小心 {champion} {name}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}"
-        }
+        Language::ZhCn => "小心 {champion}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}",
         Language::En => {
-            "Watch {champion} ({name}): {standing}, {winRate} in {games} games, KDA {kda}{title}"
+            "Watch {champion}: {standing}, {winRate} in {games} games, KDA {kda}{title}"
         }
     }
 }
@@ -615,9 +665,70 @@ pub fn watch_template(language: Language) -> &'static str {
 /// The line about the enemy to go after, when the user has not written their own.
 pub fn target_template(language: Language) -> &'static str {
     match language {
-        Language::ZhCn => "对面 {champion} {name}：{standing}，近{games}场胜率{winRate}，可以多抓",
-        Language::En => "Go after {champion} ({name}): {standing}, {winRate} in {games} games",
+        Language::ZhCn => "对面 {champion}：{standing}，近{games}场胜率{winRate}，可以多抓",
+        Language::En => "Go after {champion}: {standing}, {winRate} in {games} games",
     }
+}
+
+/// The line about each teammate in the game, when the user has not written their own: champ
+/// select's line, with the champion where the seat and the name were.
+pub fn ally_template(language: Language) -> &'static str {
+    match language {
+        Language::ZhCn => {
+            "{standing}：{champion}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}"
+        }
+        Language::En => {
+            "{standing}: {champion}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}"
+        }
+    }
+}
+
+/// The enemy lines' first defaults, which named the champion and the player.
+const FORMER_WATCH_TEMPLATES: [(Language, &str); 2] = [
+    (
+        Language::ZhCn,
+        "小心 {champion} {name}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}",
+    ),
+    (
+        Language::En,
+        "Watch {champion} ({name}): {standing}, {winRate} in {games} games, KDA {kda}{title}",
+    ),
+];
+const FORMER_TARGET_TEMPLATES: [(Language, &str); 2] = [
+    (
+        Language::ZhCn,
+        "对面 {champion} {name}：{standing}，近{games}场胜率{winRate}，可以多抓",
+    ),
+    (
+        Language::En,
+        "Go after {champion} ({name}): {standing}, {winRate} in {games} games",
+    ),
+];
+
+/// The language whose former default line about the enemy to watch `template` is.
+pub(crate) fn former_watch_default(template: &str) -> Option<Language> {
+    former(&FORMER_WATCH_TEMPLATES, template)
+}
+
+/// The language whose former default line about the enemy to go after `template` is.
+pub(crate) fn former_target_default(template: &str) -> Option<Language> {
+    former(&FORMER_TARGET_TEMPLATES, template)
+}
+
+/// The local player's team in `view`, as its place in `view.teams`. A map without sides (Arena's
+/// pairs, Swarm) has no single other team, and a spectator no team of their own: `None` for both.
+fn my_team(view: &GameView) -> Option<usize> {
+    if !view.sides || view.teams.len() != 2 {
+        return None;
+    }
+    view.teams
+        .iter()
+        .position(|team| team.iter().any(|seat| seat.is_self))
+}
+
+/// The side of the team at `index` of a game's two: the client lists blue first.
+fn side_of(index: usize) -> Side {
+    if index == 0 { Side::Blue } else { Side::Red }
 }
 
 /// Where a rating stands against the middle of its scheme: above it (`Less`: tier 0 is the best),
@@ -658,34 +769,21 @@ pub fn pick(team: &[Seat]) -> (Option<usize>, Option<usize>) {
     )
 }
 
-/// The in-game callout: a first line with the other team's side and winer's name, then the enemy
-/// to watch and the one to go after (`pick`), each in the user's own words or the language's. It
-/// talks about the other team only: the team heard about itself in champ select, and every line
-/// typed is one more the player waits through. A map without sides (Arena's pairs, Swarm) has no
-/// single other team and a spectator no team of their own, so nothing is said there, nor about a
-/// team where nobody stands out: not even the first line.
+/// The in-game callout's enemy lines: a first line with the other team's side and winer's name,
+/// then the enemy to watch and the one to go after (`pick`), each in the user's own words or the
+/// language's. A map without sides and a spectator get nothing (`my_team`), nor does a team where
+/// nobody stands out: not even the first line.
 pub fn game_lines(
     view: &GameView,
     rule: &CalloutRule,
     language: Language,
     champion: impl Fn(i64) -> Option<String>,
 ) -> Vec<String> {
-    if !view.sides || view.teams.len() != 2 {
-        return Vec::new();
-    }
-    let Some(mine) = view
-        .teams
-        .iter()
-        .position(|team| team.iter().any(|seat| seat.is_self))
-    else {
+    let Some(mine) = my_team(view) else {
         return Vec::new();
     };
     let (other, team) = (1 - mine, &view.teams[1 - mine]);
     let (watch, target) = pick(team);
-    let own_or = |own: &str, default: &'static str| match own.trim() {
-        "" => default.to_owned(),
-        own => own.to_owned(),
-    };
     let players: Vec<String> = [
         (
             watch,
@@ -700,7 +798,7 @@ pub fn game_lines(
     .filter_map(|(index, template)| {
         let seat = &team[index?];
         line(
-            &template,
+            template,
             &seat_label(index? + 1, language),
             seat,
             seat.rating.as_ref()?,
@@ -711,16 +809,67 @@ pub fn game_lines(
     if players.is_empty() {
         return players;
     }
-    let side = if other == 0 { Side::Blue } else { Side::Red };
-    let first = match language {
-        Language::ZhCn => format!("{}{}", enemy_tag(side, language), signature(language)),
-        Language::En => format!("{} {}", enemy_tag(side, language), signature(language)),
-    };
+    let first = first_line(Some(enemy_tag(side_of(other), language)), language);
     std::iter::once(first).chain(players).collect()
 }
 
-/// What the in-game callout would type under `rule`, shown with the user's own recent form in the
-/// enemy to watch (the best tier) and the one to go after (the worst), the enemy on the red side.
+/// The team's own lines in the game: a first line with the team's side and winer's name, then one
+/// line per rated teammate as champ select has them (`lines`: the best first, oneself only with
+/// `include_self`), each naming the champion (`ally_template`) where champ select names the seat
+/// and the player: in the game the team knows its players by champion, and champions no longer
+/// change. Nothing where `game_lines` has no teams to tell apart, nor while nobody is rated.
+pub fn ally_lines(
+    view: &GameView,
+    rule: &CalloutRule,
+    language: Language,
+    champion: impl Fn(i64) -> Option<String>,
+) -> Vec<String> {
+    let Some(mine) = my_team(view) else {
+        return Vec::new();
+    };
+    let template = own_or(&rule.ally_template, ally_template(language));
+    let players = rated_lines(
+        &view.teams[mine],
+        rule.include_self,
+        template,
+        language,
+        &champion,
+    );
+    if players.is_empty() {
+        return players;
+    }
+    let first = first_line(Some(ally_tag(side_of(mine), language)), language);
+    std::iter::once(first).chain(players).collect()
+}
+
+/// The most lines one press of the shortcut types into the game. Each holds the player's keyboard
+/// for about a second (`game_chat`'s pauses), so a press types a team's first line and five
+/// players at most: the team's own lines fit whole, both teams together are cut.
+pub const GAME_LINE_LIMIT: usize = 6;
+
+/// What one press of the shortcut types in the game under `teams`: the enemy lines
+/// (`GameView::callout`), the team's (`GameView::ally_callout`) or both, the enemy's first, cut at
+/// [`GAME_LINE_LIMIT`]. The enemy's three lines at most leave the team its first line and its best
+/// two players.
+pub fn typed(view: &GameView, teams: GameTeams) -> Vec<String> {
+    let none: &[String] = &[];
+    let (enemy, allies) = match teams {
+        GameTeams::Enemies => (view.callout.as_slice(), none),
+        GameTeams::Allies => (none, view.ally_callout.as_slice()),
+        GameTeams::Both => (view.callout.as_slice(), view.ally_callout.as_slice()),
+    };
+    enemy
+        .iter()
+        .chain(allies)
+        .take(GAME_LINE_LIMIT)
+        .cloned()
+        .collect()
+}
+
+/// What one press of the shortcut would type in the game under `rule`, shown with the user's own
+/// recent form: on the red side the enemy to watch (the best tier) and the one to go after (the
+/// worst), on the blue side a team holding the user in every tier, as champ select's preview does.
+/// Their most played champion stands in for every champion.
 pub fn game_preview(
     me: &PlayerSummary,
     rule: &CalloutRule,
@@ -729,11 +878,17 @@ pub fn game_preview(
 ) -> Vec<String> {
     let ranking = ranking(rule, general);
     let worst = ranking.names.len().saturating_sub(1);
-    let view = GameView {
+    let rule = CalloutRule {
+        include_self: true,
+        ..rule.clone()
+    };
+    let mut view = GameView {
         game_id: 0,
         queue_id: 0,
         teams: vec![
-            vec![sample(me, &ranking, 0, true)],
+            (0..ranking.names.len())
+                .map(|tier| sample(me, &ranking, tier, tier == 0))
+                .collect(),
             vec![
                 sample(me, &ranking, 0, false),
                 sample(me, &ranking, worst, false),
@@ -741,8 +896,11 @@ pub fn game_preview(
         ],
         sides: true,
         callout: Vec::new(),
+        ally_callout: Vec::new(),
     };
-    game_lines(&view, rule, general.language, champion)
+    view.callout = game_lines(&view, &rule, general.language, &champion);
+    view.ally_callout = ally_lines(&view, &rule, general.language, &champion);
+    typed(&view, rule.game_teams)
 }
 
 // ---- The callout's shortcut ----
@@ -758,23 +916,24 @@ pub enum Press {
     Skip(CalloutSkip),
 }
 
-/// What the callout's shortcut does in `phase`, from the views as drawn: in champ select the team's
-/// lines go to its chat; while the game runs (`InProgress`: not its loading screen) the enemy lines
-/// are typed into the game's chat, if in-game sending is on. No lines, nothing sent.
+/// What the callout's shortcut does in `phase`, from the views as drawn and the callout's settings:
+/// in champ select the team's lines go to its chat; while the game runs (`InProgress`: not its
+/// loading screen) the lines `rule.game_teams` chooses are typed into the game's chat (`typed`), if
+/// in-game sending is on. No lines, nothing sent.
 pub fn press(
     phase: Phase,
     champ_select: Option<&ChampSelectView>,
     game: Option<&GameView>,
-    in_game: bool,
+    rule: &CalloutRule,
 ) -> Press {
     match phase {
         Phase::ChampSelect => match champ_select {
             Some(view) if !view.callout.is_empty() => Press::ChampSelect,
             _ => Press::Skip(CalloutSkip::NothingToSay),
         },
-        Phase::InProgress if !in_game => Press::Skip(CalloutSkip::InGameOff),
-        Phase::InProgress => match game {
-            Some(view) if !view.callout.is_empty() => Press::Game(view.callout.clone()),
+        Phase::InProgress if !rule.in_game => Press::Skip(CalloutSkip::InGameOff),
+        Phase::InProgress => match game.map(|view| typed(view, rule.game_teams)) {
+            Some(lines) if !lines.is_empty() => Press::Game(lines),
             _ => Press::Skip(CalloutSkip::NothingToSay),
         },
         _ => Press::Skip(CalloutSkip::NotNow),
@@ -1435,6 +1594,15 @@ mod tests {
             },
             sides: true,
             callout: Vec::new(),
+            ally_callout: Vec::new(),
+        }
+    }
+
+    /// A running game with `team`, the local player among them, on the blue side.
+    fn game_of(team: Vec<Seat>) -> GameView {
+        GameView {
+            teams: vec![team, vec![enemy("路人", 3, Some((2, 5, 5.2)))]],
+            ..game(0, Vec::new())
         }
     }
 
@@ -1536,10 +1704,10 @@ mod tests {
             ),
             [
                 "【敌方·红色方】winer 战绩鉴定",
-                "小心 亚索 强者：T0，近20场胜率55%，KDA 3.5「版本答案」",
-                "对面 盖伦 弱者：T4，近20场胜率55%，可以多抓",
+                "小心 亚索：T0，近20场胜率55%，KDA 3.5「版本答案」",
+                "对面 盖伦：T4，近20场胜率55%，可以多抓",
             ],
-            "the champion names the player in game; the middle one is not talked about"
+            "the champion alone names the player in game; the middle one is not talked about"
         );
         assert_eq!(
             game_lines(
@@ -1550,9 +1718,218 @@ mod tests {
             ),
             [
                 "[Enemy · Blue side] winer rating",
-                "Watch 亚索 (强者): T0, 55% in 20 games, KDA 3.5「版本答案」",
-                "Go after 盖伦 (弱者): T4, 55% in 20 games",
+                "Watch 亚索: T0, 55% in 20 games, KDA 3.5「版本答案」",
+                "Go after 盖伦: T4, 55% in 20 games",
             ]
+        );
+    }
+
+    #[test]
+    fn in_game_the_default_lines_name_the_champion_alone() {
+        assert_eq!(
+            watch_template(Language::ZhCn),
+            "小心 {champion}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}"
+        );
+        assert_eq!(
+            target_template(Language::ZhCn),
+            "对面 {champion}：{standing}，近{games}场胜率{winRate}，可以多抓"
+        );
+        assert_eq!(
+            ally_template(Language::ZhCn),
+            "{standing}：{champion}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
+            "champ select's line, the champion where the seat and the name were"
+        );
+        assert_eq!(
+            watch_template(Language::En),
+            "Watch {champion}: {standing}, {winRate} in {games} games, KDA {kda}{title}"
+        );
+        assert_eq!(
+            target_template(Language::En),
+            "Go after {champion}: {standing}, {winRate} in {games} games"
+        );
+        assert_eq!(
+            ally_template(Language::En),
+            "{standing}: {champion}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}"
+        );
+        for template in [
+            watch_template(Language::ZhCn),
+            target_template(Language::ZhCn),
+            ally_template(Language::ZhCn),
+            watch_template(Language::En),
+            target_template(Language::En),
+            ally_template(Language::En),
+        ] {
+            assert!(
+                !template.contains("{name}") && !template.contains("{seat}"),
+                "{template}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_seat_without_a_known_champion_goes_by_the_players_name() {
+        let enemies = vec![
+            enemy("强者", 0, Some((0, 5, 7.8))),
+            enemy("弱者", 77, Some((4, 5, 3.0))),
+        ];
+        let lines = game_lines(
+            &game(0, enemies.clone()),
+            &CalloutRule::default(),
+            Language::ZhCn,
+            champions,
+        );
+        assert_eq!(
+            lines[1..],
+            [
+                "小心 强者：T0，近20场胜率55%，KDA 3.5",
+                "对面 弱者：T4，近20场胜率55%，可以多抓"
+            ],
+            "no champion, and one the catalog does not name: the line never reads empty"
+        );
+        let named = CalloutRule {
+            watch_template: "小心 {champion} {name}：{standing}".into(),
+            ..CalloutRule::default()
+        };
+        assert_eq!(
+            game_lines(&game(0, enemies), &named, Language::ZhCn, champions)[1],
+            "小心 强者：T0",
+            "a line that names the player already does not name them twice"
+        );
+        // Champ select too: a line of the user's own that names only the champion, before a pick.
+        let own = CalloutRule {
+            template: "{standing}：{champion}".into(),
+            ..CalloutRule::default()
+        };
+        assert_eq!(
+            players(
+                &view(vec![
+                    seat("ann", 1, false, Some((7.2, 0))),
+                    seat("bo", 0, false, Some((4.1, 2)))
+                ]),
+                &own,
+                Language::ZhCn
+            ),
+            ["上等马：安妮", "下等马：bo"]
+        );
+    }
+
+    #[test]
+    fn only_the_former_in_game_lines_count_as_their_former_defaults() {
+        assert_eq!(
+            former_watch_default(
+                "小心 {champion} {name}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}"
+            ),
+            Some(Language::ZhCn)
+        );
+        assert_eq!(
+            former_watch_default(
+                "Watch {champion} ({name}): {standing}, {winRate} in {games} games, KDA {kda}{title}"
+            ),
+            Some(Language::En)
+        );
+        assert_eq!(
+            former_target_default(
+                "对面 {champion} {name}：{standing}，近{games}场胜率{winRate}，可以多抓"
+            ),
+            Some(Language::ZhCn)
+        );
+        assert_eq!(
+            former_target_default(
+                "Go after {champion} ({name}): {standing}, {winRate} in {games} games"
+            ),
+            Some(Language::En)
+        );
+        // Each line migrates to its own default only, and the defaults of now are not former ones.
+        assert_eq!(
+            former_target_default(
+                "小心 {champion} {name}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}"
+            ),
+            None
+        );
+        for language in [Language::ZhCn, Language::En] {
+            assert_eq!(former_watch_default(watch_template(language)), None);
+            assert_eq!(former_target_default(target_template(language)), None);
+        }
+        assert_eq!(former_watch_default("小心 {champion} {name}"), None);
+        assert_eq!(former_watch_default(""), None);
+    }
+
+    #[test]
+    fn in_game_the_team_hears_about_itself_by_champion_best_first() {
+        let mut best = seat("ann", 2, false, Some((7.2, 0)));
+        if let Some(rating) = best.rating.as_mut() {
+            rating.title = Some("版本答案".into());
+            rating.quip = Some("稳得离谱，能C还能活".into());
+        }
+        let mut hidden = seat("cy", 1, false, None);
+        hidden.stats = PlayerStats::Hidden;
+        let team = vec![
+            seat("me", 1, true, Some((5.5, 1))),
+            hidden,
+            best,
+            seat("bo", 0, false, Some((4.1, 2))),
+        ];
+        let rule = CalloutRule::default();
+        assert_eq!(
+            ally_lines(&game_of(team.clone()), &rule, Language::ZhCn, champions),
+            [
+                "【我方·蓝色方】winer 战绩鉴定",
+                "上等马：盖伦，近20场胜率55%，KDA 3.5，战力7.2「版本答案」，稳得离谱，能C还能活",
+                "中等马：亚索，近20场胜率55%，KDA 3.5，战力5.5",
+                "下等马：bo，近20场胜率55%，KDA 3.5，战力4.1",
+            ],
+            "the best first, each by champion, the one without a champion by name"
+        );
+
+        let red = GameView {
+            teams: vec![vec![enemy("路人", 3, Some((2, 5, 5.2)))], team.clone()],
+            ..game_of(Vec::new())
+        };
+        let english = ally_lines(&red, &rule, Language::En, champions);
+        assert_eq!(english[0], "[My team · Red side] winer rating");
+        assert_eq!(
+            english[2],
+            "中等马: 亚索, 55% in 20 games, KDA 3.5, form 5.5"
+        );
+
+        let without_me = CalloutRule {
+            include_self: false,
+            ally_template: "{seat} {champion}={standing}".into(),
+            ..CalloutRule::default()
+        };
+        assert_eq!(
+            ally_lines(&game_of(team), &without_me, Language::ZhCn, champions),
+            [
+                "【我方·蓝色方】winer 战绩鉴定",
+                "3L 盖伦=上等马",
+                "4L bo=下等马"
+            ],
+            "the user's own line, without themselves; seats stay their places in the team's list"
+        );
+    }
+
+    #[test]
+    fn the_team_says_nothing_in_game_without_two_sides_a_team_or_anyone_rated() {
+        let team = vec![
+            seat("me", 1, true, Some((5.5, 1))),
+            seat("bo", 2, false, Some((4.1, 2))),
+        ];
+        let rule = CalloutRule::default();
+        let mut sideless = game_of(team.clone());
+        sideless.sides = false;
+        assert!(ally_lines(&sideless, &rule, Language::ZhCn, champions).is_empty());
+        let mut watching = game_of(team);
+        for seat in &mut watching.teams[0] {
+            seat.is_self = false;
+        }
+        assert!(
+            ally_lines(&watching, &rule, Language::ZhCn, champions).is_empty(),
+            "a spectator has no team of their own"
+        );
+        let unrated = game_of(vec![seat("me", 1, true, None), seat("bo", 2, false, None)]);
+        assert!(
+            ally_lines(&unrated, &rule, Language::ZhCn, champions).is_empty(),
+            "nobody rated: not even the first line"
         );
     }
 
@@ -1573,13 +1950,13 @@ mod tests {
             "the seat is the place in their list"
         );
         assert!(
-            lines[2].starts_with("对面 盖伦 弱者："),
+            lines[2].starts_with("对面 盖伦："),
             "a blank line is the default: {lines:?}"
         );
         assert!(
             game_lines(&game(0, enemies.clone()), &rule, Language::ZhCn, |_| None)[1]
-                .starts_with("注意1L，"),
-            "a champion the catalog does not name leaves no gap"
+                .starts_with("注意1L强者，"),
+            "a champion the catalog does not name gives way to the player's name, with no gap"
         );
 
         let mut sideless = game(0, enemies.clone());
@@ -1602,7 +1979,7 @@ mod tests {
     }
 
     #[test]
-    fn the_game_preview_types_both_lines_with_the_users_own_form() {
+    fn the_game_preview_types_what_one_press_would_with_the_users_own_form() {
         let Seat {
             stats: PlayerStats::Ready(me),
             ..
@@ -1617,7 +1994,7 @@ mod tests {
                 "小心 ann：峡谷通天代，近20场胜率55%，KDA 3.5",
                 "对面 ann：纯正牛马，近20场胜率55%，可以多抓",
             ],
-            "the best and the worst of the default five tiers"
+            "the best and the worst of the default five tiers; no champion played, the name"
         );
         let graded = CalloutRule {
             tiers: TierSet::Grades,
@@ -1629,43 +2006,168 @@ mod tests {
         };
         let lines = game_preview(&me, &graded, &english, names);
         assert!(
-            lines[1].starts_with("Watch (ann): Rift Demigod, ")
-                && lines[2].starts_with("Go after (ann): Pure Workhorse, "),
+            lines[1].starts_with("Watch ann: Rift Demigod, ")
+                && lines[2].starts_with("Go after ann: Pure Workhorse, "),
             "S+ and F of the grades: {lines:?}"
+        );
+
+        let allies = CalloutRule {
+            game_teams: GameTeams::Allies,
+            include_self: false,
+            ..CalloutRule::default()
+        };
+        let lines = game_preview(&me, &allies, &General::default(), names);
+        assert_eq!(
+            lines.len(),
+            6,
+            "the team's first line and five tiers: {lines:?}"
+        );
+        assert_eq!(lines[0], "【我方·蓝色方】winer 战绩鉴定");
+        assert!(
+            lines[1].starts_with("峡谷通天代：ann，近20场胜率55%，KDA 3.5，战力")
+                && lines[5].starts_with("纯正牛马：ann，"),
+            "every tier, the user's own line too: {lines:?}"
+        );
+        let both = CalloutRule {
+            game_teams: GameTeams::Both,
+            ..CalloutRule::default()
+        };
+        let lines = game_preview(&me, &both, &General::default(), names);
+        assert_eq!(lines.len(), GAME_LINE_LIMIT);
+        assert_eq!(
+            (lines[0].as_str(), lines[3].as_str()),
+            (
+                "【敌方·红色方】winer 战绩鉴定",
+                "【我方·蓝色方】winer 战绩鉴定"
+            )
+        );
+        assert!(
+            lines[4].starts_with("峡谷通天代：") && lines[5].starts_with("人形防御塔："),
+            "the enemy's, then the team's best two: {lines:?}"
+        );
+        let graded_allies = CalloutRule {
+            tiers: TierSet::Grades,
+            ..allies
+        };
+        let lines = game_preview(&me, &graded_allies, &General::default(), names);
+        assert_eq!(lines.len(), GAME_LINE_LIMIT, "eight grades, cut: {lines:?}");
+    }
+
+    /// A game whose lines are already written: the enemy's three, the team's first line and five.
+    fn written() -> GameView {
+        GameView {
+            callout: vec!["敌方".into(), "小心".into(), "对面".into()],
+            ally_callout: ["我方", "一", "二", "三", "四", "五"]
+                .map(str::to_owned)
+                .to_vec(),
+            ..game(0, Vec::new())
+        }
+    }
+
+    #[test]
+    fn a_press_types_the_chosen_teams_lines_the_enemys_first_and_six_at_most() {
+        let view = written();
+        assert_eq!(typed(&view, GameTeams::Enemies), ["敌方", "小心", "对面"]);
+        assert_eq!(
+            typed(&view, GameTeams::Allies),
+            ["我方", "一", "二", "三", "四", "五"],
+            "a team's first line and five players fit whole"
+        );
+        assert_eq!(
+            typed(&view, GameTeams::Both),
+            ["敌方", "小心", "对面", "我方", "一", "二"],
+            "both: the enemy's first, then the team's best, cut at the limit"
+        );
+        assert_eq!(GAME_LINE_LIMIT, 6);
+        let short = GameView {
+            ally_callout: vec!["我方".into(), "一".into()],
+            ..written()
+        };
+        assert_eq!(
+            typed(&short, GameTeams::Both),
+            ["敌方", "小心", "对面", "我方", "一"]
+        );
+
+        let rule = |game_teams: GameTeams| CalloutRule {
+            in_game: true,
+            game_teams,
+            ..CalloutRule::default()
+        };
+        assert_eq!(
+            press(
+                Phase::InProgress,
+                None,
+                Some(&view),
+                &rule(GameTeams::Allies)
+            ),
+            Press::Game(typed(&view, GameTeams::Allies))
+        );
+        assert_eq!(
+            CalloutRule::default().game_teams,
+            GameTeams::Enemies,
+            "the enemy lines by default"
+        );
+        let quiet = GameView {
+            ally_callout: Vec::new(),
+            ..written()
+        };
+        assert_eq!(
+            press(
+                Phase::InProgress,
+                None,
+                Some(&quiet),
+                &rule(GameTeams::Allies)
+            ),
+            Press::Skip(CalloutSkip::NothingToSay),
+            "nothing on the chosen side, whatever the other has"
+        );
+        assert_eq!(
+            press(
+                Phase::InProgress,
+                None,
+                Some(&quiet),
+                &rule(GameTeams::Both)
+            ),
+            Press::Game(vec!["敌方".into(), "小心".into(), "对面".into()])
         );
     }
 
     #[test]
     fn the_shortcut_sends_in_champ_select_types_in_the_game_and_otherwise_says_why_not() {
+        let off = CalloutRule::default();
+        let on = CalloutRule {
+            in_game: true,
+            ..CalloutRule::default()
+        };
         let mut select = view(vec![seat("ann", 1, false, Some((7.2, 0)))]);
         assert_eq!(
-            press(Phase::ChampSelect, Some(&select), None, true),
+            press(Phase::ChampSelect, Some(&select), None, &on),
             Press::Skip(CalloutSkip::NothingToSay),
             "no lines yet"
         );
         select.callout = vec!["line".into()];
         assert_eq!(
-            press(Phase::ChampSelect, Some(&select), None, false),
+            press(Phase::ChampSelect, Some(&select), None, &off),
             Press::ChampSelect,
             "champ select's chat has an API: in-game sending plays no part"
         );
 
         let mut running = game(0, Vec::new());
         assert_eq!(
-            press(Phase::InProgress, None, Some(&running), true),
+            press(Phase::InProgress, None, Some(&running), &on),
             Press::Skip(CalloutSkip::NothingToSay)
         );
         running.callout = vec!["a".into(), "b".into()];
         assert_eq!(
-            press(Phase::InProgress, None, Some(&running), false),
+            press(Phase::InProgress, None, Some(&running), &off),
             Press::Skip(CalloutSkip::InGameOff)
         );
         assert_eq!(
-            press(Phase::InProgress, None, Some(&running), true),
+            press(Phase::InProgress, None, Some(&running), &on),
             Press::Game(vec!["a".into(), "b".into()])
         );
         assert_eq!(
-            press(Phase::InProgress, None, None, true),
+            press(Phase::InProgress, None, None, &on),
             Press::Skip(CalloutSkip::NothingToSay)
         );
         for phase in [
@@ -1676,7 +2178,7 @@ mod tests {
             Phase::EndOfGame,
         ] {
             assert_eq!(
-                press(phase, Some(&select), Some(&running), true),
+                press(phase, Some(&select), Some(&running), &on),
                 Press::Skip(CalloutSkip::NotNow),
                 "{phase:?}"
             );

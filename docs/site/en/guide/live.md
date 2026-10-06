@@ -60,12 +60,23 @@ Rift Demigod: P1 Light in the Dark, 60% in 20 games, KDA 4.1, form 7.4 [Patch Ch
   champ select does what **Send to team** does, without winer's window open. The panel's last line
   names the shortcut, or says where to set one.
 
-Once the game starts, the panel holds the enemy lines instead: the enemy to watch and the one to go
-after, chosen as [Automation](/en/guide/automation#enemy-lines-in-game) describes. The game's chat
-has no API, so the panel has no send button then: with **In-game sending** on, pressing the callout's
-shortcut in the game types these lines into the team chat. The panel's heading says whether in-game
-sending is on, its last line names the shortcut. Modes without sides, such as Arena, have no enemy
-lines and show no such panel.
+Once the game starts, the panel has two columns: **Enemies** holds the enemy to watch and the one to
+go after, chosen as [Automation](/en/guide/automation#lines-in-game) describes; **My team** holds one
+line per teammate, best first, as in champ select. In the game the champions are settled and are how
+players tell each other apart, so both columns name every player by champion, without name or seat;
+where the champion is not known, the name stands in. For example:
+
+```text
+[Enemy · Red side] winer rating
+Watch Kha'Zix: Rift Demigod, 65% in 20 games, KDA 4.6
+Go after Yasuo: Pure Workhorse, 35% in 20 games
+```
+
+The game's chat has no API, so the panel has no send button then: with **In-game sending** on,
+pressing the callout's shortcut in the game types the chosen lines into the team chat. By default
+that is the enemy column; **Automation › Callout** can switch it to your team's or both. The panel's
+heading says whether in-game sending is on; its last line names the shortcut and what a press types.
+Modes without sides, such as Arena, have no in-game lines and show no such panel.
 
 ## ARAM bench
 

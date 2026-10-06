@@ -134,8 +134,12 @@ pub fn typescript() -> String {
     );
     // The history panel in the client.
     declare!(bridge::PanelHistory, bridge::PanelGame);
-    // The callout's shortcut and the game's chat.
-    declare!(view::CalloutHotkeyStatus, view::CalloutSkip);
+    // The callout's shortcut, the game's chat and whose lines are typed there.
+    declare!(
+        view::CalloutHotkeyStatus,
+        view::CalloutSkip,
+        settings::GameTeams
+    );
     // History: what the numbers count, custom games, a player rated alone.
     declare!(
         view::GameKind,

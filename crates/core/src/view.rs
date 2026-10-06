@@ -262,10 +262,13 @@ pub struct GameView {
     pub teams: Vec<Vec<Seat>>,
     /// The teams are the blue and the red side; Arena's and Swarm's are not.
     pub sides: bool,
-    // Callout: what the shortcut types into the game's chat.
-    /// The in-game callout as it would be typed now: the enemy to watch and the one to go after
-    /// (`callout::game_lines`); empty where there is nobody to talk about.
+    // Callout: what the shortcut types into the game's chat (`callout::typed` chooses).
+    /// The in-game callout's enemy lines as they would be typed now: the enemy to watch and the one
+    /// to go after (`callout::game_lines`); empty where there is nobody to talk about.
     pub callout: Vec<String>,
+    /// The team's own lines, every rated teammate by champion (`callout::ally_lines`); empty
+    /// likewise.
+    pub ally_callout: Vec<String>,
 }
 
 /// One player slot in champ select or in a running game.
@@ -687,7 +690,8 @@ pub enum NoticeKind {
 pub enum CalloutSkip {
     /// Neither champ select nor a running game.
     NotNow,
-    /// Nobody to talk about: no rated teammate in champ select, no enemy who stands out in game.
+    /// Nobody to talk about: no rated teammate in champ select; in game, nobody in the lines chosen
+    /// to be typed there (no enemy who stands out, no rated teammate).
     NothingToSay,
     /// The game runs and in-game sending is off.
     InGameOff,

@@ -7,6 +7,7 @@ import { queueName } from "../game/MatchRow";
 import { TeamBoard } from "../game/TeamBoard";
 import { ChampionIcon } from "../game/icons";
 import { errorMessage } from "../lib/backend";
+import { GAME_LINE_LIMIT } from "../lib/callout";
 import { cx } from "../lib/cx";
 import { type MessageKey, useT } from "../lib/i18n";
 import { everywhere, modeOf } from "../lib/modes";
@@ -155,17 +156,39 @@ function Bench({ view }: { view: ChampSelectView }) {
   );
 }
 
+/** The lines exactly as they go out, in an inset block; `empty` says what comes there. */
+function CalloutLines({ lines, empty }: { lines: string[]; empty: string }) {
+  if (lines.length === 0)
+    return (
+      <p className="rounded-6 border border-dashed border-border-strong px-3 py-3 text-center text-[12px] text-fg-subtle">
+        {empty}
+      </p>
+    );
+  return (
+    <ol className="flex flex-col gap-1 rounded-6 bg-inset px-3 py-2 hairline">
+      {lines.map((line, index) => (
+        <li key={index} className="text-[12.5px] leading-5 break-words text-fg">
+          {line}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 /** The callout: in champ select the team ranked by recent form, as the chat lines it would send;
- *  in the game (`game`), the enemy to watch and the one to go after, which only the shortcut can
- *  type, since the game's chat has no API. */
+ *  in the game (`game`), the enemy to watch and the one to go after beside the team's own lines,
+ *  every player by champion, which only the shortcut can type, since the game's chat has no API. */
 function Callout({
   lines,
   queueId,
   game = false,
+  allies = [],
 }: {
   lines: string[];
   queueId: number;
   game?: boolean;
+  /** In the game: the team's own lines. */
+  allies?: string[];
 }) {
   const t = useT();
   const store = useStore();
@@ -203,18 +226,31 @@ function Callout({
       <p className="mb-2.5 text-[12px] leading-5 text-fg-muted">
         {t(game ? "callout.liveGameHint" : "live.calloutHint")}
       </p>
-      {lines.length === 0 ? (
-        <p className="rounded-6 border border-dashed border-border-strong px-3 py-3 text-center text-[12px] text-fg-subtle">
-          {t(game ? "callout.liveGameEmpty" : "live.calloutEmpty")}
-        </p>
+      {game ? (
+        // Callout: in the game both teams, side by side where there is room.
+        <div className="@container">
+          <div className="grid grid-cols-1 gap-3 @[720px]:grid-cols-2">
+            {(
+              [
+                ["enemies", lines, "callout.liveGameEmpty"],
+                ["allies", allies, "callout.liveAlliesEmpty"],
+              ] as const
+            ).map(([teams, shown, empty]) => (
+              <section
+                key={teams}
+                aria-labelledby={`callout-${teams}`}
+                className="flex min-w-0 flex-col gap-1.5"
+              >
+                <h3 id={`callout-${teams}`} className="text-[12px] font-medium text-fg-muted">
+                  {t(`callout.gameTeams.${teams}`)}
+                </h3>
+                <CalloutLines lines={shown} empty={t(empty)} />
+              </section>
+            ))}
+          </div>
+        </div>
       ) : (
-        <ol className="flex flex-col gap-1 rounded-6 bg-inset px-3 py-2 hairline">
-          {lines.map((line, index) => (
-            <li key={index} className="text-[12.5px] leading-5 break-words text-fg">
-              {line}
-            </li>
-          ))}
-        </ol>
+        <CalloutLines lines={lines} empty={t("live.calloutEmpty")} />
       )}
       {!game && (
         <div className="mt-3 flex flex-wrap gap-2">
@@ -249,7 +285,7 @@ function Callout({
 function CalloutShortcut({ game }: { game: boolean }) {
   const t = useT();
   const { navigate } = useShell();
-  const { hotkey, inGame } = useSettings().automation.callout;
+  const { hotkey, inGame, gameTeams } = useSettings().automation.callout;
   const status = useHotkeyStatus();
   const refused =
     hotkey !== null &&
@@ -268,9 +304,12 @@ function CalloutShortcut({ game }: { game: boolean }) {
     text = t("callout.liveInGameOff");
   } else {
     lamp = "ok";
+    // Callout: in the game, whose lines one press types, and how many at most.
     text = (
       <>
-        {t(game ? "callout.liveHotkeyGame" : "callout.liveHotkey")}
+        {game
+          ? t(`callout.liveHotkeyGame.${gameTeams}`, { n: GAME_LINE_LIMIT })
+          : t("callout.liveHotkey")}
         <Keycaps combo={hotkey} />
       </>
     );
@@ -362,7 +401,9 @@ function Game({ view }: { view: GameView }) {
       <Teams teams={teams} initial={Math.max(0, mine)} />
       <GameBuild view={view} />
       {/* Callout: only a player on one of two sides has an other team to talk about. */}
-      {view.sides && mine !== -1 && <Callout lines={view.callout} queueId={view.queueId} game />}
+      {view.sides && mine !== -1 && (
+        <Callout lines={view.callout} allies={view.allyCallout} queueId={view.queueId} game />
+      )}
     </div>
   );
 }

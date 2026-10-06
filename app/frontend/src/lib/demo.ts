@@ -35,6 +35,7 @@ import type {
 } from "@winer/shared";
 
 import type { ArgsOf, Backend, CommandName, Commands } from "./backend";
+import { typedLines } from "./callout";
 import {
   DEMO_AUGMENTS,
   DEMO_ITEMS,
@@ -571,15 +572,16 @@ function champSelect(): ChampSelectView {
   };
 }
 
-// Callout: a running game, with the enemy lines the shortcut types into the game's chat.
+// Callout: a running game, with both teams' lines the shortcut can type into the game's chat.
 
 /** The demo team in a ranked game on the blue side against five rated players on the red side,
- *  the enemy to watch and the one to go after written as the core writes them. */
+ *  the enemy to watch, the one to go after and the team's own lines written as the core writes
+ *  them: every player by champion. */
 export function demoGame(): GameView {
   const enemies: Seat[] = (
     [
       ["demo-r1", "红方上单", 157, 4, 3.4, "纯正牛马"],
-      ["demo-r2", "红方打野", 64, 0, 7.6, "峡谷通天代"],
+      ["demo-r2", "红方打野", 121, 0, 7.6, "峡谷通天代"],
       ["demo-r3", "红方中单", 238, 2, 5.4, "峡谷公务员"],
       ["demo-r4", "红方射手", 81, 1, 6.6, "人形防御塔"],
       ["demo-r5", "红方辅助", 89, 3, 4.5, "移动眼位"],
@@ -603,8 +605,17 @@ export function demoGame(): GameView {
     sides: true,
     callout: [
       "【敌方·红色方】winer 战绩鉴定",
-      "小心 李青 红方打野：峡谷通天代，近20场胜率65%，KDA 4.6",
-      "对面 亚索 红方上单：纯正牛马，近20场胜率35%，可以多抓",
+      "小心 卡兹克：峡谷通天代，近20场胜率65%，KDA 4.6",
+      "对面 亚索：纯正牛马，近20场胜率35%，可以多抓",
+    ],
+    // As champ select's lines, the champion where the seat and the name were.
+    allyCallout: [
+      "【我方·蓝色方】winer 战绩鉴定",
+      "峡谷通天代：阿狸，近20场胜率60%，KDA 4.1，战力7.4「版本答案」，对面五个人准备举报代练",
+      "人形防御塔：李青，近20场胜率55%，KDA 3.6，战力6.8，塔在人在，人在塔也在",
+      "峡谷公务员：盖伦，近20场胜率50%，KDA 2.9，战力5.2，按时上班，准时打卡",
+      "移动眼位：金克丝，近20场胜率45%，KDA 2.4，战力4.6「峡谷慈善家」，站在哪里，哪里就有视野",
+      "纯正牛马：锤石，近20场胜率40%，KDA 2.0，战力3.9「黑白电视机资深会员」，勤勤恳恳地给对面创造游戏体验",
     ],
   };
 }
@@ -843,6 +854,8 @@ const DEFAULT_SETTINGS: Settings = {
       inGame: false,
       watchTemplate: "",
       targetTemplate: "",
+      allyTemplate: "",
+      gameTeams: "enemies",
     },
     bench: { enabled: true, champions: [103, 99, 22] },
     scopes: defaultScopes(),
@@ -1155,15 +1168,21 @@ export function demoBackend(): Backend {
     get_hotkey_status: () => hotkey,
     suspend_hotkey: ({ suspended }) => setHotkey(hotkey.shortcut, suspended),
     ...demoLoadoutHandlers(() => settings),
-    // Callout: as the core does, the best tier to watch and the worst to go after, on the red side.
+    // Callout: as the core does, the best tier to watch and the worst to go after on the red side,
+    // the user in every tier of the team on the blue side, by champion, typed as one press would.
     preview_game_callout: ({ rule, general }) => {
       const names = tierNames(rule);
       const title = general.titles ? "「版本答案」" : "";
-      return [
+      const enemies = [
         "【敌方·红色方】winer 战绩鉴定",
-        `小心 阿狸 暗夜里的光：${names[0]}，近20场胜率60%，KDA 4.1${title}`,
-        `对面 阿狸 暗夜里的光：${names[names.length - 1]}，近20场胜率60%，可以多抓`,
+        `小心 阿狸：${names[0]}，近20场胜率60%，KDA 4.1${title}`,
+        `对面 阿狸：${names[names.length - 1]}，近20场胜率60%，可以多抓`,
       ];
+      const allies = [
+        "【我方·蓝色方】winer 战绩鉴定",
+        ...names.map((name) => `${name}：阿狸，近20场胜率60%，KDA 4.1，战力7.4${title}`),
+      ];
+      return typedLines(enemies, allies, rule.gameTeams);
     },
     // History.
     get_player_standing: ({ puuid }) => {

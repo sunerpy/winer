@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
+  CalloutRule,
   ChampSelectView,
   Event,
   GameView,
@@ -209,6 +210,7 @@ describe("App", () => {
       teams: [[seat("blue-1")], [seat("me", true), seat("red-2")]],
       sides: true,
       callout: [],
+      allyCallout: [],
     };
     const store = new AppStore(demoBackend());
     // As the shell does before any page: the settings are loaded first.
@@ -1114,6 +1116,7 @@ describe("loadout", () => {
       teams: [[seat(103, true, null), seat(22, false, null)], [seat(99, false, null)]],
       sides: true,
       callout: [],
+      allyCallout: [],
     };
     await openLive(demoWith({ get_snapshot: () => live({ phase: "InProgress", game }) }));
     const tabs = await screen.findByRole("radiogroup", { name: zhCN["loadout.tabs"] });
@@ -1350,15 +1353,26 @@ describe("callout", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the enemy lines in the game, with no send button, and says whether the shortcut types them", async () => {
+  it("shows both teams' lines in the game by champion, with no send button, and says what the shortcut types", async () => {
     const { store, navigate } = await livePage(
       { phase: "InProgress", game: demoGame() },
       "Ctrl+Shift+X",
       false,
     );
-    expect(panel().getByText("【敌方·红色方】winer 战绩鉴定")).toBeInTheDocument();
-    expect(panel().getByText(/^小心 李青 红方打野：峡谷通天代/)).toBeInTheDocument();
-    expect(panel().getByText(/^对面 亚索 红方上单：纯正牛马/)).toBeInTheDocument();
+    const enemies = within(
+      panel().getByRole("region", { name: zhCN["callout.gameTeams.enemies"] }),
+    );
+    expect(enemies.getByText("【敌方·红色方】winer 战绩鉴定")).toBeInTheDocument();
+    expect(enemies.getByText(/^小心 卡兹克：峡谷通天代/)).toBeInTheDocument();
+    expect(enemies.getByText(/^对面 亚索：纯正牛马/)).toBeInTheDocument();
+    // Callout: beside them the team's own lines, as champ select's, by champion.
+    const allies = within(panel().getByRole("region", { name: zhCN["callout.gameTeams.allies"] }));
+    expect(allies.getByText("【我方·蓝色方】winer 战绩鉴定")).toBeInTheDocument();
+    expect(
+      allies.getByText(/^峡谷通天代：阿狸，近20场胜率60%/),
+      "the champion where champ select names the seat and the player",
+    ).toBeInTheDocument();
+    expect(allies.getAllByRole("listitem")).toHaveLength(6);
     expect(panel().getByText(zhCN["callout.inGameOff"])).toBeInTheDocument();
     expect(panel().getByText(zhCN["callout.liveInGameOff"])).toBeInTheDocument();
     expect(
@@ -1366,20 +1380,31 @@ describe("callout", () => {
       "the game's chat has no API to post to",
     ).toBeNull();
 
-    act(() => {
-      const settings = store.settings.get();
-      if (settings)
-        store.settings.set({
-          ...settings,
-          automation: {
-            ...settings.automation,
-            callout: { ...settings.automation.callout, inGame: true },
-          },
-        });
-    });
+    const choose = (change: Partial<CalloutRule>) =>
+      act(() => {
+        const settings = store.settings.get();
+        if (settings)
+          store.settings.set({
+            ...settings,
+            automation: {
+              ...settings.automation,
+              callout: { ...settings.automation.callout, ...change },
+            },
+          });
+      });
+    choose({ inGame: true });
     expect(panel().getByText(zhCN["callout.inGameOn"])).toBeInTheDocument();
-    expect(panel().getByText(zhCN["callout.liveHotkeyGame"])).toBeInTheDocument();
+    expect(
+      panel().getByText(zhCN["callout.liveHotkeyGame.enemies"]),
+      "the enemy lines by default",
+    ).toBeInTheDocument();
     expect(panel().getByText("Ctrl")).toBeInTheDocument();
+    choose({ gameTeams: "allies" });
+    expect(panel().getByText(zhCN["callout.liveHotkeyGame.allies"])).toBeInTheDocument();
+    choose({ gameTeams: "both" });
+    expect(
+      panel().getByText("在游戏里按快捷键，winer 先输入对面、再输入我方，最多 6 行："),
+    ).toBeInTheDocument();
 
     act(() =>
       store.hotkey.set({
@@ -1397,14 +1422,22 @@ describe("callout", () => {
   });
 
   it("says what comes in the game before the lines are there, and has no panel without two sides", async () => {
-    await livePage({ phase: "InProgress", game: { ...demoGame(), callout: [] } }, null, false);
+    await livePage(
+      { phase: "InProgress", game: { ...demoGame(), callout: [], allyCallout: [] } },
+      null,
+      false,
+    );
     expect(panel().getByText(zhCN["callout.liveGameEmpty"])).toBeInTheDocument();
+    expect(panel().getByText(zhCN["callout.liveAlliesEmpty"])).toBeInTheDocument();
     expect(panel().getByText(zhCN["callout.liveNoHotkeyGame"])).toBeInTheDocument();
     cleanup();
 
     // Arena's pairs: no one other team to talk about.
     await livePage(
-      { phase: "InProgress", game: { ...demoGame(), sides: false, callout: [] } },
+      {
+        phase: "InProgress",
+        game: { ...demoGame(), sides: false, callout: [], allyCallout: [] },
+      },
       "Ctrl+Shift+X",
       true,
     );
@@ -1421,8 +1454,8 @@ describe("callout", () => {
       await screen.findByText("【敌方·红色方】winer 战绩鉴定"),
       "what the shortcut would type in the game, previewed",
     ).toBeInTheDocument();
-    expect(screen.getByText(/^小心 阿狸 暗夜里的光：峡谷通天代/)).toBeInTheDocument();
-    expect(screen.getByText(/^对面 阿狸 暗夜里的光：纯正牛马/)).toBeInTheDocument();
+    expect(screen.getByText(/^小心 阿狸：峡谷通天代/)).toBeInTheDocument();
+    expect(screen.getByText(/^对面 阿狸：纯正牛马/)).toBeInTheDocument();
     expect(call).toHaveBeenCalledWith("preview_game_callout", {
       rule: expect.objectContaining({ hotkey: null, inGame: false }),
       general: expect.objectContaining({ language: "zh-CN" }),
@@ -1463,7 +1496,7 @@ describe("callout", () => {
     const watch = screen.getByRole("textbox", { name: zhCN["callout.watch"] });
     expect(watch).toHaveAttribute(
       "placeholder",
-      "小心 {champion} {name}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}",
+      "小心 {champion}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}",
     );
     // `{{` types a brace; `{Enter}` commits.
     await user.type(watch, "注意 {{champion}{Enter}");
@@ -1476,6 +1509,55 @@ describe("callout", () => {
         }),
       }),
     );
+  });
+
+  it("chooses whose lines a press types in the game, six at most, and takes the team's own line", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.automation"] }));
+    const teams = await screen.findByRole("radiogroup", { name: zhCN["callout.gameTeams"] });
+    expect(
+      within(teams).getByRole("radio", { name: "对面" }),
+      "the enemy lines by default",
+    ).toBeChecked();
+    expect(screen.getByText(/每按一次最多输入 6 行/), "the cap, in the hint").toBeInTheDocument();
+    const saved = (change: Partial<CalloutRule>) =>
+      waitFor(() =>
+        expect(call).toHaveBeenCalledWith("set_settings", {
+          settings: expect.objectContaining({
+            automation: expect.objectContaining({ callout: expect.objectContaining(change) }),
+          }),
+        }),
+      );
+
+    await user.click(within(teams).getByRole("radio", { name: "我方" }));
+    await saved({ gameTeams: "allies" });
+    expect(
+      await screen.findByText("【我方·蓝色方】winer 战绩鉴定"),
+      "the preview types the team",
+    ).toBeInTheDocument();
+    expect(screen.getByText(/^峡谷通天代：阿狸，近20场胜率60%/)).toBeInTheDocument();
+    expect(screen.queryByText("【敌方·红色方】winer 战绩鉴定")).toBeNull();
+
+    await user.click(within(teams).getByRole("radio", { name: "双方" }));
+    await saved({ gameTeams: "both" });
+    // As one press would: the enemy's three lines, then the team's first line and its best two.
+    const enemy = await screen.findByText("【敌方·红色方】winer 战绩鉴定");
+    expect(within(enemy.closest("ol") as HTMLElement).getAllByRole("listitem")).toHaveLength(6);
+    expect(screen.getByText(/^人形防御塔：阿狸，/)).toBeInTheDocument();
+    expect(screen.queryByText(/^峡谷公务员：阿狸，/), "cut at the limit").toBeNull();
+
+    const ally = screen.getByRole("textbox", { name: zhCN["callout.ally"] });
+    expect(ally).toHaveAttribute(
+      "placeholder",
+      "{standing}：{champion}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
+    );
+    await user.type(ally, "{{champion} {{standing}{Enter}");
+    await saved({ allyTemplate: "{champion} {standing}" });
+    const section = within(screen.getByRole("region", { name: zhCN["callout.gameSection"] }));
+    await user.click(section.getByRole("button", { name: zhCN["auto.reset"] }));
+    await saved({ watchTemplate: "", targetTemplate: "", allyTemplate: "" });
   });
 
   it("keeps the window's shortcut off the callout's combination too", async () => {
