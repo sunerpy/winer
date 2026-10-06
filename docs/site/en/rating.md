@@ -34,9 +34,10 @@ Recent form reads how each game was played, not only wins and KDA: the score of 
   player gets no tier there. The History page reads every mode.
 - The games come from the shard's match-history server first, with all ten players of each: the
   newest 20, then 40 further back at a time, until there are 20 games that count as above, 100 games
-  at most. Where the server cannot be read (a shard other than Tencent's, or the server failing),
-  they come from the client's own list, which holds the player's own row of each game only. A
-  Tencent client's list holds 5 games right after signing in, 20 a few minutes later.
+  at most: older games are not read. Where the server cannot be read (a shard other than
+  Tencent's, or the server failing), they come from the client's own list, which holds the
+  player's own row of each game only. A Tencent client's list holds 5 games right after signing
+  in, 20 a few minutes later.
 
 ### Each game's score
 
