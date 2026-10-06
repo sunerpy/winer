@@ -97,6 +97,9 @@ export interface Commands {
   clear_item_sets: Command<undefined, number>;
   get_loadout_summary: Command<undefined, LoadoutSummary>;
   clear_loadouts: Command<undefined, LoadoutSummary>;
+  // The callout typed into the game's chat.
+  /** What the callout's shortcut would type in the game, with the user's own form. */
+  preview_game_callout: Command<{ rule: CalloutRule; general: General }, string[]>;
 }
 
 export type CommandName = keyof Commands;

@@ -55,15 +55,15 @@ whose history is hidden or failed to load gets no tier.
 By default one line per teammate:
 
 ```text
-{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}
+{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}
 ```
 
 For example:
 
 ```text
 [Blue side] winer rating
-Rift Demigod: P1 Light in the Dark, 60% in 20 games, KDA 4.1, score 7.4 [Patch Champion], the other team is filing a boosting report
-Rift Civil Servant: P2 Rift Sweeper, 50% in 20 games, KDA 2.9, score 5.2, not flashy, but every job got done
+Rift Demigod: P1 Light in the Dark, 60% in 20 games, KDA 4.1, form 7.4 [Patch Champion], the other team is filing a boosting report
+Rift Civil Servant: P2 Rift Sweeper, 50% in 20 games, KDA 2.9, form 5.2, not flashy, but every job got done
 ```
 
 - The first line names your side and "winer rating", followed by the opening line if you wrote one.
@@ -77,6 +77,30 @@ Rift Civil Servant: P2 Rift Sweeper, 50% in 20 games, KDA 2.9, score 5.2, not fl
   placeholders: `{standing}` `{seat}` `{name}` `{champion}` `{games}` `{winRate}` `{kda}` `{score}`
   `{title}` `{quip}`. A template of your own can still use `{champion}`: the champion the teammate
   has picked or shown when the callout is sent.
+
+### Enemy lines in game
+
+In a game, the callout's shortcut (with **In-game sending** on) talks about two enemies only, rated
+as teammates are:
+
+- **Enemy to watch**: the best rated of the enemies above the middle of the scheme; within a tier,
+  the higher recent-form score.
+- **Enemy to go after**: the worst rated of the enemies below the middle; within a tier, the lower
+  score.
+
+A scheme that ranks the team splits around its middle tier: of five tiers the first two are above
+the middle and the last two below; of three, only the first and the last count. In Rift grades,
+S+, S and A are above the middle, D, E and F below, and B and C are ordinary form. Without such an
+enemy the line is left out. The defaults:
+
+```text
+Watch {champion} ({name}): {standing}, {winRate} in {games} games, KDA {kda}{title}
+Go after {champion} ({name}): {standing}, {winRate} in {games} games
+```
+
+The first line names the enemy's side and "winer rating", for example "[Enemy · Red side] winer
+rating". In a game the champions are settled and are how players are told apart, so the defaults name
+the champion and the player; `{seat}` is still there, the enemy's place in their team's list.
 
 ## Roast titles
 

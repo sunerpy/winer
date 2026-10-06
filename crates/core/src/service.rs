@@ -1051,7 +1051,20 @@ impl Service {
             self.call_out(client, lines, rule.audience);
         }
         if let Some(session) = gameflow {
-            self.patch(Patch::Game(live::game_view(&session, &me, stats, &ranking)));
+            let mut view = live::game_view(&session, &me, stats, &ranking);
+            // Callout: the enemy lines the shortcut types into the game's chat.
+            if let Some(view) = view.as_mut() {
+                let data = lock(&client.data).clone();
+                let champion = |id: i64| {
+                    data.as_ref()?
+                        .champions
+                        .iter()
+                        .find(|champion| champion.id == id)
+                        .map(|champion| champion.short_name.clone())
+                };
+                view.callout = callout::game_lines(view, rule, language, champion);
+            }
+            self.patch(Patch::Game(view));
         }
         // The lobby's members wait for the same stats.
         self.render_lobby(client);
@@ -1972,6 +1985,51 @@ impl Service {
     }
 }
 
+// ---- The callout's shortcut: what a press does, and what the shell made of it ----
+
+impl Service {
+    /// What the callout's shortcut does now (`callout::press`), from the views as drawn and the
+    /// settings as saved. The shell acts on it: champ select's lines go out through
+    /// [`Self::send_callout`], the game's are typed into the game's chat by the shell itself.
+    pub fn callout_press(&self) -> callout::Press {
+        let in_game = self.settings().automation.callout.in_game;
+        let state = lock(&self.inner.state);
+        callout::press(
+            state.phase,
+            state.champ_select.as_ref(),
+            state.game.as_ref(),
+            in_game,
+        )
+    }
+
+    /// Puts what the shell did for the user, or could not do, in the activity feed: the shortcut
+    /// acts while the window may be hidden behind the game.
+    pub fn report(&self, kind: NoticeKind) {
+        self.notice(kind);
+    }
+
+    /// What the in-game callout would type under `rule` and `general`, with the user's own form in
+    /// the enemy to watch and the one to go after; for the settings page.
+    pub async fn preview_game_callout(
+        &self,
+        rule: &CalloutRule,
+        general: &General,
+    ) -> Result<Vec<String>, CoreError> {
+        let client = self.client()?;
+        let me = lock(&client.live).me.clone();
+        let summary = self.player_summary(&me).await?;
+        let data = lock(&client.data).clone();
+        let champion = |id: i64| {
+            data.as_ref()?
+                .champions
+                .iter()
+                .find(|champion| champion.id == id)
+                .map(|champion| champion.short_name.clone())
+        };
+        Ok(callout::game_preview(&summary, rule, general, champion))
+    }
+}
+
 /// The id of champ select's chat room, once it is open.
 async fn champ_select_chat(lcu: &Lcu) -> Result<Option<String>, CoreError> {
     let conversations: Vec<Conversation> = lcu.get("/lol-chat/v1/conversations").await?;
@@ -2602,5 +2660,94 @@ mod tests {
     fn a_restore_refused_in_a_game_says_busy() {
         let error = IpcError::from(CoreError::Busy("in a game".into()));
         assert_eq!(error.code, ErrorCode::Busy);
+    }
+
+    // ---- The callout's shortcut ----
+
+    #[tokio::test]
+    async fn a_running_game_carries_the_enemy_lines_which_the_shortcut_types_only_when_asked() {
+        use crate::view::{CalloutSkip, RecentForm};
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        let client = quiet_client(Phase::InProgress);
+        for (puuid, wins) in [("me", 10), ("strong", 16), ("weak", 4)] {
+            let summary = PlayerSummary {
+                puuid: puuid.into(),
+                name: None,
+                level: 30,
+                icon_id: 1,
+                private: false,
+                ranked: Default::default(),
+                recent: RecentForm {
+                    games: 20,
+                    wins,
+                    kills: 5.0,
+                    deaths: 5.0,
+                    assists: 5.0,
+                    ..RecentForm::default()
+                },
+            };
+            lock(&service.inner.players).insert(
+                puuid.into(),
+                PlayerEntry::Ready(Arc::new(summary), Instant::now()),
+            );
+        }
+        lock(&client.live).gameflow = Some(
+            serde_json::from_value(json!({
+                "phase": "InProgress",
+                "gameData": {
+                    "gameId": 9, "queue": {"id": 420, "gameMode": "CLASSIC", "isRanked": true},
+                    "teamOne": [{"puuid": "me", "championId": 1, "gameName": "Me", "tagLine": "1"}],
+                    "teamTwo": [
+                        {"puuid": "strong", "championId": 157, "gameName": "Strong", "tagLine": "2"},
+                        {"puuid": "weak", "championId": 86, "gameName": "Weak", "tagLine": "3"},
+                        {"puuid": "", "championId": 22, "gameName": "Bot"}
+                    ]
+                }
+            }))
+            .unwrap(),
+        );
+        service.patch(Patch::Phase(Phase::InProgress));
+        service.render(&client);
+        let lines = service.snapshot().game.expect("the game's view").callout;
+        assert_eq!(
+            lines,
+            [
+                "【敌方·红色方】winer 战绩鉴定",
+                "小心 Strong：人形防御塔，近20场胜率80%，KDA 2.0",
+                "对面 Weak：移动眼位，近20场胜率20%，可以多抓",
+            ],
+            "two rated of three, second and fourth of five tiers; no catalog, no champion"
+        );
+        assert_eq!(
+            service.callout_press(),
+            callout::Press::Skip(CalloutSkip::InGameOff),
+            "nothing is typed into the game by default"
+        );
+        let mut settings = service.settings();
+        settings.automation.callout.in_game = true;
+        service.set_settings(settings).unwrap();
+        assert_eq!(service.callout_press(), callout::Press::Game(lines));
+
+        service.patch(Patch::Phase(Phase::EndOfGame));
+        assert_eq!(
+            service.callout_press(),
+            callout::Press::Skip(CalloutSkip::NotNow)
+        );
+        let mut events = service.subscribe();
+        service.report(NoticeKind::TypedInGame { lines: 3 });
+        assert!(matches!(
+            events.recv().await.unwrap(),
+            Event::Notice(Notice {
+                kind: NoticeKind::TypedInGame { lines: 3 },
+                ..
+            })
+        ));
+        assert!(matches!(
+            service
+                .preview_game_callout(&CalloutRule::default(), &General::default())
+                .await,
+            Err(CoreError::NotConnected)
+        ));
     }
 }

@@ -455,6 +455,21 @@ pub struct CalloutRule {
     pub tiers: TierSet,
     /// The user's own tier names, best first, for `TierSet::Custom`: two to five, blanks skipped.
     pub custom_tiers: Vec<String>,
+    // ---- The callout's shortcut, and the game's own chat (`callout::press`) ----
+    /// The global shortcut that sends the callout, in [`normalize_hotkey`]'s form: in champ select
+    /// the team's lines go to its chat, as 发送到队伍 sends them; while the game runs, with
+    /// [`Self::in_game`] on, the enemy lines are typed into the game's chat. `None`, the default,
+    /// holds no combination, and the window's own combination is never taken.
+    pub hotkey: Option<String>,
+    /// While the game runs, the shortcut types the enemy lines into the game's team chat with
+    /// synthesized key presses: the game's chat has no API. Off by default, since third-party input
+    /// into the game may break its terms.
+    pub in_game: bool,
+    /// The line about the enemy to watch, with the placeholders of `template`; empty means the
+    /// language's default (`callout::watch_template`).
+    pub watch_template: String,
+    /// The line about the enemy to go after; empty means `callout::target_template`.
+    pub target_template: String,
 }
 
 impl Default for CalloutRule {
@@ -467,6 +482,10 @@ impl Default for CalloutRule {
             template: String::new(),
             tiers: TierSet::default(),
             custom_tiers: Vec::new(),
+            hotkey: None,
+            in_game: false,
+            watch_template: String::new(),
+            target_template: String::new(),
         }
     }
 }
@@ -887,13 +906,24 @@ impl Settings {
         }
         // A combination that is not one turns the shortcut off rather than registering nonsense.
         self.general.hotkey = self.general.hotkey.as_deref().and_then(normalize_hotkey);
+        // The callout's shortcut is spelled the same way, and never takes the window's combination:
+        // the system holds one combination for one shortcut, and the window's was there first.
+        let callout = &mut self.automation.callout;
+        callout.hotkey = callout
+            .hotkey
+            .as_deref()
+            .and_then(normalize_hotkey)
+            .filter(|combination| self.general.hotkey.as_ref() != Some(combination));
+        callout.watch_template = clip(&callout.watch_template, 200);
+        callout.target_template = clip(&callout.target_template, 200);
         self
     }
 
     /// Brings a file an older winer wrote up to date. Up to 0.0.2 the default callout line named
-    /// the champion, and a template saved as exactly that text would have kept it for good: it
-    /// becomes the default, which names the seat (the same language's, when the text was in the
-    /// other one). A template the user changed stays as written.
+    /// the champion, up to 0.0.3 it called the form score 评分 and ran the name into the numbers,
+    /// and a template saved as exactly one of those texts would have kept it for good: it becomes
+    /// the default (the same language's, when the text was in the other one). A template the user
+    /// changed stays as written.
     fn migrated(mut self) -> Self {
         let callout = &mut self.automation.callout;
         if let Some(language) = callout::former_default(&callout.template) {
@@ -1012,6 +1042,10 @@ mod tests {
     const ZH_0_0_2: &str =
         "{standing}：{champion} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}";
     const EN_0_0_2: &str = "{standing}: {champion} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}";
+    /// 0.0.3's: the seat, but the form score called 评分 and the name run into the numbers.
+    const ZH_0_0_3: &str =
+        "{standing}：{seat} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}";
+    const EN_0_0_3: &str = "{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}";
 
     #[test]
     fn a_template_saved_as_the_former_default_becomes_the_new_one_when_loaded() {
@@ -1035,6 +1069,12 @@ mod tests {
             loaded("zh-CN", EN_0_0_2).template,
             callout::template(Language::En),
             "an English line under the Chinese window stays English"
+        );
+        assert_eq!(loaded("zh-CN", ZH_0_0_3).template, "", "0.0.3's line too");
+        assert_eq!(loaded("en", EN_0_0_3).template, "");
+        assert_eq!(
+            loaded("en", ZH_0_0_3).template,
+            callout::template(Language::ZhCn)
         );
 
         for own in [
@@ -1401,5 +1441,70 @@ mod tests {
         };
         assert_eq!(pool.candidates(Some(Position::Middle)), vec![3, 4, 1, 2]);
         assert_eq!(pool.candidates(None), vec![1, 2, 3]);
+    }
+
+    // ---- The callout's shortcut and the game's chat ----
+
+    #[test]
+    fn a_file_from_before_the_callouts_shortcut_has_none_and_types_nothing_in_game() {
+        let old: Settings = serde_json::from_str(
+            r#"{"automation":{"callout":{"auto":true,"template":"{name}","tiers":"horses"}}}"#,
+        )
+        .unwrap();
+        let callout = old.normalized().automation.callout;
+        assert_eq!(callout.hotkey, None, "no combination is taken by itself");
+        assert!(!callout.in_game, "nothing is typed into the game unasked");
+        assert_eq!(
+            (
+                callout.watch_template.as_str(),
+                callout.target_template.as_str()
+            ),
+            ("", ""),
+            "the enemy lines start as the defaults"
+        );
+        assert!(callout.auto && callout.template == "{name}" && callout.tiers == TierSet::Horses);
+        let defaults = CalloutRule::default();
+        assert!(defaults.hotkey.is_none() && !defaults.in_game);
+    }
+
+    #[test]
+    fn the_callouts_shortcut_is_spelled_one_way_and_never_takes_the_windows() {
+        let with = |window: Option<&str>, callout: Option<&str>| {
+            let mut settings = Settings::default();
+            settings.general.hotkey = window.map(str::to_owned);
+            settings.automation.callout.hotkey = callout.map(str::to_owned);
+            let settings = settings.normalized();
+            (settings.general.hotkey, settings.automation.callout.hotkey)
+        };
+        assert_eq!(
+            with(Some("Alt+Backquote"), Some(" shift + ctrl + x ")),
+            (Some("Alt+Backquote".into()), Some("Ctrl+Shift+X".into()))
+        );
+        assert_eq!(
+            with(Some("Alt+Backquote"), Some("alt+backquote")),
+            (Some("Alt+Backquote".into()), None),
+            "the window keeps its combination"
+        );
+        assert_eq!(
+            with(Some("alt + q"), Some("Alt+Q")),
+            (Some("Alt+Q".into()), None),
+            "compared once both are spelled the same way"
+        );
+        assert_eq!(
+            with(None, Some("Alt+Backquote")).1.as_deref(),
+            Some("Alt+Backquote")
+        );
+        assert_eq!(
+            with(None, Some("X")).1,
+            None,
+            "a key alone is typed in chat"
+        );
+
+        let mut settings = Settings::default();
+        settings.automation.callout.watch_template = format!("  {}  ", "小".repeat(300));
+        settings.automation.callout.target_template = " {name} ".into();
+        let callout = settings.normalized().automation.callout;
+        assert_eq!(callout.watch_template.chars().count(), 200);
+        assert_eq!(callout.target_template, "{name}");
     }
 }

@@ -103,4 +103,6 @@ updates by itself after it starts and while it runs; this checks again on demand
 | `Ctrl` + `B`     | collapses or expands the sidebar |
 
 `Alt` + `` ` `` (changed in **Settings › General**) works everywhere, a game included: it
-shows or hides winer. The others work inside winer's window only.
+shows or hides winer. The others work inside winer's window only. The shortcut to send the callout
+has no combination by default; it is set in **Automation › Callout**, works everywhere as well, and
+is described in [Automation](/en/guide/automation#callout).

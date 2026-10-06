@@ -717,6 +717,47 @@ export const zhCN = {
   "overlay.historyInClient": "在客户端里查看战绩",
   "overlay.historyInClientHint":
     "在组队房间或英雄选择界面点一名玩家时，直接在客户端里弹出他最近的对局；关闭后改为在 winer 的窗口里打开他的战绩。",
+  // Callout: the shortcut that sends it, and the enemy lines it types into the game's chat.
+  "callout.hotkey": "发送喊话的快捷键",
+  "callout.hotkeyHint":
+    "英雄选择中按下，把喊话发到队伍聊天，和「发送到队伍」一样；游戏中打开「游戏内发送」后，把下面的敌方喊话输入游戏的队伍聊天。默认不设置。",
+  "callout.hotkeyTakenByWindow": "这个组合键已用于唤起 winer，请换一个。",
+  "callout.hotkeyTakenByCallout": "这个组合键已用于发送喊话，请换一个。",
+  "callout.gameSection": "游戏中：敌方喊话",
+  "callout.inGame": "游戏内发送",
+  "callout.inGameHint":
+    "游戏的聊天没有接口，winer 用模拟按键代你输入：按 Enter 打开队伍聊天，输入一行，再按 Enter 发送，逐行进行。只在游戏窗口已经在前台时输入，窗口一被切走就停下；按快捷键前先关上聊天框。",
+  "callout.inGameRisk":
+    "向游戏模拟按键属于第三方输入，可能违反游戏的服务条款，使用风险由你自行承担。默认关闭。",
+  "callout.watch": "提防的敌人",
+  "callout.target": "可以针对的敌人",
+  "callout.linesHint":
+    "游戏中只说敌方：评级在中游以上、最高的一位写进「提防」这一行，中游以下、最低的一位写进「针对」这一行，没有这样的人就不写。占位符与每行内容相同，{champion} 是这位敌人正在玩的英雄，{seat} 是他在对方列表里的位置。留空用默认。",
+  "callout.preview": "游戏中会输入",
+  "callout.previewHint": "用你自己的近期战绩演示，敌方以红色方为例。",
+  "callout.inGameOn": "游戏内发送已开启",
+  "callout.inGameOff": "游戏内发送未开启",
+  "callout.liveGameHint":
+    "游戏里只说敌方：最该提防的一位和最好针对的一位。游戏的聊天没有接口，这里没有发送按钮，用快捷键输入。",
+  "callout.liveGameEmpty": "敌方战绩读完后在这里生成；没有明显偏强或偏弱的敌人时没有内容。",
+  "callout.liveHotkey": "按快捷键也能发送到队伍：",
+  "callout.liveHotkeyGame": "在游戏里按快捷键，winer 把这几行输入队伍聊天：",
+  "callout.liveNoHotkey": "设置发送喊话的快捷键后，按一下就能发送到队伍。",
+  "callout.liveNoHotkeyGame":
+    "设置发送喊话的快捷键并打开游戏内发送后，可以在游戏里把这几行输入队伍聊天。",
+  "callout.liveInGameOff": "游戏内发送未开启：在游戏里按快捷键不会输入任何内容。",
+  "callout.liveHotkeyFailed": "发送喊话的快捷键注册失败，可能已被其他程序占用。",
+  "callout.configure": "去设置",
+  "callout.notice.typed": "已在游戏聊天输入 {n} 条喊话",
+  "callout.notice.stopped": "喊话输入到一半停下了：{reason}（已发送 {n} 条）",
+  "callout.notice.skipped": "喊话没有发送：{reason}",
+  "callout.skip.notNow": "只有英雄选择和游戏进行中可以用快捷键发送",
+  "callout.skip.nothingToSay": "没有可以说的玩家",
+  "callout.skip.inGameOff": "游戏内发送未开启",
+  "callout.skip.notInFront": "游戏窗口不在前台",
+  "callout.skip.keysHeld": "有按键一直没有松开",
+  "callout.skip.blocked": "系统拒绝了模拟按键，winer 的运行权限可能低于游戏",
+  "callout.skip.unsupported": "游戏内发送只支持 Windows",
 } as const;
 
 export type MessageKey = keyof typeof zhCN;

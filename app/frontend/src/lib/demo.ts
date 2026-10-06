@@ -3,6 +3,7 @@
 import type {
   BackupInfo,
   BannerChoice,
+  CalloutRule,
   ChallengeProfile,
   ChallengeToken,
   ChampSelectView,
@@ -10,6 +11,7 @@ import type {
   Feat,
   FriendsView,
   GameData,
+  GameView,
   HotkeyStatus,
   LobbyView,
   MatchDetail,
@@ -454,11 +456,49 @@ function champSelect(): ChampSelectView {
     side: "blue",
     callout: [
       "【蓝色方】winer 战绩鉴定",
-      "峡谷通天代：1L 暗夜里的光 近20场胜率60% KDA 4.1 评分7.4「版本答案」，对面五个人准备举报代练",
-      "人形防御塔：3L 野区观光客 近20场胜率55% KDA 3.6 评分6.8，塔在人在，人在塔也在",
-      "峡谷公务员：2L 峡谷清道夫 近20场胜率50% KDA 2.9 评分5.2，按时上班，准时打卡",
-      "移动眼位：4L 补刀不漏一个 近20场胜率45% KDA 2.4 评分4.6「峡谷慈善家」，站在哪里，哪里就有视野",
-      "纯正牛马：5L 眼位守护者 近20场胜率40% KDA 2.0 评分3.9「黑白电视机资深会员」，勤勤恳恳地给对面创造游戏体验",
+      "峡谷通天代：1L 暗夜里的光，近20场胜率60%，KDA 4.1，战力7.4「版本答案」，对面五个人准备举报代练",
+      "人形防御塔：3L 野区观光客，近20场胜率55%，KDA 3.6，战力6.8，塔在人在，人在塔也在",
+      "峡谷公务员：2L 峡谷清道夫，近20场胜率50%，KDA 2.9，战力5.2，按时上班，准时打卡",
+      "移动眼位：4L 补刀不漏一个，近20场胜率45%，KDA 2.4，战力4.6「峡谷慈善家」，站在哪里，哪里就有视野",
+      "纯正牛马：5L 眼位守护者，近20场胜率40%，KDA 2.0，战力3.9「黑白电视机资深会员」，勤勤恳恳地给对面创造游戏体验",
+    ],
+  };
+}
+
+// Callout: a running game, with the enemy lines the shortcut types into the game's chat.
+
+/** The demo team in a ranked game on the blue side against five rated players on the red side,
+ *  the enemy to watch and the one to go after written as the core writes them. */
+export function demoGame(): GameView {
+  const enemies: Seat[] = (
+    [
+      ["demo-r1", "红方上单", 157, 4, 3.4, "纯正牛马"],
+      ["demo-r2", "红方打野", 64, 0, 7.6, "峡谷通天代"],
+      ["demo-r3", "红方中单", 238, 2, 5.4, "峡谷公务员"],
+      ["demo-r4", "红方射手", 81, 1, 6.6, "人形防御塔"],
+      ["demo-r5", "红方辅助", 89, 3, 4.5, "移动眼位"],
+    ] as const
+  ).map(([puuid, name, championId, tier, score, label]) => ({
+    puuid,
+    name: { gameName: name, tagLine: "20001" },
+    championId,
+    intent: false,
+    position: null,
+    spells: [4, 14],
+    isSelf: false,
+    premade: null,
+    stats: { state: "ready", ...summary(puuid, name, championId % 7, null) },
+    rating: { score, tier, tiers: 5, label, grade: null, title: null, quip: null },
+  }));
+  return {
+    gameId: 2,
+    queueId: 420,
+    teams: [seats().map((seat) => ({ ...seat, intent: false })), enemies],
+    sides: true,
+    callout: [
+      "【敌方·红色方】winer 战绩鉴定",
+      "小心 李青 红方打野：峡谷通天代，近20场胜率65%，KDA 4.6",
+      "对面 亚索 红方上单：纯正牛马，近20场胜率35%，可以多抓",
     ],
   };
 }
@@ -693,6 +733,10 @@ const DEFAULT_SETTINGS: Settings = {
       template: "",
       tiers: "riftFive",
       customTiers: [],
+      hotkey: null,
+      inGame: false,
+      watchTemplate: "",
+      targetTemplate: "",
     },
     bench: { enabled: true, champions: [103, 99, 22] },
     scopes: defaultScopes(),
@@ -717,6 +761,14 @@ const DEFAULT_SETTINGS: Settings = {
   builds: { enabled: true, riftSource: "tencent" },
 };
 
+/** The tier names `rule` ranks with, best first, as the core resolves them (`callout::tier_names`):
+ *  fewer than two names of the user's own stand in for none. */
+function tierNames(rule: CalloutRule): string[] {
+  if (rule.tiers !== "custom") return TIER_NAMES[rule.tiers]["zh-CN"];
+  const own = rule.customTiers.map((name) => name.trim()).filter(Boolean);
+  return own.length >= 2 ? own : TIER_NAMES.horses["zh-CN"];
+}
+
 export function demoBackend(): Backend {
   let settings = DEFAULT_SETTINGS;
   const listeners = new Set<(event: Event) => void>();
@@ -724,15 +776,23 @@ export function demoBackend(): Backend {
   const hotkeyListeners = new Set<(status: HotkeyStatus) => void>();
   const emit = (event: Event) => listeners.forEach((listener) => listener(event));
   let update: UpdateStatus = { state: "upToDate", version: "0.2.0", checkedAt: NOW };
-  // The shell's shortcut: registered whenever it is named and not let go for the recorder.
-  let hotkey: HotkeyStatus = {
-    shortcut: settings.general.hotkey,
-    active: settings.general.hotkey !== null,
-    suspended: false,
+  // The shell's shortcuts: each registered whenever it is named and not let go for the recorder.
+  const held = (shortcut: string | null, suspended: boolean) => ({
+    shortcut,
+    active: shortcut !== null && !suspended,
     error: null,
+  });
+  let hotkey: HotkeyStatus = {
+    ...held(settings.general.hotkey, false),
+    suspended: false,
+    callout: held(settings.automation.callout.hotkey, false),
   };
-  const setHotkey = (shortcut: string | null, suspended: boolean) => {
-    hotkey = { shortcut, active: shortcut !== null && !suspended, suspended, error: null };
+  const setHotkey = (
+    shortcut: string | null,
+    suspended: boolean,
+    callout: string | null = hotkey.callout.shortcut,
+  ) => {
+    hotkey = { ...held(shortcut, suspended), suspended, callout: held(callout, suspended) };
     hotkeyListeners.forEach((listener) => listener(hotkey));
     return hotkey;
   };
@@ -818,8 +878,11 @@ export function demoBackend(): Backend {
     get_settings: () => settings,
     set_settings: ({ settings: next }) => {
       settings = next;
-      if (settings.general.hotkey !== hotkey.shortcut)
-        setHotkey(settings.general.hotkey, hotkey.suspended);
+      if (
+        settings.general.hotkey !== hotkey.shortcut ||
+        settings.automation.callout.hotkey !== hotkey.callout.shortcut
+      )
+        setHotkey(settings.general.hotkey, hotkey.suspended, settings.automation.callout.hotkey);
       return settings;
     },
     get_game_data: () => GAME_DATA,
@@ -871,17 +934,12 @@ export function demoBackend(): Backend {
     restart_client_ui: () => null,
     send_callout: () => champSelect().callout.length,
     preview_callout: ({ rule, general }) => {
-      const own = rule.customTiers.map((name) => name.trim()).filter(Boolean);
-      const names =
-        rule.tiers !== "custom"
-          ? TIER_NAMES[rule.tiers]["zh-CN"]
-          : own.length >= 2
-            ? own
-            : TIER_NAMES.horses["zh-CN"];
+      const names = tierNames(rule);
       const title = general.titles ? "「版本答案」" : "";
       // As the core does: the tiers take the seats in order, 1L for the best.
       const lines = names.map(
-        (name, index) => `${name}：${index + 1}L 暗夜里的光 近20场胜率60% KDA 4.1 评分7.4${title}`,
+        (name, index) =>
+          `${name}：${index + 1}L 暗夜里的光，近20场胜率60%，KDA 4.1，战力7.4${title}`,
       );
       // As the core does: the side and winer's name lead the first line, the opening line after.
       const header = rule.header.trim();
@@ -985,6 +1043,16 @@ export function demoBackend(): Backend {
     get_hotkey_status: () => hotkey,
     suspend_hotkey: ({ suspended }) => setHotkey(hotkey.shortcut, suspended),
     ...demoLoadoutHandlers(() => settings),
+    // Callout: as the core does, the best tier to watch and the worst to go after, on the red side.
+    preview_game_callout: ({ rule, general }) => {
+      const names = tierNames(rule);
+      const title = general.titles ? "「版本答案」" : "";
+      return [
+        "【敌方·红色方】winer 战绩鉴定",
+        `小心 阿狸 暗夜里的光：${names[0]}，近20场胜率60%，KDA 4.1${title}`,
+        `对面 阿狸 暗夜里的光：${names[names.length - 1]}，近20场胜率60%，可以多抓`,
+      ];
+    },
   };
 
   return {

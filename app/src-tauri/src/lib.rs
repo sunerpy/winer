@@ -5,6 +5,7 @@ mod assets;
 mod commands;
 mod elevation;
 mod events;
+mod game_chat;
 mod hotkey;
 mod logging;
 mod plugin_host;
@@ -91,6 +92,8 @@ fn setup(app: &mut App, start_hidden: bool) -> Result<(), Box<dyn Error>> {
     app.manage(hotkey::Hotkey::default());
     // On the main thread here, so it is registered before the window shows.
     hotkey::apply(app.handle(), service.settings().general.hotkey);
+    // Callout: the shortcut that sends it, none by default.
+    hotkey::apply_callout(app.handle(), service.settings().automation.callout.hotkey);
 
     // Subscribed before the service starts: the core's events are not replayed, and the first
     // `Connected` is what sets up the loader and points the plugin at this session's bridge.

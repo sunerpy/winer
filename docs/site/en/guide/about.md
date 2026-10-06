@@ -24,8 +24,10 @@
   supported by Riot Games, Tencent or WeGame. League of Legends and its names, logos and images
   are trademarks or property of Riot Games, Inc.
 - winer uses only the API the client opens on your computer. It never reads or changes the game's
-  memory or files, and never plays for you. The in-client features run a plugin in the client's
-  interface through Pengu Loader, which changes what the client shows.
+  memory or files, and never plays for you. The one exception is **In-game sending**, off by
+  default: with it on, pressing the callout's shortcut in a game makes winer type the callout into
+  the game's chat with synthesized key presses, which is third-party input. The in-client features
+  run a plugin in the client's interface through Pengu Loader, which changes what the client shows.
 - Any third-party tool may break the game's terms of service, and using winer may get an account
   restricted. You use it at your own risk.
 - Scores, tiers, titles and callouts are entertainment drawn from match data and say nothing about

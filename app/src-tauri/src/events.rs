@@ -85,6 +85,8 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
         Event::Settings(settings) => {
             tray::sync(app, settings);
             hotkey::apply(app, settings.general.hotkey.clone());
+            // Callout: its own shortcut.
+            hotkey::apply_callout(app, settings.automation.callout.hotkey.clone());
         }
         // Social: a click in the client asked for a player's history, which the window opens.
         Event::OpenHistory { .. } => window::show(app),

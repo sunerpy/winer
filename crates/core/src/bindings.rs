@@ -134,6 +134,8 @@ pub fn typescript() -> String {
     );
     // The history panel in the client.
     declare!(bridge::PanelHistory, bridge::PanelGame);
+    // The callout's shortcut and the game's chat.
+    declare!(view::CalloutHotkeyStatus, view::CalloutSkip);
     out
 }
 

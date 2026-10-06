@@ -186,7 +186,8 @@ pub fn champ_select_view(
     }
 }
 
-/// Both teams of the loaded game; `None` before the gameflow session names them.
+/// Both teams of the loaded game; `None` before the gameflow session names them. `callout` is left
+/// empty: its lines need the catalog and settings.
 pub fn game_view(
     session: &GameflowSession,
     me: &str,
@@ -243,6 +244,7 @@ pub fn game_view(
         queue_id: data.queue.id,
         teams,
         sides: has_sides(&data.queue.game_mode),
+        callout: Vec::new(),
     })
 }
 

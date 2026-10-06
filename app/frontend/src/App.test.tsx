@@ -8,7 +8,7 @@ import type { ChampSelectView, Event, GameView, Mode, Seat, Snapshot } from "@wi
 
 import { App } from "./App";
 import type { Backend, CommandName } from "./lib/backend";
-import { demoBackend, demoLobby } from "./lib/demo";
+import { demoBackend, demoGame, demoLobby } from "./lib/demo";
 import { AppStore, EMPTY_SNAPSHOT, StoreContext } from "./lib/store";
 import { LivePage } from "./pages/Live";
 import { ShellContext } from "./shell/navigation";
@@ -200,8 +200,11 @@ describe("App", () => {
       queueId: 2400,
       teams: [[seat("blue-1")], [seat("me", true), seat("red-2")]],
       sides: true,
+      callout: [],
     };
     const store = new AppStore(demoBackend());
+    // As the shell does before any page: the settings are loaded first.
+    store.settings.set(await demoBackend().call("get_settings"));
     store.live.set({
       ...EMPTY_SNAPSHOT,
       connection: { status: "connected", port: 1, platformId: "NJ100" },
@@ -275,7 +278,7 @@ describe("App", () => {
     expect(
       screen.getByText(/^峡谷通天代：1L/),
       "the title and the quip ride along",
-    ).toHaveTextContent("评分7.4「版本答案」，对面五个人准备举报代练");
+    ).toHaveTextContent("战力7.4「版本答案」，对面五个人准备举报代练");
     await user.click(screen.getByRole("button", { name: zhCN["live.sendTeam"] }));
     expect(call).toHaveBeenCalledWith("send_callout", { audience: "team" });
     expect(await screen.findByText("已发送 6 条喊话")).toBeInTheDocument();
@@ -361,7 +364,7 @@ describe("App", () => {
       "a blank template shows the default, which names the seat",
     ).toHaveAttribute(
       "placeholder",
-      "{standing}：{seat} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}",
+      "{standing}：{seat} {name}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
     );
 
     await user.type(screen.getByRole("textbox", { name: zhCN["auto.header"] }), "开局分析{Enter}");
@@ -1102,6 +1105,7 @@ describe("loadout", () => {
       queueId: 2400,
       teams: [[seat(103, true, null), seat(22, false, null)], [seat(99, false, null)]],
       sides: true,
+      callout: [],
     };
     await openLive(demoWith({ get_snapshot: () => live({ phase: "InProgress", game }) }));
     const tabs = await screen.findByRole("radiogroup", { name: zhCN["loadout.tabs"] });
@@ -1274,5 +1278,209 @@ describe("the history panel in the client", () => {
       }),
     );
     expect(screen.getByRole("switch", { name: zhCN["social.pluginLobby"] })).toBeChecked();
+  });
+});
+
+describe("callout", () => {
+  /** The demo settings, the callout's shortcut and in-game sending as given. */
+  async function settingsWith(hotkey: string | null, inGame: boolean) {
+    const settings = await demoBackend().call("get_settings");
+    return {
+      ...settings,
+      automation: {
+        ...settings.automation,
+        callout: { ...settings.automation.callout, hotkey, inGame },
+      },
+    };
+  }
+
+  /** The Live page alone, over a store holding `settings` and `snapshot`. */
+  async function livePage(snapshot: Partial<Snapshot>, hotkey: string | null, inGame: boolean) {
+    const store = new AppStore(demoBackend());
+    store.settings.set(await settingsWith(hotkey, inGame));
+    store.live.set({
+      ...EMPTY_SNAPSHOT,
+      rev: 1,
+      connection: { status: "connected", port: 1, platformId: "NJ100" },
+      ...snapshot,
+    });
+    const navigate = vi.fn();
+    render(
+      <StoreContext value={store}>
+        <ShellContext value={{ route: { page: "live" }, navigate, openSettings: vi.fn() }}>
+          <LivePage />
+        </ShellContext>
+      </StoreContext>,
+    );
+    return { store, navigate };
+  }
+
+  /** The callout's panel, by its eyebrow. */
+  const panel = () => {
+    const card = screen
+      .getByRole("heading", { name: zhCN["live.callout"] })
+      .closest("div.rounded-10");
+    expect(card).not.toBeNull();
+    return within(card as HTMLElement);
+  };
+
+  it("names the shortcut under the champ-select callout, or says where to set one", async () => {
+    const without = await renderApp();
+    await without.user.click(await screen.findByRole("button", { name: zhCN["overview.open"] }));
+    expect(panel().getByText(zhCN["callout.liveNoHotkey"])).toBeInTheDocument();
+    cleanup();
+
+    const hotkey = await settingsWith("Ctrl+Shift+X", false);
+    const { user } = await renderApp(demoWith({ get_settings: () => hotkey }));
+    await user.click(await screen.findByRole("button", { name: zhCN["overview.open"] }));
+    expect(panel().getByText(zhCN["callout.liveHotkey"])).toBeInTheDocument();
+    expect(panel().getByText("Shift")).toBeInTheDocument();
+    expect(panel().getByText("X")).toBeInTheDocument();
+    expect(
+      panel().getByRole("button", { name: zhCN["live.sendTeam"] }),
+      "the button stays: the shortcut sends what it sends",
+    ).toBeInTheDocument();
+  });
+
+  it("shows the enemy lines in the game, with no send button, and says whether the shortcut types them", async () => {
+    const { store, navigate } = await livePage(
+      { phase: "InProgress", game: demoGame() },
+      "Ctrl+Shift+X",
+      false,
+    );
+    expect(panel().getByText("【敌方·红色方】winer 战绩鉴定")).toBeInTheDocument();
+    expect(panel().getByText(/^小心 李青 红方打野：峡谷通天代/)).toBeInTheDocument();
+    expect(panel().getByText(/^对面 亚索 红方上单：纯正牛马/)).toBeInTheDocument();
+    expect(panel().getByText(zhCN["callout.inGameOff"])).toBeInTheDocument();
+    expect(panel().getByText(zhCN["callout.liveInGameOff"])).toBeInTheDocument();
+    expect(
+      panel().queryByRole("button", { name: zhCN["live.sendTeam"] }),
+      "the game's chat has no API to post to",
+    ).toBeNull();
+
+    act(() => {
+      const settings = store.settings.get();
+      if (settings)
+        store.settings.set({
+          ...settings,
+          automation: {
+            ...settings.automation,
+            callout: { ...settings.automation.callout, inGame: true },
+          },
+        });
+    });
+    expect(panel().getByText(zhCN["callout.inGameOn"])).toBeInTheDocument();
+    expect(panel().getByText(zhCN["callout.liveHotkeyGame"])).toBeInTheDocument();
+    expect(panel().getByText("Ctrl")).toBeInTheDocument();
+
+    act(() =>
+      store.hotkey.set({
+        shortcut: "Alt+Backquote",
+        active: true,
+        suspended: false,
+        error: null,
+        callout: { shortcut: "Ctrl+Shift+X", active: false, error: "HotKey already registered" },
+      }),
+    );
+    expect(panel().getByText(zhCN["callout.liveHotkeyFailed"])).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(panel().getByRole("button", { name: zhCN["callout.configure"] }));
+    expect(navigate).toHaveBeenCalledWith({ page: "automation" });
+  });
+
+  it("says what comes in the game before the lines are there, and has no panel without two sides", async () => {
+    await livePage({ phase: "InProgress", game: { ...demoGame(), callout: [] } }, null, false);
+    expect(panel().getByText(zhCN["callout.liveGameEmpty"])).toBeInTheDocument();
+    expect(panel().getByText(zhCN["callout.liveNoHotkeyGame"])).toBeInTheDocument();
+    cleanup();
+
+    // Arena's pairs: no one other team to talk about.
+    await livePage(
+      { phase: "InProgress", game: { ...demoGame(), sides: false, callout: [] } },
+      "Ctrl+Shift+X",
+      true,
+    );
+    expect(screen.getByRole("radiogroup", { name: zhCN["live.board"] })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: zhCN["live.callout"] })).toBeNull();
+  });
+
+  it("records the callout's shortcut apart from the window's and opts in to typing in the game", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.automation"] }));
+    expect(
+      await screen.findByText("【敌方·红色方】winer 战绩鉴定"),
+      "what the shortcut would type in the game, previewed",
+    ).toBeInTheDocument();
+    expect(screen.getByText(/^小心 阿狸 暗夜里的光：峡谷通天代/)).toBeInTheDocument();
+    expect(screen.getByText(/^对面 阿狸 暗夜里的光：纯正牛马/)).toBeInTheDocument();
+    expect(call).toHaveBeenCalledWith("preview_game_callout", {
+      rule: expect.objectContaining({ hotkey: null, inGame: false }),
+      general: expect.objectContaining({ language: "zh-CN" }),
+    });
+
+    await user.click(screen.getByRole("button", { name: zhCN["social.hotkeyRecord"] }));
+    await waitFor(() => expect(call).toHaveBeenCalledWith("suspend_hotkey", { suspended: true }));
+    fireEvent.keyDown(window, { code: "Backquote", key: "`", altKey: true });
+    expect(screen.getByText(zhCN["callout.hotkeyTakenByWindow"])).toBeInTheDocument();
+    fireEvent.keyDown(window, { code: "KeyX", key: "X", ctrlKey: true, shiftKey: true });
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          automation: expect.objectContaining({
+            callout: expect.objectContaining({ hotkey: "Ctrl+Shift+X" }),
+          }),
+          general: expect.objectContaining({ hotkey: "Alt+Backquote" }),
+        }),
+      }),
+    );
+    await waitFor(() => expect(call).toHaveBeenCalledWith("suspend_hotkey", { suspended: false }));
+    expect(await screen.findByText(zhCN["social.hotkeyActive"])).toBeInTheDocument();
+
+    const inGame = screen.getByRole("switch", { name: zhCN["callout.inGame"] });
+    expect(inGame, "off until asked").not.toBeChecked();
+    expect(screen.getByText(zhCN["callout.inGameRisk"])).toBeInTheDocument();
+    await user.click(inGame);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          automation: expect.objectContaining({
+            callout: expect.objectContaining({ hotkey: "Ctrl+Shift+X", inGame: true }),
+          }),
+        }),
+      }),
+    );
+
+    const watch = screen.getByRole("textbox", { name: zhCN["callout.watch"] });
+    expect(watch).toHaveAttribute(
+      "placeholder",
+      "小心 {champion} {name}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}",
+    );
+    // `{{` types a brace; `{Enter}` commits.
+    await user.type(watch, "注意 {{champion}{Enter}");
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          automation: expect.objectContaining({
+            callout: expect.objectContaining({ watchTemplate: "注意 {champion}" }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("keeps the window's shortcut off the callout's combination too", async () => {
+    const hotkey = await settingsWith("Ctrl+Shift+X", false);
+    const backend = demoWith({ get_settings: () => hotkey });
+    const call = vi.spyOn(backend, "call");
+    const { user } = await renderApp(backend);
+    fireEvent.keyDown(window, { key: ",", ctrlKey: true });
+    const dialog = screen.getByRole("dialog", { name: zhCN["settings.title"] });
+    await user.click(within(dialog).getByRole("tab", { name: zhCN["settings.general"] }));
+    await user.click(within(dialog).getByRole("button", { name: zhCN["social.hotkeyChange"] }));
+    fireEvent.keyDown(window, { code: "KeyX", key: "X", ctrlKey: true, shiftKey: true });
+    expect(within(dialog).getByText(zhCN["callout.hotkeyTakenByCallout"])).toBeInTheDocument();
+    expect(call).not.toHaveBeenCalledWith("set_settings", expect.anything());
   });
 });

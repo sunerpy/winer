@@ -1,9 +1,10 @@
-// Settings › 通用: the global shortcut that brings winer up from anywhere. The recorder takes the
-// window's next keydown before anything else does (capture phase: the shell's own shortcuts and the
-// dialog's Escape never see it), and the shell lets the old shortcut go while it listens, or
-// pressing it again would hide the window instead of being recorded.
+// The global shortcuts as settings rows: Settings › 通用's, which brings winer up from anywhere, and
+// 自动化 › 战力喊话's, which sends the callout. The recorder takes the window's next keydown before
+// anything else does (capture phase: the shell's own shortcuts and the dialog's Escape never see
+// it), and the shell lets every shortcut go while it listens, or pressing one would act instead of
+// being recorded.
 import { Keyboard, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { errorMessage } from "../../lib/backend";
 import { keycaps, record } from "../../lib/hotkey";
@@ -11,7 +12,7 @@ import { useT } from "../../lib/i18n";
 import { useHotkeyStatus, useSettings, useStore } from "../../lib/store";
 import { Button, IconButton, Kbd, Lamp, Row, toast } from "../../ui";
 
-function Keycaps({ combo }: { combo: string }) {
+export function Keycaps({ combo }: { combo: string }) {
   return (
     <span className="inline-flex items-center gap-1">
       {keycaps(combo).map((key, index) => (
@@ -21,21 +22,46 @@ function Keycaps({ combo }: { combo: string }) {
   );
 }
 
-export function HotkeyRow() {
+/** What the system made of a combination, once it has said. */
+interface Held {
+  active: boolean;
+  error: string | null;
+}
+
+/** One shortcut: its keys, a recorder for a new combination and a ✕ that turns it off. */
+function ShortcutRow({
+  label,
+  hint,
+  combo,
+  held,
+  taken,
+  takenMessage,
+  onSave,
+}: {
+  label: string;
+  hint: ReactNode;
+  combo: string | null;
+  /** What the system said about `combo`; `null` until it has. */
+  held: Held | null;
+  /** The other shortcut's combination, which this one cannot take. */
+  taken: string | null;
+  takenMessage: string;
+  onSave: (combo: string | null) => Promise<void>;
+}) {
   const t = useT();
   const store = useStore();
-  const hotkey = useSettings().general.hotkey;
-  const status = useHotkeyStatus();
   const [listening, setListening] = useState(false);
-  const [held, setHeld] = useState<string[]>([]);
-  const [invalid, setInvalid] = useState(false);
+  const [keys, setKeys] = useState<string[]>([]);
+  const [problem, setProblem] = useState<"invalid" | "taken" | null>(null);
+  // The listener lives as long as the recording; it reads the newest of these when a key comes.
+  const latest = useRef({ taken, onSave });
+  useEffect(() => {
+    latest.current = { taken, onSave };
+  });
 
-  const save = (combo: string | null) =>
-    store
-      .updateSettings((settings) => ({
-        ...settings,
-        general: { ...settings.general, hotkey: combo },
-      }))
+  const save = (next: string | null) =>
+    void latest.current
+      .onSave(next)
       .catch((error: unknown) => toast(errorMessage(error), "danger"));
 
   useEffect(() => {
@@ -56,18 +82,18 @@ export function HotkeyRow() {
       }
       const result = record(event);
       if (result.kind === "partial") {
-        setHeld(result.keys);
-        setInvalid(false);
+        setKeys(result.keys);
+        setProblem(null);
       } else if (result.kind === "invalid") {
-        setHeld([]);
-        setInvalid(true);
+        setKeys([]);
+        setProblem("invalid");
+      } else if (result.combo === latest.current.taken) {
+        setKeys([]);
+        setProblem("taken");
       } else {
         setListening(false);
-        void store
-          .updateSettings((settings) => ({
-            ...settings,
-            general: { ...settings.general, hotkey: result.combo },
-          }))
+        void latest.current
+          .onSave(result.combo)
           .catch((error: unknown) => toast(errorMessage(error), "danger"));
       }
     };
@@ -78,38 +104,38 @@ export function HotkeyRow() {
     return () => {
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("blur", onBlur);
-      // Done, cancelled or the settings closed: the shortcut the settings name comes back.
+      // Done, cancelled or the settings closed: the shortcuts the settings name come back.
       suspend(false);
     };
   }, [listening, store]);
 
   const start = () => {
-    setHeld([]);
-    setInvalid(false);
+    setKeys([]);
+    setProblem(null);
     setListening(true);
   };
-  // What the system said about the combination the settings name now, once it has said.
-  const settled = status && !status.suspended && status.shortcut === hotkey ? status : null;
 
   return (
     <Row
-      label={t("social.hotkey")}
+      label={label}
       help={
         <>
-          {t("social.hotkeyHint")}
+          {hint}
           {listening ? (
             <span className="mt-1 block text-fg-subtle">
-              {invalid ? (
-                <span className="text-danger">{t("social.hotkeyInvalid")}</span>
+              {problem ? (
+                <span className="text-danger">
+                  {problem === "taken" ? takenMessage : t("social.hotkeyInvalid")}
+                </span>
               ) : (
                 t("social.hotkeyListeningHint")
               )}
             </span>
-          ) : settled?.error ? (
-            <span className="mt-1 block text-danger" title={settled.error}>
+          ) : held?.error ? (
+            <span className="mt-1 block text-danger" title={held.error}>
               {t("social.hotkeyFailed")}
             </span>
-          ) : settled?.active ? (
+          ) : held?.active ? (
             <span className="mt-1 flex items-center gap-1.5 text-fg-subtle">
               <Lamp tone="ok" size={6} />
               {t("social.hotkeyActive")}
@@ -124,13 +150,13 @@ export function HotkeyRow() {
         className="inline-flex min-h-7 items-center gap-1 text-[12.5px] text-fg-muted"
       >
         {listening ? (
-          held.length > 0 ? (
-            <Keycaps combo={`${held.join("+")}+…`} />
+          keys.length > 0 ? (
+            <Keycaps combo={`${keys.join("+")}+…`} />
           ) : (
             t("social.hotkeyListening")
           )
-        ) : hotkey ? (
-          <Keycaps combo={hotkey} />
+        ) : combo ? (
+          <Keycaps combo={combo} />
         ) : (
           t("social.hotkeyOff")
         )}
@@ -142,13 +168,72 @@ export function HotkeyRow() {
       ) : (
         <>
           <Button size="sm" icon={Keyboard} onClick={start}>
-            {hotkey ? t("social.hotkeyChange") : t("social.hotkeyRecord")}
+            {combo ? t("social.hotkeyChange") : t("social.hotkeyRecord")}
           </Button>
-          {hotkey && (
-            <IconButton icon={X} label={t("social.hotkeyClear")} onClick={() => void save(null)} />
+          {combo && (
+            <IconButton icon={X} label={t("social.hotkeyClear")} onClick={() => save(null)} />
           )}
         </>
       )}
     </Row>
+  );
+}
+
+/** Settings › 通用: the shortcut that shows and hides winer. */
+export function HotkeyRow() {
+  const t = useT();
+  const store = useStore();
+  const settings = useSettings();
+  const hotkey = settings.general.hotkey;
+  const status = useHotkeyStatus();
+  // What the system said about the combination the settings name now, once it has said.
+  const settled = status && !status.suspended && status.shortcut === hotkey ? status : null;
+  return (
+    <ShortcutRow
+      label={t("social.hotkey")}
+      hint={t("social.hotkeyHint")}
+      combo={hotkey}
+      held={settled}
+      taken={settings.automation.callout.hotkey}
+      takenMessage={t("callout.hotkeyTakenByCallout")}
+      onSave={(combo) =>
+        store.updateSettings((value) => ({
+          ...value,
+          general: { ...value.general, hotkey: combo },
+        }))
+      }
+    />
+  );
+}
+
+// Callout: the second shortcut, on 自动化 › 战力喊话.
+
+/** 自动化 › 战力喊话: the shortcut that sends the callout, off until a combination is set. */
+export function CalloutHotkeyRow() {
+  const t = useT();
+  const store = useStore();
+  const settings = useSettings();
+  const combo = settings.automation.callout.hotkey;
+  const status = useHotkeyStatus();
+  const settled =
+    status && !status.suspended && status.callout.shortcut === combo ? status.callout : null;
+  return (
+    <ShortcutRow
+      label={t("callout.hotkey")}
+      hint={t("callout.hotkeyHint")}
+      combo={combo}
+      held={settled}
+      taken={settings.general.hotkey}
+      takenMessage={t("callout.hotkeyTakenByWindow")}
+      onSave={(hotkey) =>
+        store.updateSettings((value) => ({
+          ...value,
+          automation: {
+            ...value.automation,
+            callout: { ...value.automation.callout, hotkey },
+          },
+        }))
+      }
+    />
   );
 }

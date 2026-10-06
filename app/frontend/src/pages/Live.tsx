@@ -1,6 +1,6 @@
 import type { Audience, ChampSelectView, GameView, LobbyView, Seat, Side } from "@winer/shared";
 import { Ban, Dices, Eye, Hourglass, Megaphone, Star, Swords, Users } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { LobbyBoard } from "../game/LobbyBoard";
 import { queueName } from "../game/MatchRow";
@@ -10,12 +10,13 @@ import { errorMessage } from "../lib/backend";
 import { cx } from "../lib/cx";
 import { type MessageKey, useT } from "../lib/i18n";
 import { everywhere, modeOf } from "../lib/modes";
-import { useCatalog, useLive, useSettings, useStore } from "../lib/store";
+import { useCatalog, useHotkeyStatus, useLive, useSettings, useStore } from "../lib/store";
 import { useNow } from "../lib/useNow";
 import { useShell } from "../shell/navigation";
-import { Badge, Button, Card, EmptyState, Panel, Segmented, toast } from "../ui";
+import { Badge, Button, Card, EmptyState, Lamp, Panel, Segmented, toast } from "../ui";
 import { ConnectionGate, PageBody } from "./common";
 import { BuildLookup, ChampSelectBuild, GameBuild } from "./live/BuildPanel";
+import { Keycaps } from "./settings/HotkeyRow";
 
 const TIMER_PHASES: Record<string, MessageKey> = {
   PLANNING: "live.planning",
@@ -154,8 +155,18 @@ function Bench({ view }: { view: ChampSelectView }) {
   );
 }
 
-/** The team ranked by recent form, as the chat lines it would send. */
-function Callout({ lines, queueId }: { lines: string[]; queueId: number }) {
+/** The callout: in champ select the team ranked by recent form, as the chat lines it would send;
+ *  in the game (`game`), the enemy to watch and the one to go after, which only the shortcut can
+ *  type, since the game's chat has no API. */
+function Callout({
+  lines,
+  queueId,
+  game = false,
+}: {
+  lines: string[];
+  queueId: number;
+  game?: boolean;
+}) {
   const t = useT();
   const store = useStore();
   const catalog = useCatalog();
@@ -179,15 +190,22 @@ function Callout({ lines, queueId }: { lines: string[]; queueId: number }) {
       setBusy(null);
     }
   };
+  // Callout: in the game, whether the shortcut types there.
+  const badge = game ? (
+    <Badge tone={callout.inGame ? "accent" : "neutral"}>
+      {t(callout.inGame ? "callout.inGameOn" : "callout.inGameOff")}
+    </Badge>
+  ) : auto ? (
+    <Badge tone="accent">{t("live.calloutAuto")}</Badge>
+  ) : undefined;
   return (
-    <Panel
-      eyebrow={t("live.callout")}
-      right={auto ? <Badge tone="accent">{t("live.calloutAuto")}</Badge> : undefined}
-    >
-      <p className="mb-2.5 text-[12px] leading-5 text-fg-muted">{t("live.calloutHint")}</p>
+    <Panel eyebrow={t("live.callout")} right={badge}>
+      <p className="mb-2.5 text-[12px] leading-5 text-fg-muted">
+        {t(game ? "callout.liveGameHint" : "live.calloutHint")}
+      </p>
       {lines.length === 0 ? (
         <p className="rounded-6 border border-dashed border-border-strong px-3 py-3 text-center text-[12px] text-fg-subtle">
-          {t("live.calloutEmpty")}
+          {t(game ? "callout.liveGameEmpty" : "live.calloutEmpty")}
         </p>
       ) : (
         <ol className="flex flex-col gap-1 rounded-6 bg-inset px-3 py-2 hairline">
@@ -198,28 +216,73 @@ function Callout({ lines, queueId }: { lines: string[]; queueId: number }) {
           ))}
         </ol>
       )}
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          variant="accent"
-          icon={Megaphone}
-          disabled={lines.length === 0 || busy !== null}
-          loading={busy === "team"}
-          onClick={() => void send("team")}
-        >
-          {t("live.sendTeam")}
-        </Button>
-        <Button
-          size="sm"
-          icon={Eye}
-          disabled={lines.length === 0 || busy !== null}
-          loading={busy === "me"}
-          onClick={() => void send("me")}
-        >
-          {t("live.sendMe")}
-        </Button>
-      </div>
+      {!game && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="accent"
+            icon={Megaphone}
+            disabled={lines.length === 0 || busy !== null}
+            loading={busy === "team"}
+            onClick={() => void send("team")}
+          >
+            {t("live.sendTeam")}
+          </Button>
+          <Button
+            size="sm"
+            icon={Eye}
+            disabled={lines.length === 0 || busy !== null}
+            loading={busy === "me"}
+            onClick={() => void send("me")}
+          >
+            {t("live.sendMe")}
+          </Button>
+        </div>
+      )}
+      <CalloutShortcut game={game} />
     </Panel>
+  );
+}
+
+/** Callout: one line naming the shortcut that sends the callout and what it does here, with the
+ *  way to the settings that change it. */
+function CalloutShortcut({ game }: { game: boolean }) {
+  const t = useT();
+  const { navigate } = useShell();
+  const { hotkey, inGame } = useSettings().automation.callout;
+  const status = useHotkeyStatus();
+  const refused =
+    hotkey !== null &&
+    status !== null &&
+    !status.suspended &&
+    status.callout.shortcut === hotkey &&
+    status.callout.error !== null;
+  let lamp: "ok" | "off" | "danger" = "off";
+  let text: ReactNode;
+  if (hotkey === null) {
+    text = t(game ? "callout.liveNoHotkeyGame" : "callout.liveNoHotkey");
+  } else if (refused) {
+    lamp = "danger";
+    text = t("callout.liveHotkeyFailed");
+  } else if (game && !inGame) {
+    text = t("callout.liveInGameOff");
+  } else {
+    lamp = "ok";
+    text = (
+      <>
+        {t(game ? "callout.liveHotkeyGame" : "callout.liveHotkey")}
+        <Keycaps combo={hotkey} />
+      </>
+    );
+  }
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border pt-2.5 text-[12px] leading-5 text-fg-muted">
+      <Lamp tone={lamp} size={6} />
+      <span className="inline-flex flex-wrap items-center gap-1.5">{text}</span>
+      <Button size="sm" variant="link" onClick={() => navigate({ page: "automation" })}>
+        {t("callout.configure")}
+      </Button>
+    </div>
   );
 }
 
@@ -298,6 +361,8 @@ function Game({ view }: { view: GameView }) {
       </Card>
       <Teams teams={teams} initial={Math.max(0, mine)} />
       <GameBuild view={view} />
+      {/* Callout: only a player on one of two sides has an other team to talk about. */}
+      {view.sides && mine !== -1 && <Callout lines={view.callout} queueId={view.queueId} game />}
     </div>
   );
 }
