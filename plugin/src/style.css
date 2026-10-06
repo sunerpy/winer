@@ -718,6 +718,30 @@
   color: #ece6d6;
 }
 
+/* Champ select (16.19): the client clips a row's details column to its three lines, and the name's
+ * box inside it to one 16px line. The line goes at the end of the column (team.ts) and shows below
+ * it, in the 14px the 78px row leaves there, cut with an ellipsis short of the champion grid. */
+.player-details:has(> .winer-inline) {
+  overflow: visible;
+}
+
+.player-details > .winer-inline {
+  max-width: 220px;
+  height: 14px;
+  margin-top: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* An ellipsis cuts inline content only, not flex items: here the parts flow inline. */
+.player-details > .winer-inline > .winer-line {
+  display: inline;
+}
+
+.player-details > .winer-inline > .winer-line > * + * {
+  margin-left: 6px;
+}
+
 /* A fallback panel's own row keeps its highlight as a button. */
 .winer-row--self.winer-row--button {
   background: #162230;

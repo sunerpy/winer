@@ -27,6 +27,9 @@ import { text } from "./i18n";
  *  between patches: a miss degrades to the panel. */
 export const ROW_SELECTOR = ".party.visible .summoner-wrapper.visible.left";
 export const NAME_SELECTOR = ".player-name-wrapper";
+/** The row's column of text beside the champion: the client's status line, the position and the
+ *  name, clipped to those three (measured on 16.19); the name's own box is one 16px line. */
+export const DETAILS_SELECTOR = ".player-details";
 const INLINE_CLASS = "winer-inline";
 /** On a line: whose it is, for a click on it (the lobby's cards carry the same). */
 const PUUID_ATTRIBUTE = "data-winer-puuid";
@@ -160,18 +163,22 @@ export function lineKey(seat: Seat, language: Language, side: Side | null = null
 }
 
 /** Writes one line under each party row's name. Returns how many rows it found. A line names its
- *  player (`data-winer-puuid`), so a click on it opens their history (`history.ts`). */
+ *  player (`data-winer-puuid`), so a click on it opens their history (`history.ts`). It goes at the
+ *  end of the row's details column, which the style lets it show below (`style.css`): inside the
+ *  name's box the client clips it away. A row without that column takes it after the name. */
 export function decorateRows(root: ParentNode, view: ChampSelectView, language: Language): number {
   const rows = [...root.querySelectorAll<HTMLElement>(ROW_SELECTOR)];
   rows.forEach((row, index) => {
     const seat = view.myTeam[index];
+    const details = row.querySelector<HTMLElement>(DETAILS_SELECTOR);
     const anchor = row.querySelector<HTMLElement>(NAME_SELECTOR);
-    if (!seat || !anchor) return;
-    let line = row.querySelector<HTMLElement>(`.${INLINE_CLASS}`);
-    if (!line) {
-      line = h("div", { class: INLINE_CLASS });
-      anchor.after(line);
-    }
+    if (!seat || !(details || anchor)) return;
+    const line =
+      row.querySelector<HTMLElement>(`.${INLINE_CLASS}`) ?? h("div", { class: INLINE_CLASS });
+    // Moved only when it is not there yet, or the client redrew the column without it.
+    if (details) {
+      if (line.parentElement !== details) details.append(line);
+    } else if (!line.isConnected) anchor?.after(line);
     const key = lineKey(seat, language, view.side);
     if (line.dataset.key !== key) {
       line.dataset.key = key;
