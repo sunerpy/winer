@@ -10,7 +10,7 @@
 [![Release](https://img.shields.io/github/v/release/sunerpy/winer)](https://github.com/sunerpy/winer/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
-[亮点](#亮点) · [安装](#安装) · [功能](#功能) · [评分与评级](#评分与评级) · [开发](#开发) · [致谢](#致谢) · [免责声明](#免责声明) · [使用文档](https://firlab.app/winer/)
+[亮点](#亮点) · [安装](#安装) · [功能](#功能) · [评分与评级](#评分与评级) · [开发](#开发) · [微信公众号](#微信公众号) · [致谢](#致谢) · [免责声明](#免责声明) · [使用文档](https://firlab.app/winer/)
 
 English documentation: [firlab.app/winer/en](https://firlab.app/winer/en/)
 
@@ -210,6 +210,12 @@ scripts/windows/qa.sh log 40                 # 当天日志末尾
 ```
 
 `qa` 特性会打开调试端口，任何本机进程都能借此操控窗口，因此只用于验收，不得进入发布版本。
+
+## 微信公众号
+
+作者的微信公众号「六月水蓝」，微信扫码关注：
+
+<img src="https://firlab.app/wechat-official-account.jpg" width="180" alt="微信公众号「六月水蓝」的二维码" />
 
 ## 致谢
 
