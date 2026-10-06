@@ -18,6 +18,8 @@ pub struct Settings {
     pub general: General,
     pub automation: Automation,
     pub plugin: PluginSettings,
+    /// The build panel and where its numbers come from (`builds`).
+    pub builds: BuildSettings,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
@@ -123,12 +125,26 @@ pub struct Automation {
     pub bench: BenchRule,
     /// The kinds of game each rule acts in; a switched-on rule does nothing elsewhere.
     pub scopes: Scopes,
+    /// Runes and summoner spells, remembered per champion and mode and set up again (`loadout`).
+    pub loadout: LoadoutRule,
+    /// Experimental: write winer's item set for a champion once it is locked in (`loadout`).
+    pub item_sets: bool,
 }
 
 impl Automation {
     /// Whether to go back to the lobby after a game of `mode`.
     pub fn plays_again(&self, mode: Option<Mode>) -> bool {
         self.play_again && self.scopes.covers(Scoped::PlayAgain, mode)
+    }
+
+    /// Whether runes and spells are remembered and set up again in a game of `mode`.
+    pub fn restores_loadout(&self, mode: Option<Mode>) -> bool {
+        self.loadout.enabled && self.scopes.covers(Scoped::Loadout, mode)
+    }
+
+    /// Whether winer's item set is written by itself in a game of `mode`.
+    pub fn writes_item_sets(&self, mode: Option<Mode>) -> bool {
+        self.item_sets && self.scopes.covers(Scoped::ItemSets, mode)
     }
 }
 
@@ -182,17 +198,36 @@ pub enum Scoped {
     Callout,
     Bench,
     PlayAgain,
+    Loadout,
+    ItemSets,
 }
 
 impl Scoped {
     /// The kinds of game the rule can act in at all: nobody picks or bans in ARAM, and only ARAM
-    /// has a bench.
+    /// has a bench. Arena has no rune page and hands everyone the same two spells (the client's
+    /// spell list offers `CHERRY` two, both fixed), so there is no loadout to set up there.
     pub fn applicable(self) -> &'static [Mode] {
         const PICKED: [Mode; 4] = [Mode::Ranked, Mode::Normal, Mode::Arena, Mode::Other];
+        const LOADOUT: [Mode; 5] = [
+            Mode::Ranked,
+            Mode::Normal,
+            Mode::Aram,
+            Mode::Hextech,
+            Mode::Other,
+        ];
+        const ITEM_SETS: [Mode; 5] = [
+            Mode::Ranked,
+            Mode::Normal,
+            Mode::Aram,
+            Mode::Hextech,
+            Mode::Arena,
+        ];
         match self {
             Self::Pick | Self::Ban => &PICKED,
             Self::Bench => &[Mode::Aram, Mode::Hextech],
             Self::Accept | Self::Callout | Self::PlayAgain => &Mode::ALL,
+            Self::Loadout => &LOADOUT,
+            Self::ItemSets => &ITEM_SETS,
         }
     }
 }
@@ -208,6 +243,8 @@ pub struct Scopes {
     pub callout: Vec<Mode>,
     pub bench: Vec<Mode>,
     pub play_again: Vec<Mode>,
+    pub loadout: Vec<Mode>,
+    pub item_sets: Vec<Mode>,
 }
 
 impl Default for Scopes {
@@ -220,6 +257,8 @@ impl Default for Scopes {
             callout: all(Scoped::Callout),
             bench: all(Scoped::Bench),
             play_again: all(Scoped::PlayAgain),
+            loadout: all(Scoped::Loadout),
+            item_sets: all(Scoped::ItemSets),
         }
     }
 }
@@ -233,6 +272,8 @@ impl Scopes {
             Scoped::Callout => &self.callout,
             Scoped::Bench => &self.bench,
             Scoped::PlayAgain => &self.play_again,
+            Scoped::Loadout => &self.loadout,
+            Scoped::ItemSets => &self.item_sets,
         }
     }
 
@@ -255,6 +296,8 @@ impl Scopes {
             (Scoped::Callout, &mut self.callout),
             (Scoped::Bench, &mut self.bench),
             (Scoped::PlayAgain, &mut self.play_again),
+            (Scoped::Loadout, &mut self.loadout),
+            (Scoped::ItemSets, &mut self.item_sets),
         ] {
             let chosen = std::mem::take(modes);
             *modes = rule
@@ -490,6 +533,56 @@ impl Default for PluginSettings {
     }
 }
 
+// Runes, spells, builds and item sets (`loadout`, `builds`).
+
+/// In champ select, set up the runes and summoner spells last played on the champion in this kind
+/// of game, once the champion is locked in.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LoadoutRule {
+    pub enabled: bool,
+    /// With nothing remembered for the champion, use the client's own recommended page.
+    pub recommended: bool,
+}
+
+impl Default for LoadoutRule {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            recommended: true,
+        }
+    }
+}
+
+/// The build panel: what players take on a champion, from public statistics.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BuildSettings {
+    /// Off, the panel is hidden and nothing is fetched.
+    pub enabled: bool,
+    /// Where Summoner's Rift numbers come from.
+    pub rift_source: RiftSource,
+}
+
+impl Default for BuildSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            rift_source: RiftSource::Tencent,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum RiftSource {
+    /// The Tencent shards' own statistics (腾讯 101), the user's own server.
+    #[default]
+    Tencent,
+    /// OP.GG's global statistics.
+    OpGg,
+}
+
 impl Settings {
     /// Clamps every value into range. Applied to anything read from disk or sent by the window.
     pub fn normalized(mut self) -> Self {
@@ -720,6 +813,45 @@ mod tests {
         let old: Settings =
             serde_json::from_str(r#"{"automation":{"pick":{"enabled":true}}}"#).unwrap();
         assert_eq!(old.automation.scopes, Scopes::default());
+    }
+
+    #[test]
+    fn loadouts_and_item_sets_start_off_and_act_only_where_they_can() {
+        let settings = Settings::default();
+        let automation = &settings.automation;
+        assert!(!automation.loadout.enabled && automation.loadout.recommended);
+        assert!(!automation.item_sets);
+        assert!(
+            settings.builds.enabled,
+            "the panel only reads public numbers"
+        );
+        assert_eq!(settings.builds.rift_source, RiftSource::Tencent);
+        assert!(
+            !Scoped::Loadout.applicable().contains(&Mode::Arena),
+            "Arena has no rune page and fixed spells"
+        );
+        assert!(!Scoped::ItemSets.applicable().contains(&Mode::Other));
+
+        let mut on = Settings::default();
+        on.automation.loadout.enabled = true;
+        on.automation.item_sets = true;
+        on.automation.scopes.loadout = vec![Mode::Arena, Mode::Aram, Mode::Ranked];
+        let on = on.normalized();
+        assert_eq!(on.automation.scopes.loadout, vec![Mode::Ranked, Mode::Aram]);
+        assert!(on.automation.restores_loadout(Some(Mode::Aram)));
+        assert!(!on.automation.restores_loadout(Some(Mode::Normal)));
+        assert!(
+            !on.automation.restores_loadout(None),
+            "narrowed, so not where unknown"
+        );
+        assert!(on.automation.writes_item_sets(Some(Mode::Arena)));
+        assert!(!on.automation.writes_item_sets(Some(Mode::Other)));
+
+        // A file from before these existed keeps them off and scoped everywhere they can act.
+        let old: Settings =
+            serde_json::from_str(r#"{"automation":{"scopes":{"accept":["ranked"]}}}"#).unwrap();
+        assert_eq!(old.automation.scopes.loadout, Scoped::Loadout.applicable());
+        assert_eq!(old.builds, BuildSettings::default());
     }
 
     #[test]

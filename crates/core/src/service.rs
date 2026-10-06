@@ -1,6 +1,8 @@
 //! The connection to the client and everything that follows from it: one loop that finds the
 //! client, mirrors its state into a [`Snapshot`] and acts on it for the user.
 
+mod loadout;
+
 use std::{
     collections::HashMap,
     io,
@@ -112,6 +114,8 @@ struct Inner {
     assets: Mutex<HashMap<String, Arc<Asset>>>,
     /// Augment descriptions, per language, fetched at most once per run.
     augment_details: tokio::sync::Mutex<HashMap<Language, Arc<Vec<AugmentDetail>>>>,
+    /// Remembered runes and spells, and the build panel's numbers (`loadout`).
+    loadout: loadout::LoadoutState,
 }
 
 /// One live connection to one client process.
@@ -142,6 +146,8 @@ struct Live {
     /// Bench swaps tried per champion, and one in flight.
     swaps: HashMap<i64, u8>,
     swapping: bool,
+    /// What was set up for the champion in hand, and the champ select to remember (`loadout`).
+    loadout: loadout::LoadoutLive,
 }
 
 impl Live {
@@ -186,6 +192,9 @@ impl Service {
     /// A service whose background work runs on `runtime`. Nothing happens until [`Self::start`].
     pub fn new(settings_path: impl Into<PathBuf>, runtime: Handle) -> Self {
         let (events, _) = broadcast::channel(256);
+        let settings_path = settings_path.into();
+        // Remembered setups live in a file of their own beside the settings.
+        let loadouts = settings_path.with_file_name("loadouts.json");
         Self {
             inner: Arc::new(Inner {
                 settings: SettingsStore::open(settings_path),
@@ -197,6 +206,7 @@ impl Service {
                 player_slots: Semaphore::new(4),
                 assets: Mutex::new(HashMap::new()),
                 augment_details: tokio::sync::Mutex::new(HashMap::new()),
+                loadout: loadout::LoadoutState::new(loadouts),
             }),
         }
     }
@@ -764,6 +774,7 @@ impl Service {
     async fn on_phase(&self, client: &Client, phase: Phase) {
         lock(&client.live).phase = phase;
         self.patch(Patch::Phase(phase));
+        self.loadout_phase(client, phase);
         if phase != Phase::ChampSelect {
             self.on_champ_select(client, None);
         }
@@ -866,6 +877,7 @@ impl Service {
         }
         self.render(client);
         self.automate(client);
+        self.loadout_champ_select(client, &session);
     }
 
     fn on_gameflow(&self, client: &Client, session: Option<GameflowSession>) {

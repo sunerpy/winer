@@ -4,7 +4,7 @@
 
 use ts_rs::{Config, TS};
 
-use crate::{bridge, plugin, settings, view};
+use crate::{bridge, builds, loadout, plugin, settings, view};
 
 pub fn typescript() -> String {
     let config = Config::new().with_large_int("number");
@@ -88,6 +88,27 @@ pub fn typescript() -> String {
         bridge::BridgeMessage,
         bridge::PluginMessage,
         bridge::LogLevel,
+    );
+    // Runes, spells, builds and item sets.
+    declare!(
+        settings::LoadoutRule,
+        settings::BuildSettings,
+        settings::RiftSource,
+        loadout::LoadoutSummary,
+        loadout::PageOutcome,
+        builds::BuildSource,
+        builds::Build,
+        builds::Rates,
+        builds::SpellOption,
+        builds::RunePage,
+        builds::RuneOption,
+        builds::ItemOption,
+        builds::Ability,
+        builds::SkillOrder,
+        builds::Matchup,
+        builds::Matchups,
+        builds::AugmentTier,
+        builds::AugmentOption,
     );
     out
 }

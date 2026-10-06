@@ -485,6 +485,17 @@ pub struct PerkStyle {
     pub id: i64,
     pub name: String,
     pub icon_path: String,
+    /// The keystones, three rows of runes and three of shards, in page order.
+    pub slots: Vec<PerkSlot>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PerkSlot {
+    /// `kKeyStone`, `kMixedRegularSplashable` or `kStatMod`.
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub perks: Vec<i64>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
