@@ -26,9 +26,8 @@ import { PageBody } from "./common";
 const WISHLIST_LIMIT = 20;
 /** The core's default line (`callout::template`), shown as the placeholder of a blank template. */
 const DEFAULT_TEMPLATE: Record<"zh-CN" | "en", string> = {
-  "zh-CN":
-    "{standing}：{champion} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}",
-  en: "{standing}: {champion} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}",
+  "zh-CN": "{standing}：{seat} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}",
+  en: "{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}",
 };
 
 /** Where a rule acts: one switch per kind of game it can act in at all. */

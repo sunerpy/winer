@@ -44,6 +44,8 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
         // A client came up: set up the loader and the plugin, and point it at this session's
         // bridge. A loader linked just now starts with the client's interface, which is restarted
         // for it while the player is idle; otherwise it starts with the client's next launch.
+        // Only an administrator can create the link: without those rights winer restarts
+        // elevated, as for an elevated client, and the elevated copy links on its connection.
         Event::Update(update)
             if matches!(
                 update.patch,
@@ -52,15 +54,18 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
         {
             let (app, service, bridge) = (app.clone(), service.clone(), bridge.clone());
             tauri::async_runtime::spawn(async move {
-                let linked = {
+                let outcome = {
                     let (app, service) = (app.clone(), service.clone());
                     tauri::async_runtime::spawn_blocking(move || {
                         plugin_host::refresh(&service, &bridge, &app.state::<plugin_host::Host>())
                     })
                     .await
-                    .unwrap_or(false)
+                    .unwrap_or_default()
                 };
-                if linked {
+                if outcome.needs_elevation {
+                    elevation::ask_once(&app, "only an administrator can link the loader");
+                }
+                if outcome.linked {
                     match service.restart_client_ui_when_idle().await {
                         Ok(true) => info!("client interface restarted to load the new loader"),
                         Ok(false) => info!("the loader starts with the client's next launch"),
@@ -73,7 +78,7 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
         Event::Update(update)
             if matches!(update.patch, Patch::Connection(Connection::AccessDenied)) =>
         {
-            elevation::ask_once(app);
+            elevation::ask_once(app, "the client runs elevated");
         }
         Event::Settings(settings) => tray::sync(app, settings),
         _ => {}

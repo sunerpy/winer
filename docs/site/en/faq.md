@@ -16,8 +16,14 @@ lobby, then look at the status bar at the bottom of the window:
 
 winer reads the client's local API address and credentials from the client's process. When the
 client runs as administrator, Windows does not let a program without those rights read it, so winer
-needs them too, and asks for them when it finds out. When the client runs without them, so can
-winer. The same rights let winer activate the Pengu Loader it ships in the client folder.
+needs them too, and asks for them when it finds out. When the client runs without them, winer
+connects to it without them as well.
+
+The first activation of the Pengu Loader winer ships needs administrator rights once too: it creates
+a link in the client folder, and Windows lets only an administrator create one. When winer is not
+running as administrator it asks to restart that way by itself; once the link exists, winer keeps
+using it without administrator rights. See
+[In-client](/en/guide/client#the-first-activation-needs-administrator-rights).
 
 ## Can it get my account banned
 

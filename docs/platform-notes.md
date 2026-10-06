@@ -118,6 +118,12 @@ Measured on NJ100, 16.19, 2026-10-05.
   `version.dll` only when its interface process starts, so a new link waits for
   `/riotclient/kill-and-restart-ux` or the next launch. The loader writes its `config` and an
   encoded `datastore` beside `core.dll`.
+- Without elevation the link fails with `os error 1314` (`ERROR_PRIVILEGE_NOT_HELD`), which a
+  Chinese Windows words as 客户端没有所需的特权 ("a required privilege is not held by the client"):
+  the client there is the calling process, winer, not League. Reported by the owner from a fresh,
+  non-elevated Windows install running 0.0.2, where winer had connected to the client without
+  elevation. winer now restarts elevated once for it (as for an elevated client); a link that
+  exists needs no rights to be used.
 - Pengu's own interface lives in `#pengu-root` (in `#lol-uikit-layer-manager`) behind an **open**
   shadow root, mounted on window load. It shows a welcome dialog while `DataStore` key
   `pengu-welcome` is not `false`, otherwise a "Pengu Loader is active!" toast (7 s) on every start,
