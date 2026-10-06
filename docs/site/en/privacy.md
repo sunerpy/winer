@@ -22,11 +22,13 @@ settings file or a log.
 
 ## What stays on your computer
 
-| What                        | Where                                       |
-| --------------------------- | ------------------------------------------- |
-| Settings                    | `%APPDATA%\app.winer.desktop\settings.json` |
-| Remembered runes and spells | `%APPDATA%\app.winer.desktop\loadouts.json` |
-| Logs                        | `%LOCALAPPDATA%\app.winer.desktop\logs`     |
+| What                                | Where                                            |
+| ----------------------------------- | ------------------------------------------------ |
+| Settings                            | `%APPDATA%\app.winer.desktop\settings.json`      |
+| Remembered runes and spells         | `%APPDATA%\app.winer.desktop\loadouts.json`      |
+| Game settings backups (up to 10)    | `%LOCALAPPDATA%\app.winer.desktop\game-settings` |
+| The bundled Pengu Loader and plugin | `%LOCALAPPDATA%\app.winer.desktop\pengu`         |
+| Logs                                | `%LOCALAPPDATA%\app.winer.desktop\logs`          |
 
 ## The client plugin
 

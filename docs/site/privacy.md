@@ -18,11 +18,13 @@ winer 没有账号，不收集使用数据，也没有自己的服务器。它�
 
 ## 保存在本机的数据
 
-| 内容                   | 位置                                        |
-| ---------------------- | ------------------------------------------- |
-| 设置                   | `%APPDATA%\app.winer.desktop\settings.json` |
-| 记住的符文和召唤师技能 | `%APPDATA%\app.winer.desktop\loadouts.json` |
-| 日志                   | `%LOCALAPPDATA%\app.winer.desktop\logs`     |
+| 内容                       | 位置                                             |
+| -------------------------- | ------------------------------------------------ |
+| 设置                       | `%APPDATA%\app.winer.desktop\settings.json`      |
+| 记住的符文和召唤师技能     | `%APPDATA%\app.winer.desktop\loadouts.json`      |
+| 游戏设置备份（最多 10 份） | `%LOCALAPPDATA%\app.winer.desktop\game-settings` |
+| 内置的 Pengu Loader 与插件 | `%LOCALAPPDATA%\app.winer.desktop\pengu`         |
+| 日志                       | `%LOCALAPPDATA%\app.winer.desktop\logs`          |
 
 ## 客户端插件
 

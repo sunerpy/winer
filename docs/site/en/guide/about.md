@@ -8,7 +8,15 @@
   shown in **Settings › About**.
 - [Tauri](https://tauri.app) and the Rust and React open-source ecosystems, which winer's window
   and core are built on.
-- [ARAM.GG](https://aramgg.com), for what Hextech ARAM's augments do.
+- [ARAM.GG](https://aramgg.com), for what Hextech ARAM's augments do, and Hextech ARAM augment
+  statistics when Tencent's cannot be read.
+- Tencent's League of Legends companion app and its public game statistics: builds, runes, summoner
+  spells, skill orders, matchups and augments for Summoner's Rift and Hextech ARAM, from games on
+  the Chinese servers.
+- [OP.GG](https://www.op.gg), for ARAM and Arena builds and augments, and as an optional source for
+  Summoner's Rift.
+- [WeGame](https://www.wegame.com.cn): the game score's weights were calibrated on WeGame's public MVP
+  and SVP results; its formula is not used.
 
 ## Disclaimer
 
@@ -25,6 +33,12 @@
 - Rank disguise changes only the rank friends see in the friends list and on your hover card; your
   real rank, matchmaking and your own profile in the client do not change. What friends see then is
   not your real rank: do not use it to mislead anyone.
+- Build, rune, summoner spell, skill order and augment recommendations come from the third-party
+  public statistics listed above, and winer does not guarantee they are accurate or current. Those
+  sources are not offered for third-party tools and may change or stop at any time; the panels then
+  say the numbers cannot be read.
+- Setting up runes and summoner spells and writing item sets change the client only once you switch
+  the matching rule on; both are off by default.
 - winer is provided "as is" under the MIT licence, without warranty of any kind; its authors are not
   liable for any loss from its use.
 
