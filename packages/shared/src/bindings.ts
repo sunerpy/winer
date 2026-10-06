@@ -149,13 +149,44 @@ matches: Array<RecentMatch>,
 /**
  * Most played first.
  */
-champions: Array<ChampionForm>, };
+champions: Array<ChampionForm>, 
+/**
+ * The recent strength, 0–10 (`rating::strength`); absent without a counted game.
+ */
+score: number | null, 
+/**
+ * How the counted games were scored; absent when none could be.
+ */
+source: FormSource | null, 
+/**
+ * The kind of game the figures were narrowed to, the one being played; absent when they read
+ * every kind (`analysis::recent_form`).
+ */
+family: ModeFamily | null, 
+/**
+ * Counted games in which someone else left or idled, which weigh less in the strength.
+ */
+away: number, };
 
 export type RecentMatch = { gameId: number, queueId: number, championId: number, win: boolean, remake: boolean, kills: number, deaths: number, assists: number, 
 /**
  * Epoch milliseconds.
  */
-startedAt: number, };
+startedAt: number, 
+/**
+ * 0–10, the game's score as the strength reads it: against the game's other players, or
+ * against the mode's average where only this player's row is known (`RecentForm::source`).
+ * Absent for a remake and a mode with no average.
+ */
+score: number | null, 
+/**
+ * Someone else in the game left or idled (the shard's server says so).
+ */
+away: boolean, };
+
+export type FormSource = "full" | "lite";
+
+export type ModeFamily = "rift" | "aram" | "arena" | "other";
 
 export type ChampionForm = { championId: number, games: number, wins: number, };
 
@@ -459,7 +490,8 @@ header: string,
 /**
  * One line per player, with `{standing}`, `{seat}` (the place in champ select's list: `1L`,
  * `P1`), `{name}`, `{champion}`, `{games}`, `{winRate}`, `{kda}`, `{score}`, `{title}` and
- * `{quip}`. Empty means the language's default (`callout::template`).
+ * `{quip}`; a value left blank (a hidden name) takes the brackets around it with it. Empty
+ * means the language's default (`callout::template`).
  */
 template: string, 
 /**

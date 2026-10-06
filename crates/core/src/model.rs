@@ -263,6 +263,10 @@ pub struct Participant {
     pub spell2_id: i64,
     pub stats: Stats,
     pub timeline: Timeline,
+    /// The position the game settled on (`TOP` … `UTILITY`), which only the shard's server sends
+    /// (`teamPosition`); empty in the client's own documents and in modes without positions. The
+    /// timeline's lane and role are an older guess, often wrong.
+    pub team_position: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]

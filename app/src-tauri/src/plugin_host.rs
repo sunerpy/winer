@@ -11,6 +11,7 @@ use winer_core::{
     CoreError, Service,
     bridge::Bridge,
     plugin::{self, Linked, Loader, PluginStatus},
+    service::UiRestart,
 };
 
 use crate::{PENGU_CORE, PENGU_VERSION, PLUGIN_BUNDLE, elevation};
@@ -199,6 +200,29 @@ pub(crate) fn refresh(service: &Service, bridge: &Bridge, host: &Host) -> Outcom
         Err(error) => warn!(%error, "plugin bootstrap not written"),
     }
     outcome
+}
+
+/// Starts a loader linked just now. The client loads it only as its interface starts, so the
+/// interface is restarted for it once the client has finished starting with the player idle, and
+/// brought up again afterwards (`Service::restart_client_ui_when_idle`). That can take minutes, so
+/// it runs on a task of its own: the caller may be a command the window waits on.
+pub(crate) fn start_loader(service: &Service) {
+    let service = service.clone();
+    tauri::async_runtime::spawn(async move {
+        match service.restart_client_ui_when_idle().await {
+            Ok(UiRestart::Restarted { plugin_back, shown }) => info!(
+                plugin_back = plugin_back,
+                shown = shown,
+                "client interface restarted to load the new loader"
+            ),
+            Ok(UiRestart::NotSettled(last)) => info!(
+                signed_in = last.signed_in,
+                phase = ?last.phase,
+                "the client did not settle in time; the loader starts with its next launch"
+            ),
+            Err(error) => warn!(%error, "client interface not restarted"),
+        }
+    });
 }
 
 /// Links a loader into the client unless one already is: the configured folder's, or the one

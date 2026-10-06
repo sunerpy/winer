@@ -232,8 +232,9 @@ async fn get_plugin_status<R: Runtime>(app: AppHandle<R>) -> Result<PluginStatus
 }
 
 /// Turns the in-client features on. A loader linked just now starts with the client's interface,
-/// which is restarted for it while the player is idle. A link only an administrator may create
-/// restarts winer elevated, once per run; the status returned says so meanwhile.
+/// which is restarted for it in the background once the client has finished starting with the
+/// player idle (`plugin_host::start_loader`). A link only an administrator may create restarts
+/// winer elevated, once per run; the status returned says so meanwhile.
 #[tauri::command]
 async fn enable_plugin<R: Runtime>(app: AppHandle<R>) -> Result<PluginStatus> {
     let (service, bridge) = (service(&app), app.state::<Bridge>().inner().clone());
@@ -245,10 +246,8 @@ async fn enable_plugin<R: Runtime>(app: AppHandle<R>) -> Result<PluginStatus> {
     if outcome.needs_elevation {
         elevation::ask_once(&app, "only an administrator can link the loader");
     }
-    if outcome.linked
-        && let Err(error) = service.restart_client_ui_when_idle().await
-    {
-        tracing::warn!(%error, "client interface not restarted");
+    if outcome.linked {
+        plugin_host::start_loader(&service);
     }
     Ok(status)
 }

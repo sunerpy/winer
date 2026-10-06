@@ -13,9 +13,11 @@ The first time winer connects to the client, it:
    administrator create such a link, so the first activation needs administrator rights once (see
    the next section);
 2. installs winer's plugin, which then updates with winer;
-3. reloads the client UI once, while the client is idle (no lobby, queue, champ select or game), so
-   the plugin starts at once; otherwise it starts with the client's next launch. Reloading restarts
-   only the client's interface process; your sign-in is not affected.
+3. reloads the client UI once, after the client has finished signing in and while it is idle (no
+   lobby, queue, champ select or game), so the plugin starts at once, and brings the client's window
+   back up afterwards; if the client does not become idle within two minutes, the plugin starts with
+   the client's next launch. Reloading restarts only the client's interface process; your sign-in is
+   not affected.
 
 Pengu Loader's own welcome window and start-up notices do not appear. If Pengu Loader is already
 installed, winer keeps using yours and only installs the plugin. If the client folder already has a

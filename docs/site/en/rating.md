@@ -16,19 +16,87 @@ reproduce the client's, WeGame's or another tool's ratings. The scheme and the t
 
 ## Recent form (0–10)
 
-- The newest 20 games played against other players among the recent games the client lists. Custom
-  games (the practice tool included) and games against the computer are left out and take no place
-  among the 20. Which games are against the computer is the client's own queue catalog's word: queues
-  in its co-op vs AI category, and queues whose type names the computer as the opponent (Doom Bots,
-  for one); the tutorial counts as well. The Tencent client lists its latest 20 to 30 games only, so
-  with many of these the count is below 20.
-- Remakes among the 20 are shown, and count toward no win, KDA, streak or form.
-- Half win rate, half KDA: `10 × (0.5 × win rate + 0.5 × (1 − e^(−KDA/3)))`. KDA 3.0 counts as
-  0.63, 6.0 as 0.86.
-- Few games pull it toward 5.0: `form = c × raw + (1 − c) × 5.0`, with `c = games / (games + 5)`, so
-  one or two lucky games cannot rank first.
+Recent form reads how each game was played, not only wins and KDA: the score of every one of the last
+20 games (see one game's score, below), averaged with weights, then read as a place among players. 5.0 is the average player, 9.0 better than nine in ten.
 
-For reference: twenty games at half won and KDA 3 is about 5.5; half won at KDA 4.3 is about 6.0.
+### Which games
+
+- The newest 20 games played against other players. Custom games (the practice tool included) and
+  games against the computer are left out and take no place among the 20. Which games are against
+  the computer is the client's own queue catalog's word: queues in its co-op vs AI category, and
+  queues whose type names the computer as the opponent (Doom Bots, for one); the tutorial counts as
+  well.
+- Remakes among the 20 are shown, and count toward no win, KDA, streak or form.
+- In champ select, in game and in a lobby only the mode being played counts: Summoner's Rift
+  (ranked, normal, quickplay) apart from ARAM (classic and Hextech), Arena and the rotating modes
+  each on their own. While that mode has fewer than 5 of the recent games, every mode counts. The
+  History page reads every mode.
+- The games come from the shard's match-history server first, the newest 20 with all ten players
+  of each; where it cannot be read (a shard other than Tencent's, or the server failing) from the
+  client's own list, which holds the player's own row of each game only. A Tencent client's list
+  holds 5 games right after signing in, 20 a few minutes later.
+
+### Each game's score
+
+- With all ten players known, it is the scoreboard's score: the line against the game's other
+  players.
+- With the player's own row only, the line is set against the average player of the same mode over
+  the same minutes, with the same weights. That average was measured on real games (4,590 Rift
+  lines, 8,370 of the two ARAMs, October 2026). It cannot tell a bloody game from a quiet one, so it
+  agrees less with WeGame's score: on 155 Hextech ARAM games the rank correlation is 0.83 against
+  the game's players and 0.69 alone. Read that way, games are also pulled toward the average harder.
+  In Arena and other modes without an average, such a game counts its result only.
+- Each score is then set against its position or champion role. On the Rift a support's line scores
+  5.24 on average and a jungler's 6.49, which says nothing about who plays better; in ARAM, where the
+  champion is drawn, a support champion's line scores 6.44 and an assassin's 5.69. So each game first
+  gets an offset that brings every position and role to the same average:
+
+  | Rift position | Top   | Jungle | Middle | Bottom | Support |
+  | ------------- | ----- | ------ | ------ | ------ | ------- |
+  | Offset        | +0.16 | −0.46  | −0.07  | −0.41  | +0.79   |
+
+  | ARAM role | Tank  | Support | Mage  | Assassin | Marksman | Fighter |
+  | --------- | ----- | ------- | ----- | -------- | -------- | ------- |
+  | Offset    | +0.08 | −0.61   | −0.15 | +0.14    | +0.13    | +0.05   |
+
+  The position is the one the match-history server records; with the client's list only, it is read
+  from the lane that list records, and with none found there is no offset. The role is the
+  champion's first in the client's champion list.
+
+### Putting it together
+
+1. **Weighted average**: the newest game weighs 1 and each older one 0.93 times the next, so about
+   ten games halve a game's weight. A game in which someone else left or idled (on either side; the
+   player's own leaving does not count) weighs 0.4 times as much again.
+2. **Pulled toward the average**: `performance = c × weighted average + (1 − c) × average line`,
+   with `c = n / (n + k)`. `n` is how many whole games the weights add up to, `(Σw)² / Σw²`, about 17
+   for twenty games; `k` is 25 on the Rift and 10 in ARAM, 1.4 times that with the player's own rows
+   only. It is larger on the Rift because Rift scores swing more: one player's games scatter about
+   1.81 around their own level (1.20 in ARAM), while players' levels differ by only 0.34 (0.41), so
+   twenty Rift games say less than twenty ARAM games. The average line is the score of a game's
+   average player once set against position or role: 6.04 on the Rift, 5.83 in ARAM.
+3. **The win rate counts a twentieth**: `raw form = 0.95 × performance + 0.05 × 10 × (wins + 5) /
+(games + 10)`. A game's score already holds what wins games (gold, kills, staying alive), so the
+   result itself only corrects it, and only after five wins and five losses are added: two wins of
+   two count as 58%.
+4. **Read as a place among players**: the raw form is set on a normal curve centred on a player with
+   an average line in every game and half of them won, as wide as the measured players' raw forms
+   spread: 0.232 on the Rift and 0.300 in ARAM, 0.189 and 0.255 with the player's own rows only. The
+   share of players below, times ten, is the form: 5.0 the average player, 7.0 better than seven in
+   ten, 9.5 better than 95%.
+5. **Recent trend**: with ten or more scored games, a tenth of how far the newest five average above
+   or below the fifteen before them is added, at most ±0.2.
+
+For reference: on the Rift, a 6.04 in every game with half of them won is 5.0; 7.0 in every game is
+9.4, and 5.0 in every game is 0.4.
+
+Every number above was measured. In October 2026, 70 real players on one Tencent shard were sampled
+with their newest 20 games each: 40 met in Hextech ARAM and 30 met on Summoner's Rift. Only each
+game's numbers were kept, no names, ids or times (`fixtures/sgp/players.json`), and the tests check
+every constant above against them. The game score itself is unchanged: on 155 Hextech ARAM games
+WeGame scored, it orders each game's ten players with a rank correlation of 0.85 to WeGame's, and its
+MVP is WeGame's in 78% of them and its SVP in 72%. Adding experience, healing on teammates and the
+like brought no improvement that would show.
 
 ## Schemes
 
@@ -49,11 +117,13 @@ from 0) lands in the tier that `(k + ½) / players × tiers` falls in. Five play
 one each, five in three tiers split 2 / 1 / 2, four in five leave the middle tier empty. A player
 whose history is hidden or failed to load gets no tier.
 
-**Rift grades** compares nobody: each player's own recent form decides.
+**Rift grades** compares nobody: each player's own recent form decides. The form is already a place
+among players, so each grade holds a fixed share of them:
 
-| Grade | S+    | S     | A     | B     | C     | D     | E     | F     |
-| ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- |
-| Form  | ≥ 7.6 | ≥ 6.8 | ≥ 5.9 | ≥ 5.3 | ≥ 4.8 | ≥ 4.3 | ≥ 3.8 | < 3.8 |
+| Grade            | S+    | S     | A     | B     | C     | D     | E     | F     |
+| ---------------- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- |
+| Form             | ≥ 9.5 | ≥ 8.5 | ≥ 7.0 | ≥ 5.0 | ≥ 3.0 | ≥ 1.5 | ≥ 0.5 | < 0.5 |
+| Share of players | 5%    | 10%   | 15%   | 20%   | 20%   | 15%   | 10%   | 5%    |
 
 ### One player alone
 
@@ -107,16 +177,23 @@ and F 💀. Emoji show in the client's chat only; lines typed in a game have non
 
 - The first line names your side and "winer rating", followed by the opening line if you wrote one;
   the rich style puts 📢 before it.
+- In Chinese, names, titles and the opening line sit in 【】, and so do champions in the in-game
+  lines: the client's chat masks some words, and it reads across spaces and some punctuation,
+  joining the characters of neighbouring fields. The tier 上等马, a space and the name 会跑路的防御塔
+  hold 马会, which gets masked; the brackets keep the two apart. A hidden name drops its brackets
+  too.
 - `{seat}` is the teammate's place in your team's list in champ select, counted from the top: P1 to
   P5 (1L to 5L in Chinese). A line names the seat and the player, not the champion: champions can
   still change during champ select, seats do not.
-- `{title}` is the recent-form title, empty without one; `{quip}` is the tier's quip. Every tier of
-  the built-in schemes has one (Rift five has three per tier in Chinese), picked per player and per
-  game: the same throughout one champ select, likely another the next game. Custom names have none.
+- `{title}` is the recent-form title in brackets, empty without one; `{quip}` is the tier's quip.
+  Every tier of the built-in schemes has one (Rift five has three per tier in Chinese), picked per
+  player and per game: the same throughout one champ select, likely another the next game. Custom
+  names have none.
 - The line template and the opening line are edited in **Automation › Callout**, with these
   placeholders: `{emoji}` `{standing}` `{seat}` `{name}` `{champion}` `{games}` `{winRate}` `{kda}`
   `{score}` `{title}` `{quip}`. A template of your own is used in either style. It can still use
-  `{champion}`: the champion the teammate has picked or shown when the callout is sent.
+  `{champion}`: the champion the teammate has picked or shown when the callout is sent. A
+  placeholder in 【】, 「」, () or [] that has no value takes its brackets with it.
 
 ### Lines in game
 
@@ -141,7 +218,7 @@ Go after {champion}: {standing}, {winRate} in {games} games
 ```
 
 The first two are about the enemies, the third is the line for each teammate; in the compact
-style a teammate's line is `{standing} {champion} | {winRate} | KDA {kda} | form {score}`. The enemy lines open
+style a teammate's line is `{standing} [{champion}] | {winRate} | KDA {kda} | form {score}`. The enemy lines open
 with the enemy's side and "winer rating", for example "[Enemy · Red side] winer rating"; your
 team's with "[My team · Blue side] winer rating". In a game the champions are settled and are how
 players are told apart, so the defaults name the champion alone, or the name where the champion is
@@ -166,8 +243,10 @@ fitted on: 5.1 / 5.2 / 7.5 a player a game on Summoner's Rift, 11.1 / 11.1 / 25.
 "×1.3" below means 1.3 times that average. Modes without an average (Arena and others) take no part
 in these, and they are read only from five such games or more.
 
-The first rule of the tier's own that holds; failing those, the rules for any tier; failing those
-too, the last row.
+The first rule of the tier's own that holds; failing those, the rules for any tier, then how steady
+the games were; failing those too, the last row. "Swing" is how far the game scores scatter around
+the player's own average, against an ordinary player's (the measured players' median), from 8 scored
+games.
 
 | Tier             | Rule                                              | Title                                                      |
 | ---------------- | ------------------------------------------------- | ---------------------------------------------------------- |
@@ -185,6 +264,8 @@ too, the last row.
 | below the middle | a third of the games won or fewer, over 8 or more | Rift Tourist                                               |
 | any tier         | kills and deaths both ×1.2 or more                | One-for-one Trader                                         |
 | any tier         | assists ×1.2 or more, kills ×0.85 or fewer        | Rift Philanthropist                                        |
+| above the middle | swing 0.8 times an ordinary player's or less      | Rock Solid                                                 |
+| at or below it   | swing 1.15 times an ordinary player's or more     | Slot Machine                                               |
 | none of those    | above / at / below the middle                     | Reliable Teammate / Business as Usual / Along for the Ride |
 
 ### Game titles (scoreboard)

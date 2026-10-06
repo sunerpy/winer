@@ -39,16 +39,21 @@ pub fn side_tag(side: Side, language: Language) -> &'static str {
 /// - Compact: the same fields in the same order on every line, the name last since names differ in
 ///   length, so a team's lines compare column by column.
 /// - Rich: the tier's emoji, the tier, the player, then the numbers, the title and the tier's quip.
+///
+/// The Chinese lines put the name in 【】: the client's chat filter reads through spaces and some
+/// punctuation, so the end of one field and the start of the next can make a word it masks
+/// (上等马 then 会跑路的防御塔 reads 马会). The brackets keep the two apart, and a hidden name takes
+/// its brackets with it (`line`).
 pub fn template(style: CalloutStyle, language: Language) -> &'static str {
     match (style, language) {
         (CalloutStyle::Compact, Language::ZhCn) => {
-            "{seat} {standing}｜胜率{winRate}｜KDA {kda}｜战力{score}｜{name}"
+            "{seat} {standing}｜胜率{winRate}｜KDA {kda}｜战力{score}｜【{name}】"
         }
         (CalloutStyle::Compact, Language::En) => {
             "{seat} {standing} | {winRate} | KDA {kda} | form {score} | {name}"
         }
         (CalloutStyle::Rich, Language::ZhCn) => {
-            "{emoji}{standing}：{seat} {name}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}"
+            "{emoji}{standing}：{seat}【{name}】，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}"
         }
         (CalloutStyle::Rich, Language::En) => {
             "{emoji}{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}"
@@ -56,47 +61,57 @@ pub fn template(style: CalloutStyle, language: Language) -> &'static str {
     }
 }
 
-/// The default lines of earlier versions: up to 0.0.2 they named the champion where the seat now
-/// stands, up to 0.0.3 they called the form score 评分 and ran the name into the numbers, and up
-/// to 0.0.4 there were no styles and no emoji.
-const FORMER_TEMPLATES: [(Language, &str); 6] = [
+/// The default lines of earlier versions, each with the style whose default it was (those from
+/// before there were styles count as the rich style's): up to 0.0.2 they named the champion where
+/// the seat now stands, up to 0.0.3 they called the form score 评分 and ran the name into the
+/// numbers, and up to 0.0.4 the Chinese lines left the name bare.
+const FORMER_TEMPLATES: [((CalloutStyle, Language), &str); 8] = [
     (
-        Language::ZhCn,
+        (CalloutStyle::Rich, Language::ZhCn),
         "{standing}：{champion} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}",
     ),
     (
-        Language::En,
+        (CalloutStyle::Rich, Language::En),
         "{standing}: {champion} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}",
     ),
     (
-        Language::ZhCn,
+        (CalloutStyle::Rich, Language::ZhCn),
         "{standing}：{seat} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}",
     ),
     (
-        Language::En,
+        (CalloutStyle::Rich, Language::En),
         "{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}",
     ),
     (
-        Language::ZhCn,
+        (CalloutStyle::Rich, Language::ZhCn),
         "{standing}：{seat} {name}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
     ),
     (
-        Language::En,
+        (CalloutStyle::Rich, Language::En),
         "{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}",
+    ),
+    (
+        (CalloutStyle::Compact, Language::ZhCn),
+        "{seat} {standing}｜胜率{winRate}｜KDA {kda}｜战力{score}｜{name}",
+    ),
+    (
+        (CalloutStyle::Rich, Language::ZhCn),
+        "{emoji}{standing}：{seat} {name}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
     ),
 ];
 
-/// The language whose former default line `template` is, character for character.
-pub(crate) fn former_default(template: &str) -> Option<Language> {
+/// The style and language whose former default line `template` is, character for character.
+pub(crate) fn former_default(template: &str) -> Option<(CalloutStyle, Language)> {
     former(&FORMER_TEMPLATES, template)
 }
 
-/// The language `template` is one of `formers` in, character for character.
-fn former(formers: &[(Language, &str)], template: &str) -> Option<Language> {
+/// What `template` is one of `formers` for (a language, or a style and a language), character for
+/// character.
+fn former<K: Copy>(formers: &[(K, &str)], template: &str) -> Option<K> {
     formers
         .iter()
         .find(|(_, former)| *former == template)
-        .map(|(language, _)| *language)
+        .map(|(key, _)| *key)
 }
 
 /// A player's place in their team as champ select lists it, counted from 1: `1L` in Chinese (the
@@ -392,9 +407,11 @@ pub fn title_name(title: FormTitle, language: Language) -> &'static str {
         Reaper => ["人头收割机", "Kill Collector"],
         Playmaker => ["团战发动机", "Teamfight Engine"],
         Winner => ["常胜将军", "Serial Winner"],
+        RockSolid => ["定海神针", "Rock Solid"],
         Reliable => ["靠谱队友", "Reliable Teammate"],
         Trader => ["一换一专业户", "One-for-one Trader"],
         Helper => ["峡谷慈善家", "Rift Philanthropist"],
+        SlotMachine => ["峡谷老虎机", "Slot Machine"],
         Steady => ["正常发挥", "Business as Usual"],
         GivingAway => ["排位慈善家", "Ranked Philanthropist"],
         Bodhisattva => ["电竞菩萨", "Esports Bodhisattva"],
@@ -450,10 +467,20 @@ pub fn lines(
     }
     let header = rule.header.trim();
     if !header.is_empty() {
-        first.push_str(" · ");
-        first.push_str(header);
+        first.push_str(&opening(header, language));
     }
     std::iter::once(first).chain(players).collect()
+}
+
+/// The opening line as the first line carries it after winer's name: in English after a dot; in
+/// Chinese in 【】, so that the chat's filter does not read the end of 战绩鉴定 and the start of the
+/// opening line as one word (`template`), unless it opens with a bracket of its own.
+fn opening(header: &str, language: Language) -> String {
+    match language {
+        Language::ZhCn if header.starts_with('【') => header.to_owned(),
+        Language::ZhCn => format!("【{header}】"),
+        Language::En => format!(" · {header}"),
+    }
 }
 
 /// The user's own template, or `default` where they left it blank.
@@ -587,12 +614,14 @@ fn line(
         ("{score}", format!("{:.1}", rating.score)),
         (
             "{title}",
-            // An English title brings its own space, so a line without one has no gap to leave.
+            // An English title brings its own space, so a line without one has no gap to leave. A
+            // Chinese one sits in 【】, which keep it apart from the quip after it for the chat's
+            // filter (`template`).
             rating.title.as_deref().map_or_else(String::new, |title| {
                 if title.is_ascii() {
                     format!(" [{title}]")
                 } else {
-                    format!("「{title}」")
+                    format!("【{title}】")
                 }
             }),
         ),
@@ -611,17 +640,49 @@ fn line(
     for (key, value) in values {
         text = text.replace(key, &value);
     }
-    // A blank value (no champion yet, a hidden name) must not leave a gap in the sentence:
-    // full-width punctuation takes no space on either side, and a comma none before it.
-    let mut text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    // A blank value (no champion yet, a hidden name) must not leave a gap in the sentence: the
+    // brackets it sat in go with it, full-width punctuation takes no space on either side, and a
+    // comma or a colon between words none before it.
+    let mut text = without_empty_brackets(&text)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     for mark in ["：", "，", "；"] {
         text = text
             .replace(&format!(" {mark}"), mark)
             .replace(&format!("{mark} "), mark);
     }
+    let text = text.replace(" ,", ",").replace(" : ", ": ");
     // Nor a column separator with nothing after it, where the compact line's name is hidden.
-    let text = text.replace(" ,", ",");
     Some(text.trim_end_matches(['｜', '|', ' ']).to_owned())
+}
+
+/// The brackets a line may hold a value in, opening and closing.
+const BRACKETS: [(char, char); 5] = [
+    ('【', '】'),
+    ('「', '」'),
+    ('[', ']'),
+    ('(', ')'),
+    ('（', '）'),
+];
+
+/// `text` without the pairs of brackets that hold nothing but spaces: what a blank value inside
+/// them leaves.
+fn without_empty_brackets(text: &str) -> String {
+    let mut kept = String::with_capacity(text.len());
+    for character in text.chars() {
+        let Some(&(open, _)) = BRACKETS.iter().find(|(_, close)| *close == character) else {
+            kept.push(character);
+            continue;
+        };
+        // A closing bracket whose opening one comes before it with only spaces between takes it
+        // away; any other is kept. An empty pair inside another leaves that one empty in turn.
+        match kept.trim_end().strip_suffix(open).map(str::len) {
+            Some(before) => kept.truncate(before),
+            None => kept.push(character),
+        }
+    }
+    kept
 }
 
 /// A seat holding the user's own recent form in `tier` of `ranking`, for the previews: their most
@@ -727,9 +788,12 @@ pub fn ally_tag(side: Side, language: Language) -> &'static str {
 /// The line about the enemy to watch, when the user has not written their own. In the game a
 /// player goes by their champion: it no longer changes, and it is what the map and the scoreboard
 /// show, so the line names the champion alone (`line` puts the player's name where none is known).
+/// In Chinese the champion sits in 【】, as names do in champ select (`template`).
 pub fn watch_template(language: Language) -> &'static str {
     match language {
-        Language::ZhCn => "小心 {champion}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}",
+        Language::ZhCn => {
+            "小心【{champion}】：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}"
+        }
         Language::En => {
             "Watch {champion}: {standing}, {winRate} in {games} games, KDA {kda}{title}"
         }
@@ -739,24 +803,26 @@ pub fn watch_template(language: Language) -> &'static str {
 /// The line about the enemy to go after, when the user has not written their own.
 pub fn target_template(language: Language) -> &'static str {
     match language {
-        Language::ZhCn => "对面 {champion}：{standing}，近{games}场胜率{winRate}，可以多抓",
+        Language::ZhCn => "对面【{champion}】：{standing}，近{games}场胜率{winRate}，可以多抓",
         Language::En => "Go after {champion}: {standing}, {winRate} in {games} games",
     }
 }
 
 /// The line about each teammate in the game, when the user has not written their own, in `style`:
 /// champ select's line with the champion where the seat and the name were, and never an emoji,
-/// which the game's chat does not show.
+/// which the game's chat does not show. In Chinese the champion sits in 【】 after the tier, for the
+/// chat's filter (`template`); the English compact line puts it in `[]`, where a bare space would
+/// run the tier and the champion together.
 pub fn ally_template(style: CalloutStyle, language: Language) -> &'static str {
     match (style, language) {
         (CalloutStyle::Compact, Language::ZhCn) => {
-            "{standing} {champion}｜胜率{winRate}｜KDA {kda}｜战力{score}"
+            "{standing}【{champion}】｜胜率{winRate}｜KDA {kda}｜战力{score}"
         }
         (CalloutStyle::Compact, Language::En) => {
-            "{standing} {champion} | {winRate} | KDA {kda} | form {score}"
+            "{standing} [{champion}] | {winRate} | KDA {kda} | form {score}"
         }
         (CalloutStyle::Rich, Language::ZhCn) => {
-            "{standing}：{champion}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}"
+            "{standing}【{champion}】，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}"
         }
         (CalloutStyle::Rich, Language::En) => {
             "{standing}: {champion}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}"
@@ -764,8 +830,9 @@ pub fn ally_template(style: CalloutStyle, language: Language) -> &'static str {
     }
 }
 
-/// The enemy lines' first defaults, which named the champion and the player.
-const FORMER_WATCH_TEMPLATES: [(Language, &str); 2] = [
+/// The enemy lines' former defaults: at first they named the champion and the player, and up to
+/// 0.0.4 the Chinese ones left the champion bare.
+const FORMER_WATCH_TEMPLATES: [(Language, &str); 3] = [
     (
         Language::ZhCn,
         "小心 {champion} {name}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}",
@@ -774,8 +841,12 @@ const FORMER_WATCH_TEMPLATES: [(Language, &str); 2] = [
         Language::En,
         "Watch {champion} ({name}): {standing}, {winRate} in {games} games, KDA {kda}{title}",
     ),
+    (
+        Language::ZhCn,
+        "小心 {champion}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}",
+    ),
 ];
-const FORMER_TARGET_TEMPLATES: [(Language, &str); 2] = [
+const FORMER_TARGET_TEMPLATES: [(Language, &str); 3] = [
     (
         Language::ZhCn,
         "对面 {champion} {name}：{standing}，近{games}场胜率{winRate}，可以多抓",
@@ -783,6 +854,26 @@ const FORMER_TARGET_TEMPLATES: [(Language, &str); 2] = [
     (
         Language::En,
         "Go after {champion} ({name}): {standing}, {winRate} in {games} games",
+    ),
+    (
+        Language::ZhCn,
+        "对面 {champion}：{standing}，近{games}场胜率{winRate}，可以多抓",
+    ),
+];
+/// The team's in-game lines of 0.0.4, which ran the champion into the tier with a space or a
+/// colon, each with the style whose default it was.
+const FORMER_ALLY_TEMPLATES: [((CalloutStyle, Language), &str); 3] = [
+    (
+        (CalloutStyle::Compact, Language::ZhCn),
+        "{standing} {champion}｜胜率{winRate}｜KDA {kda}｜战力{score}",
+    ),
+    (
+        (CalloutStyle::Compact, Language::En),
+        "{standing} {champion} | {winRate} | KDA {kda} | form {score}",
+    ),
+    (
+        (CalloutStyle::Rich, Language::ZhCn),
+        "{standing}：{champion}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
     ),
 ];
 
@@ -794,6 +885,12 @@ pub(crate) fn former_watch_default(template: &str) -> Option<Language> {
 /// The language whose former default line about the enemy to go after `template` is.
 pub(crate) fn former_target_default(template: &str) -> Option<Language> {
     former(&FORMER_TARGET_TEMPLATES, template)
+}
+
+/// The style and language whose former default line about each teammate in the game `template`
+/// is.
+pub(crate) fn former_ally_default(template: &str) -> Option<(CalloutStyle, Language)> {
+    former(&FORMER_ALLY_TEMPLATES, template)
 }
 
 /// The local player's team in `view`, as its place in `view.teams`. A map without sides (Arena's
@@ -1119,9 +1216,9 @@ mod tests {
         assert_eq!(
             players(&view, &CalloutRule::default(), Language::ZhCn),
             [
-                "👑 上等马：2L ann，近20场胜率55%，KDA 3.5，战力7.2",
-                "👌 中等马：3L cy，近20场胜率55%，KDA 3.5，战力5.5",
-                "💀 下等马：1L bo，近20场胜率55%，KDA 3.5，战力4.1",
+                "👑 上等马：2L【ann】，近20场胜率55%，KDA 3.5，战力7.2",
+                "👌 中等马：3L【cy】，近20场胜率55%，KDA 3.5，战力5.5",
+                "💀 下等马：1L【bo】，近20场胜率55%，KDA 3.5，战力4.1",
             ],
             "the seat is the place in champ select's list, whatever order the lines take"
         );
@@ -1148,9 +1245,9 @@ mod tests {
             lines(&team, &compact, Language::ZhCn, names),
             [
                 "【红色方】winer 战绩鉴定",
-                "2L 上等马｜胜率55%｜KDA 3.5｜战力7.2｜ann",
-                "3L 中等马｜胜率55%｜KDA 3.5｜战力5.5｜cy",
-                "1L 下等马｜胜率55%｜KDA 3.5｜战力4.1｜bo",
+                "2L 上等马｜胜率55%｜KDA 3.5｜战力7.2｜【ann】",
+                "3L 中等马｜胜率55%｜KDA 3.5｜战力5.5｜【cy】",
+                "1L 下等马｜胜率55%｜KDA 3.5｜战力4.1｜【bo】",
             ],
             "no emoji, title or quip: the same fields in the same order"
         );
@@ -1158,7 +1255,7 @@ mod tests {
             players(&team, &compact, Language::En)[0],
             "P2 上等马 | 55% | KDA 3.5 | form 7.2 | ann"
         );
-        // A name the client hides leaves no separator hanging.
+        // A name the client hides takes its brackets with it and leaves no separator hanging.
         let mut hidden = seat("dee", 3, false, Some((5.0, 1)));
         hidden.name = None;
         if let PlayerStats::Ready(summary) = &mut hidden.stats {
@@ -1201,7 +1298,7 @@ mod tests {
     fn the_default_line_names_the_seat_and_the_player_not_the_champion() {
         assert_eq!(
             template(CalloutStyle::Rich, Language::ZhCn),
-            "{emoji}{standing}：{seat} {name}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}"
+            "{emoji}{standing}：{seat}【{name}】，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}"
         );
         assert_eq!(
             template(CalloutStyle::Rich, Language::En),
@@ -1209,7 +1306,7 @@ mod tests {
         );
         assert_eq!(
             template(CalloutStyle::Compact, Language::ZhCn),
-            "{seat} {standing}｜胜率{winRate}｜KDA {kda}｜战力{score}｜{name}"
+            "{seat} {standing}｜胜率{winRate}｜KDA {kda}｜战力{score}｜【{name}】"
         );
         assert_eq!(
             template(CalloutStyle::Compact, Language::En),
@@ -1253,43 +1350,55 @@ mod tests {
 
     #[test]
     fn only_the_former_default_lines_count_as_former_defaults() {
+        let rich = |language| Some((CalloutStyle::Rich, language));
         assert_eq!(
             former_default(
                 "{standing}：{champion} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}"
             ),
-            Some(Language::ZhCn)
+            rich(Language::ZhCn)
         );
         assert_eq!(
             former_default(
                 "{standing}: {champion} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}"
             ),
-            Some(Language::En)
+            rich(Language::En)
         );
         assert_eq!(
             former_default(
                 "{standing}：{seat} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}"
             ),
-            Some(Language::ZhCn),
+            rich(Language::ZhCn),
             "0.0.3's line, which called the form score 评分"
         );
         assert_eq!(
             former_default(
                 "{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}"
             ),
-            Some(Language::En)
+            rich(Language::En)
         );
         assert_eq!(
             former_default(
                 "{standing}：{seat} {name}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}"
             ),
-            Some(Language::ZhCn),
-            "0.0.4's line, before styles and emoji"
+            rich(Language::ZhCn),
+            "the line before styles and emoji, the rich style's since"
         );
         assert_eq!(
             former_default(
                 "{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}"
             ),
-            Some(Language::En)
+            rich(Language::En)
+        );
+        // 0.0.4's Chinese lines, each its own style's, with the name bare.
+        assert_eq!(
+            former_default(
+                "{emoji}{standing}：{seat} {name}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}"
+            ),
+            rich(Language::ZhCn)
+        );
+        assert_eq!(
+            former_default("{seat} {standing}｜胜率{winRate}｜KDA {kda}｜战力{score}｜{name}"),
+            Some((CalloutStyle::Compact, Language::ZhCn))
         );
         for style in [CalloutStyle::Compact, CalloutStyle::Rich] {
             assert_eq!(former_default(template(style, Language::ZhCn)), None);
@@ -1359,7 +1468,7 @@ mod tests {
         let lines = lines(&rated, &rule, Language::ZhCn, names);
         assert_eq!(
             lines.first().map(String::as_str),
-            Some("📢 winer 战绩鉴定 · 开局分析")
+            Some("📢 winer 战绩鉴定【开局分析】")
         );
         assert_eq!(lines.len(), 2);
         assert_eq!(
@@ -1383,7 +1492,7 @@ mod tests {
             ..CalloutRule::default()
         };
         let lines = lines(&red, &opening, Language::ZhCn, names);
-        assert_eq!(lines[0], "📢【红色方】winer 战绩鉴定 · 冲冲冲");
+        assert_eq!(lines[0], "📢【红色方】winer 战绩鉴定【冲冲冲】");
         assert_eq!(
             lines.len(),
             3,
@@ -1426,7 +1535,7 @@ mod tests {
         }
         let view = view(vec![titled, seat("bo", 0, false, Some((4.1, 2)))]);
         let lines = players(&view, &CalloutRule::default(), Language::ZhCn);
-        assert!(lines[0].ends_with("战力6.0「版本答案」"), "{lines:?}");
+        assert!(lines[0].ends_with("战力6.0【版本答案】"), "{lines:?}");
         assert!(
             lines[1].ends_with("战力4.1"),
             "no title, no trace: {lines:?}"
@@ -1474,8 +1583,162 @@ mod tests {
                 Language::ZhCn
             ),
             ["👌 中等马：1L，近20场胜率55%，KDA 3.5，战力5.0"],
-            "a name the client hides leaves no space before the comma"
+            "a name the client hides takes its brackets with it and leaves no space before the comma"
         );
+    }
+
+    /// `seat` with its name hidden, as the client hides some.
+    fn nameless(mut seat: Seat) -> Seat {
+        seat.name = None;
+        if let PlayerStats::Ready(summary) = &mut seat.stats {
+            summary.name = None;
+        }
+        seat
+    }
+
+    #[test]
+    fn brackets_a_blank_value_leaves_empty_go_with_it() {
+        assert_eq!(without_empty_brackets("1L【】，近20场"), "1L，近20场");
+        assert_eq!(without_empty_brackets("上等马【 】｜胜率"), "上等马｜胜率");
+        assert_eq!(
+            without_empty_brackets("Top horse [] | 55%"),
+            "Top horse  | 55%"
+        );
+        assert_eq!(
+            without_empty_brackets("Watch 亚索 (): T0"),
+            "Watch 亚索 : T0"
+        );
+        assert_eq!(
+            without_empty_brackets("「」（）【【】】"),
+            "",
+            "an empty pair inside another leaves that one empty too"
+        );
+        assert_eq!(
+            without_empty_brackets("【蓝色方】1L【ann】：】x【"),
+            "【蓝色方】1L【ann】：】x【",
+            "a pair with something in it stays, and so does a bracket without its other half"
+        );
+        // Through a line of the user's own: a hidden name, and no champion to stand in for it.
+        let rule = CalloutRule {
+            template: "{standing}【{name}】({champion}) {seat}".into(),
+            ..CalloutRule::default()
+        };
+        let lone = nameless(seat("cy", 0, false, Some((5.0, 1))));
+        assert_eq!(
+            players(&view(vec![lone]), &rule, Language::ZhCn),
+            ["中等马 1L"]
+        );
+    }
+
+    #[test]
+    fn a_chinese_opening_line_follows_winers_name_in_brackets() {
+        let rated = view(vec![seat("ann", 1, false, Some((7.2, 0)))]);
+        let first = |header: &str, style: CalloutStyle, language: Language| {
+            let rule = CalloutRule {
+                header: header.into(),
+                style,
+                ..CalloutRule::default()
+            };
+            lines(&rated, &rule, language, names).remove(0)
+        };
+        assert_eq!(
+            first("会跑路", CalloutStyle::Rich, Language::ZhCn),
+            "📢 winer 战绩鉴定【会跑路】"
+        );
+        assert_eq!(
+            first(" 会跑路 ", CalloutStyle::Compact, Language::ZhCn),
+            "winer 战绩鉴定【会跑路】"
+        );
+        assert_eq!(
+            first("【五黑】冲", CalloutStyle::Rich, Language::ZhCn),
+            "📢 winer 战绩鉴定【五黑】冲",
+            "a bracket of its own keeps it apart already"
+        );
+        assert_eq!(
+            first("会跑路", CalloutStyle::Rich, Language::En),
+            "📢 winer rating · 会跑路"
+        );
+    }
+
+    /// What the chat's filter is taken to read of a line: spaces, punctuation, Latin letters and
+    /// digits all skipped, so that nothing but a bracket or an emoji stands between two words.
+    fn filtered(line: &str) -> String {
+        line.chars()
+            .filter(|c| {
+                !c.is_ascii() && !c.is_whitespace() && !"：，；｜·「」、。！？".contains(*c)
+            })
+            .collect()
+    }
+
+    /// Every Chinese default line, champ select's and the game's, in both styles, with free text in
+    /// every field: a tier, a name the champion falls back to, a title, a quip and an opening line.
+    /// Two of them meeting across what the filter skips would read as one word (上等马 then
+    /// 会跑路的防御塔 holds 马会, which it masks); the English lines are written to be read, and
+    /// keep their punctuation.
+    #[test]
+    fn no_two_fields_of_a_chinese_default_line_run_together_for_the_chats_filter() {
+        let player = |tier: u8, is_self: bool| {
+            let mut player = seat("会跑路的防御塔", 0, is_self, Some((7.2, tier)));
+            if let Some(rating) = player.rating.as_mut() {
+                rating.title = Some("版本答案".into());
+                rating.quip = Some("稳得离谱".into());
+            }
+            player
+        };
+        let mut lines = Vec::new();
+        for style in [CalloutStyle::Compact, CalloutStyle::Rich] {
+            let rule = CalloutRule {
+                style,
+                header: "冲冲冲".into(),
+                ..CalloutRule::default()
+            };
+            let mut select = view(vec![player(0, false)]);
+            select.side = Some(Side::Blue);
+            lines.extend(super::lines(&select, &rule, Language::ZhCn, names));
+            let team = game_of(vec![player(0, true)]);
+            lines.extend(ally_lines(&team, &rule, Language::ZhCn, champions));
+        }
+        // The enemy to watch and the one to go after, whose lines have no style.
+        let enemies = game(0, vec![player(0, false), player(2, false)]);
+        lines.extend(game_lines(
+            &enemies,
+            &CalloutRule::default(),
+            Language::ZhCn,
+            champions,
+        ));
+        assert_eq!(lines.len(), 11, "{lines:?}");
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("小心【会跑路的防御塔】"))
+                && lines
+                    .iter()
+                    .any(|line| line.contains("对面【会跑路的防御塔】"))
+                && lines
+                    .iter()
+                    .any(|line| line.contains("上等马【会跑路的防御塔】｜")),
+            "{lines:?}"
+        );
+        let fields = [
+            "上等马",
+            "下等马",
+            "会跑路的防御塔",
+            "版本答案",
+            "稳得离谱",
+            "冲冲冲",
+            "战绩鉴定",
+        ];
+        for line in &lines {
+            let read = filtered(line);
+            for a in fields {
+                for b in fields {
+                    assert!(
+                        !read.contains(&format!("{a}{b}")),
+                        "{a} runs into {b} in {line} ({read})"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
@@ -1496,17 +1759,17 @@ mod tests {
         let lines = preview(&me, &rule, &General::default(), names);
         assert_eq!(lines.len(), 6, "the opening line and five tiers: {lines:?}");
         assert_eq!(
-            lines[0], "📢【蓝色方】winer 战绩鉴定 · 开局分析",
+            lines[0], "📢【蓝色方】winer 战绩鉴定【开局分析】",
             "a side stands in for the game's"
         );
         assert!(
-            lines[1].starts_with("👑 独角马：1L ann，")
-                && lines[5].starts_with("💀 纯牛马：5L ann，"),
+            lines[1].starts_with("👑 独角马：1L【ann】，")
+                && lines[5].starts_with("💀 纯牛马：5L【ann】，"),
             "{lines:?}"
         );
         for (index, line) in lines[1..].iter().enumerate() {
             assert!(
-                line.contains(&format!("：{}L ann，近20场", index + 1)),
+                line.contains(&format!("：{}L【ann】，近20场", index + 1)),
                 "the seats in order: {lines:?}"
             );
         }
@@ -1548,6 +1811,7 @@ mod tests {
                     kills: 5.0,
                     deaths: 5.0,
                     assists: 5.0,
+                    score: Some(f64::from(wins) / 2.0),
                     ..RecentForm::default()
                 },
             }))
@@ -1574,7 +1838,7 @@ mod tests {
             ]
         );
         assert!(
-            lines[0].starts_with("👑 峡谷通天代：5L P4，近20场胜率70%"),
+            lines[0].starts_with("👑 峡谷通天代：5L【P4】，近20场胜率70%"),
             "the best form sits in the fifth cell: {lines:?}"
         );
         for (tier, line) in lines.iter().enumerate() {
@@ -1634,6 +1898,7 @@ mod tests {
                     kills: 5.0,
                     deaths: 5.0,
                     assists: 5.0,
+                    score: Some(f64::from(wins(puuid)) / 2.0),
                     ..RecentForm::default()
                 },
             }))
@@ -1672,7 +1937,7 @@ mod tests {
         let lines = &lines[1..];
         let heads: Vec<&str> = lines
             .iter()
-            .map(|line| line.split(' ').nth(1).unwrap())
+            .map(|line| line.split([' ', '【']).nth(1).unwrap())
             .collect();
         // Seats follow the cells, 0 to 4, whatever tier each lands in.
         assert_eq!(
@@ -1687,7 +1952,7 @@ mod tests {
             "{lines:?}"
         );
         assert!(
-            lines[0].starts_with("👑 独角马：4L P3，近20场胜率85%"),
+            lines[0].starts_with("👑 独角马：4L【P3】，近20场胜率85%"),
             "{lines:?}"
         );
         assert!(
@@ -1887,8 +2152,8 @@ mod tests {
             ),
             [
                 "【敌方·红色方】winer 战绩鉴定",
-                "小心 亚索：T0，近20场胜率55%，KDA 3.5「版本答案」",
-                "对面 盖伦：T4，近20场胜率55%，可以多抓",
+                "小心【亚索】：T0，近20场胜率55%，KDA 3.5【版本答案】",
+                "对面【盖伦】：T4，近20场胜率55%，可以多抓",
             ],
             "the champion alone names the player in game; the middle one is not talked about"
         );
@@ -1901,7 +2166,7 @@ mod tests {
             ),
             [
                 "[Enemy · Blue side] winer rating",
-                "Watch 亚索: T0, 55% in 20 games, KDA 3.5「版本答案」",
+                "Watch 亚索: T0, 55% in 20 games, KDA 3.5【版本答案】",
                 "Go after 盖伦: T4, 55% in 20 games",
             ]
         );
@@ -1911,20 +2176,20 @@ mod tests {
     fn in_game_the_default_lines_name_the_champion_alone() {
         assert_eq!(
             watch_template(Language::ZhCn),
-            "小心 {champion}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}"
+            "小心【{champion}】：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}"
         );
         assert_eq!(
             target_template(Language::ZhCn),
-            "对面 {champion}：{standing}，近{games}场胜率{winRate}，可以多抓"
+            "对面【{champion}】：{standing}，近{games}场胜率{winRate}，可以多抓"
         );
         assert_eq!(
             ally_template(CalloutStyle::Rich, Language::ZhCn),
-            "{standing}：{champion}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
+            "{standing}【{champion}】，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
             "champ select's line, the champion where the seat and the name were"
         );
         assert_eq!(
             ally_template(CalloutStyle::Compact, Language::ZhCn),
-            "{standing} {champion}｜胜率{winRate}｜KDA {kda}｜战力{score}"
+            "{standing}【{champion}】｜胜率{winRate}｜KDA {kda}｜战力{score}"
         );
         assert_eq!(
             watch_template(Language::En),
@@ -1940,7 +2205,8 @@ mod tests {
         );
         assert_eq!(
             ally_template(CalloutStyle::Compact, Language::En),
-            "{standing} {champion} | {winRate} | KDA {kda} | form {score}"
+            "{standing} [{champion}] | {winRate} | KDA {kda} | form {score}",
+            "a bare space would run the tier and the champion together"
         );
         for template in [
             watch_template(Language::ZhCn),
@@ -1976,8 +2242,8 @@ mod tests {
         assert_eq!(
             lines[1..],
             [
-                "小心 强者：T0，近20场胜率55%，KDA 3.5",
-                "对面 弱者：T4，近20场胜率55%，可以多抓"
+                "小心【强者】：T0，近20场胜率55%，KDA 3.5",
+                "对面【弱者】：T4，近20场胜率55%，可以多抓"
             ],
             "no champion, and one the catalog does not name: the line never reads empty"
         );
@@ -2009,6 +2275,68 @@ mod tests {
     }
 
     #[test]
+    fn in_game_the_tier_and_the_name_standing_in_for_a_champion_never_run_together() {
+        // No champion the catalog names: the team's compact line goes by the player's name, which
+        // 0.0.4 put after the tier with a space, and the chat's filter read 上等马 会跑路的防御塔 as
+        // holding 马会.
+        let team = || game_of(vec![seat("会跑路的防御塔", 0, true, Some((7.2, 0)))]);
+        let compact = CalloutRule {
+            style: CalloutStyle::Compact,
+            ..CalloutRule::default()
+        };
+        assert_eq!(
+            ally_lines(&team(), &compact, Language::ZhCn, champions)[1],
+            "上等马【会跑路的防御塔】｜胜率55%｜KDA 3.5｜战力7.2"
+        );
+        assert_eq!(
+            ally_lines(&team(), &CalloutRule::default(), Language::ZhCn, champions)[1],
+            "上等马【会跑路的防御塔】，近20场胜率55%，KDA 3.5，战力7.2"
+        );
+        assert_eq!(
+            ally_lines(&team(), &compact, Language::En, champions)[1],
+            "上等马 [会跑路的防御塔] | 55% | KDA 3.5 | form 7.2"
+        );
+        // Nothing to call the player by, neither champion nor name: no empty brackets either.
+        let unnamed = || game_of(vec![nameless(seat("x", 0, true, Some((7.2, 0))))]);
+        assert_eq!(
+            ally_lines(&unnamed(), &compact, Language::ZhCn, champions)[1],
+            "上等马｜胜率55%｜KDA 3.5｜战力7.2"
+        );
+        assert_eq!(
+            ally_lines(
+                &unnamed(),
+                &CalloutRule::default(),
+                Language::ZhCn,
+                champions
+            )[1],
+            "上等马，近20场胜率55%，KDA 3.5，战力7.2"
+        );
+        assert_eq!(
+            ally_lines(&unnamed(), &compact, Language::En, champions)[1],
+            "上等马 | 55% | KDA 3.5 | form 7.2"
+        );
+        let enemies = game(0, vec![nameless(enemy("x", 0, Some((0, 5, 7.8))))]);
+        assert_eq!(
+            game_lines(&enemies, &CalloutRule::default(), Language::ZhCn, champions)[1],
+            "小心：T0，近20场胜率55%，KDA 3.5"
+        );
+        assert_eq!(
+            game_lines(&enemies, &CalloutRule::default(), Language::En, champions)[1],
+            "Watch: T0, 55% in 20 games, KDA 3.5",
+            "no space before the colon either"
+        );
+        let smiley = CalloutRule {
+            watch_template: "{standing} :) {name}".into(),
+            ..CalloutRule::default()
+        };
+        assert_eq!(
+            game_lines(&enemies, &smiley, Language::En, champions)[1],
+            "T0 :)",
+            "a colon that is no punctuation between words stays as written"
+        );
+    }
+
+    #[test]
     fn only_the_former_in_game_lines_count_as_their_former_defaults() {
         assert_eq!(
             former_watch_default(
@@ -2034,6 +2362,33 @@ mod tests {
             ),
             Some(Language::En)
         );
+        // 0.0.4's, the champion bare.
+        assert_eq!(
+            former_watch_default(
+                "小心 {champion}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}"
+            ),
+            Some(Language::ZhCn)
+        );
+        assert_eq!(
+            former_target_default(
+                "对面 {champion}：{standing}，近{games}场胜率{winRate}，可以多抓"
+            ),
+            Some(Language::ZhCn)
+        );
+        assert_eq!(
+            former_ally_default("{standing} {champion}｜胜率{winRate}｜KDA {kda}｜战力{score}"),
+            Some((CalloutStyle::Compact, Language::ZhCn))
+        );
+        assert_eq!(
+            former_ally_default("{standing} {champion} | {winRate} | KDA {kda} | form {score}"),
+            Some((CalloutStyle::Compact, Language::En))
+        );
+        assert_eq!(
+            former_ally_default(
+                "{standing}：{champion}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}"
+            ),
+            Some((CalloutStyle::Rich, Language::ZhCn))
+        );
         // Each line migrates to its own default only, and the defaults of now are not former ones.
         assert_eq!(
             former_target_default(
@@ -2041,12 +2396,21 @@ mod tests {
             ),
             None
         );
+        assert_eq!(
+            former_ally_default("{seat} {standing}｜胜率{winRate}｜KDA {kda}｜战力{score}｜{name}"),
+            None,
+            "champ select's line is not the team's in-game one"
+        );
         for language in [Language::ZhCn, Language::En] {
             assert_eq!(former_watch_default(watch_template(language)), None);
             assert_eq!(former_target_default(target_template(language)), None);
+            for style in [CalloutStyle::Compact, CalloutStyle::Rich] {
+                assert_eq!(former_ally_default(ally_template(style, language)), None);
+            }
         }
         assert_eq!(former_watch_default("小心 {champion} {name}"), None);
         assert_eq!(former_watch_default(""), None);
+        assert_eq!(former_ally_default(""), None);
     }
 
     #[test]
@@ -2069,9 +2433,9 @@ mod tests {
             ally_lines(&game_of(team.clone()), &rule, Language::ZhCn, champions),
             [
                 "【我方·蓝色方】winer 战绩鉴定",
-                "上等马：盖伦，近20场胜率55%，KDA 3.5，战力7.2「版本答案」，稳得离谱，能C还能活",
-                "中等马：亚索，近20场胜率55%，KDA 3.5，战力5.5",
-                "下等马：bo，近20场胜率55%，KDA 3.5，战力4.1",
+                "上等马【盖伦】，近20场胜率55%，KDA 3.5，战力7.2【版本答案】，稳得离谱，能C还能活",
+                "中等马【亚索】，近20场胜率55%，KDA 3.5，战力5.5",
+                "下等马【bo】，近20场胜率55%，KDA 3.5，战力4.1",
             ],
             "the best first, each by champion, the one without a champion by name"
         );
@@ -2145,7 +2509,7 @@ mod tests {
             "the seat is the place in their list"
         );
         assert!(
-            lines[2].starts_with("对面 盖伦："),
+            lines[2].starts_with("对面【盖伦】："),
             "a blank line is the default: {lines:?}"
         );
         assert!(
@@ -2186,8 +2550,8 @@ mod tests {
             game_preview(&me, &CalloutRule::default(), &General::default(), names),
             [
                 "【敌方·红色方】winer 战绩鉴定",
-                "小心 ann：峡谷通天代，近20场胜率55%，KDA 3.5「靠谱队友」",
-                "对面 ann：纯正牛马，近20场胜率55%，可以多抓",
+                "小心【ann】：峡谷通天代，近20场胜率55%，KDA 3.5【靠谱队友】",
+                "对面【ann】：纯正牛马，近20场胜率55%，可以多抓",
             ],
             "the best and the worst of the default five tiers, each with its own leaning's title; \
              no champion played, the name"
@@ -2220,8 +2584,8 @@ mod tests {
         );
         assert_eq!(lines[0], "【我方·蓝色方】winer 战绩鉴定");
         assert!(
-            lines[1].starts_with("峡谷通天代：ann，近20场胜率55%，KDA 3.5，战力")
-                && lines[5].starts_with("纯正牛马：ann，"),
+            lines[1].starts_with("峡谷通天代【ann】，近20场胜率55%，KDA 3.5，战力")
+                && lines[5].starts_with("纯正牛马【ann】，"),
             "every tier, the user's own line too: {lines:?}"
         );
         let both = CalloutRule {
@@ -2238,7 +2602,7 @@ mod tests {
             )
         );
         assert!(
-            lines[4].starts_with("峡谷通天代：") && lines[5].starts_with("人形防御塔："),
+            lines[4].starts_with("峡谷通天代【") && lines[5].starts_with("人形防御塔【"),
             "the enemy's, then the team's best two: {lines:?}"
         );
         let graded_allies = CalloutRule {

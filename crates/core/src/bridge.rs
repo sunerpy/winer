@@ -216,6 +216,8 @@ impl Bridge {
                         Ok(PluginMessage::Hello { version, context: id }) => {
                             info!(%version, context = %id, "plugin connected");
                             context = id;
+                            // A restarted interface is back (`Service::restart_client_ui_when_idle`).
+                            service.plugin_connected();
                         }
                         Ok(PluginMessage::Log { level, message }) => log(&context, level, &message),
                         Ok(PluginMessage::BenchSwap { champion_id }) => swap(&service, champion_id),
@@ -533,6 +535,30 @@ mod tests {
         assert_eq!(event["event"]["type"], "settings");
         assert_eq!(event["event"]["data"]["plugin"]["teamPanel"], false);
         assert_eq!(bridge.connected(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_plugins_hello_tells_the_service_the_client_page_is_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(
+            dir.path().join("settings.json"),
+            tokio::runtime::Handle::current(),
+        );
+        let bridge = Bridge::start(service.clone(), "9.9.9").await.unwrap();
+        let mut hellos = service.plugin_hellos();
+        let url = format!("ws://127.0.0.1:{}/?token={}", bridge.port(), bridge.token());
+        let (mut socket, _) = connect_async(url).await.unwrap();
+        socket.next().await.unwrap().unwrap(); // the bridge's hello
+        assert!(
+            !hellos.has_changed().unwrap(),
+            "connected, but no plugin has said hello"
+        );
+        let hello = serde_json::json!({"type": "hello", "version": "9.9.9", "context": "c-1"});
+        socket.send(Message::text(hello.to_string())).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(5), hellos.changed())
+            .await
+            .expect("the hello reached the service")
+            .unwrap();
     }
 
     // ---- The history panel in the client ----

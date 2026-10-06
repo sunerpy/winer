@@ -451,7 +451,8 @@ pub struct CalloutRule {
     pub header: String,
     /// One line per player, with `{standing}`, `{seat}` (the place in champ select's list: `1L`,
     /// `P1`), `{name}`, `{champion}`, `{games}`, `{winRate}`, `{kda}`, `{score}`, `{title}` and
-    /// `{quip}`. Empty means the language's default (`callout::template`).
+    /// `{quip}`; a value left blank (a hidden name) takes the brackets around it with it. Empty
+    /// means the language's default (`callout::template`).
     pub template: String,
     /// How the team is split, and what the tiers are called.
     pub tiers: TierSet,
@@ -983,18 +984,27 @@ impl Settings {
 
     /// Brings a file an older winer wrote up to date. Up to 0.0.2 the default callout line named
     /// the champion, up to 0.0.3 it called the form score 评分 and ran the name into the numbers,
-    /// and the in-game lines first named the champion and the player; a template saved as exactly
-    /// one of those texts would have kept it for good: it becomes the default (the same language's,
-    /// when the text was in the other one). A template the user changed stays as written.
+    /// the in-game lines first named the champion and the player, and up to 0.0.4 the Chinese
+    /// lines left names bare, for the chat's filter to read together with the tier as one word; a
+    /// template saved as exactly one of those texts would have kept it for good: it becomes the
+    /// current default of the same style and language. A template the user changed stays as
+    /// written.
     fn migrated(mut self) -> Self {
         let language = self.general.language;
         let callout = &mut self.automation.callout;
-        // A former default was the rich style's line before it had emoji and styles.
+        let style = callout.style;
+        // The lines from before styles were the rich style's (`callout::former_default`).
         migrate(
             &mut callout.template,
             callout::former_default,
-            |language| callout::template(CalloutStyle::Rich, language),
-            language,
+            |(style, language)| callout::template(style, language),
+            (style, language),
+        );
+        migrate(
+            &mut callout.ally_template,
+            callout::former_ally_default,
+            |(style, language)| callout::ally_template(style, language),
+            (style, language),
         );
         migrate(
             &mut callout.watch_template,
@@ -1012,16 +1022,18 @@ impl Settings {
     }
 }
 
-/// `template` replaced, when `former` finds it a former default line, by the current one: blank
-/// (the default itself) in the window's `language`, the other language's default written out.
-fn migrate(
+/// `template` replaced, when `former` finds it a former default line, by the current default of
+/// the same kind (a language, or a style and a language): blank, the default itself, where that is
+/// the one the callout would use `now`; written out where it is not (the other language's, or the
+/// other style's), so the line reads as it did.
+fn migrate<K: Copy + PartialEq>(
     template: &mut String,
-    former: fn(&str) -> Option<Language>,
-    current: fn(Language) -> &'static str,
-    language: Language,
+    former: fn(&str) -> Option<K>,
+    current: fn(K) -> &'static str,
+    now: K,
 ) {
     if let Some(written) = former(template) {
-        *template = if written == language {
+        *template = if written == now {
             String::new()
         } else {
             current(written).to_owned()
@@ -1247,6 +1259,143 @@ mod tests {
         );
         let own = "小心 {champion} {name}";
         assert_eq!(loaded("zh-CN", own, "").watch_template, own);
+    }
+
+    /// 0.0.4's default lines, as its window could have saved them: the Chinese ones put names and
+    /// champions after a space or a colon, and the English compact one ran the champion into the
+    /// tier.
+    const ZH_COMPACT_0_0_4: &str =
+        "{seat} {standing}｜胜率{winRate}｜KDA {kda}｜战力{score}｜{name}";
+    const ZH_RICH_0_0_4: &str = "{emoji}{standing}：{seat} {name}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}";
+    const ZH_ALLY_COMPACT_0_0_4: &str =
+        "{standing} {champion}｜胜率{winRate}｜KDA {kda}｜战力{score}";
+    const ZH_ALLY_RICH_0_0_4: &str =
+        "{standing}：{champion}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}";
+    const EN_ALLY_COMPACT_0_0_4: &str =
+        "{standing} {champion} | {winRate} | KDA {kda} | form {score}";
+    const ZH_WATCH_0_0_4: &str =
+        "小心 {champion}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}";
+    const ZH_TARGET_0_0_4: &str = "对面 {champion}：{standing}，近{games}场胜率{winRate}，可以多抓";
+
+    #[test]
+    fn a_line_saved_as_a_0_0_4_default_becomes_the_same_styles_new_one_when_loaded() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let loaded = |language: &str, style: &str, mut callout: serde_json::Value| {
+            callout["style"] = style.into();
+            let file = serde_json::json!({
+                "general": { "language": language },
+                "automation": { "callout": callout },
+            });
+            fs::write(&path, file.to_string()).unwrap();
+            SettingsStore::open(&path).get().automation.callout
+        };
+        let lines = |template: &str, ally: &str| serde_json::json!({ "template": template, "allyTemplate": ally, "header": "冲" });
+        let (compact, rich) = (CalloutStyle::Compact, CalloutStyle::Rich);
+
+        // Saved in the style and language the window uses: the default itself, now in brackets.
+        let callout = loaded(
+            "zh-CN",
+            "compact",
+            lines(ZH_COMPACT_0_0_4, ZH_ALLY_COMPACT_0_0_4),
+        );
+        assert_eq!(
+            (callout.template.as_str(), callout.ally_template.as_str()),
+            ("", "")
+        );
+        assert_eq!(
+            (callout.style, callout.header.as_str()),
+            (compact, "冲"),
+            "nothing else moves"
+        );
+        let callout = loaded("zh-CN", "rich", lines(ZH_RICH_0_0_4, ZH_ALLY_RICH_0_0_4));
+        assert_eq!(
+            (callout.template.as_str(), callout.ally_template.as_str()),
+            ("", "")
+        );
+        let callout = loaded("en", "compact", lines("", EN_ALLY_COMPACT_0_0_4));
+        assert_eq!(callout.ally_template, "");
+
+        // The other style's line, or the other language's, was the user's choice of line: it is
+        // written out, in brackets, so the callout reads as it did.
+        let callout = loaded(
+            "zh-CN",
+            "rich",
+            lines(ZH_COMPACT_0_0_4, ZH_ALLY_COMPACT_0_0_4),
+        );
+        assert_eq!(
+            (callout.template.as_str(), callout.ally_template.as_str()),
+            (
+                callout::template(compact, Language::ZhCn),
+                callout::ally_template(compact, Language::ZhCn)
+            )
+        );
+        let callout = loaded("zh-CN", "compact", lines(ZH_RICH_0_0_4, ""));
+        assert_eq!(callout.template, callout::template(rich, Language::ZhCn));
+        let callout = loaded("en", "rich", lines(ZH_RICH_0_0_4, ZH_ALLY_RICH_0_0_4));
+        assert_eq!(
+            (callout.template.as_str(), callout.ally_template.as_str()),
+            (
+                callout::template(rich, Language::ZhCn),
+                callout::ally_template(rich, Language::ZhCn)
+            ),
+            "Chinese lines under the English window stay Chinese"
+        );
+        let callout = loaded("zh-CN", "compact", lines("", EN_ALLY_COMPACT_0_0_4));
+        assert_eq!(
+            callout.ally_template,
+            callout::ally_template(compact, Language::En)
+        );
+        // A line from before styles was the rich one: under the compact style it stays rich.
+        let callout = loaded("zh-CN", "compact", lines(ZH_0_0_3, ""));
+        assert_eq!(callout.template, callout::template(rich, Language::ZhCn));
+
+        // The enemy lines, which have no style.
+        let callout = loaded(
+            "zh-CN",
+            "compact",
+            serde_json::json!({ "watchTemplate": ZH_WATCH_0_0_4, "targetTemplate": ZH_TARGET_0_0_4 }),
+        );
+        assert_eq!(
+            (
+                callout.watch_template.as_str(),
+                callout.target_template.as_str()
+            ),
+            ("", "")
+        );
+        let callout = loaded(
+            "en",
+            "rich",
+            serde_json::json!({ "watchTemplate": ZH_WATCH_0_0_4, "targetTemplate": ZH_TARGET_0_0_4 }),
+        );
+        assert_eq!(
+            (
+                callout.watch_template.as_str(),
+                callout.target_template.as_str()
+            ),
+            (
+                callout::watch_template(Language::ZhCn),
+                callout::target_template(Language::ZhCn)
+            )
+        );
+        assert!(
+            callout.watch_template.contains("小心【{champion}】"),
+            "{}",
+            callout.watch_template
+        );
+
+        // A line the user changed, or put in the other line's place, stays as written.
+        for own in [
+            "{seat} {standing}｜胜率{winRate}｜{name}",
+            "{standing} {champion}",
+            ZH_WATCH_0_0_4,
+        ] {
+            let callout = loaded("zh-CN", "compact", lines(own, own));
+            assert_eq!(
+                (callout.template.as_str(), callout.ally_template.as_str()),
+                (own, own)
+            );
+        }
     }
 
     #[test]

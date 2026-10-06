@@ -40,12 +40,12 @@ const WISHLIST_LIMIT = 20;
  *  blank template. */
 const DEFAULT_TEMPLATE: Record<CalloutStyle, Record<"zh-CN" | "en", string>> = {
   compact: {
-    "zh-CN": "{seat} {standing}｜胜率{winRate}｜KDA {kda}｜战力{score}｜{name}",
+    "zh-CN": "{seat} {standing}｜胜率{winRate}｜KDA {kda}｜战力{score}｜【{name}】",
     en: "{seat} {standing} | {winRate} | KDA {kda} | form {score} | {name}",
   },
   rich: {
     "zh-CN":
-      "{emoji}{standing}：{seat} {name}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
+      "{emoji}{standing}：{seat}【{name}】，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
     en: "{emoji}{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}",
   },
 };
@@ -53,21 +53,21 @@ const STYLES: readonly CalloutStyle[] = ["compact", "rich"];
 // Callout: the in-game lines' defaults (`callout::watch_template`, `callout::target_template`,
 // `callout::ally_template`), every player by champion.
 const DEFAULT_WATCH: Record<"zh-CN" | "en", string> = {
-  "zh-CN": "小心 {champion}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}",
+  "zh-CN": "小心【{champion}】：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}",
   en: "Watch {champion}: {standing}, {winRate} in {games} games, KDA {kda}{title}",
 };
 const DEFAULT_TARGET: Record<"zh-CN" | "en", string> = {
-  "zh-CN": "对面 {champion}：{standing}，近{games}场胜率{winRate}，可以多抓",
+  "zh-CN": "对面【{champion}】：{standing}，近{games}场胜率{winRate}，可以多抓",
   en: "Go after {champion}: {standing}, {winRate} in {games} games",
 };
 const DEFAULT_ALLY: Record<CalloutStyle, Record<"zh-CN" | "en", string>> = {
   compact: {
-    "zh-CN": "{standing} {champion}｜胜率{winRate}｜KDA {kda}｜战力{score}",
-    en: "{standing} {champion} | {winRate} | KDA {kda} | form {score}",
+    "zh-CN": "{standing}【{champion}】｜胜率{winRate}｜KDA {kda}｜战力{score}",
+    en: "{standing} [{champion}] | {winRate} | KDA {kda} | form {score}",
   },
   rich: {
     "zh-CN":
-      "{standing}：{champion}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
+      "{standing}【{champion}】，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
     en: "{standing}: {champion}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}",
   },
 };

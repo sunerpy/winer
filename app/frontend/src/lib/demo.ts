@@ -308,7 +308,42 @@ function formGames(games: MatchSummary[]): { counted: MatchSummary[]; scope: For
 }
 
 /** The core's form bands (`rating::FORM_GRADES`), S+ to E; below them F. */
-const FORM_GRADES = [7.6, 6.8, 5.9, 5.3, 4.8, 4.3, 3.8];
+const FORM_GRADES = [9.5, 8.5, 7, 5, 3, 1.5, 0.5];
+
+/** The standard normal distribution's cumulative probability (Abramowitz and Stegun 7.1.26). */
+function normalCdf(z: number): number {
+  const x = Math.abs(z) / Math.SQRT2;
+  const t = 1 / (1 + 0.3275911 * x);
+  const poly =
+    t *
+    (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+  const erf = 1 - poly * Math.exp(-x * x);
+  return z >= 0 ? 0.5 * (1 + erf) : 0.5 * (1 - erf);
+}
+
+/** Stand-in for the core's recent strength (`rating::strength`): the games' scores, the newest
+ *  weighed most, pulled toward an average line, a twentieth of the win rate, then read as a share
+ *  of players. */
+function strengthOf(matches: RecentMatch[]): number | null {
+  if (matches.length === 0) return null;
+  let [total, sum, squares] = [0, 0, 0];
+  matches
+    .filter((game) => game.score !== null)
+    .forEach((game, index) => {
+      const weight = 0.93 ** index;
+      total += weight;
+      sum += weight * (game.score ?? 0);
+      squares += weight * weight;
+    });
+  const average = 6;
+  const games = total > 0 ? (total * total) / squares : 0;
+  const confidence = games / (games + 10);
+  const performance = total > 0 ? confidence * (sum / total) + (1 - confidence) * average : average;
+  const wins = matches.filter((game) => game.win).length;
+  const raw = 0.95 * performance + (0.05 * 10 * (wins + 5)) / (matches.length + 10);
+  const share = 10 * normalCdf((raw - (0.95 * average + 0.25)) / 0.3);
+  return Math.round(share * 10) / 10;
+}
 /** One quip per tier of the default five, from the core's own (`callout.rs`). */
 const RIFT_FIVE_QUIPS = [
   "对面五个人准备举报代练",
@@ -345,11 +380,8 @@ function tierEmoji(tier: number, tiers: number, graded: boolean): string {
  *  score, spread over the scheme's tiers the way a team is. */
 function standingOf(summary: PlayerSummary, scope: FormScope, settings: Settings): PlayerStanding {
   const form = summary.recent;
-  if (form.games === 0) return { scope, rating: null, band: null };
-  const kda = (form.kills + form.assists) / Math.max(1, form.deaths);
-  const raw = 10 * (0.5 * (form.wins / form.games) + 0.5 * (1 - Math.exp(-kda / 3)));
-  const confidence = form.games / (form.games + 5);
-  const score = Math.round((confidence * raw + (1 - confidence) * 5) * 10) / 10;
+  if (form.games === 0 || form.score === null) return { scope, rating: null, band: null };
+  const score = form.score;
   const found = FORM_GRADES.findIndex((floor) => score >= floor);
   const band = found === -1 ? FORM_GRADES.length : found;
   const rule = settings.automation.callout;
@@ -450,6 +482,8 @@ function summary(puuid: string, name: string, seed: number, rank: Rank | null): 
     deaths: game.line.deaths,
     assists: game.line.assists,
     startedAt: game.startedAt,
+    score: game.line.score,
+    away: false,
   }));
   const wins = matches.filter((game) => game.win).length;
   const first = matches[0];
@@ -483,6 +517,10 @@ function summary(puuid: string, name: string, seed: number, rank: Rank | null): 
       streak: first?.win ? streak : -streak,
       matches,
       champions: [...pool.values()].sort((a, b) => b.games - a.games).slice(0, 5),
+      score: strengthOf(matches),
+      source: "full",
+      family: null,
+      away: 0,
     },
   };
 }
@@ -597,11 +635,11 @@ function champSelect(): ChampSelectView {
     side: "blue",
     callout: [
       "📢【蓝色方】winer 战绩鉴定",
-      "👑 峡谷通天代：1L 暗夜里的光，近20场胜率60%，KDA 4.1，战力7.4「版本答案」，对面五个人准备举报代练",
-      "🔥 人形防御塔：3L 野区观光客，近20场胜率55%，KDA 3.6，战力6.8「靠谱队友」，塔在人在，人在塔也在",
-      "👌 峡谷公务员：2L 峡谷清道夫，近20场胜率50%，KDA 2.9，战力5.2「正常发挥」，按时上班，准时打卡",
-      "😅 移动眼位：4L 补刀不漏一个，近20场胜率45%，KDA 2.4，战力4.6「峡谷慈善家」，站在哪里，哪里就有视野",
-      "💀 纯正牛马：5L 眼位守护者，近20场胜率40%，KDA 2.0，战力3.9「黑白电视机资深会员」，勤勤恳恳地给对面创造游戏体验",
+      "👑 峡谷通天代：1L【暗夜里的光】，近20场胜率60%，KDA 4.1，战力7.4【版本答案】，对面五个人准备举报代练",
+      "🔥 人形防御塔：3L【野区观光客】，近20场胜率55%，KDA 3.6，战力6.8【靠谱队友】，塔在人在，人在塔也在",
+      "👌 峡谷公务员：2L【峡谷清道夫】，近20场胜率50%，KDA 2.9，战力5.2【正常发挥】，按时上班，准时打卡",
+      "😅 移动眼位：4L【补刀不漏一个】，近20场胜率45%，KDA 2.4，战力4.6【峡谷慈善家】，站在哪里，哪里就有视野",
+      "💀 纯正牛马：5L【眼位守护者】，近20场胜率40%，KDA 2.0，战力3.9【黑白电视机资深会员】，勤勤恳恳地给对面创造游戏体验",
     ],
   };
 }
@@ -639,17 +677,17 @@ export function demoGame(): GameView {
     sides: true,
     callout: [
       "【敌方·红色方】winer 战绩鉴定",
-      "小心 卡兹克：峡谷通天代，近20场胜率65%，KDA 4.6",
-      "对面 亚索：纯正牛马，近20场胜率35%，可以多抓",
+      "小心【卡兹克】：峡谷通天代，近20场胜率65%，KDA 4.6",
+      "对面【亚索】：纯正牛马，近20场胜率35%，可以多抓",
     ],
-    // As champ select's lines, the champion where the seat and the name were.
+    // As champ select's lines, the champion in brackets where the seat and the name were.
     allyCallout: [
       "【我方·蓝色方】winer 战绩鉴定",
-      "峡谷通天代：阿狸，近20场胜率60%，KDA 4.1，战力7.4「版本答案」，对面五个人准备举报代练",
-      "人形防御塔：李青，近20场胜率55%，KDA 3.6，战力6.8「靠谱队友」，塔在人在，人在塔也在",
-      "峡谷公务员：盖伦，近20场胜率50%，KDA 2.9，战力5.2「正常发挥」，按时上班，准时打卡",
-      "移动眼位：金克丝，近20场胜率45%，KDA 2.4，战力4.6「峡谷慈善家」，站在哪里，哪里就有视野",
-      "纯正牛马：锤石，近20场胜率40%，KDA 2.0，战力3.9「黑白电视机资深会员」，勤勤恳恳地给对面创造游戏体验",
+      "峡谷通天代【阿狸】，近20场胜率60%，KDA 4.1，战力7.4【版本答案】，对面五个人准备举报代练",
+      "人形防御塔【李青】，近20场胜率55%，KDA 3.6，战力6.8【靠谱队友】，塔在人在，人在塔也在",
+      "峡谷公务员【盖伦】，近20场胜率50%，KDA 2.9，战力5.2【正常发挥】，按时上班，准时打卡",
+      "移动眼位【金克丝】，近20场胜率45%，KDA 2.4，战力4.6【峡谷慈善家】，站在哪里，哪里就有视野",
+      "纯正牛马【锤石】，近20场胜率40%，KDA 2.0，战力3.9【黑白电视机资深会员】，勤勤恳恳地给对面创造游戏体验",
     ],
   };
 }
@@ -1100,14 +1138,16 @@ export function demoBackend(): Backend {
       // its own leaning and, in the rich style, its emoji.
       const lines = names.map((name, index) => {
         const lean = leanOf(index, names.length, graded);
-        const title = general.titles ? `「${DEMO_TITLES[lean]}」` : "";
+        const title = general.titles ? `【${DEMO_TITLES[lean]}】` : "";
         return rule.style === "compact"
-          ? `${index + 1}L ${name}｜胜率60%｜KDA 4.1｜战力7.4｜暗夜里的光`
-          : `${tierEmoji(index, names.length, graded)} ${name}：${index + 1}L 暗夜里的光，近20场胜率60%，KDA 4.1，战力7.4${title}`;
+          ? `${index + 1}L ${name}｜胜率60%｜KDA 4.1｜战力7.4｜【暗夜里的光】`
+          : `${tierEmoji(index, names.length, graded)} ${name}：${index + 1}L【暗夜里的光】，近20场胜率60%，KDA 4.1，战力7.4${title}`;
       });
-      // As the core does: the side and winer's name lead the first line, the opening line after.
+      // As the core does: the side and winer's name lead the first line, the opening line after
+      // in 【】, unless it opens with a bracket of its own.
       const header = rule.header.trim();
-      const first = `【蓝色方】winer 战绩鉴定${header ? ` · ${header}` : ""}`;
+      const opening = header === "" || header.startsWith("【") ? header : `【${header}】`;
+      const first = `【蓝色方】winer 战绩鉴定${opening}`;
       return [rule.style === "compact" ? first : `📢${first}`, ...lines];
     },
     bench_swap: () => null,
@@ -1216,19 +1256,19 @@ export function demoBackend(): Backend {
       const names = tierNames(rule);
       const graded = rule.tiers === "grades";
       const title = (index: number) =>
-        general.titles ? `「${DEMO_TITLES[leanOf(index, names.length, graded)]}」` : "";
+        general.titles ? `【${DEMO_TITLES[leanOf(index, names.length, graded)]}】` : "";
       const enemies = [
         "【敌方·红色方】winer 战绩鉴定",
-        `小心 阿狸：${names[0]}，近20场胜率60%，KDA 4.1${title(0)}`,
-        `对面 阿狸：${names[names.length - 1]}，近20场胜率60%，可以多抓`,
+        `小心【阿狸】：${names[0]}，近20场胜率60%，KDA 4.1${title(0)}`,
+        `对面【阿狸】：${names[names.length - 1]}，近20场胜率60%，可以多抓`,
       ];
       // No emoji in the game's chat.
       const allies = [
         "【我方·蓝色方】winer 战绩鉴定",
         ...names.map((name, index) =>
           rule.style === "compact"
-            ? `${name} 阿狸｜胜率60%｜KDA 4.1｜战力7.4`
-            : `${name}：阿狸，近20场胜率60%，KDA 4.1，战力7.4${title(index)}`,
+            ? `${name}【阿狸】｜胜率60%｜KDA 4.1｜战力7.4`
+            : `${name}【阿狸】，近20场胜率60%，KDA 4.1，战力7.4${title(index)}`,
         ),
       ];
       return typedLines(enemies, allies, rule.gameTeams);

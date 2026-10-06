@@ -78,7 +78,9 @@ summoner spells for Jhin"; a failure says why. Nothing is posted to chat.
   select (P1 to P5, from the top), `{name}`, `{champion}`, `{games}`, `{winRate}`, `{kda}`, `{score}`
   the recent-form score, `{title}` and `{quip}`. Blank uses the chosen style's default, which names
   the seat and the player rather than a champion that can still change; a live preview shows the
-  result.
+  result. In Chinese the opening line and the names go in 【】, so that the client's chat filter does
+  not read a tier and a name as one word (see [How rating works](/en/rating#callout)); a hidden name
+  drops its brackets too.
 - **Shortcut to send the callout**: none by default. Once set, pressing it in champ select posts the
   callout to the team chat, as **Send to team** on the Live game page does; in a game, with
   **In-game sending** on, it types the in-game lines chosen below into the game's team chat. It
@@ -132,10 +134,10 @@ hidden, did not load or holds no games take no part. Modes without sides, such a
 in-game lines.
 
 In the game the champions are settled and are how players tell each other apart, so the defaults
-name the champion alone, without name or seat; where the champion is not known, the name stands in.
-All three lines can be rewritten (**Enemy to watch**, **Enemy to go after** and **Each teammate**)
-with the template's placeholders; `{champion}` is the champion the player plays and `{seat}` their
-place in their team's list. With **Both**, one press types, for example:
+name the champion alone (in 【】 in Chinese), without name or seat; where the champion is not known,
+the name stands in. All three lines can be rewritten (**Enemy to watch**, **Enemy to go after** and
+**Each teammate**) with the template's placeholders; `{champion}` is the champion the player plays
+and `{seat}` their place in their team's list. With **Both**, one press types, for example:
 
 ```text
 [Enemy · Red side] winer rating
@@ -146,7 +148,7 @@ Rift Demigod: Ahri, 60% in 20 games, KDA 4.1, form 7.4 [Patch Champion], the oth
 Human Turret: Lee Sin, 55% in 20 games, KDA 3.6, form 6.8 [Reliable Teammate], absurdly steady: carries and survives
 ```
 
-In the compact style a teammate's line reads "Human Turret Lee Sin | 55% | KDA 3.6 | form 6.8".
+In the compact style a teammate's line reads "Human Turret [Lee Sin] | 55% | KDA 3.6 | form 6.8".
 
 A live preview shows what one press types, with your own recent form.
 
