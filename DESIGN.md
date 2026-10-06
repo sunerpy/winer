@@ -121,7 +121,10 @@ turns it off; a lamp says 已生效, or the row says in `danger` that the system
 holds the rating scheme as radio cards (name, one-line hint, the tiers best to worst; two columns
 from 520px), the custom names as five inputs while 自定义 is chosen, the titles switch, and 评价依据
 in an inset block whose 完整说明 opens the site's rating page (`docs/site/rating.md`). 自动化 › 喊话 shows the scheme by
-name with 去设置, which opens this section.
+name with 去设置, which opens this section. The same card holds the callout's own shortcut, recorded
+the way 通用's is (neither takes the other's combination), and under a hairline its 游戏中：敌方喊话
+section: the in-game sending switch, whose risk line is `warning` with a triangle, the two enemy
+lines as inputs and their preview.
 
 ## Components
 
@@ -221,7 +224,12 @@ while the client is not connected), `ProfileIcon` (circle), `AssetIcon` (items, 
   the client's amber. 设置 › 评级 turns titles off everywhere.
 - **Callout.** A Panel beside the team in one-team modes (ARAM) and under both teams otherwise:
   the lines exactly as they will be sent, in an inset block, then 发送到队伍 (accent) and
-  仅自己可见 (outline). An accent badge in the header says when automatic sending is on.
+  仅自己可见 (outline). An accent badge in the header says when automatic sending is on. A last line
+  under a hairline names the callout's shortcut in `Kbd` caps after a lamp (ok; `danger` when the
+  system refused it; off without one), with 去设置 as a link to 自动化. In the game the panel holds
+  the enemy lines, the enemy to watch and the one to go after, and no buttons, since the game's chat
+  has no API: the header's badge says whether in-game sending is on (accent) or off (neutral), the
+  last line what the shortcut does there. A map without two sides has no such panel.
 - **Augments.** Hextech ARAM and Arena lines show their augments instead of runes: the client's
   icon in a 1.5px ring of its rarity (`--rarity-silver`, `--rarity-gold`, `--rarity-prismatic`,
   the game's own colours in every theme), name, rarity and description as the tooltip. On the

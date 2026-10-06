@@ -132,6 +132,8 @@ pub fn typescript() -> String {
         builds::AugmentTier,
         builds::AugmentOption,
     );
+    // The callout's shortcut and the game's chat.
+    declare!(view::CalloutHotkeyStatus, view::CalloutSkip);
     out
 }
 

@@ -1,10 +1,16 @@
-//! The champ-select callout: every rated teammate's standing and recent form, one chat line each.
-//! Rating the seats is `live`'s job; this module only names the standings and writes the lines.
+//! The callout: in champ select every rated teammate's standing and recent form, one chat line
+//! each; in the game, the enemy to watch and the one to go after. Rating the seats is `live`'s job;
+//! this module only names the standings and writes the lines.
+
+use std::cmp::Ordering;
 
 use crate::{
     rating::{self, FormTitle},
     settings::{CalloutRule, General, Language, TierSet},
-    view::{ChampSelectView, PlayerStats, PlayerSummary, Seat, SeatRating, Side, TimerView},
+    view::{
+        CalloutSkip, ChampSelectView, GameView, Phase, PlayerStats, PlayerSummary, Seat,
+        SeatRating, Side, TimerView,
+    },
 };
 
 /// The name every callout carries on its first line, after the side.
@@ -26,20 +32,23 @@ pub fn side_tag(side: Side, language: Language) -> &'static str {
 }
 
 /// The line written for each player when the user has not written their own. It names the seat,
-/// not the champion: champions change during champ select, seats do not.
+/// not the champion: champions change during champ select, seats do not. A comma keeps the name
+/// apart from the numbers after it, and the score is called what the window calls it, 战力 (the
+/// form score), not 评分, which is a game's.
 pub fn template(language: Language) -> &'static str {
     match language {
         Language::ZhCn => {
-            "{standing}：{seat} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}"
+            "{standing}：{seat} {name}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}"
         }
         Language::En => {
-            "{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}"
+            "{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}"
         }
     }
 }
 
-/// The default line up to 0.0.2, which named the champion where the seat now stands.
-const FORMER_TEMPLATES: [(Language, &str); 2] = [
+/// The default lines of earlier versions: up to 0.0.2 they named the champion where the seat now
+/// stands, up to 0.0.3 they called the form score 评分 and ran the name into the numbers.
+const FORMER_TEMPLATES: [(Language, &str); 4] = [
     (
         Language::ZhCn,
         "{standing}：{champion} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}",
@@ -47,6 +56,14 @@ const FORMER_TEMPLATES: [(Language, &str); 2] = [
     (
         Language::En,
         "{standing}: {champion} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}",
+    ),
+    (
+        Language::ZhCn,
+        "{standing}：{seat} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}",
+    ),
+    (
+        Language::En,
+        "{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}",
     ),
 ];
 
@@ -461,9 +478,10 @@ fn line(
         ("{score}", format!("{:.1}", rating.score)),
         (
             "{title}",
+            // An English title brings its own space, so a line without one has no gap to leave.
             rating.title.as_deref().map_or_else(String::new, |title| {
                 if title.is_ascii() {
-                    format!("[{title}]")
+                    format!(" [{title}]")
                 } else {
                     format!("「{title}」")
                 }
@@ -484,13 +502,49 @@ fn line(
     for (key, value) in values {
         text = text.replace(key, &value);
     }
-    // A blank value (no champion yet, a hidden name) must not leave a gap in the sentence, and
-    // full-width punctuation takes no space after it.
+    // A blank value (no champion yet, a hidden name) must not leave a gap in the sentence:
+    // full-width punctuation takes no space on either side, and a comma none before it.
     let mut text = text.split_whitespace().collect::<Vec<_>>().join(" ");
     for mark in ["：", "，", "；"] {
-        text = text.replace(&format!("{mark} "), mark);
+        text = text
+            .replace(&format!(" {mark}"), mark)
+            .replace(&format!("{mark} "), mark);
     }
-    Some(text)
+    Some(text.replace(" ,", ","))
+}
+
+/// A seat holding the user's own recent form in `tier` of `ranking`, for the previews: their most
+/// played champion stands in for `{champion}`.
+fn sample(me: &PlayerSummary, ranking: &Ranking, tier: usize, is_self: bool) -> Seat {
+    let title = ranking
+        .titles
+        .then(|| rating::form_title(&me.recent))
+        .flatten()
+        .map(|title| title_name(title, ranking.language).to_owned());
+    Seat {
+        puuid: Some(me.puuid.clone()),
+        name: me.name.clone(),
+        champion_id: me
+            .recent
+            .champions
+            .first()
+            .map_or(0, |form| form.champion_id),
+        intent: false,
+        position: None,
+        spells: [0, 0],
+        is_self,
+        premade: None,
+        stats: PlayerStats::Ready(Box::new(me.clone())),
+        rating: Some(SeatRating {
+            score: rating::form_score(&me.recent).unwrap_or(5.0),
+            tier: tier as u8,
+            tiers: ranking.names.len() as u8,
+            label: ranking.names[tier].clone(),
+            grade: ranking.absolute.then_some(tier as u8),
+            title,
+            quip: ranking.quip(tier as u8, &me.puuid, 0),
+        }),
+    }
 }
 
 /// What `rule` would send, shown with the user's own recent form in every tier, so names and
@@ -505,41 +559,8 @@ pub fn preview(
 ) -> Vec<String> {
     let language = general.language;
     let ranking = ranking(rule, general);
-    let names = &ranking.names;
-    let score = rating::form_score(&me.recent).unwrap_or(5.0);
-    let title = general
-        .titles
-        .then(|| rating::form_title(&me.recent))
-        .flatten()
-        .map(|title| title_name(title, language).to_owned());
-    let champion_id = me
-        .recent
-        .champions
-        .first()
-        .map_or(0, |form| form.champion_id);
-    let my_team = names
-        .iter()
-        .enumerate()
-        .map(|(tier, label)| Seat {
-            puuid: Some(me.puuid.clone()),
-            name: me.name.clone(),
-            champion_id,
-            intent: false,
-            position: None,
-            spells: [0, 0],
-            is_self: false,
-            premade: None,
-            stats: PlayerStats::Ready(Box::new(me.clone())),
-            rating: Some(SeatRating {
-                score,
-                tier: tier as u8,
-                tiers: names.len() as u8,
-                label: label.clone(),
-                grade: ranking.absolute.then_some(tier as u8),
-                title: title.clone(),
-                quip: ranking.quip(tier as u8, &me.puuid, 0),
-            }),
-        })
+    let my_team = (0..ranking.names.len())
+        .map(|tier| sample(me, &ranking, tier, false))
         .collect();
     let view = ChampSelectView {
         game_id: 0,
@@ -564,6 +585,200 @@ pub fn preview(
         language,
         champion,
     )
+}
+
+// ---- In the game: the other team, typed into the game's chat by the callout's shortcut ----
+
+/// The other team's side, as the in-game callout's first line names it.
+pub fn enemy_tag(side: Side, language: Language) -> &'static str {
+    match (side, language) {
+        (Side::Blue, Language::ZhCn) => "【敌方·蓝色方】",
+        (Side::Red, Language::ZhCn) => "【敌方·红色方】",
+        (Side::Blue, Language::En) => "[Enemy · Blue side]",
+        (Side::Red, Language::En) => "[Enemy · Red side]",
+    }
+}
+
+/// The line about the enemy to watch, when the user has not written their own. In the game the
+/// champion is what identifies a player: it no longer changes, and it is what the map shows.
+pub fn watch_template(language: Language) -> &'static str {
+    match language {
+        Language::ZhCn => {
+            "小心 {champion} {name}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}"
+        }
+        Language::En => {
+            "Watch {champion} ({name}): {standing}, {winRate} in {games} games, KDA {kda}{title}"
+        }
+    }
+}
+
+/// The line about the enemy to go after, when the user has not written their own.
+pub fn target_template(language: Language) -> &'static str {
+    match language {
+        Language::ZhCn => "对面 {champion} {name}：{standing}，近{games}场胜率{winRate}，可以多抓",
+        Language::En => "Go after {champion} ({name}): {standing}, {winRate} in {games} games",
+    }
+}
+
+/// Where a rating stands against the middle of its scheme: above it (`Less`: tier 0 is the best),
+/// below it (`Greater`) or at it. A ranking splits around its middle tier (of five, the first two
+/// are above and the last two below); of the eight grades, B and C, the bands either side of an
+/// ordinary player's form, are the middle.
+fn lean(rating: &SeatRating) -> Ordering {
+    match rating.grade {
+        Some(grade) if grade <= 2 => Ordering::Less,
+        Some(grade) if grade >= 5 => Ordering::Greater,
+        Some(_) => Ordering::Equal,
+        None => (2 * u16::from(rating.tier) + 1).cmp(&u16::from(rating.tiers)),
+    }
+}
+
+/// Who the in-game callout talks about, as places in `team`: the enemy to watch, the best rated
+/// above the middle of the scheme, and the one to go after, the worst rated below it (the better
+/// tier first, then the higher score, then the earlier seat). A player without a rating (hidden,
+/// still loading, no games) is never chosen; where nobody stands out, nobody is.
+pub fn pick(team: &[Seat]) -> (Option<usize>, Option<usize>) {
+    let rated = || {
+        team.iter()
+            .enumerate()
+            .filter_map(|(index, seat)| Some((index, seat.rating.as_ref()?)))
+    };
+    // `Less` is the better of two ratings.
+    let better =
+        |x: &SeatRating, y: &SeatRating| x.tier.cmp(&y.tier).then(y.score.total_cmp(&x.score));
+    let watch = rated()
+        .filter(|(_, rating)| lean(rating) == Ordering::Less)
+        .min_by(|(a, x), (b, y)| better(x, y).then(a.cmp(b)));
+    let target = rated()
+        .filter(|(_, rating)| lean(rating) == Ordering::Greater)
+        .max_by(|(a, x), (b, y)| better(x, y).then(b.cmp(a)));
+    (
+        watch.map(|(index, _)| index),
+        target.map(|(index, _)| index),
+    )
+}
+
+/// The in-game callout: a first line with the other team's side and winer's name, then the enemy
+/// to watch and the one to go after (`pick`), each in the user's own words or the language's. It
+/// talks about the other team only: the team heard about itself in champ select, and every line
+/// typed is one more the player waits through. A map without sides (Arena's pairs, Swarm) has no
+/// single other team and a spectator no team of their own, so nothing is said there, nor about a
+/// team where nobody stands out: not even the first line.
+pub fn game_lines(
+    view: &GameView,
+    rule: &CalloutRule,
+    language: Language,
+    champion: impl Fn(i64) -> Option<String>,
+) -> Vec<String> {
+    if !view.sides || view.teams.len() != 2 {
+        return Vec::new();
+    }
+    let Some(mine) = view
+        .teams
+        .iter()
+        .position(|team| team.iter().any(|seat| seat.is_self))
+    else {
+        return Vec::new();
+    };
+    let (other, team) = (1 - mine, &view.teams[1 - mine]);
+    let (watch, target) = pick(team);
+    let own_or = |own: &str, default: &'static str| match own.trim() {
+        "" => default.to_owned(),
+        own => own.to_owned(),
+    };
+    let players: Vec<String> = [
+        (
+            watch,
+            own_or(&rule.watch_template, watch_template(language)),
+        ),
+        (
+            target,
+            own_or(&rule.target_template, target_template(language)),
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(index, template)| {
+        let seat = &team[index?];
+        line(
+            &template,
+            &seat_label(index? + 1, language),
+            seat,
+            seat.rating.as_ref()?,
+            &champion,
+        )
+    })
+    .collect();
+    if players.is_empty() {
+        return players;
+    }
+    let side = if other == 0 { Side::Blue } else { Side::Red };
+    let first = match language {
+        Language::ZhCn => format!("{}{}", enemy_tag(side, language), signature(language)),
+        Language::En => format!("{} {}", enemy_tag(side, language), signature(language)),
+    };
+    std::iter::once(first).chain(players).collect()
+}
+
+/// What the in-game callout would type under `rule`, shown with the user's own recent form in the
+/// enemy to watch (the best tier) and the one to go after (the worst), the enemy on the red side.
+pub fn game_preview(
+    me: &PlayerSummary,
+    rule: &CalloutRule,
+    general: &General,
+    champion: impl Fn(i64) -> Option<String>,
+) -> Vec<String> {
+    let ranking = ranking(rule, general);
+    let worst = ranking.names.len().saturating_sub(1);
+    let view = GameView {
+        game_id: 0,
+        queue_id: 0,
+        teams: vec![
+            vec![sample(me, &ranking, 0, true)],
+            vec![
+                sample(me, &ranking, 0, false),
+                sample(me, &ranking, worst, false),
+            ],
+        ],
+        sides: true,
+        callout: Vec::new(),
+    };
+    game_lines(&view, rule, general.language, champion)
+}
+
+// ---- The callout's shortcut ----
+
+/// What a press of the callout's shortcut does.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Press {
+    /// Champ select: its lines go to its chat, as 发送到队伍 sends them.
+    ChampSelect,
+    /// The game runs and in-game sending is on: the shell types these into the game's chat.
+    Game(Vec<String>),
+    /// Nothing is sent.
+    Skip(CalloutSkip),
+}
+
+/// What the callout's shortcut does in `phase`, from the views as drawn: in champ select the team's
+/// lines go to its chat; while the game runs (`InProgress`: not its loading screen) the enemy lines
+/// are typed into the game's chat, if in-game sending is on. No lines, nothing sent.
+pub fn press(
+    phase: Phase,
+    champ_select: Option<&ChampSelectView>,
+    game: Option<&GameView>,
+    in_game: bool,
+) -> Press {
+    match phase {
+        Phase::ChampSelect => match champ_select {
+            Some(view) if !view.callout.is_empty() => Press::ChampSelect,
+            _ => Press::Skip(CalloutSkip::NothingToSay),
+        },
+        Phase::InProgress if !in_game => Press::Skip(CalloutSkip::InGameOff),
+        Phase::InProgress => match game {
+            Some(view) if !view.callout.is_empty() => Press::Game(view.callout.clone()),
+            _ => Press::Skip(CalloutSkip::NothingToSay),
+        },
+        _ => Press::Skip(CalloutSkip::NotNow),
+    }
 }
 
 #[cfg(test)]
@@ -662,16 +877,16 @@ mod tests {
         assert_eq!(
             players(&view, &CalloutRule::default(), Language::ZhCn),
             [
-                "上等马：2L ann 近20场胜率55% KDA 3.5 评分7.2",
-                "中等马：3L cy 近20场胜率55% KDA 3.5 评分5.5",
-                "下等马：1L bo 近20场胜率55% KDA 3.5 评分4.1",
+                "上等马：2L ann，近20场胜率55%，KDA 3.5，战力7.2",
+                "中等马：3L cy，近20场胜率55%，KDA 3.5，战力5.5",
+                "下等马：1L bo，近20场胜率55%，KDA 3.5，战力4.1",
             ],
             "the seat is the place in champ select's list, whatever order the lines take"
         );
         // The labels were resolved in Chinese when the seats were rated; the line is English.
         assert_eq!(
             players(&view, &CalloutRule::default(), Language::En)[0],
-            "上等马: P2 ann, 55% in 20 games, KDA 3.5, score 7.2"
+            "上等马: P2 ann, 55% in 20 games, KDA 3.5, form 7.2"
         );
     }
 
@@ -679,11 +894,11 @@ mod tests {
     fn the_default_line_names_the_seat_and_the_player_not_the_champion() {
         assert_eq!(
             template(Language::ZhCn),
-            "{standing}：{seat} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}"
+            "{standing}：{seat} {name}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}"
         );
         assert_eq!(
             template(Language::En),
-            "{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}"
+            "{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}"
         );
         let seats: Vec<String> = (1..=5)
             .map(|seat| seat_label(seat, Language::ZhCn))
@@ -724,7 +939,21 @@ mod tests {
             ),
             Some(Language::En)
         );
+        assert_eq!(
+            former_default(
+                "{standing}：{seat} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}"
+            ),
+            Some(Language::ZhCn),
+            "0.0.3's line, which called the form score 评分"
+        );
+        assert_eq!(
+            former_default(
+                "{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}"
+            ),
+            Some(Language::En)
+        );
         assert_eq!(former_default(template(Language::ZhCn)), None);
+        assert_eq!(former_default(template(Language::En)), None);
         assert_eq!(former_default("{standing}：{champion} {name}"), None);
         assert_eq!(former_default(""), None);
     }
@@ -856,10 +1085,55 @@ mod tests {
         }
         let view = view(vec![titled, seat("bo", 0, false, Some((4.1, 2)))]);
         let lines = players(&view, &CalloutRule::default(), Language::ZhCn);
-        assert!(lines[0].ends_with("评分6.0「版本答案」"), "{lines:?}");
+        assert!(lines[0].ends_with("战力6.0「版本答案」"), "{lines:?}");
         assert!(
-            lines[1].ends_with("评分4.1"),
+            lines[1].ends_with("战力4.1"),
             "no title, no trace: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn a_line_leaves_no_gap_where_a_title_or_a_name_is_missing() {
+        let mut quipped = seat("ann", 1, false, Some((7.2, 0)));
+        if let Some(rating) = quipped.rating.as_mut() {
+            rating.quip = Some("steady".into());
+        }
+        let mut titled = seat("bo", 0, false, Some((4.1, 2)));
+        if let Some(rating) = titled.rating.as_mut() {
+            rating.title = Some("Patch Champion".into());
+        }
+        let team = view(vec![quipped, titled]);
+        assert_eq!(
+            players(&team, &CalloutRule::default(), Language::En),
+            [
+                "上等马: P1 ann, 55% in 20 games, KDA 3.5, form 7.2, steady",
+                "下等马: P2 bo, 55% in 20 games, KDA 3.5, form 4.1 [Patch Champion]",
+            ],
+            "no space before the quip's comma without a title, one before a title"
+        );
+        // 0.0.3's English line put a space before the title; a line of the user's own may too.
+        let rule = CalloutRule {
+            template: "{name} {score} {title}{quip}".into(),
+            ..CalloutRule::default()
+        };
+        assert_eq!(
+            players(&team, &rule, Language::En),
+            ["ann 7.2, steady", "bo 4.1 [Patch Champion]"]
+        );
+
+        let mut nameless = seat("cy", 0, false, Some((5.0, 1)));
+        nameless.name = None;
+        if let PlayerStats::Ready(summary) = &mut nameless.stats {
+            summary.name = None;
+        }
+        assert_eq!(
+            players(
+                &view(vec![nameless]),
+                &CalloutRule::default(),
+                Language::ZhCn
+            ),
+            ["中等马：1L，近20场胜率55%，KDA 3.5，战力5.0"],
+            "a name the client hides leaves no space before the comma"
         );
     }
 
@@ -885,12 +1159,12 @@ mod tests {
             "a side stands in for the game's"
         );
         assert!(
-            lines[1].starts_with("独角马：1L ann ") && lines[5].starts_with("纯牛马：5L ann "),
+            lines[1].starts_with("独角马：1L ann，") && lines[5].starts_with("纯牛马：5L ann，"),
             "{lines:?}"
         );
         for (index, line) in lines[1..].iter().enumerate() {
             assert!(
-                line.contains(&format!("：{}L ann 近20场", index + 1)),
+                line.contains(&format!("：{}L ann，近20场", index + 1)),
                 "the seats in order: {lines:?}"
             );
         }
@@ -958,7 +1232,7 @@ mod tests {
             ]
         );
         assert!(
-            lines[0].starts_with("峡谷通天代：5L P4 近20场胜率70%"),
+            lines[0].starts_with("峡谷通天代：5L P4，近20场胜率70%"),
             "the best form sits in the fifth cell: {lines:?}"
         );
         for (tier, line) in lines.iter().enumerate() {
@@ -1071,7 +1345,7 @@ mod tests {
             "{lines:?}"
         );
         assert!(
-            lines[0].starts_with("独角马：4L P3 近20场胜率85%"),
+            lines[0].starts_with("独角马：4L P3，近20场胜率85%"),
             "{lines:?}"
         );
         assert!(
@@ -1120,5 +1394,292 @@ mod tests {
             hidden.clone()
         ])));
         assert!(!ready(&view(vec![hidden])), "nobody rated, nothing to say");
+    }
+
+    // ---- In the game ----
+
+    /// A seat of the other team, rated `tier` of `tiers` with `score` (labelled `T<tier>`).
+    fn enemy(name: &str, champion_id: i64, rating: Option<(u8, u8, f64)>) -> Seat {
+        let mut seat = seat(name, champion_id, false, None);
+        seat.rating = rating.map(|(tier, tiers, score)| SeatRating {
+            score,
+            tier,
+            tiers,
+            label: format!("T{tier}"),
+            grade: None,
+            title: None,
+            quip: None,
+        });
+        seat
+    }
+
+    /// A grade of the eight, on fixed bands: the grade is the tier.
+    fn graded(grade: u8, score: f64) -> Seat {
+        let mut seat = enemy("g", 1, Some((grade, 8, score)));
+        if let Some(rating) = seat.rating.as_mut() {
+            rating.grade = Some(grade);
+        }
+        seat
+    }
+
+    /// A running game with the local player alone on team `mine` and `enemies` on the other.
+    fn game(mine: usize, enemies: Vec<Seat>) -> GameView {
+        let me = seat("me", 9, true, Some((6.0, 0)));
+        GameView {
+            game_id: 7,
+            queue_id: 420,
+            teams: if mine == 0 {
+                vec![vec![me], enemies]
+            } else {
+                vec![enemies, vec![me]]
+            },
+            sides: true,
+            callout: Vec::new(),
+        }
+    }
+
+    fn champions(id: i64) -> Option<String> {
+        Some(
+            match id {
+                1 => "亚索",
+                2 => "盖伦",
+                _ => return None,
+            }
+            .to_owned(),
+        )
+    }
+
+    #[test]
+    fn the_enemy_to_watch_rates_above_the_middle_and_the_one_to_go_after_below_it() {
+        let five = [
+            enemy("a", 1, Some((2, 5, 5.5))),
+            enemy("b", 2, Some((4, 5, 3.1))),
+            enemy("c", 3, Some((0, 5, 7.8))),
+            enemy("d", 4, Some((1, 5, 6.4))),
+            enemy("e", 5, Some((3, 5, 4.4))),
+        ];
+        assert_eq!(pick(&five), (Some(2), Some(1)), "the best and the worst");
+        assert_eq!(
+            pick(&[
+                enemy("a", 1, Some((3, 5, 4.0))),
+                enemy("b", 2, Some((1, 5, 6.0)))
+            ]),
+            (Some(1), Some(0)),
+            "two players rank second and fourth of five"
+        );
+        // Three tiers split five players 2 / 1 / 2: the higher score above, the lower below.
+        let horses = [
+            enemy("a", 1, Some((0, 3, 6.1))),
+            enemy("b", 2, Some((2, 3, 4.2))),
+            enemy("c", 3, Some((0, 3, 6.9))),
+            enemy("d", 4, Some((1, 3, 5.2))),
+            enemy("e", 5, Some((2, 3, 3.9))),
+        ];
+        assert_eq!(pick(&horses), (Some(2), Some(4)));
+        let tied = [
+            enemy("a", 1, Some((0, 2, 6.0))),
+            enemy("b", 2, Some((1, 2, 4.0))),
+            enemy("c", 3, Some((0, 2, 6.0))),
+            enemy("d", 4, Some((1, 2, 4.0))),
+        ];
+        assert_eq!(
+            pick(&tied),
+            (Some(0), Some(1)),
+            "a tie goes to the earlier seat"
+        );
+
+        assert_eq!(pick(&[enemy("a", 1, None)]), (None, None), "nobody rated");
+        assert_eq!(
+            pick(&[enemy("a", 1, Some((2, 5, 5.0)))]),
+            (None, None),
+            "a player rated alone sits in the middle tier"
+        );
+    }
+
+    #[test]
+    fn of_the_eight_grades_b_and_c_are_ordinary_form_and_nobody_is_singled_out_for_them() {
+        assert_eq!(
+            pick(&[
+                graded(3, 5.5),
+                graded(2, 6.0),
+                graded(4, 5.0),
+                graded(5, 4.5)
+            ]),
+            (Some(1), Some(3)),
+            "an A is watched, a D gone after"
+        );
+        assert_eq!(pick(&[graded(3, 5.5), graded(4, 4.9)]), (None, None));
+        assert_eq!(
+            pick(&[graded(1, 7.0), graded(0, 7.9), graded(2, 6.0)]),
+            (Some(1), None),
+            "a strong team has somebody to watch and nobody to go after"
+        );
+    }
+
+    #[test]
+    fn in_game_the_callout_names_the_enemy_side_and_whom_to_watch_and_to_go_after() {
+        let mut strong = enemy("强者", 1, Some((0, 5, 7.8)));
+        if let Some(rating) = strong.rating.as_mut() {
+            rating.title = Some("版本答案".into());
+        }
+        let enemies = vec![
+            enemy("路人", 3, Some((2, 5, 5.2))),
+            strong,
+            enemy("弱者", 2, Some((4, 5, 3.0))),
+        ];
+        assert_eq!(
+            game_lines(
+                &game(0, enemies.clone()),
+                &CalloutRule::default(),
+                Language::ZhCn,
+                champions
+            ),
+            [
+                "【敌方·红色方】winer 战绩鉴定",
+                "小心 亚索 强者：T0，近20场胜率55%，KDA 3.5「版本答案」",
+                "对面 盖伦 弱者：T4，近20场胜率55%，可以多抓",
+            ],
+            "the champion names the player in game; the middle one is not talked about"
+        );
+        assert_eq!(
+            game_lines(
+                &game(1, enemies),
+                &CalloutRule::default(),
+                Language::En,
+                champions
+            ),
+            [
+                "[Enemy · Blue side] winer rating",
+                "Watch 亚索 (强者): T0, 55% in 20 games, KDA 3.5「版本答案」",
+                "Go after 盖伦 (弱者): T4, 55% in 20 games",
+            ]
+        );
+    }
+
+    #[test]
+    fn the_users_own_enemy_lines_win_and_nothing_is_said_without_two_sides_or_a_team() {
+        let enemies = vec![
+            enemy("强者", 1, Some((0, 5, 7.8))),
+            enemy("弱者", 2, Some((4, 5, 3.0))),
+        ];
+        let rule = CalloutRule {
+            watch_template: "注意{seat}{champion}，{standing}".into(),
+            target_template: "  ".into(),
+            ..CalloutRule::default()
+        };
+        let lines = game_lines(&game(0, enemies.clone()), &rule, Language::ZhCn, champions);
+        assert_eq!(
+            lines[1], "注意1L亚索，T0",
+            "the seat is the place in their list"
+        );
+        assert!(
+            lines[2].starts_with("对面 盖伦 弱者："),
+            "a blank line is the default: {lines:?}"
+        );
+        assert!(
+            game_lines(&game(0, enemies.clone()), &rule, Language::ZhCn, |_| None)[1]
+                .starts_with("注意1L，"),
+            "a champion the catalog does not name leaves no gap"
+        );
+
+        let mut sideless = game(0, enemies.clone());
+        sideless.sides = false;
+        assert!(
+            game_lines(&sideless, &rule, Language::ZhCn, champions).is_empty(),
+            "Arena's pairs have no one other team"
+        );
+        let mut watching = game(0, enemies);
+        watching.teams[0][0].is_self = false;
+        assert!(
+            game_lines(&watching, &rule, Language::ZhCn, champions).is_empty(),
+            "a spectator has no team of their own"
+        );
+        let ordinary = game(1, vec![enemy("路人", 3, Some((2, 5, 5.2)))]);
+        assert!(
+            game_lines(&ordinary, &rule, Language::ZhCn, champions).is_empty(),
+            "nobody stands out: not even the first line"
+        );
+    }
+
+    #[test]
+    fn the_game_preview_types_both_lines_with_the_users_own_form() {
+        let Seat {
+            stats: PlayerStats::Ready(me),
+            ..
+        } = seat("ann", 1, true, None)
+        else {
+            unreachable!()
+        };
+        assert_eq!(
+            game_preview(&me, &CalloutRule::default(), &General::default(), names),
+            [
+                "【敌方·红色方】winer 战绩鉴定",
+                "小心 ann：峡谷通天代，近20场胜率55%，KDA 3.5",
+                "对面 ann：纯正牛马，近20场胜率55%，可以多抓",
+            ],
+            "the best and the worst of the default five tiers"
+        );
+        let graded = CalloutRule {
+            tiers: TierSet::Grades,
+            ..CalloutRule::default()
+        };
+        let english = General {
+            language: Language::En,
+            ..General::default()
+        };
+        let lines = game_preview(&me, &graded, &english, names);
+        assert!(
+            lines[1].starts_with("Watch (ann): Rift Demigod, ")
+                && lines[2].starts_with("Go after (ann): Pure Workhorse, "),
+            "S+ and F of the grades: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn the_shortcut_sends_in_champ_select_types_in_the_game_and_otherwise_says_why_not() {
+        let mut select = view(vec![seat("ann", 1, false, Some((7.2, 0)))]);
+        assert_eq!(
+            press(Phase::ChampSelect, Some(&select), None, true),
+            Press::Skip(CalloutSkip::NothingToSay),
+            "no lines yet"
+        );
+        select.callout = vec!["line".into()];
+        assert_eq!(
+            press(Phase::ChampSelect, Some(&select), None, false),
+            Press::ChampSelect,
+            "champ select's chat has an API: in-game sending plays no part"
+        );
+
+        let mut running = game(0, Vec::new());
+        assert_eq!(
+            press(Phase::InProgress, None, Some(&running), true),
+            Press::Skip(CalloutSkip::NothingToSay)
+        );
+        running.callout = vec!["a".into(), "b".into()];
+        assert_eq!(
+            press(Phase::InProgress, None, Some(&running), false),
+            Press::Skip(CalloutSkip::InGameOff)
+        );
+        assert_eq!(
+            press(Phase::InProgress, None, Some(&running), true),
+            Press::Game(vec!["a".into(), "b".into()])
+        );
+        assert_eq!(
+            press(Phase::InProgress, None, None, true),
+            Press::Skip(CalloutSkip::NothingToSay)
+        );
+        for phase in [
+            Phase::None,
+            Phase::Lobby,
+            Phase::GameStart,
+            Phase::Reconnect,
+            Phase::EndOfGame,
+        ] {
+            assert_eq!(
+                press(phase, Some(&select), Some(&running), true),
+                Press::Skip(CalloutSkip::NotNow),
+                "{phase:?}"
+            );
+        }
     }
 }

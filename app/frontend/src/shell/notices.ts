@@ -56,12 +56,28 @@ export function noticeText(kind: NoticeKind, t: Translate, catalog: Catalog | nu
     }
     case "itemSetWritten":
       return t("loadout.notice.itemSet", { champion: champion(kind.championId) });
+    // The callout's shortcut.
+    case "typedInGame":
+      return t("callout.notice.typed", { n: kind.lines });
+    case "typingStopped":
+      return t("callout.notice.stopped", {
+        n: kind.lines,
+        reason: t(`callout.skip.${kind.reason}`),
+      });
+    case "calloutSkipped":
+      return t("callout.notice.skipped", { reason: t(`callout.skip.${kind.reason}`) });
   }
 }
 
 /** A notice about something winer could not do, drawn in the danger tone. */
 export function isFailure(kind: NoticeKind): boolean {
-  return kind.kind === "failed" || kind.kind === "presenceRefused";
+  return (
+    kind.kind === "failed" ||
+    kind.kind === "presenceRefused" ||
+    // The callout's shortcut.
+    kind.kind === "typingStopped" ||
+    kind.kind === "calloutSkipped"
+  );
 }
 
 /** Every new notice also pops up as a toast. */

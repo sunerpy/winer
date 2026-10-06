@@ -80,6 +80,8 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         clear_item_sets,
         get_loadout_summary,
         clear_loadouts,
+        // The callout typed into the game's chat.
+        preview_game_callout,
     ]
 }
 
@@ -514,6 +516,19 @@ async fn clear_loadouts<R: Runtime>(app: AppHandle<R>) -> Result<LoadoutSummary>
     blocking(move || service.clear_loadouts()).await
 }
 
+// The callout typed into the game's chat.
+
+/// What the callout's shortcut would type in the game under `rule` and `general`, shown with the
+/// user's own form; for the settings page.
+#[tauri::command]
+async fn preview_game_callout<R: Runtime>(
+    app: AppHandle<R>,
+    rule: CalloutRule,
+    general: General,
+) -> Result<Vec<String>> {
+    Ok(service(&app).preview_game_callout(&rule, &general).await?)
+}
+
 #[cfg(test)]
 mod tests {
     use tauri::test::{MockRuntime, mock_builder, mock_context, noop_assets};
@@ -595,6 +610,9 @@ mod tests {
                     .unwrap_err(),
                 apply_spells(handle.clone(), [4, 14]).await.unwrap_err(),
                 clear_item_sets(handle.clone()).await.unwrap_err(),
+                preview_game_callout(handle.clone(), CalloutRule::default(), General::default())
+                    .await
+                    .unwrap_err(),
             ] {
                 assert_eq!(error.code, ErrorCode::NotConnected);
             }

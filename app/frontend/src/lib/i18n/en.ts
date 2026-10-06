@@ -736,4 +736,49 @@ export const en: Record<MessageKey, string> = {
   "social.hotkeyActive": "Active",
   "social.hotkeyFailed":
     "Not registered: another program probably holds this combination. Try another.",
+
+  // Callout: the shortcut that sends it, and the enemy lines it types into the game's chat.
+  "callout.hotkey": "Shortcut to send the callout",
+  "callout.hotkeyHint":
+    "In champ select it posts the callout to the team chat, as Send to team does; in a game, with In-game sending on, it types the enemy lines below into the game's team chat. None by default.",
+  "callout.hotkeyTakenByWindow": "This combination brings up winer. Choose another.",
+  "callout.hotkeyTakenByCallout": "This combination sends the callout. Choose another.",
+  "callout.gameSection": "In game: the enemy lines",
+  "callout.inGame": "In-game sending",
+  "callout.inGameHint":
+    "The game's chat has no API, so winer types for you with synthesized key presses: Enter opens the team chat, a line goes in, Enter sends it, line by line. It types only while the game's window is already in front and stops the moment it is not; close the chat box before pressing the shortcut.",
+  "callout.inGameRisk":
+    "Key presses another program sends to the game are third-party input and may break the game's terms of service; you use it at your own risk. Off by default.",
+  "callout.watch": "Enemy to watch",
+  "callout.target": "Enemy to go after",
+  "callout.linesHint":
+    "In a game only the enemy team is talked about: the best rated above the middle of the scheme goes in the line to watch, the worst rated below it in the line to go after, and nobody like that, no line. The placeholders are the team line's; {champion} is the champion the enemy plays and {seat} their place in their team's list. Blank uses the default.",
+  "callout.preview": "Typed in game",
+  "callout.previewHint": "Shown with your own recent form, the enemy on the red side.",
+  "callout.inGameOn": "In-game sending on",
+  "callout.inGameOff": "In-game sending off",
+  "callout.liveGameHint":
+    "In a game only the enemy team is talked about: the one to watch and the one to go after. The game's chat has no API, so there is no send button here; the shortcut types them.",
+  "callout.liveGameEmpty":
+    "Written here once the enemies' history has loaded; nothing while no enemy is clearly stronger or weaker than the middle.",
+  "callout.liveHotkey": "The shortcut sends it to the team too:",
+  "callout.liveHotkeyGame": "In the game, the shortcut types these lines into the team chat:",
+  "callout.liveNoHotkey": "Set a shortcut to send the callout to the team with one press.",
+  "callout.liveNoHotkeyGame":
+    "Set a shortcut and turn on in-game sending to type these lines into the team chat in the game.",
+  "callout.liveInGameOff": "In-game sending is off: the shortcut types nothing in the game.",
+  "callout.liveHotkeyFailed":
+    "The callout's shortcut is not registered: another program probably holds it.",
+  "callout.configure": "Set up",
+  "callout.notice.typed": "Typed the callout into the game's chat ({n} lines)",
+  "callout.notice.stopped": "The callout stopped part of the way: {reason} ({n} sent)",
+  "callout.notice.skipped": "Callout not sent: {reason}",
+  "callout.skip.notNow": "the shortcut sends only in champ select and in a game",
+  "callout.skip.nothingToSay": "nobody to talk about",
+  "callout.skip.inGameOff": "in-game sending is off",
+  "callout.skip.notInFront": "the game's window is not in front",
+  "callout.skip.keysHeld": "a key stayed held down",
+  "callout.skip.blocked":
+    "the system refused the key presses; winer may run with fewer rights than the game",
+  "callout.skip.unsupported": "in-game sending works on Windows only",
 };

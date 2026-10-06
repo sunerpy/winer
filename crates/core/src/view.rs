@@ -262,6 +262,10 @@ pub struct GameView {
     pub teams: Vec<Vec<Seat>>,
     /// The teams are the blue and the red side; Arena's and Swarm's are not.
     pub sides: bool,
+    // Callout: what the shortcut types into the game's chat.
+    /// The in-game callout as it would be typed now: the enemy to watch and the one to go after
+    /// (`callout::game_lines`); empty where there is nobody to talk about.
+    pub callout: Vec<String>,
 }
 
 /// One player slot in champ select or in a running game.
@@ -654,6 +658,43 @@ pub enum NoticeKind {
     ItemSetWritten {
         champion_id: i64,
     },
+    // The callout's shortcut (`callout::press`), which may act while the window is hidden.
+    /// Typed the callout into the game's team chat: `lines` messages.
+    TypedInGame {
+        lines: u32,
+    },
+    /// Typing the callout into the game stopped part of the way, for `reason` (the game's window
+    /// left the foreground, or the system refused a key press); `lines` messages had gone out.
+    TypingStopped {
+        lines: u32,
+        reason: CalloutSkip,
+    },
+    /// The callout's shortcut sent nothing.
+    CalloutSkipped {
+        reason: CalloutSkip,
+    },
+}
+
+/// Why the callout's shortcut sent nothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum CalloutSkip {
+    /// Neither champ select nor a running game.
+    NotNow,
+    /// Nobody to talk about: no rated teammate in champ select, no enemy who stands out in game.
+    NothingToSay,
+    /// The game runs and in-game sending is off.
+    InGameOff,
+    /// The game's window was not the foreground window; winer never brings it there itself.
+    NotInFront,
+    /// A key, the shortcut's own most likely, was still held after the wait: typing would have
+    /// pressed it along.
+    KeysHeld,
+    /// The system refused the key presses; a game that runs with more rights than winer is one
+    /// reason it does.
+    Blocked,
+    /// Typing into the game is a Windows feature.
+    Unsupported,
 }
 
 /// A player found by Riot ID.
@@ -868,6 +909,21 @@ pub struct HotkeyStatus {
     pub suspended: bool,
     /// Why the system refused it, in its own words; usually another program holds the combination.
     pub error: Option<String>,
+    // Callout.
+    /// The second shortcut, which sends the callout; let go and taken back together with this one.
+    pub callout: CalloutHotkeyStatus,
+}
+
+/// The shortcut that sends the callout (`automation.callout.hotkey`), as the shell holds it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct CalloutHotkeyStatus {
+    /// The combination the settings name; `None` while there is none.
+    pub shortcut: Option<String>,
+    /// The system has it registered for winer right now.
+    pub active: bool,
+    /// Why the system refused it, in its own words.
+    pub error: Option<String>,
 }
 
 #[cfg(test)]
@@ -920,6 +976,25 @@ mod tests {
         assert_eq!(
             serde_json::to_value(status).unwrap(),
             serde_json::json!({"state": "inGame", "mode": "极地大乱斗", "queueId": 450, "startedAt": 5, "observable": true})
+        );
+    }
+
+    #[test]
+    fn the_callouts_shortcut_reports_what_it_did_in_the_windows_words() {
+        let skipped = NoticeKind::CalloutSkipped {
+            reason: CalloutSkip::NotInFront,
+        };
+        assert_eq!(
+            serde_json::to_value(skipped).unwrap(),
+            serde_json::json!({"kind": "calloutSkipped", "reason": "notInFront"})
+        );
+        assert_eq!(
+            serde_json::to_value(NoticeKind::TypedInGame { lines: 3 }).unwrap(),
+            serde_json::json!({"kind": "typedInGame", "lines": 3})
+        );
+        assert_eq!(
+            serde_json::to_value(HotkeyStatus::default()).unwrap()["callout"],
+            serde_json::json!({"shortcut": null, "active": false, "error": null})
         );
     }
 

@@ -48,7 +48,7 @@ their name, for example:
 
 ```text
 [Blue side] winer rating
-Rift Demigod: P1 Light in the Dark, 60% in 20 games, KDA 4.1, score 7.4 [Patch Champion], the other team is filing a boosting report
+Rift Demigod: P1 Light in the Dark, 60% in 20 games, KDA 4.1, form 7.4 [Patch Champion], the other team is filing a boosting report
 ```
 
 - **Send to team**: posts it to the team chat of champ select, where your teammates see it.
@@ -56,6 +56,16 @@ Rift Demigod: P1 Light in the Dark, 60% in 20 games, KDA 4.1, score 7.4 [Patch C
 - **Automatically**: turn on **Send in champ select automatically** in **Automation › Callout** and
   choose who gets it and whether your own line is in it. The opening line and the line template are
   edited there too, with a live preview.
+- **Shortcut**: with a shortcut to send the callout set in **Automation › Callout**, pressing it in
+  champ select does what **Send to team** does, without winer's window open. The panel's last line
+  names the shortcut, or says where to set one.
+
+Once the game starts, the panel holds the enemy lines instead: the enemy to watch and the one to go
+after, chosen as [Automation](/en/guide/automation#enemy-lines-in-game) describes. The game's chat
+has no API, so the panel has no send button then: with **In-game sending** on, pressing the callout's
+shortcut in the game types these lines into the team chat. The panel's heading says whether in-game
+sending is on, its last line names the shortcut. Modes without sides, such as Arena, have no enemy
+lines and show no such panel.
 
 ## ARAM bench
 

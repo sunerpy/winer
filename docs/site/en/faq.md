@@ -31,6 +31,11 @@ winer uses only the API the client opens on your computer (the LCU), the same on
 interface uses. It does not read the game's memory, change game files or act in a running game.
 Even so, no third-party tool can promise zero risk; judge for yourself.
 
+The one exception is **In-game sending**, off by default: with it on, pressing the callout's
+shortcut in a game makes winer send key presses to the game's window to type the callout into its
+chat. That is third-party input and may break the game's terms of service; leave it off if you
+would rather not take that risk.
+
 ## The history stops at 20 games
 
 The Tencent client's own history API returns the latest 20 games only. winer asks the region's

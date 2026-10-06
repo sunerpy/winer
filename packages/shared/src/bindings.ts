@@ -68,7 +68,12 @@ teams: Array<Array<Seat>>,
 /**
  * The teams are the blue and the red side; Arena's and Swarm's are not.
  */
-sides: boolean, };
+sides: boolean, 
+/**
+ * The in-game callout as it would be typed now: the enemy to watch and the one to go after
+ * (`callout::game_lines`); empty where there is nobody to talk about.
+ */
+callout: Array<string>, };
 
 export type Seat = { 
 /**
@@ -255,7 +260,7 @@ runes: PageOutcome | null,
 /**
  * The two summoner spells are the ones set up.
  */
-spells: boolean, } | { "kind": "itemSetWritten", championId: number, };
+spells: boolean, } | { "kind": "itemSetWritten", championId: number, } | { "kind": "typedInGame", lines: number, } | { "kind": "typingStopped", lines: number, reason: CalloutSkip, } | { "kind": "calloutSkipped", reason: CalloutSkip, };
 
 export type PlayerProfile = { puuid: string, name: RiotId | null, level: number, iconId: number, private: boolean, ranked: Ranked, };
 
@@ -348,7 +353,11 @@ suspended: boolean,
 /**
  * Why the system refused it, in its own words; usually another program holds the combination.
  */
-error: string | null, };
+error: string | null, 
+/**
+ * The second shortcut, which sends the callout; let go and taken back together with this one.
+ */
+callout: CalloutHotkeyStatus, };
 
 export type Settings = { appearance: Appearance, general: General, automation: Automation, plugin: PluginSettings, profile: ProfileSettings, 
 /**
@@ -447,7 +456,29 @@ tiers: TierSet,
 /**
  * The user's own tier names, best first, for `TierSet::Custom`: two to five, blanks skipped.
  */
-customTiers: Array<string>, };
+customTiers: Array<string>, 
+/**
+ * The global shortcut that sends the callout, in [`normalize_hotkey`]'s form: in champ select
+ * the team's lines go to its chat, as 发送到队伍 sends them; while the game runs, with
+ * [`Self::in_game`] on, the enemy lines are typed into the game's chat. `None`, the default,
+ * holds no combination, and the window's own combination is never taken.
+ */
+hotkey: string | null, 
+/**
+ * While the game runs, the shortcut types the enemy lines into the game's team chat with
+ * synthesized key presses: the game's chat has no API. Off by default, since third-party input
+ * into the game may break its terms.
+ */
+inGame: boolean, 
+/**
+ * The line about the enemy to watch, with the placeholders of `template`; empty means the
+ * language's default (`callout::watch_template`).
+ */
+watchTemplate: string, 
+/**
+ * The line about the enemy to go after; empty means `callout::target_template`.
+ */
+targetTemplate: string, };
 
 export type Audience = "team" | "me";
 
@@ -770,3 +801,19 @@ export type AugmentOption = { id: number,
  * From the client's own catalog.
  */
 rarity: Rarity, tier: AugmentTier | null, rates: Rates, };
+
+export type CalloutHotkeyStatus = { 
+/**
+ * The combination the settings name; `None` while there is none.
+ */
+shortcut: string | null, 
+/**
+ * The system has it registered for winer right now.
+ */
+active: boolean, 
+/**
+ * Why the system refused it, in its own words.
+ */
+error: string | null, };
+
+export type CalloutSkip = "notNow" | "nothingToSay" | "inGameOff" | "notInFront" | "keysHeld" | "blocked" | "unsupported";

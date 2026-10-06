@@ -111,7 +111,13 @@ describe("store", () => {
     await store.start();
     await store.loadHotkey();
     expect(store.hotkey.get()).toMatchObject({ shortcut: "Alt+Backquote", active: true });
-    announce({ shortcut: "Alt+Backquote", active: false, suspended: false, error: "taken" });
+    announce({
+      shortcut: "Alt+Backquote",
+      active: false,
+      suspended: false,
+      error: "taken",
+      callout: { shortcut: null, active: false, error: null },
+    });
     expect(store.hotkey.get()?.error).toBe("taken");
   });
 });
