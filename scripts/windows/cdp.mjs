@@ -37,8 +37,16 @@ function send(method, params = {}) {
   const id = ++nextId;
   socket.send(JSON.stringify({ id, method, params }));
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject });
-    setTimeout(() => reject(new Error(`${method} timed out`)), 15_000);
+    // Cleared by the answer: a timer left pending keeps the process alive for its whole 15 s.
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      reject(new Error(`${method} timed out`));
+    }, 15_000);
+    const settle = (finish) => (value) => {
+      clearTimeout(timer);
+      finish(value);
+    };
+    pending.set(id, { resolve: settle(resolve), reject: settle(reject) });
   });
 }
 
