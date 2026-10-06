@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.6](https://github.com/sunerpy/winer/compare/v0.0.5...v0.0.6) (2026-10-06)
+
+
+### Bug Fixes
+
+* wait for an idle client however long, read the mode's own games only ([#13](https://github.com/sunerpy/winer/issues/13)) ([9baa6e7](https://github.com/sunerpy/winer/commit/9baa6e7325f90d9b46f6cae0f85e2e1ee57bdbe6))
+
 ## [0.0.5](https://github.com/sunerpy/winer/compare/v0.0.4...v0.0.5) (2026-10-06)
 
 
