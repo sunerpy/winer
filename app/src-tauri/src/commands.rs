@@ -8,11 +8,13 @@ use tauri_plugin_opener::OpenerExt as _;
 use winer_core::{
     CoreError, Service, Settings,
     bridge::Bridge,
+    builds::{Build, RunePage},
+    loadout::{LoadoutSummary, PageOutcome},
     plugin::PluginStatus,
-    settings::{Audience, CalloutRule, General, Language},
+    settings::{Audience, CalloutRule, General, Language, Mode},
     view::{
         AppInfo, AugmentDetail, ErrorCode, GameData, IpcError, MatchDetail, MatchPage,
-        PlayerProfile, PlayerSummary, Presence, Snapshot, UpdateStatus,
+        PlayerProfile, PlayerSummary, Position, Presence, Snapshot, UpdateStatus,
     },
 };
 
@@ -52,6 +54,14 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         install_update,
         open_releases,
         open_docs,
+        // Runes, spells, builds and item sets.
+        get_build,
+        apply_runes,
+        apply_spells,
+        write_item_set,
+        clear_item_sets,
+        get_loadout_summary,
+        clear_loadouts,
     ]
 }
 
@@ -312,6 +322,67 @@ async fn open_docs<R: Runtime>(app: AppHandle<R>, page: DocsPage) -> Result<()> 
         .map_err(internal)
 }
 
+// Runes, spells, builds and item sets.
+
+/// What players take on `champion_id` in a game of `mode` (and `lane`, on the Rift), from public
+/// statistics; for the build panel.
+#[tauri::command]
+async fn get_build<R: Runtime>(
+    app: AppHandle<R>,
+    champion_id: i64,
+    mode: Mode,
+    lane: Option<Position>,
+) -> Result<Build> {
+    Ok(service(&app).build(champion_id, mode, lane).await?)
+}
+
+/// Writes `page` to winer's own rune page, named after `champion_id`, and makes it current.
+#[tauri::command]
+async fn apply_runes<R: Runtime>(
+    app: AppHandle<R>,
+    champion_id: i64,
+    page: RunePage,
+) -> Result<PageOutcome> {
+    Ok(service(&app).apply_runes(champion_id, page).await?)
+}
+
+/// Takes `spells` in the champ select under way.
+#[tauri::command]
+async fn apply_spells<R: Runtime>(app: AppHandle<R>, spells: [i64; 2]) -> Result<()> {
+    Ok(service(&app).apply_spells(spells).await?)
+}
+
+/// Writes winer's item set for the champion and kind of game into the client.
+#[tauri::command]
+async fn write_item_set<R: Runtime>(
+    app: AppHandle<R>,
+    champion_id: i64,
+    mode: Mode,
+    lane: Option<Position>,
+) -> Result<()> {
+    Ok(service(&app)
+        .write_item_set(champion_id, mode, lane)
+        .await?)
+}
+
+/// Takes winer's item sets, and only those, out of the client; returns how many went.
+#[tauri::command]
+async fn clear_item_sets<R: Runtime>(app: AppHandle<R>) -> Result<u32> {
+    Ok(service(&app).clear_item_sets().await?)
+}
+
+#[tauri::command]
+async fn get_loadout_summary<R: Runtime>(app: AppHandle<R>) -> Result<LoadoutSummary> {
+    Ok(service(&app).loadout_summary())
+}
+
+/// Forgets every remembered rune and spell setup.
+#[tauri::command]
+async fn clear_loadouts<R: Runtime>(app: AppHandle<R>) -> Result<LoadoutSummary> {
+    let service = service(&app);
+    blocking(move || service.clear_loadouts()).await
+}
+
 #[cfg(test)]
 mod tests {
     use tauri::test::{MockRuntime, mock_builder, mock_context, noop_assets};
@@ -382,10 +453,17 @@ mod tests {
                     .await
                     .unwrap_err(),
                 bench_swap(handle.clone(), 1).await.unwrap_err(),
-                reroll(handle).await.unwrap_err(),
+                reroll(handle.clone()).await.unwrap_err(),
+                get_build(handle.clone(), 202, Mode::Ranked, None)
+                    .await
+                    .unwrap_err(),
+                apply_spells(handle.clone(), [4, 14]).await.unwrap_err(),
+                clear_item_sets(handle.clone()).await.unwrap_err(),
             ] {
                 assert_eq!(error.code, ErrorCode::NotConnected);
             }
+            assert_eq!(clear_loadouts(handle.clone()).await.unwrap().remembered, 0);
+            assert_eq!(get_loadout_summary(handle).await.unwrap().remembered, 0);
         });
     }
 }
