@@ -8,7 +8,7 @@
   shown in **Settings › About**.
 - [Tauri](https://tauri.app) and the Rust and React open-source ecosystems, which winer's window
   and core are built on.
-- [ARAM.GG](https://aram.gg), for what Hextech ARAM's augments do.
+- [ARAM.GG](https://aramgg.com), for what Hextech ARAM's augments do.
 
 ## Disclaimer
 

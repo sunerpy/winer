@@ -149,7 +149,7 @@ scripts/windows/qa.sh log 40                 # 当天日志末尾
   `core.dll`，许可原文见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 - [Tauri](https://tauri.app)、Rust 与 React 的开源生态：窗口与内核建立在它们之上，完整依赖见 `Cargo.lock` 与
   `pnpm-lock.yaml`。
-- [ARAM.GG](https://aram.gg)：海克斯大乱斗强化符文的效果说明。
+- [ARAM.GG](https://aramgg.com)：海克斯大乱斗强化符文的效果说明。
 
 ## 免责声明
 

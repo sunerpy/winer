@@ -7,7 +7,7 @@
   [THIRD_PARTY_NOTICES.md](https://github.com/sunerpy/winer/blob/main/THIRD_PARTY_NOTICES.md)，也可以在
   **设置 › 关于** 里查看。
 - [Tauri](https://tauri.app)、Rust 与 React 的开源生态：winer 的窗口和内核建立在它们之上。
-- [ARAM.GG](https://aram.gg)：海克斯大乱斗强化符文的效果说明。
+- [ARAM.GG](https://aramgg.com)：海克斯大乱斗强化符文的效果说明。
 
 ## 免责声明
 
