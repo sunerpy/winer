@@ -104,7 +104,7 @@ export function decorateFriends(
   now: number,
   language: Language,
 ): FriendsDrawn {
-  const list = first(root, FRIENDS_LIST.root);
+  const list = view ? first(root, FRIENDS_LIST.root) : null;
   if (!list || !view) {
     clearFriends(root);
     return { entries: 0, lines: 0 };
@@ -112,13 +112,18 @@ export function decorateFriends(
   const playing = view.friends.filter(
     (friend) => friend.status.state === "inGame" || friend.group !== null,
   );
+  // Nobody to draw: the entries are not even looked for, which is most of the time.
+  if (playing.length === 0) {
+    clearFriends(list);
+    return { entries: 0, lines: 0 };
+  }
   const byPuuid = new Map(playing.map((friend) => [friend.puuid.toLowerCase(), friend]));
   const byName = names(playing);
   const entries = entriesOf(list, byName);
   // What this pass drew; anything else of ours in the list is left over from a game now over.
   const kept = new Set<Element>();
   for (const entry of entries) {
-    const friend = playing.length > 0 ? friendOf(entry, byPuuid, byName) : null;
+    const friend = friendOf(entry, byPuuid, byName);
     if (friend?.group) {
       const slot = String(groupSlot(friend.group));
       if (entry.element.getAttribute(GROUP_ATTRIBUTE) !== slot)
