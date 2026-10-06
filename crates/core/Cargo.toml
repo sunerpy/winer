@@ -28,5 +28,6 @@ ts-rs.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+# `test-util`: tests that wait minutes on the client run on a paused clock.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 tokio-tungstenite = { workspace = true, features = ["connect"] }

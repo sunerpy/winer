@@ -3,6 +3,9 @@
 
 mod caches;
 mod loadout;
+mod ux;
+
+pub use ux::{Readiness, UiRestart};
 
 use std::{
     collections::HashMap,
@@ -17,7 +20,7 @@ use serde::de::DeserializeOwned;
 use serde_json::json;
 use tokio::{
     runtime::Handle,
-    sync::{Semaphore, broadcast},
+    sync::{Semaphore, broadcast, watch},
     time::sleep,
 };
 use tracing::{debug, info, warn};
@@ -162,6 +165,9 @@ struct Inner {
     loadout: loadout::LoadoutState,
     /// History: pages, whole games and Riot ID lookups, for the signed-in account (`history`).
     history: Mutex<HistoryCache>,
+    /// Counts the plugins' hellos on the bridge: a restarted interface is back once it changes
+    /// (`ux`).
+    plugin_hellos: watch::Sender<u64>,
 }
 
 /// Augment descriptions per language, with when they were fetched.
@@ -289,6 +295,7 @@ impl Service {
                 backups: OnceLock::new(),
                 loadout: loadout::LoadoutState::new(loadouts),
                 history: Mutex::new(HistoryCache::default()),
+                plugin_hellos: watch::Sender::new(0),
             }),
         }
     }
@@ -648,30 +655,14 @@ impl Service {
     }
 
     /// Restarts the client's UI process, which reloads injected plugins; the game and the login
-    /// session are untouched.
+    /// session are untouched. For a loader linked just now, see
+    /// [`Self::restart_client_ui_when_idle`].
     pub async fn restart_client_ui(&self) -> Result<(), CoreError> {
         self.client()?
             .lcu
             .post("/riotclient/kill-and-restart-ux", &json!({}))
             .await?;
         Ok(())
-    }
-
-    /// Restarts the client's UI only while the player is idle in it, outside any lobby, queue,
-    /// champ select or game, so a newly linked loader starts without interrupting anything. The
-    /// phase is asked of the client itself: right after connecting, the snapshot may not have it
-    /// yet. Returns whether it restarted.
-    pub async fn restart_client_ui_when_idle(&self) -> Result<bool, CoreError> {
-        let client = self.client()?;
-        let phase: String = client.lcu.get(PHASE).await?;
-        if Phase::parse(&phase) != Phase::None {
-            return Ok(false);
-        }
-        client
-            .lcu
-            .post("/riotclient/kill-and-restart-ux", &json!({}))
-            .await?;
-        Ok(true)
     }
 
     fn client(&self) -> Result<Client, CoreError> {

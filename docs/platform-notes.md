@@ -89,6 +89,18 @@ for one client build or one privilege level, it says so.
 - `POST /riotclient/kill-and-restart-ux` restarts only `LeagueClientUx` and its renderers: the API
   (`--app-port`, served by `LeagueClient`) and an open WAMP socket survive it, the plugin is back
   within seconds, and the window returns **un-minimized** even if it was minimized before.
+- **A restart while the client is still signing in leaves the new interface hidden** (the owner's
+  PC, a fresh install, 2026-10-06). winer, just restarted elevated, linked the loader and called
+  `kill-and-restart-ux` at 19:42:34, 16 s after the client launched. The restarted interface logged
+  `chat error: Invalid issuer` and Tencent web content `您还没有登录`; the client's backend logged
+  `Ux state set to HideAll.` and `Ux state set to Quit.` at the restart and no
+  `Ux state set to ShowMain.` in the ten minutes after. PLAY was marked enabled within 4 s, yet no
+  click on it reached its handler until 19:47:50, and the interface's working set dropped as if
+  its page were in the background. Every restart in QA, the ones above included, had been followed
+  by `POST /riotclient/ux-show`, and the client always worked. A restart for a new loader now
+  waits, two minutes at most, until chat has signed in (`/lol-chat/v1/me` carries `lol`) and the
+  phase is `None`, and `ux-show` follows once the plugin is back on the bridge, or after half a
+  minute without it.
 
 ## Profile and chat presence
 
@@ -239,8 +251,8 @@ Linux build host the same day; each answers a plain GET with no key, cookie or u
   and, when no loader is linked, writes it to `%LOCALAPPDATA%\app.winer.desktop\pengu` and creates
   the link itself. A symbolic link needs an elevated process (or Developer Mode); the client loads
   `version.dll` only when its interface process starts, so a new link waits for
-  `/riotclient/kill-and-restart-ux` or the next launch. The loader writes its `config` and an
-  encoded `datastore` beside `core.dll`.
+  `/riotclient/kill-and-restart-ux` (sent once the client has settled, see LCU behaviour) or the
+  next launch. The loader writes its `config` and an encoded `datastore` beside `core.dll`.
 - Without elevation the link fails with `os error 1314` (`ERROR_PRIVILEGE_NOT_HELD`), which a
   Chinese Windows words as 客户端没有所需的特权 ("a required privilege is not held by the client"):
   the client there is the calling process, winer, not League. Reported by the owner from a fresh,
