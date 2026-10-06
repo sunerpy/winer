@@ -400,6 +400,19 @@ describe("controller", () => {
     expect(document.querySelector("[data-winer-panel='lobby']")?.textContent).toContain("Mate");
   });
 
+  it("keeps the lobby panel out of the way of the match-found dialog", () => {
+    const controller = new Controller(document);
+    controller.state.hello(snapshot({ phase: "ReadyCheck", lobby: lobbyView() }), settings);
+    controller.render();
+    expect(document.querySelector("[data-winer-panel='lobby']")).toBeNull();
+    controller.state.event({
+      type: "update",
+      data: { rev: 2, patch: { key: "phase", value: "Matchmaking" } },
+    });
+    controller.render();
+    expect(document.querySelector("[data-winer-panel='lobby']")).not.toBeNull();
+  });
+
   it("asks for a history only from the context that draws", () => {
     const drawing = new Controller(document);
     const other = new Controller(document);

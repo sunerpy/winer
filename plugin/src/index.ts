@@ -165,7 +165,8 @@ export class Controller {
     }
     const open = (puuid: string) => void this.openHistory(puuid);
     const cards = decorateLobby(this.doc, lobby, language, open);
-    if (cards > 0) this.#hideLobbyPanel();
+    // The match-found dialog has the screen to itself: the panel would only sit in its way.
+    if (cards > 0 || snapshot?.phase === "ReadyCheck") this.#hideLobbyPanel();
     else this.#showLobbyPanel(lobby, language, open);
     this.#log(
       cards > 0
