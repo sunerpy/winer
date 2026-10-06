@@ -1,16 +1,13 @@
 // One team, one row per player: who they are and how they have been playing on the left, their
 // latest games as tiles on the right. A player's name opens their history.
 import {
-  GRADE_LETTERS,
   formatKda,
   kda,
   relativeTime,
   riotId,
-  tierTone,
   type PlayerSummary,
   type RecentMatch,
   type Seat,
-  type TierTone,
 } from "@winer/shared";
 import { ChevronRight, EyeOff, TriangleAlert } from "lucide-react";
 
@@ -19,19 +16,10 @@ import { useLanguage, useT } from "../lib/i18n";
 import { MODE_SHORT, modeOf } from "../lib/modes";
 import { useCatalog } from "../lib/store";
 import { useNow } from "../lib/useNow";
-import { Badge, Skeleton, type Tone } from "../ui";
+import { Skeleton } from "../ui";
 import { GroupBadge } from "./groups";
 import { ChampionIcon } from "./icons";
-import { KdaValue, RankBadge, StreakBadge, TitleChip, WinRate, bestRank } from "./stats";
-
-/** A tier's badge by where it sits between best and worst (DESIGN.md, Tiers). */
-const TIER_TONE: Record<TierTone, Tone> = {
-  best: "accent",
-  good: "win",
-  middle: "neutral",
-  weak: "warning",
-  worst: "loss",
-};
+import { KdaValue, RankBadge, StreakBadge, TierBadge, TitleChip, WinRate, bestRank } from "./stats";
 
 /** Tiles beyond the sixth show only where the row has room for them (container widths). */
 const TILE_ROOM = [
@@ -105,15 +93,7 @@ function Summary({ seat, summary }: { seat: Seat; summary: PlayerSummary | null 
       {/* The tier and its title get a line of their own: beside the name they squeezed it away. */}
       {rating && (
         <span className="flex min-w-0 items-center gap-1.5">
-          <Badge
-            tone={TIER_TONE[tierTone(rating.tier, rating.tiers)]}
-            title={t("live.score", { score: rating.score.toFixed(1) })}
-          >
-            {rating.grade !== null && (
-              <span className="mono font-semibold">{GRADE_LETTERS[rating.grade]}</span>
-            )}
-            {rating.label}
-          </Badge>
+          <TierBadge rating={rating} />
           {rating.title && <TitleChip name={rating.title} />}
         </span>
       )}
@@ -122,7 +102,10 @@ function Summary({ seat, summary }: { seat: Seat; summary: PlayerSummary | null 
           <RankBadge rank={bestRank(summary.ranked).rank} short />
           {form.games > 0 && (
             <>
-              <span className="inline-flex items-center gap-1">
+              <span
+                className="inline-flex items-center gap-1"
+                title={t("history.formRuleShort", { n: form.games })}
+              >
                 <span className="mono">{t("common.recent", { n: form.games })}</span>
                 <WinRate wins={form.wins} games={form.games} />
               </span>

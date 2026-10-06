@@ -581,8 +581,13 @@ mod tests {
     #[test]
     fn the_panel_lists_the_newest_games_of_the_first_page_with_their_queues_named() {
         let game: Game = fixture("live/responses/match-history-game-sgp-twin.json");
-        let summary = analysis::match_summary("PUUID-0010", &game, &Roles::new())
-            .expect("the player is in the game");
+        let summary = analysis::match_summary(
+            "PUUID-0010",
+            &game,
+            &Roles::new(),
+            &analysis::QueueKinds::new(),
+        )
+        .expect("the player is in the game");
         // Twelve games, newest first, every other one in a queue the catalog does not know.
         let games = (0..12)
             .map(|n| MatchSummary {

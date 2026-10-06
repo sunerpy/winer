@@ -4,7 +4,15 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ChampSelectView, Event, GameView, Mode, Seat, Snapshot } from "@winer/shared";
+import type {
+  ChampSelectView,
+  Event,
+  GameView,
+  MatchSummary,
+  Mode,
+  Seat,
+  Snapshot,
+} from "@winer/shared";
 
 import { App } from "./App";
 import type { Backend, CommandName } from "./lib/backend";
@@ -1482,5 +1490,138 @@ describe("callout", () => {
     fireEvent.keyDown(window, { code: "KeyX", key: "X", ctrlKey: true, shiftKey: true });
     expect(within(dialog).getByText(zhCN["callout.hotkeyTakenByCallout"])).toBeInTheDocument();
     expect(call).not.toHaveBeenCalledWith("set_settings", expect.anything());
+  });
+});
+
+describe("history", () => {
+  async function openHistory(backend: Backend) {
+    localStorage.removeItem("winer.history.pageSize");
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.history"] }));
+    expect(await screen.findByText("第 1–10 场")).toBeInTheDocument();
+    return user;
+  }
+
+  /** How many times `command` went to the backend, with arguments like `like` where given. */
+  const asked = (
+    call: { mock: { calls: unknown[][] } },
+    command: CommandName,
+    like: Record<string, unknown> = {},
+  ) =>
+    call.mock.calls.filter(
+      ([name, args]) =>
+        name === command &&
+        Object.entries(like).every(
+          ([key, value]) => (args as Record<string, unknown> | undefined)?.[key] === value,
+        ),
+    ).length;
+
+  it("says what the form counts and rates the player alone, with the rule behind each", async () => {
+    const backend = demoBackend();
+    const user = await openHistory(backend);
+    expect(await screen.findByText("近 20 场 · 所有模式")).toBeInTheDocument();
+    const standing = await backend.call("get_player_standing", { puuid: "demo-me" });
+    const rating = standing.rating;
+    if (!rating) throw new Error("the demo player has games to rate");
+    expect(await screen.findByText(rating.label)).toBeInTheDocument();
+    if (rating.title) expect(screen.getByText(rating.title)).toBeInTheDocument();
+    if (rating.quip) expect(screen.getByText(`“${rating.quip}”`)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: zhCN["history.formHint"] }));
+    const rule = screen.getByRole("dialog", { name: zhCN["history.formHint"] });
+    expect(rule).toHaveTextContent("取客户端列出的最近 30 场对局里最新的 20 场");
+    expect(rule).toHaveTextContent("不只是排位");
+    expect(rule).toHaveTextContent("自定义对局（这次跳过 0 场）");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: zhCN["history.standingHint"] }));
+    const how = screen.getByRole("dialog", { name: zhCN["history.standingHint"] });
+    expect(how).toHaveTextContent("峡谷五档在本队五人里按战力排名分档");
+    expect(how).toHaveTextContent(`落在「${rating.label}」`);
+  });
+
+  it("hides custom games by default, says how many, and shows them once switched", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const user = await openHistory(backend);
+    await user.type(
+      screen.getByRole("textbox", { name: zhCN["history.search"] }),
+      "野区观光客#10005",
+    );
+    await user.click(screen.getByRole("button", { name: zhCN["history.find"] }));
+    expect(await screen.findByText("已隐藏 2 场")).toBeInTheDocument();
+    expect(screen.queryByText("嚎哭深渊 全随机"), "custom games are hidden").toBeNull();
+    expect(screen.getAllByText("入门级"), "a game against bots is listed").toHaveLength(1);
+    const standing = await backend.call("get_player_standing", { puuid: "demo-3" });
+    expect(standing.scope).toMatchObject({ custom: 2, bots: 1 });
+
+    const hide = screen.getByRole("switch", { name: zhCN["history.hideCustom"] });
+    expect(hide).toHaveAttribute("aria-checked", "true");
+    await user.click(hide);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({ history: { hideCustomGames: false } }),
+      }),
+    );
+    expect(screen.getAllByText("嚎哭深渊 全随机")).toHaveLength(2);
+    expect(screen.queryByText("已隐藏 2 场")).toBeNull();
+  });
+
+  it("goes back to a player at once, where the list was left, and reopens a scoreboard unasked", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const user = await openHistory(backend);
+    const pages = screen.getByRole("navigation", { name: zhCN["history.pages"] });
+    await user.click(within(pages).getByRole("button", { name: "下一页" }));
+    expect(screen.getByText("第 11–20 场")).toBeInTheDocument();
+    const game = screen.getAllByRole("button", { pressed: false })[0] as HTMLElement;
+    await user.click(game);
+    const scoreboard = await screen.findByLabelText(zhCN["history.detail"]);
+    const opponent = await within(scoreboard).findAllByRole("button", { name: /·对手/ });
+    expect(asked(call, "get_match_detail")).toBe(1);
+
+    await user.click(opponent[0] as HTMLElement);
+    await user.click(await screen.findByRole("button", { name: zhCN["history.mine"] }));
+    // Drawn from what was shown: no skeleton, the second page, the header.
+    expect(screen.getByText("第 11–20 场")).toBeInTheDocument();
+    expect(screen.getByText("近 20 场 · 所有模式")).toBeInTheDocument();
+    const mine = { puuid: "demo-me", begin: 0, count: 50 };
+    // The newest games asked for once more, in the background: the same ones, the list stays.
+    await waitFor(() => expect(asked(call, "get_match_history", mine)).toBe(2));
+    expect(screen.getByText("第 11–20 场")).toBeInTheDocument();
+    const again = screen.getAllByRole("button", { pressed: false })[0] as HTMLElement;
+    expect(again).toHaveTextContent(game.textContent ?? "");
+    await user.click(again);
+    expect(screen.getByLabelText(zhCN["history.detail"])).toBeInTheDocument();
+    expect(asked(call, "get_match_detail"), "a finished game is read once").toBe(1);
+  });
+
+  it("names what the overview's numbers count and leaves custom games out of its short list", async () => {
+    const custom = (game: MatchSummary): MatchSummary => ({
+      ...game,
+      kind: "custom",
+      queueId: 3220,
+    });
+    const demo = demoBackend();
+    const backend = demoWith({
+      get_match_history: async (args: { puuid: string; begin: number; count: number }) => {
+        const page = await demo.call("get_match_history", args);
+        return {
+          ...page,
+          games: page.games.map((game, index) => (index < 2 ? custom(game) : game)),
+        };
+      },
+    });
+    await renderApp(backend);
+    expect(await screen.findByText("近 20 场 · 所有模式")).toBeInTheDocument();
+    const recent = (await screen.findByText(zhCN["overview.recentMatches"])).closest(
+      "div.rounded-10",
+    ) as HTMLElement;
+    await waitFor(() =>
+      expect(within(recent).getAllByRole("button", { pressed: false })).toHaveLength(5),
+    );
+    expect(within(recent).queryByText("嚎哭深渊 全随机")).toBeNull();
+    expect(screen.getAllByTitle(/单双排的胜负场次，来自客户端的段位数据/)).toHaveLength(1);
   });
 });

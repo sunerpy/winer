@@ -53,12 +53,11 @@ pub fn user_agent(game_version: &str) -> String {
     format!("LeagueOfLegendsClient/{version} (rcp-be-lol-match-history)")
 }
 
-/// One page as the server sent it, turned into the LCU's shape.
+/// One page as the server sent it, turned into the LCU's shape: an entry per place in the history,
+/// `None` where the server listed a game it never recorded. A short page is the last.
 #[derive(Debug, Default, PartialEq)]
 pub struct Page {
-    pub games: Vec<Game>,
-    /// Entries on the page, an empty one included: a short page is the last.
-    pub returned: usize,
+    pub entries: Vec<Option<Game>>,
 }
 
 /// `count` games of `puuid`'s from the `begin`-th newest, with the client's own access token.
@@ -97,11 +96,10 @@ pub(crate) struct History {
 impl History {
     pub(crate) fn into_page(self) -> Page {
         Page {
-            returned: self.games.len(),
-            games: self
+            entries: self
                 .games
                 .into_iter()
-                .filter_map(|entry| entry.json.into_game())
+                .map(|entry| entry.json.into_game())
                 .collect(),
         }
     }
@@ -408,10 +406,10 @@ mod tests {
     #[test]
     fn a_page_from_the_server_describes_its_game_as_the_client_does() {
         let page = fixture::<History>("live/responses/sgp-match-history-summary.json").into_page();
-        assert_eq!(page.returned, 1);
-        let [from_server] = page.games.as_slice() else {
-            panic!("one game expected, got {}", page.games.len());
+        let [Some(from_server)] = page.entries.as_slice() else {
+            panic!("one game expected, got {:?}", page.entries.len());
         };
+        let kinds = analysis::QueueKinds::new();
         // The same game as the client's own `/lol-match-history/v1/games/{id}` sends it.
         let from_client: Game = fixture("live/responses/match-history-game-sgp-twin.json");
         assert_eq!(from_server.game_id, from_client.game_id);
@@ -419,11 +417,12 @@ mod tests {
             analysis::match_detail(from_server, &crate::rating::Roles::new()),
             analysis::match_detail(&from_client, &crate::rating::Roles::new())
         );
+        let roles = crate::rating::Roles::new();
         assert_eq!(
-            analysis::match_summary("PUUID-0010", from_server, &crate::rating::Roles::new()),
-            analysis::match_summary("PUUID-0010", &from_client, &crate::rating::Roles::new())
+            analysis::match_summary("PUUID-0010", from_server, &roles, &kinds),
+            analysis::match_summary("PUUID-0010", &from_client, &roles, &kinds)
         );
-        let line = analysis::match_summary("PUUID-0010", from_server, &crate::rating::Roles::new())
+        let line = analysis::match_summary("PUUID-0010", from_server, &roles, &kinds)
             .expect("the player is in the game")
             .line;
         assert_eq!(
@@ -459,7 +458,7 @@ mod tests {
             .find(|player| player.award == Some(crate::view::Award::Mvp))
             .unwrap();
         assert_eq!(
-            analysis::match_summary(&mvp.puuid, from_server, &crate::rating::Roles::new())
+            analysis::match_summary(&mvp.puuid, from_server, &roles, &kinds)
                 .unwrap()
                 .line
                 .award,
@@ -483,8 +482,9 @@ mod tests {
         }))
         .unwrap();
         let page = history.into_page();
-        assert_eq!((page.returned, page.games.len()), (2, 1));
-        let game = &page.games[0];
+        let [None, Some(game)] = page.entries.as_slice() else {
+            panic!("an empty place, then a game: {:?}", page.entries);
+        };
         let stats = &game.participants[0].stats;
         assert_eq!(
             (stats.perk0, stats.perk_primary_style, stats.perk_sub_style),

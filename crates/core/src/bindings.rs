@@ -136,6 +136,13 @@ pub fn typescript() -> String {
     declare!(bridge::PanelHistory, bridge::PanelGame);
     // The callout's shortcut and the game's chat.
     declare!(view::CalloutHotkeyStatus, view::CalloutSkip);
+    // History: what the numbers count, custom games, a player rated alone.
+    declare!(
+        view::GameKind,
+        view::FormScope,
+        view::PlayerStanding,
+        settings::HistorySettings,
+    );
     out
 }
 

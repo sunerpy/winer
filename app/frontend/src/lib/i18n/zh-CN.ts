@@ -290,6 +290,37 @@ export const zhCN = {
   "feat.doubleWhy": "本局最多一次双杀。",
   "history.placement": "第 {n} 名",
   "history.offline": "连接客户端后才能查询战绩。",
+  // History: what the numbers count, custom games, a player rated alone.
+  "history.formLabel": "近 {n} 场 · 所有模式",
+  "history.formHint": "这些数字怎么算",
+  "history.formWindow":
+    "取客户端列出的最近 {listed} 场对局里最新的 {window} 场（最多 20 场），各种模式都算，不只是排位。",
+  "history.formWindowShort":
+    "取客户端列出的最近对局里最新的 {window} 场（最多 20 场），各种模式都算，不只是排位。",
+  "history.formModes": "计入的 {n} 场：{modes}。",
+  "history.formMode": "{mode} {n} 场",
+  "history.formModeJoin": "、",
+  "history.formRemakes": "其中 {n} 场重开局只在色条里显示为灰色，不计入胜负、KDA、连胜和战力。",
+  "history.formLeftOut":
+    "不计入，也不占这 20 场：自定义对局（这次跳过 {custom} 场）和人机对局（含新手教程，这次跳过 {bots} 场）。",
+  "history.formLeftOutShort": "不计入，也不占这 20 场：自定义对局和人机对局（含新手教程）。",
+  "history.formSame": "选人时的战力评级、称号和喊话用的是同一组数字。",
+  "history.formRuleShort": "近 {n} 场：所有模式，不含自定义、人机和重开局",
+  "history.rankedRecord": "{queue}的胜负场次，来自客户端的段位数据，和近期战绩不是一回事。",
+  "history.standing": "近期战力",
+  "history.standingHint": "档位怎么来的",
+  "history.standingScore":
+    "近期战力 {score}（0–10）：计入的对局里胜率与 KDA 各占一半，场次少时向 5.0 收拢。",
+  "history.standingAlone":
+    "选人时，{scheme}在本队五人里按战力排名分档。这里只有一位玩家，没有队友可比，就先按峡谷八档的固定分段定级（{grade}），再把八档按顺序均分到{scheme}的 {tiers} 档上，落在「{label}」。选人时还要看队友，档位可能不同。",
+  "history.standingGraded":
+    "峡谷八档按固定分段定级，不和队友比：{grade}，即「{label}」，和选人时一样。",
+  "history.standingWords": "称号和评语与选人时的规则相同；称号可以在 设置 › 评级 里关掉。",
+  "history.hideCustom": "隐藏自定义对局",
+  "history.hiddenCustom": "已隐藏 {n} 场",
+  "history.emptyHidden": "这里只有自定义对局，已按设置隐藏。",
+  "history.showCustom": "显示自定义对局",
+  "history.refreshFailed": "没有读到最新的对局，下面是上次读到的。",
 
   "tools.title": "工具",
   "tools.social": "社交",
@@ -471,7 +502,7 @@ export const zhCN = {
   "rating.titlesHint": "按数据特征给出称号：比如三连胜叫“版本答案”，输了但伤害第一叫“院长”。",
   "rating.basis": "评价依据",
   "rating.basis.form":
-    "近期战力（0–10）：最近 20 场（不含自定义）的胜率和 KDA 各占一半；场次少时向 5.0 收拢，一两场的好成绩排不到前面。",
+    "近期战力（0–10）：最近 20 场（不含自定义、人机和重开局）的胜率和 KDA 各占一半；场次少时向 5.0 收拢，一两场的好成绩排不到前面。",
   "rating.basis.tiers":
     "峡谷五档、马系、峡谷食物链和自定义在本队里按近期战力排名后均分到各档，五人五档正好一人一档；峡谷八档按固定分段定级，不和队友比：S+ 7.6 起，S 6.8，A 5.9，B 5.3，C 4.8，D 4.3，E 3.8，再低是 F。",
   "rating.basis.game":

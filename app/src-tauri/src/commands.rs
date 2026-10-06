@@ -16,7 +16,8 @@ use winer_core::{
     settings::{Audience, CalloutRule, General, Language, Mode},
     view::{
         AppInfo, AugmentDetail, ErrorCode, GameData, HotkeyStatus, IpcError, MatchDetail,
-        MatchPage, PlayerProfile, PlayerSummary, Position, Presence, Snapshot, UpdateStatus,
+        MatchPage, PlayerProfile, PlayerStanding, PlayerSummary, Position, Presence, Snapshot,
+        UpdateStatus,
     },
 };
 
@@ -82,6 +83,8 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         clear_loadouts,
         // The callout typed into the game's chat.
         preview_game_callout,
+        // History.
+        get_player_standing,
     ]
 }
 
@@ -529,6 +532,17 @@ async fn preview_game_callout<R: Runtime>(
     Ok(service(&app).preview_game_callout(&rule, &general).await?)
 }
 
+// ---- History ----
+
+/// What a player's form counts, and the tier, title and quip it earns on its own.
+#[tauri::command]
+async fn get_player_standing<R: Runtime>(
+    app: AppHandle<R>,
+    puuid: String,
+) -> Result<PlayerStanding> {
+    Ok(service(&app).player_standing(&puuid).await?)
+}
+
 #[cfg(test)]
 mod tests {
     use tauri::test::{MockRuntime, mock_builder, mock_context, noop_assets};
@@ -613,9 +627,21 @@ mod tests {
                 preview_game_callout(handle.clone(), CalloutRule::default(), General::default())
                     .await
                     .unwrap_err(),
+                // History.
+                get_player_standing(handle.clone(), "p".into())
+                    .await
+                    .unwrap_err(),
             ] {
                 assert_eq!(error.code, ErrorCode::NotConnected);
             }
+            let error = get_player_standing(handle.clone(), "../x".into())
+                .await
+                .unwrap_err();
+            assert_eq!(
+                error.code,
+                ErrorCode::Invalid,
+                "an id that would leave its slot"
+            );
             assert_eq!(clear_loadouts(handle.clone()).await.unwrap().remembered, 0);
             assert_eq!(get_loadout_summary(handle).await.unwrap().remembered, 0);
         });

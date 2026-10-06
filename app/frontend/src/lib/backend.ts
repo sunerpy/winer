@@ -22,6 +22,7 @@ import type {
   Mode,
   PageOutcome,
   PlayerProfile,
+  PlayerStanding,
   PlayerSummary,
   PluginStatus,
   Position,
@@ -100,6 +101,9 @@ export interface Commands {
   // The callout typed into the game's chat.
   /** What the callout's shortcut would type in the game, with the user's own form. */
   preview_game_callout: Command<{ rule: CalloutRule; general: General }, string[]>;
+  // History.
+  /** What a player's form counts, and the tier, title and quip it earns on its own. */
+  get_player_standing: Command<{ puuid: string }, PlayerStanding>;
 }
 
 export type CommandName = keyof Commands;

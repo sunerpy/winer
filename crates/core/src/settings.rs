@@ -24,6 +24,8 @@ pub struct Settings {
     pub profile: ProfileSettings,
     /// The build panel and where its numbers come from (`builds`).
     pub builds: BuildSettings,
+    /// History: what the history lists show.
+    pub history: HistorySettings,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
@@ -852,6 +854,25 @@ impl PresenceRule {
     }
 }
 
+// ---- History: the history lists ----
+
+/// What the history lists show. Form leaves custom games out whatever these say.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct HistorySettings {
+    /// Custom games stay out of the lists. On by default: practice and lobbies among friends are
+    /// not the games a history is opened for, and they push those down the first page.
+    pub hide_custom_games: bool,
+}
+
+impl Default for HistorySettings {
+    fn default() -> Self {
+        Self {
+            hide_custom_games: true,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum RiftSource {
@@ -1506,5 +1527,20 @@ mod tests {
         let callout = settings.normalized().automation.callout;
         assert_eq!(callout.watch_template.chars().count(), 200);
         assert_eq!(callout.target_template, "{name}");
+    }
+
+    // History.
+
+    #[test]
+    fn custom_games_start_hidden_and_a_file_keeps_them_shown_once_chosen() {
+        assert!(Settings::default().history.hide_custom_games);
+        let older: Settings = serde_json::from_str(r#"{"general":{"titles":false}}"#).unwrap();
+        assert!(
+            older.history.hide_custom_games,
+            "a file from before the switch"
+        );
+        let shown: Settings =
+            serde_json::from_str(r#"{"history":{"hideCustomGames":false}}"#).unwrap();
+        assert!(!shown.normalized().history.hide_custom_games);
     }
 }

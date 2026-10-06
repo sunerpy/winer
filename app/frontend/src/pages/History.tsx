@@ -1,12 +1,14 @@
 import { riotId, type HistorySource, type MatchSummary } from "@winer/shared";
 import { Search, UserRound } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
+import { FormLabel, StandingRule } from "../game/FormRules";
 import { MatchDetailView } from "../game/MatchDetailView";
 import { MatchRow } from "../game/MatchRow";
 import { ProfileIcon } from "../game/icons";
-import { FormLine, RankBadge, ResultStrip, StreakBadge } from "../game/stats";
+import { FormLine, RankBadge, ResultStrip, StreakBadge, TierBadge, TitleChip } from "../game/stats";
 import { errorCode, errorMessage } from "../lib/backend";
+import { useCached } from "../lib/historyCache";
 import { useT } from "../lib/i18n";
 import { useLive, useSettings, useStore } from "../lib/store";
 import { useAsync } from "../lib/useAsync";
@@ -21,6 +23,7 @@ import {
   Segmented,
   Skeleton,
   Spinner,
+  Toggle,
   toast,
 } from "../ui";
 import { ConnectionGate, PageBody } from "./common";
@@ -48,7 +51,8 @@ function savePageSize(size: PageSize): void {
   }
 }
 
-type Filter = "all" | "ranked" | "normal" | "aram" | "other";
+const FILTERS = ["all", "ranked", "normal", "aram", "other"] as const;
+type Filter = (typeof FILTERS)[number];
 
 const QUEUES: Record<Exclude<Filter, "all" | "other">, number[]> = {
   ranked: [420, 440],
@@ -64,17 +68,37 @@ function matches(filter: Filter, game: MatchSummary): boolean {
 
 function PlayerHeader({
   puuid,
+  viewer,
   isMe,
   onMine,
 }: {
   puuid: string;
+  /** The signed-in account, whose cache this is. */
+  viewer: string;
   isMe: boolean;
   onMine: () => void;
 }) {
   const t = useT();
   const store = useStore();
-  const summary = useAsync(() => store.backend.call("get_player_summary", { puuid }), [puuid]);
+  const settings = useSettings();
+  // Drawn at once on a revisit, then read again: a game may have ended since.
+  const summary = useCached(
+    store.history.summary(viewer, puuid),
+    () => store.backend.call("get_player_summary", { puuid }),
+    (value) => store.history.putSummary(viewer, value),
+    { refresh: true, deps: [puuid] },
+  );
+  // The tier and its words follow the rating settings; asked once the record is in, so the core
+  // reads the player once.
+  const { tiers, customTiers } = settings.automation.callout;
+  const { language, titles } = settings.general;
+  const standing = useAsync(
+    () => store.backend.call("get_player_standing", { puuid }),
+    [puuid, tiers, customTiers.join("\n"), language, titles],
+    summary.data !== undefined,
+  );
   const player = summary.data;
+  const rating = standing.data?.rating ?? null;
   return (
     <Card className="flex flex-wrap items-center gap-x-6 gap-y-3">
       {player ? (
@@ -98,12 +122,32 @@ function PlayerHeader({
             <RankBadge rank={player.ranked.flex} />
           </span>
           {player.recent.games > 0 && (
-            <span className="flex flex-col gap-1.5">
+            <span className="flex flex-col gap-1">
+              <span className="text-[11px] text-fg-subtle">
+                <FormLabel form={player.recent} scope={standing.data?.scope ?? null} />
+              </span>
               <span className="flex items-center gap-2">
                 <FormLine form={player.recent} />
                 <StreakBadge streak={player.recent.streak} />
               </span>
               <ResultStrip matches={player.recent.matches} limit={20} />
+            </span>
+          )}
+          {standing.data && rating && (
+            <span className="flex min-w-0 flex-col gap-1">
+              <span className="inline-flex items-center gap-1 text-[11px] text-fg-subtle">
+                {t("history.standing")}
+                <StandingRule standing={standing.data} />
+              </span>
+              <span className="flex min-w-0 items-center gap-1.5">
+                <TierBadge rating={rating} />
+                {rating.title && <TitleChip name={rating.title} />}
+              </span>
+              {rating.quip && (
+                <span title={rating.quip} className="truncate text-[11px] text-fg-subtle">
+                  {t("live.quip", { quip: rating.quip })}
+                </span>
+              )}
             </span>
           )}
         </>
@@ -194,27 +238,40 @@ interface Loaded {
   loading: boolean;
   error: unknown;
   source: HistorySource | null;
+  /** Drawn from the cache: the newest games are asked for again before anything else. */
+  stale: boolean;
 }
 
-function GameList({ puuid }: { puuid: string }) {
+const NOTHING_YET: Loaded = {
+  games: [],
+  next: 0,
+  more: true,
+  loading: false,
+  error: null,
+  source: null,
+  stale: false,
+};
+
+function GameList({ puuid, viewer }: { puuid: string; viewer: string }) {
   const t = useT();
   const store = useStore();
   const { navigate } = useShell();
-  const [loaded, setLoaded] = useState<Loaded>({
-    games: [],
-    next: 0,
-    more: true,
-    loading: false,
-    error: null,
-    source: null,
-  });
-  const [filter, setFilter] = useState<Filter>("all");
+  const hideCustom = useSettings().history.hideCustomGames;
+  // Where the list was left on the last visit, if it was this account's.
+  const [kept] = useState(() => store.history.list(viewer, puuid));
+  const [loaded, setLoaded] = useState<Loaded>(() =>
+    kept ? { ...NOTHING_YET, ...kept, stale: true } : NOTHING_YET,
+  );
+  const [filter, setFilter] = useState<Filter>(
+    () => FILTERS.find((value) => value === kept?.filter) ?? "all",
+  );
   const [size, setSize] = useState<PageSize>(readPageSize);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(kept?.page ?? 1);
   const [selected, setSelected] = useState<number | null>(null);
   const top = useRef<HTMLDivElement>(null);
   const inFlight = useRef(false);
   const mounted = useRef(true);
+  const toggleId = useId();
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -224,26 +281,68 @@ function GameList({ puuid }: { puuid: string }) {
 
   const perPage = Number(size);
   const shown = useMemo(
-    () => loaded.games.filter((game) => matches(filter, game)),
-    [loaded.games, filter],
+    () =>
+      loaded.games.filter(
+        (game) => matches(filter, game) && !(hideCustom && game.kind === "custom"),
+      ),
+    [loaded.games, filter, hideCustom],
   );
+  const hidden = hideCustom
+    ? loaded.games.filter((game) => game.kind === "custom" && matches(filter, game)).length
+    : 0;
   const known = Math.ceil(shown.length / perPage);
   // Past the last page there is nothing to show; the last one stands in.
   const current = loaded.more ? page : Math.min(page, Math.max(1, known));
   const visible = shown.slice((current - 1) * perPage, current * perPage);
   const filling = shown.length < current * perPage && loaded.more;
 
-  // Reads on while the page asked for is not full and the server may have more: a filter that few
-  // games match fills its page from as many requests as it takes.
+  // Kept for the next visit, the page and the filter with it.
   useEffect(() => {
-    if (!filling || loaded.error || inFlight.current) return;
+    if (loaded.games.length === 0 && loaded.more) return;
+    store.history.putList(viewer, puuid, {
+      games: loaded.games,
+      next: loaded.next,
+      more: loaded.more,
+      source: loaded.source,
+      page,
+      filter,
+    });
+  }, [loaded.games, loaded.next, loaded.more, loaded.source, page, filter, puuid, viewer, store]);
+
+  // One request at a time. A list drawn from the cache asks for the newest games first: the same
+  // ones keep it as it was, new ones start it over from them (the older games have moved down).
+  // Then it reads on while the page asked for is not full and the server may have more: a filter
+  // that few games match fills its page from as many requests as it takes.
+  useEffect(() => {
+    if (loaded.error || inFlight.current || !(loaded.stale || filling)) return;
     inFlight.current = true;
-    const begin = loaded.next;
+    const revalidating = loaded.stale;
+    const begin = revalidating ? 0 : loaded.next;
+    const before = loaded.games;
     setLoaded((previous) => ({ ...previous, loading: true }));
     store.backend
       .call("get_match_history", { puuid, begin, count: CHUNK })
       .then((result) => {
         if (!mounted.current) return;
+        if (revalidating) {
+          const same = result.games.every((game, index) => before[index]?.gameId === game.gameId);
+          if (same) {
+            setLoaded((previous) => ({ ...previous, loading: false, stale: false }));
+            return;
+          }
+          setLoaded({
+            games: result.games,
+            next: CHUNK,
+            more: result.hasMore,
+            loading: false,
+            error: null,
+            source: result.source,
+            stale: false,
+          });
+          setPage(1);
+          setSelected(null);
+          return;
+        }
         setLoaded((previous) => {
           const seen = new Set(previous.games.map((game) => game.gameId));
           return {
@@ -253,6 +352,7 @@ function GameList({ puuid }: { puuid: string }) {
             loading: false,
             error: null,
             source: result.source,
+            stale: false,
           };
         });
       })
@@ -262,13 +362,23 @@ function GameList({ puuid }: { puuid: string }) {
       .finally(() => {
         inFlight.current = false;
       });
-  }, [filling, loaded.error, loaded.next, puuid, store]);
+  }, [filling, loaded.error, loaded.next, loaded.stale, loaded.games, puuid, store]);
 
   const turnTo = (next: number) => {
     setPage(next);
     setSelected(null);
     top.current?.scrollIntoView?.({ block: "nearest" });
   };
+  const setHideCustom = (next: boolean) => {
+    turnTo(1);
+    store
+      .updateSettings((settings) => ({
+        ...settings,
+        history: { ...settings.history, hideCustomGames: next },
+      }))
+      .catch((error: unknown) => toast(errorMessage(error), "danger"));
+  };
+  const retry = () => setLoaded((previous) => ({ ...previous, error: null }));
   const filters: { value: Filter; label: string }[] = [
     { value: "all", label: t("history.all") },
     { value: "ranked", label: t("history.ranked") },
@@ -285,17 +395,30 @@ function GameList({ puuid }: { puuid: string }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div ref={top} className="flex scroll-mt-2 items-center justify-between gap-3">
-        <Segmented
-          options={filters}
-          value={filter}
-          onChange={(value) => {
-            setFilter(value);
-            turnTo(1);
-          }}
-          label={t("history.title")}
-          size="sm"
-        />
+      <div ref={top} className="flex scroll-mt-2 flex-wrap items-center justify-between gap-3">
+        <span className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <Segmented
+            options={filters}
+            value={filter}
+            onChange={(value) => {
+              setFilter(value);
+              turnTo(1);
+            }}
+            label={t("history.title")}
+            size="sm"
+          />
+          <span className="flex items-center gap-2 text-[12px] text-fg-muted">
+            <Toggle id={toggleId} checked={hideCustom} onChange={setHideCustom} />
+            <label htmlFor={toggleId} className="cursor-pointer">
+              {t("history.hideCustom")}
+            </label>
+            {hidden > 0 && (
+              <span className="mono text-[11px] text-fg-subtle">
+                {t("history.hiddenCustom", { n: hidden })}
+              </span>
+            )}
+          </span>
+        </span>
         <span className="mono text-[11px] text-fg-subtle">{range}</span>
       </div>
 
@@ -312,7 +435,17 @@ function GameList({ puuid }: { puuid: string }) {
               title={t("common.loadFailed")}
               detail={errorMessage(loaded.error)}
               retryLabel={t("common.retry")}
-              onRetry={() => setLoaded((previous) => ({ ...previous, error: null }))}
+              onRetry={retry}
+            />
+          ) : hidden > 0 && shown.length === 0 ? (
+            <EmptyState
+              compact
+              title={t("history.emptyHidden")}
+              actions={
+                <Button size="sm" onClick={() => setHideCustom(false)}>
+                  {t("history.showCustom")}
+                </Button>
+              }
             />
           ) : (
             <EmptyState
@@ -334,6 +467,7 @@ function GameList({ puuid }: { puuid: string }) {
                 <Detail
                   gameId={game.gameId}
                   puuid={puuid}
+                  viewer={viewer}
                   onPlayer={(other) => navigate({ page: "history", puuid: other })}
                 />
               )}
@@ -342,14 +476,14 @@ function GameList({ puuid }: { puuid: string }) {
         </ul>
       )}
 
-      {visible.length > 0 && filling && (
+      {visible.length > 0 && (filling || (loaded.stale && Boolean(loaded.error))) && (
         <div className="flex justify-center py-1">
           {loaded.error ? (
             <ErrorNote
-              title={t("common.loadFailed")}
+              title={loaded.stale ? t("history.refreshFailed") : t("common.loadFailed")}
               detail={errorMessage(loaded.error)}
               retryLabel={t("common.retry")}
-              onRetry={() => setLoaded((previous) => ({ ...previous, error: null }))}
+              onRetry={retry}
             />
           ) : (
             <Spinner size={16} label={t("common.loading")} className="text-fg-subtle" />
@@ -398,16 +532,24 @@ function GameList({ puuid }: { puuid: string }) {
 function Detail({
   gameId,
   puuid,
+  viewer,
   onPlayer,
 }: {
   gameId: number;
   puuid: string;
+  viewer: string;
   onPlayer: (puuid: string) => void;
 }) {
   const t = useT();
   const store = useStore();
   const titles = useSettings().general.titles;
-  const detail = useAsync(() => store.backend.call("get_match_detail", { gameId }), [gameId]);
+  // A finished game never changes: once read, it opens from the cache.
+  const detail = useCached(
+    store.history.detail(viewer, gameId),
+    () => store.backend.call("get_match_detail", { gameId }),
+    (value) => store.history.putDetail(viewer, value),
+    { refresh: false, deps: [gameId] },
+  );
   return (
     <Card className="ml-1" aria-label={t("history.detail")}>
       {detail.data ? (
@@ -440,6 +582,8 @@ export function HistoryPage({ puuid: requested }: { puuid?: string }) {
   const { navigate } = useShell();
   const me = useLive((snapshot) => snapshot.me?.puuid);
   const puuid = requested ?? me;
+  // History: what is drawn belongs to the signed-in account; another one starts the page over.
+  const viewer = me ?? "";
   return (
     <PageBody className="flex flex-col gap-3">
       <ConnectionGate offline={t("history.offline")}>
@@ -447,11 +591,13 @@ export function HistoryPage({ puuid: requested }: { puuid?: string }) {
         {puuid && (
           <>
             <PlayerHeader
+              key={`header:${viewer}:${puuid}`}
               puuid={puuid}
+              viewer={viewer}
               isMe={puuid === me}
               onMine={() => navigate({ page: "history" })}
             />
-            <GameList key={puuid} puuid={puuid} />
+            <GameList key={`list:${viewer}:${puuid}`} puuid={puuid} viewer={viewer} />
           </>
         )}
       </ConnectionGate>
