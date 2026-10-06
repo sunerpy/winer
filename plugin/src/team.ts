@@ -19,6 +19,7 @@ import {
 } from "@winer/shared";
 
 import { championIcon, h } from "./dom";
+import { premadeChip } from "./groups";
 import { text } from "./i18n";
 
 /** The client's party rows and the name block inside each. Class names are the client's and change
@@ -74,16 +75,18 @@ function sideChip(seat: Seat, side: Side | null, language: Language): HTMLElemen
   return h("span", { class: `winer-side winer-side--${side}` }, text(language, side));
 }
 
-/** `蓝色方 · 峡谷公务员 · 版本答案 · 钻石 II · 60% · KDA 3.2 · 3 连胜`, the side on the local
- *  player's line only. */
+/** `蓝色方 · 开黑 1 · 峡谷公务员 · 版本答案 · 钻石 II · 60% · KDA 3.2 · 3 连胜`, the side on the
+ *  local player's line only, the party where one is known. */
 export function statsLine(seat: Seat, language: Language, side: Side | null = null): HTMLElement {
   const summary = summaryOf(seat);
   const chip = sideChip(seat, side, language);
+  const party = seat.premade === null ? null : premadeChip(seat.premade, language);
   if (seat.stats.state === "loading")
     return h(
       "span",
       { class: "winer-line" },
       chip,
+      party,
       h("span", { class: "winer-muted" }, text(language, "loading")),
     );
   if (!summary)
@@ -91,6 +94,7 @@ export function statsLine(seat: Seat, language: Language, side: Side | null = nu
       "span",
       { class: "winer-line" },
       chip,
+      party,
       h(
         "span",
         { class: "winer-muted" },
@@ -104,6 +108,7 @@ export function statsLine(seat: Seat, language: Language, side: Side | null = nu
     "span",
     { class: "winer-line" },
     chip,
+    party,
     standingChip(seat),
     titleChip(seat),
     rankChip(summary, language),
@@ -134,6 +139,7 @@ export function lineKey(seat: Seat, language: Language, side: Side | null = null
   return [
     language,
     seat.isSelf ? side : null,
+    seat.premade,
     seat.stats.state,
     seat.rating?.label,
     seat.rating?.grade,

@@ -235,3 +235,119 @@
   background: #4a2224;
   color: #ff9d96;
 }
+
+/* Social: groups, friends' games, the lobby. The six group colours are the desktop's Hextech
+ * `--group-*` tokens by value: always beside a number, never the only sign. */
+.winer-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-weight: 700;
+  background: #223142;
+  color: #ece6d6;
+}
+
+.winer-group::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--winer-group, #9ba7b3);
+}
+
+[data-winer-group="1"],
+[data-winer-friend-group="1"] {
+  --winer-group: #e69f00;
+}
+
+[data-winer-group="2"],
+[data-winer-friend-group="2"] {
+  --winer-group: #56b4e9;
+}
+
+[data-winer-group="3"],
+[data-winer-friend-group="3"] {
+  --winer-group: #2ec4a0;
+}
+
+[data-winer-group="4"],
+[data-winer-friend-group="4"] {
+  --winer-group: #cc79a7;
+}
+
+[data-winer-group="5"],
+[data-winer-friend-group="5"] {
+  --winer-group: #f0e442;
+}
+
+[data-winer-group="6"],
+[data-winer-friend-group="6"] {
+  --winer-group: #e8705a;
+}
+
+/* A friend playing with other friends: a stripe on the left edge of their entry, which moves
+ * nothing. */
+[data-winer-friend-group] {
+  box-shadow: inset 3px 0 0 var(--winer-group) !important;
+}
+
+/* A friend's game after their name: `极地大乱斗 · 12:34`. */
+.winer-friend {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  font:
+    500 11px/13px "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    sans-serif;
+  color: #c8aa6e;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* A lobby member's form above their banner; a click opens their history in winer. */
+.winer-lobby {
+  display: block;
+  max-width: 100%;
+  margin: 0 auto 4px;
+  padding: 2px 6px;
+  overflow: hidden;
+  border: 1px solid #2e4157;
+  border-radius: 4px;
+  background: rgba(1, 10, 19, 0.85);
+  color: #ece6d6;
+  font:
+    600 11px/14px "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    sans-serif;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.winer-lobby:hover {
+  border-color: #c8aa6e;
+}
+
+/* The lobby's fallback panel lists its rows as buttons. */
+.winer-row--button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.winer-row--button:hover {
+  background: #162230;
+}

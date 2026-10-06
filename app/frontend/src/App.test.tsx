@@ -1,14 +1,14 @@
 // The whole window against the demo client: every page renders without tripping its error
 // boundary, and the settings that restyle or re-word the window take effect.
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { GameView, Mode, Seat } from "@winer/shared";
+import type { Event, GameView, Mode, Seat } from "@winer/shared";
 
 import { App } from "./App";
 import type { Backend, CommandName } from "./lib/backend";
-import { demoBackend } from "./lib/demo";
+import { demoBackend, demoLobby } from "./lib/demo";
 import { AppStore, EMPTY_SNAPSHOT, StoreContext } from "./lib/store";
 import { LivePage } from "./pages/Live";
 import { ShellContext } from "./shell/navigation";
@@ -375,5 +375,187 @@ describe("App", () => {
     await user.click(within(dialog).getByRole("tab", { name: zhCN["settings.general"] }));
     await user.click(within(dialog).getByRole("button", { name: "English" }));
     expect(await screen.findByRole("navigation", { name: en["nav.label"] })).toBeInTheDocument();
+  });
+});
+
+describe("social", () => {
+  /** The demo client, with the core's events in the test's hand. */
+  function demoWithEvents(): { backend: Backend; push: (event: Event) => Promise<void> } {
+    const base = demoBackend();
+    const handlers = new Set<(event: Event) => void>();
+    return {
+      backend: {
+        ...base,
+        onEvent: (handler) => {
+          handlers.add(handler);
+          const off = base.onEvent(handler);
+          return () => {
+            handlers.delete(handler);
+            off();
+          };
+        },
+      },
+      push: (event) =>
+        act(async () => {
+          handlers.forEach((handler) => handler(event));
+        }),
+    };
+  }
+
+  async function openGeneralSettings(user: ReturnType<typeof userEvent.setup>) {
+    fireEvent.keyDown(window, { key: ",", ctrlKey: true });
+    const dialog = screen.getByRole("dialog", { name: zhCN["settings.title"] });
+    await user.click(within(dialog).getByRole("tab", { name: zhCN["settings.general"] }));
+    return dialog;
+  }
+
+  it("lists the friends at play on the overview, grouped, each opening their history", async () => {
+    const { user } = await renderApp();
+    const panel = (await screen.findByText(zhCN["social.friends"])).closest("div.rounded-10");
+    expect(panel).not.toBeNull();
+    const friends = within(panel as HTMLElement);
+    expect(friends.getByText("4 位在选人或游戏中")).toBeInTheDocument();
+    const rows = friends.getAllByRole("button", { name: /^查看 .+ 的战绩$/ });
+    expect(rows.map((row) => row.getAttribute("aria-label"))).toEqual([
+      "查看 上分小能手#20008 的战绩",
+      "查看 峡谷夜行者#20008 的战绩",
+      "查看 补兵机器#20008 的战绩",
+      "查看 辅助永不死#20008 的战绩",
+    ]);
+    expect(friends.queryByText("周末玩家"), "a friend at home is not listed").toBeNull();
+    expect(rows[0]).toHaveTextContent(/排位赛 单排\/双排 · 游戏中.*25:1\d/);
+    expect(rows[3]).toHaveTextContent("海克斯大乱斗 · 选英雄中");
+    const grouped = rows.filter((row) => row.closest("li")?.dataset.group === "1");
+    expect(grouped, "the two in one game share a group").toHaveLength(2);
+    expect(within(grouped[0] as HTMLElement).getByTitle("一起玩 1")).toHaveTextContent("1");
+
+    await user.click(rows[1] as HTMLElement);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(zhCN["history.title"]);
+  });
+
+  it("shows the party in the lobby with their lanes and form", async () => {
+    const store = new AppStore(demoBackend());
+    store.live.set({
+      ...EMPTY_SNAPSHOT,
+      connection: { status: "connected", port: 1, platformId: "NJ100" },
+      phase: "Lobby",
+      lobby: demoLobby(),
+    });
+    const navigate = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <StoreContext value={store}>
+        <ShellContext value={{ route: { page: "live" }, navigate, openSettings: vi.fn() }}>
+          <LivePage />
+        </ShellContext>
+      </StoreContext>,
+    );
+    expect(screen.getByText(zhCN["social.lobby"])).toBeInTheDocument();
+    const me = screen.getByRole("button", { name: "查看 暗夜里的光#10003 的战绩" });
+    expect(within(me).getByText(zhCN["social.leader"])).toBeInTheDocument();
+    expect(within(me).getByText("中单")).toBeInTheDocument();
+    expect(within(me).getByText(zhCN["social.fill"])).toBeInTheDocument();
+    expect(within(me).getByText("战力 7.4")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "查看 新来的队友#10009 的战绩" }));
+    expect(navigate).toHaveBeenCalledWith({ page: "history", puuid: "demo-6" });
+  });
+
+  it("colours a premade party's badges by its group and keeps the number", async () => {
+    const { user } = await renderApp();
+    await user.click(await screen.findByRole("button", { name: zhCN["overview.open"] }));
+    const badges = screen.getAllByText("开黑 1");
+    expect(badges).toHaveLength(2);
+    for (const badge of badges)
+      expect(badge.querySelector("[data-group]")).toHaveClass("bg-group-1");
+  });
+
+  it("opens the history the client asked for, over whatever was open", async () => {
+    const { backend, push } = demoWithEvents();
+    const { user } = await renderApp(backend);
+    await openGeneralSettings(user);
+    await push({ type: "openHistory", data: { puuid: "demo-3" } });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(zhCN["history.title"]);
+    expect(await screen.findByText("野区观光客#10005")).toBeInTheDocument();
+  });
+
+  it("records the hotkey with the old one let go, refuses a bare key, cancels and clears", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await renderApp(backend);
+    const dialog = await openGeneralSettings(user);
+    expect(within(dialog).getByText("Ctrl")).toBeInTheDocument();
+    expect(await within(dialog).findByText(zhCN["social.hotkeyActive"])).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: zhCN["social.hotkeyChange"] }));
+    await waitFor(() => expect(call).toHaveBeenCalledWith("suspend_hotkey", { suspended: true }));
+    expect(within(dialog).getByText(zhCN["social.hotkeyListening"])).toBeInTheDocument();
+    fireEvent.keyDown(window, { code: "KeyQ", key: "Q", shiftKey: true });
+    expect(within(dialog).getByText(zhCN["social.hotkeyInvalid"])).toBeInTheDocument();
+    fireEvent.keyDown(window, { code: "ControlLeft", key: "Control", ctrlKey: true });
+    expect(within(dialog).getByText("…")).toBeInTheDocument();
+    fireEvent.keyDown(window, { code: "KeyQ", key: "q", ctrlKey: true, altKey: true });
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          general: expect.objectContaining({ hotkey: "Ctrl+Alt+Q" }),
+        }),
+      }),
+    );
+    await waitFor(() => expect(call).toHaveBeenCalledWith("suspend_hotkey", { suspended: false }));
+    expect(within(dialog).getByText("Q")).toBeInTheDocument();
+    expect(screen.getByRole("dialog"), "the recorder's keys never reach the dialog").toBeVisible();
+
+    await user.click(within(dialog).getByRole("button", { name: zhCN["social.hotkeyChange"] }));
+    // From inside the dialog, where its own Escape handler would hear it.
+    const cancel = within(dialog).getByRole("button", { name: zhCN["common.cancel"] });
+    cancel.focus();
+    fireEvent.keyDown(cancel, { code: "Escape", key: "Escape" });
+    expect(screen.getByRole("dialog"), "Esc cancels the recording, not the settings").toBeVisible();
+    expect(within(dialog).getByText("Q")).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: zhCN["social.hotkeyClear"] }));
+    expect(await within(dialog).findByText(zhCN["social.hotkeyOff"])).toBeInTheDocument();
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          general: expect.objectContaining({ hotkey: null }),
+        }),
+      }),
+    );
+  });
+
+  it("says when another program holds the combination", async () => {
+    const { user } = await renderApp(
+      demoWith({
+        get_hotkey_status: () => ({
+          shortcut: "Ctrl+Shift+W",
+          active: false,
+          suspended: false,
+          error: "HotKey already registered",
+        }),
+      }),
+    );
+    const dialog = await openGeneralSettings(user);
+    expect(await within(dialog).findByText(zhCN["social.hotkeyFailed"])).toHaveAttribute(
+      "title",
+      "HotKey already registered",
+    );
+  });
+
+  it("switches the friends list and the lobby in the client on their own", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.plugin"] }));
+    await user.click(await screen.findByRole("switch", { name: zhCN["social.pluginFriends"] }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          plugin: expect.objectContaining({ friendStatus: false, lobbyPanel: true }),
+        }),
+      }),
+    );
+    expect(screen.getByRole("switch", { name: zhCN["social.pluginLobby"] })).toBeChecked();
   });
 });

@@ -1,12 +1,21 @@
 // The Pengu Loader entry. Pengu v1.1 imports this module in the client page and calls `init`, then
 // `load`; a page reload creates two contexts, one of which may never get `load`. Every context
 // connects to the desktop app, but only one at a time draws, chosen by a heartbeat on <html>.
-import type { ChampSelectView, Language } from "@winer/shared";
+import type { ChampSelectView, Language, LobbyView, Settings, Snapshot } from "@winer/shared";
 
 import { BENCH_STYLE, interceptBenchClicks, liftBenchCooldown } from "./bench";
 import { Bridge } from "./bridge";
 import { h } from "./dom";
+import { decorateFriends } from "./friends";
 import { text } from "./i18n";
+import {
+  type FloatingPanel,
+  clearLobby,
+  decorateLobby,
+  floatingPanel,
+  interceptAvatarClicks,
+  lobbyRows,
+} from "./lobby";
 import { quietPengu } from "./pengu";
 import { PluginState } from "./state";
 import style from "./style.css?inline";
@@ -28,8 +37,14 @@ export class Controller {
   #frame = 0;
   #panel: { host: HTMLElement; body: HTMLElement; collapsed: boolean } | null = null;
   #panelKey = "";
-  #report = "";
+  /** The last report of each part of the page, so each change is logged once. */
+  #reports = new Map<string, string>();
   #lifted = 0;
+  // Social.
+  /** A friend's game time is on screen: it is redrawn every second. */
+  #ticking = false;
+  #lobbyPanel: FloatingPanel | null = null;
+  #lobbyKey = "";
 
   constructor(private readonly doc: Document = document) {
     this.bridge = new Bridge(
@@ -48,11 +63,16 @@ export class Controller {
     }
     this.state.subscribe(() => this.schedule());
     interceptBenchClicks(this.doc, (championId) => this.swap(championId));
+    interceptAvatarClicks(this.doc, (puuid) => this.openHistory(puuid));
     new MutationObserver(() => this.schedule()).observe(this.doc.documentElement, {
       childList: true,
       subtree: true,
     });
     setInterval(() => this.schedule(), 2000);
+    // A game's time in the friends list ticks by the second; nothing else needs that pace.
+    setInterval(() => {
+      if (this.#ticking) this.schedule();
+    }, 1000);
     this.bridge.start();
   }
 
@@ -80,6 +100,7 @@ export class Controller {
     const { snapshot, settings } = this.state;
     this.#style(TWEAKS_ID, PROMOTIONS, Boolean(settings?.plugin.hidePromotions));
     this.#bench(Boolean(settings?.plugin.benchNoCooldown) && snapshot?.phase === "ChampSelect");
+    this.#social(snapshot, settings);
 
     const view =
       settings?.plugin.teamPanel && snapshot?.phase === "ChampSelect" ? snapshot.champSelect : null;
@@ -102,11 +123,74 @@ export class Controller {
     );
   }
 
-  /** Each change of drawing mode once, so the desktop log tells how the client page looked. */
-  #log(report: string): void {
-    if (report === this.#report || !this.state.connected) return;
-    this.#report = report;
+  /** Each change of drawing mode once per part of the page, so the desktop log tells how the
+   *  client page looked. */
+  #log(report: string, part = "champSelect"): void {
+    if (report === this.#reports.get(part) || !this.state.connected) return;
+    this.#reports.set(part, report);
     this.bridge.log("info", report);
+  }
+
+  // ---- Social: friends' games in the friends list, the party in the lobby ----
+
+  /** Asks winer for `puuid`'s history, from a click on a lobby member. Only the drawing context
+   *  acts, so one click is one request. */
+  openHistory(puuid: string): boolean {
+    if (this.doc.documentElement.dataset.winerOwner !== this.context) return false;
+    const sent = this.bridge.openHistory(puuid);
+    if (this.state.connected)
+      this.bridge.log("info", `lobby click: ${sent ? "history asked for" : "not sent"}`);
+    return sent;
+  }
+
+  #social(snapshot: Snapshot | null, settings: Settings | null): void {
+    const language = settings?.general.language ?? "zh-CN";
+    const friends = settings?.plugin.friendStatus ? (snapshot?.friends ?? null) : null;
+    const drawn = decorateFriends(this.doc, friends, Date.now(), language);
+    this.#ticking = drawn.lines > 0;
+    if (friends?.friends.some((friend) => friend.status.state === "inGame"))
+      this.#log(
+        drawn.entries > 0
+          ? "friends list: entries found"
+          : "friends list: no entries found for the friends in game",
+        "friends",
+      );
+
+    // The core sends the lobby only while the client shows it.
+    const lobby = settings?.plugin.lobbyPanel ? (snapshot?.lobby ?? null) : null;
+    if (!lobby) {
+      clearLobby(this.doc);
+      this.#hideLobbyPanel();
+      return;
+    }
+    const open = (puuid: string) => void this.openHistory(puuid);
+    const cards = decorateLobby(this.doc, lobby, language, open);
+    if (cards > 0) this.#hideLobbyPanel();
+    else this.#showLobbyPanel(lobby, language, open);
+    this.#log(
+      cards > 0
+        ? `lobby: ${cards} member cards decorated`
+        : "lobby: member cards not found, showing the panel",
+      "lobby",
+    );
+  }
+
+  #showLobbyPanel(view: LobbyView, language: Language, open: (puuid: string) => void): void {
+    if (!this.#lobbyPanel?.host.isConnected) {
+      this.#lobbyPanel = floatingPanel(this.doc, text(language, "lobby"), this.context);
+      this.#lobbyKey = "";
+    }
+    // Rebuilt only when what it shows changed, as champ select's panel is.
+    const key = JSON.stringify([language, view.members]);
+    if (key !== this.#lobbyKey) {
+      this.#lobbyKey = key;
+      this.#lobbyPanel.body.replaceChildren(lobbyRows(view, language, open));
+    }
+  }
+
+  #hideLobbyPanel(): void {
+    this.#lobbyPanel?.host.remove();
+    this.#lobbyPanel = null;
   }
 
   #style(id: string, css: string, on: boolean): void {

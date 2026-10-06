@@ -1,0 +1,239 @@
+// The party in the client's lobby: above each member's banner, one compact line of their recent
+// form (win rate, KDA, form score) that opens their history in winer when clicked, as a click on the
+// member's avatar does. Where the members cannot be found, a compact panel lists the same.
+import {
+  formatKda,
+  kda,
+  percent,
+  riotId,
+  winRate,
+  type Language,
+  type LobbyMember,
+  type LobbyView,
+} from "@winer/shared";
+
+import { h } from "./dom";
+import { text } from "./i18n";
+
+/** The client's lobby. NOT MEASURED YET: every selector here is a guess, to be confirmed on the
+ *  live client over the client page's debug port (docs/platform-notes.md says how) and then
+ *  recorded there. Lists are tried in order; a miss falls back to the panel. */
+export const LOBBY = {
+  /** One member's card in the party. */
+  member: [
+    ".lobby-party-member",
+    ".party-member",
+    "lol-parties-lobby-member",
+    "[class*='lobby-member']",
+    "[class*='party-member']",
+  ],
+  /** The member's name on the card. */
+  name: [".player-name", ".summoner-name", "[class*='player-name']", "[class*='summoner-name']"],
+  /** The banner the line goes above. */
+  banner: [".lobby-banner", "lol-regalia-banner-v2-element", "[class*='banner']"],
+  /** The avatar, a click on which opens the member's history. Its controls (a crown to promote, an
+   *  ✕ to kick) are left to the client. The card's lower half is not taken: the lane pickers sit
+   *  there in draft queues. */
+  avatar: [
+    ".summoner-icon",
+    "lol-regalia-crest-v2-element",
+    "[class*='summoner-icon']",
+    "[class*='avatar']",
+  ],
+  /** Attributes the client may write a member's puuid into. */
+  ids: ["data-puuid", "puuid", "data-summoner-puuid"],
+} as const;
+
+const LINE_CLASS = "winer-lobby";
+/** On a member's card: whose card it is, for a click on the avatar. */
+const CARD_ATTRIBUTE = "data-winer-puuid";
+/** What a click on these is for is the client's own business. */
+const CONTROLS =
+  "button, a, input, select, [role='button'], [class*='button'], [class*='dropdown']";
+
+function first(root: ParentNode, selectors: readonly string[]): Element | null {
+  for (const selector of selectors) {
+    const found = root.querySelector(selector);
+    if (found) return found;
+  }
+  return null;
+}
+
+function all(root: ParentNode, selectors: readonly string[]): Element[] {
+  for (const selector of selectors) {
+    const found = root.querySelectorAll(selector);
+    if (found.length > 0) return [...found];
+  }
+  return [];
+}
+
+/** `胜率 60% · KDA 3.2 · 战力 7.4`, or what stands in while there are no stats. */
+export function lobbyLine(member: LobbyMember, language: Language): string {
+  const stats = member.stats;
+  if (stats.state === "loading") return text(language, "loading");
+  if (stats.state === "hidden") return text(language, "hidden");
+  if (stats.state === "failed") return text(language, "failed");
+  const form = stats.recent;
+  const parts = [];
+  if (form.games > 0) {
+    parts.push(`${text(language, "winRate")} ${percent(winRate(form.wins, form.games))}`);
+    parts.push(`KDA ${formatKda(kda(form.kills, form.deaths, form.assists))}`);
+  }
+  if (member.score !== null) parts.push(`${text(language, "score")} ${member.score.toFixed(1)}`);
+  return parts.length > 0 ? parts.join(" · ") : text(language, "noGames");
+}
+
+/** The member a card shows: by an id the client wrote into it, else by the name on it. */
+function memberOf(card: Element, members: LobbyMember[]): LobbyMember | null {
+  const ids = LOBBY.ids.map((id) => `[${id}]`).join(",");
+  for (const holder of [card, ...card.querySelectorAll(ids)]) {
+    for (const attribute of LOBBY.ids) {
+      const value = holder.getAttribute(attribute)?.trim();
+      const member = value ? members.find((candidate) => candidate.puuid === value) : undefined;
+      if (member) return member;
+    }
+  }
+  const shown = first(card, LOBBY.name)?.textContent?.trim().toLowerCase();
+  if (!shown) return null;
+  return (
+    members.find((member) => {
+      const name = member.name;
+      if (!name) return false;
+      const plain = name.gameName.trim().toLowerCase();
+      return shown === plain || shown === riotId(name).toLowerCase();
+    }) ?? null
+  );
+}
+
+/** Writes one line above each member's banner. Returns how many member cards it found; the cards
+ *  it could not tell apart get nothing. */
+export function decorateLobby(
+  root: ParentNode,
+  view: LobbyView,
+  language: Language,
+  open: (puuid: string) => void,
+): number {
+  const cards = all(root, LOBBY.member);
+  const kept = new Set<Element>();
+  for (const card of cards) {
+    const member = memberOf(card, view.members);
+    if (!member) {
+      card.removeAttribute(CARD_ATTRIBUTE);
+      continue;
+    }
+    if (card.getAttribute(CARD_ATTRIBUTE) !== member.puuid)
+      card.setAttribute(CARD_ATTRIBUTE, member.puuid);
+    let line = card.querySelector<HTMLElement>(`.${LINE_CLASS}`);
+    if (!line) {
+      line = h("button", { type: "button", class: LINE_CLASS, title: text(language, "open") });
+      // The card it sits on says whose it is at the moment of the click.
+      line.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const puuid = line?.closest(`[${CARD_ATTRIBUTE}]`)?.getAttribute(CARD_ATTRIBUTE);
+        if (puuid) open(puuid);
+      });
+      const banner = first(card, LOBBY.banner);
+      if (banner) banner.before(line);
+      else card.prepend(line);
+    }
+    const said = lobbyLine(member, language);
+    // Written only when it changed: every write wakes the observer that drives rendering.
+    if (line.textContent !== said) line.textContent = said;
+    kept.add(line);
+  }
+  root.querySelectorAll(`.${LINE_CLASS}`).forEach((line) => {
+    if (!kept.has(line)) line.remove();
+  });
+  return cards.length;
+}
+
+export function clearLobby(root: ParentNode): void {
+  root.querySelectorAll(`.${LINE_CLASS}`).forEach((line) => line.remove());
+  root
+    .querySelectorAll(`[${CARD_ATTRIBUTE}]`)
+    .forEach((card) => card.removeAttribute(CARD_ATTRIBUTE));
+}
+
+/** Opens a member's history from a click on their avatar, in the capture phase; a click on the
+ *  client's own controls there passes through. `open` says whether it took the click. */
+export function interceptAvatarClicks(doc: Document, open: (puuid: string) => boolean): () => void {
+  const onClick = (event: MouseEvent) => {
+    if (!(event.target instanceof Element)) return;
+    const card = event.target.closest(`[${CARD_ATTRIBUTE}]`);
+    const puuid = card?.getAttribute(CARD_ATTRIBUTE);
+    if (!card || !puuid || event.target.closest(CONTROLS)) return;
+    const avatar = LOBBY.avatar
+      .map((selector) => event.target instanceof Element && event.target.closest(selector))
+      .find((found) => found && card.contains(found));
+    if (!avatar || !open(puuid)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+  doc.addEventListener("click", onClick, true);
+  return () => doc.removeEventListener("click", onClick, true);
+}
+
+export interface FloatingPanel {
+  host: HTMLElement;
+  body: HTMLElement;
+}
+
+/** The fallback panel's frame, as champ select's: a header that folds it, a body for the rows. */
+export function floatingPanel(doc: Document, title: string, context: string): FloatingPanel {
+  const head = h(
+    "button",
+    { type: "button", class: "winer-head" },
+    h("span", {}, `winer · ${title}`),
+    h("span", { class: "winer-chevron" }, "▾"),
+  );
+  const body = h("div");
+  const host = h(
+    "section",
+    {
+      class: "winer-panel",
+      "data-winer-context": context,
+      "data-winer-panel": "lobby",
+      "data-collapsed": "false",
+    },
+    head,
+    body,
+  );
+  head.addEventListener("click", () => {
+    host.dataset.collapsed = String(host.dataset.collapsed !== "true");
+  });
+  doc.body.append(host);
+  return { host, body };
+}
+
+/** The fallback panel's rows: each member's name and line, a button that opens their history. */
+export function lobbyRows(
+  view: LobbyView,
+  language: Language,
+  open: (puuid: string) => void,
+): HTMLElement {
+  return h(
+    "ol",
+    { class: "winer-rows" },
+    ...view.members.map((member) => {
+      const button = h(
+        "button",
+        {
+          type: "button",
+          class: member.isSelf
+            ? "winer-row winer-row--self winer-row--button"
+            : "winer-row winer-row--button",
+          title: text(language, "open"),
+        },
+        h(
+          "span",
+          { class: "winer-who" },
+          h("span", { class: "winer-name" }, riotId(member.name) || text(language, "hidden")),
+          h("span", { class: "winer-line" }, lobbyLine(member, language)),
+        ),
+      );
+      button.addEventListener("click", () => open(member.puuid));
+      return h("li", {}, button);
+    }),
+  );
+}

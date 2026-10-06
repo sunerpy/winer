@@ -67,6 +67,13 @@ export class Bridge {
     return true;
   }
 
+  /** Asks winer to show `puuid`'s history in its window. False while there is no connection. */
+  openHistory(puuid: string): boolean {
+    if (this.#socket?.readyState !== WebSocket.OPEN) return false;
+    this.#send({ type: "openHistory", puuid });
+    return true;
+  }
+
   #send(message: PluginMessage): void {
     if (this.#socket?.readyState === WebSocket.OPEN) this.#socket.send(JSON.stringify(message));
   }
