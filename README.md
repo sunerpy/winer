@@ -4,22 +4,87 @@
 
 # winer
 
-### 英雄联盟客户端助手：队友战绩、对局评级与自动化，直接读客户端自己的接口
+### 英雄联盟客户端助手：队友战绩、对局评级、配装推荐与自动化，直接读客户端自己的接口
 
 [![CI](https://github.com/sunerpy/winer/actions/workflows/ci.yml/badge.svg)](https://github.com/sunerpy/winer/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/sunerpy/winer)](https://github.com/sunerpy/winer/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
-[安装](#安装) · [功能](#功能) · [评分与评级](#评分与评级) · [开发](#开发) · [致谢](#致谢) · [免责声明](#免责声明) · [使用文档](https://firlab.app/winer/)
+[亮点](#亮点) · [安装](#安装) · [功能](#功能) · [评分与评级](#评分与评级) · [开发](#开发) · [致谢](#致谢) · [免责声明](#免责声明) · [使用文档](https://firlab.app/winer/)
 
 English documentation: [firlab.app/winer/en](https://firlab.app/winer/en/)
 
+选人时看清每位队友的近期战绩和档位，按名称翻完任何人的战绩，在客户端里直接看配装、强化符文和队友战绩，
+把接受对局、选用英雄、符文和开局喊话交给它。只做 Windows 版，在腾讯客户端（国服）上实测。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/site/public/screens/live-dark.webp" />
+  <img src="./docs/site/public/screens/live-light.webp" alt="选人阶段的对局分析：每位队友一行，左边是档位、称号、段位、胜率和 KDA，右边是最近的每一局" width="900" />
+</picture>
+
 </div>
 
----
+## 亮点
 
-一个直接与 LCU 通信的 Rust 内核，一个 Tauri 桌面窗口，以及一个经由 Pengu Loader 注入客户端页面的插件。
-只做 Windows 版，在腾讯客户端（国服）上实测。
+**选人时一眼看清队友**
+
+- 每位队友一行：段位、近期胜率与 KDA、最近每一局；按近期战力排成峡谷五档（峡谷通天代、人形防御塔、峡谷公务员、
+  移动眼位、纯正牛马），配毒舌称号和评语；标出红蓝方，一起排队的队友同色分组。
+- 战力喊话：按选人楼层（1L–5L）和名字排好，一键发到队伍、每局自动发送，或用快捷键发送；游戏中按快捷键还能提醒
+  队友提防对面最强的人（可选，默认关闭）。
+
+**配装推荐**
+
+- 选人、游戏中和空闲时都能看英雄的出装、符文、召唤师技能、技能加点和对位：召唤师峡谷用腾讯 101 的国服数据，
+  大乱斗和斗魂竞技场用 OP.GG；海克斯大乱斗和斗魂竞技场另有强化符文的强弱排行。
+- 一键应用符文页和召唤师技能、写入装备方案；还能按英雄和模式记住你最后用的符文和召唤师技能，下次锁定英雄时
+  自动换上。
+
+**战绩与评分**
+
+- 按 Riot ID 查任何人，经大区的战绩服务器翻完整个历史；刚看过的页和记分板直接从缓存里出来。
+- 每局 0–10 分的单局评分与 S+ 到 F 的评级；MVP、SVP 的权重对照 WeGame 校准过（召唤师峡谷 85% / 83%、
+  海克斯大乱斗 80% / 73% 与 WeGame 一致）；记分板标出全场最高的各项数据。
+- 写明近期战绩统计的是哪些对局（近 N 场 · 所有模式），自定义、人机和重开局不计入，自定义对局可以隐藏。
+
+**在客户端里直接用**
+
+- 自带 Pengu Loader，连上客户端时自动激活并装好插件，不用另外安装。
+- 选人界面的队友战绩和档位、组队房间每位成员的近期表现、好友列表里好友对局的模式和已进行时间；点任何一名
+  玩家，在客户端里弹出他最近的 10 局。
+- 大乱斗备选席上的英雄点一下就换，不等冷却；可以隐藏首页推广和赛事弹窗。
+
+**工具与自动化**
+
+- 自动接受对局、按分路自动选用和禁用英雄、对局结束返回房间；每一项都默认关闭，并且可以限定在哪些模式里生效。
+- 生涯背景（全部皮肤可选）、挑战徽章与称号和旗帜、段位伪装、手机在线和隐身、游戏设置与按键的备份和恢复。
+- 全局快捷键唤起 winer（默认 Alt+\`），游戏中唤出时保持在游戏上方。
+
+**安全与隐私**
+
+- 只使用客户端在本机开放的接口，不读取游戏内存，不修改游戏文件；客户端的凭证只在内存里使用。联网的只有大区
+  的战绩服务器、配装数据、强化符文说明和软件更新，见[数据与隐私](https://firlab.app/winer/privacy)。
+
+<table>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="./docs/site/public/screens/history-dark.webp" />
+        <img src="./docs/site/public/screens/history-light.webp" alt="战绩页：按模式筛选的对局列表，每局的评级、MVP 和成就徽章" />
+      </picture>
+      <p align="center">战绩：每局的评级、MVP/SVP 和成就徽章，展开就是记分板</p>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="./docs/site/public/screens/rating-dark.webp" />
+        <img src="./docs/site/public/screens/rating-light.webp" alt="设置里的评级方案：峡谷五档、峡谷八档、马系和自定义档位" />
+      </picture>
+      <p align="center">评级：峡谷五档、峡谷八档、马系或自己写的档位</p>
+    </td>
+  </tr>
+</table>
+
+截图来自演示数据，不含真实玩家。
 
 ## 安装
 
