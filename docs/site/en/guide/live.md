@@ -1,7 +1,8 @@
 # Live game and callout
 
-The **Live game** page analyses both teams in champ select and while the game runs, and empties
-once the client is back in the lobby.
+The **Live game** page analyses both teams in champ select and while the game runs, with the
+[build](#builds) of your champion, and empties once the client is back in the lobby, leaving the
+champion lookup.
 
 ## Game analysis
 
@@ -47,3 +48,56 @@ In ARAM and Hextech ARAM the champions on the bench are listed at the top of the
 and you swap at once, without the client's cooldown. While rerolls remain, **Reroll** sits on the
 right. With a wishlist set in **Automation › Bench**, a wishlist champion that ranks above the one
 you hold is taken by itself; wishlist champions carry a star.
+
+## Builds
+
+In champ select, the build of the champion you hover or lock in sits under the analysis; while the
+game runs, switch to winer to see the one you are playing. Without a game, choose a champion and a
+mode at the bottom of the page. The panel has sections:
+
+- **Items**: starting items, boots, core items (three together) and late options, each with its
+  pick rate and win rate.
+- **Runes**: the most played pages with their pick rate, win rate and games. **Use these runes**
+  writes the page to winer's own rune page and makes it current; the rules are in
+  [Automation](/en/guide/automation#runes-and-summoner-spells).
+- **Spells**: the usual pairs. In champ select, **Take these spells** takes them at once; a spell
+  you already hold stays on its key.
+- **Skills**: the max order and the points for the first 15 levels.
+- **Matchups** (Summoner's Rift): the opponents the champion beats most and loses to most; the win
+  rate is the champion's own against them.
+- **Augments** (Arena, Hextech ARAM): grouped as prismatic, gold and silver, best first, with a
+  filter by name. Hextech ARAM shows each augment's grade (S to C); Arena shows the average place and
+  the share of first places, because wins do not count there. What an augment does comes from
+  ARAM.GG (it can be turned off in **Settings › General**). Augments are picked in the game, so this
+  section opens first while the game runs.
+
+A section without numbers is left out; Hextech ARAM, for one, has no rune or spell statistics. On
+Summoner's Rift a switch on the right changes the lane; with no lane assigned (blind pick, a
+lookup), the lane the champion is played in most comes first.
+
+### Where the numbers come from
+
+The panel's heading names the source and the patch, for example "Data: Tencent 101 · 16.19", and
+the games behind the numbers.
+
+| Mode           | Source                                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Ranked, Normal | Tencent's 101 statistics from the League app (the Chinese servers); **Settings › General** switches to OP.GG (the world) |
+| ARAM           | OP.GG                                                                                                                    |
+| Hextech ARAM   | Tencent's League app, and ARAM.GG when that does not answer                                                              |
+| Arena          | OP.GG                                                                                                                    |
+| Other modes    | no build numbers                                                                                                         |
+
+These are public statistics from third parties and can lag a patch; in a patch's first days, when
+there are none yet, the previous patch's are used. When a source does not answer, the panel says so
+and offers **Retry**. Items and augments the client does not know (from another patch, say) are left
+out. winer reads the numbers of the champion on screen only, keeps them for a few hours, and never
+reads other champions ahead. With **Builds** off in **Settings › General**, the panel is hidden and
+nothing is fetched.
+
+### Writing the item set
+
+**Write the item set** in **Items** writes the items as the champion's item set, named after the
+champion ("winer · Jhin"), which the in-game shop suggests. The client reads a new item set from
+the next game on. Writing it by itself, and removing it, are in
+[Automation](/en/guide/automation#item-sets).

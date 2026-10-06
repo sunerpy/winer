@@ -27,6 +27,9 @@ Open them with `Ctrl` + `,` or **Settings** at the bottom of the sidebar.
   click menu toggles auto-accept and quits.
 - **Augment descriptions from ARAM.GG**: fetches what Hextech ARAM's augments do from ARAM.GG; off,
   augments show their name and icon only.
+- **Builds**: shows the [build panel](/en/guide/live#builds) on the Live game page, from public
+  statistics by the Tencent League app, OP.GG and ARAM.GG; off, it is hidden and nothing is fetched.
+- **Summoner's Rift data**: Tencent 101 (the Chinese servers) or OP.GG (the world).
 - **Start with Windows**: starts in the tray when you sign in to Windows, without opening the window.
 
 ### Rating
