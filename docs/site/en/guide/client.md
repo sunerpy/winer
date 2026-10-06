@@ -15,9 +15,9 @@ The first time winer connects to the client, it:
 2. installs winer's plugin, which then updates with winer;
 3. reloads the client UI once, after the client has finished signing in and while it is idle (no
    lobby, queue, champ select or game), so the plugin starts at once, and brings the client's window
-   back up afterwards; if the client does not become idle within two minutes, the plugin starts with
-   the client's next launch. Reloading restarts only the client's interface process; your sign-in is
-   not affected.
+   back up afterwards. While the client is busy it waits, through a few games if need be, and reloads
+   once you are back on the home screen; if the client closes before that, the plugin starts with its
+   next launch. Reloading restarts only the client's interface process; your sign-in is not affected.
 
 Pengu Loader's own welcome window and start-up notices do not appear. If Pengu Loader is already
 installed, winer keeps using yours and only installs the plugin. If the client folder already has a

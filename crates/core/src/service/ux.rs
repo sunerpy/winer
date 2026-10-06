@@ -16,9 +16,6 @@ use tracing::{debug, info, warn};
 use super::{CHAT_ME, Client, CoreError, PHASE, Service};
 use crate::{model::ChatMe, view::Phase};
 
-/// How long a loader linked just now waits for the client to settle; then it is left for the
-/// client's next launch.
-const SETTLE_WAIT: Duration = Duration::from_secs(120);
 /// The first pause between two readings of a client settling; each pause doubles, up to
 /// [`SETTLE_POLL_MAX`].
 const SETTLE_POLL: Duration = Duration::from_secs(1);
@@ -56,25 +53,23 @@ impl Readiness {
     }
 }
 
-/// What came of restarting the client's interface for a loader linked just now.
+/// What came of restarting the client's interface for a loader linked just now: restarted once
+/// the client had settled, then brought up (`shown`, unless the client refused) as soon as its
+/// plugin was back on the bridge (`plugin_back`), else after half a minute.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum UiRestart {
-    /// Restarted once the client had settled, then brought up (`shown`, unless the client refused):
-    /// as soon as its plugin was back on the bridge (`plugin_back`), else after half a minute.
-    Restarted { plugin_back: bool, shown: bool },
-    /// The client had not settled within two minutes, as it was last read; the loader starts with
-    /// the client's next launch.
-    NotSettled(Readiness),
+pub struct UiRestart {
+    pub plugin_back: bool,
+    pub shown: bool,
 }
 
 impl Service {
     /// Restarts the client's interface for a loader linked just now, once the client has settled:
     /// signed in to chat, with the player outside any lobby, queue, champ select or game. A restart
-    /// any sooner can leave the new interface hidden. The client is read every few seconds for up
-    /// to two minutes, then left to load the loader at its next launch. The new interface is
-    /// brought up once its plugin is back on the bridge, or after half a minute. The game and the
-    /// login session are untouched. This takes minutes at worst: call it off anything that must
-    /// answer at once.
+    /// any sooner can leave the new interface hidden. The client is read every few seconds for as
+    /// long as it takes, which can be a whole evening of games; a client that goes away ends the
+    /// wait (`NotConnected`), and its next launch loads the loader. The new interface is brought up
+    /// once its plugin is back on the bridge, or after half a minute. The game and the login
+    /// session are untouched. Call it off anything that must answer at once.
     pub async fn restart_client_ui_when_idle(&self) -> Result<UiRestart, CoreError> {
         let mut hellos = self.plugin_hellos();
         let ux = Connected {
@@ -123,31 +118,26 @@ trait ClientUx {
     async fn show(&self) -> Result<(), CoreError>;
 }
 
-/// Restarts `ux`'s interface once it has settled, read every few seconds for up to
-/// [`SETTLE_WAIT`], then brings the new one up as soon as `hellos` changes (its plugin is back on
-/// the bridge), or after [`BACK_WAIT`].
+/// Restarts `ux`'s interface once it has settled, read every few seconds for as long as it takes,
+/// then brings the new one up as soon as `hellos` changes (its plugin is back on the bridge), or
+/// after [`BACK_WAIT`].
 async fn restart_when_settled(
     ux: &impl ClientUx,
     hellos: &mut watch::Receiver<u64>,
 ) -> Result<UiRestart, CoreError> {
     let started = Instant::now();
-    let deadline = started + SETTLE_WAIT;
     let mut pause = SETTLE_POLL;
     loop {
         let readiness = ux.readiness().await?;
         if readiness.settled() {
             break;
         }
-        let now = Instant::now();
-        if now >= deadline {
-            return Ok(UiRestart::NotSettled(readiness));
-        }
         debug!(
             signed_in = readiness.signed_in,
             phase = ?readiness.phase,
             "the client has not settled"
         );
-        sleep(pause.min(deadline - now)).await;
+        sleep(pause).await;
         pause = (pause * 2).min(SETTLE_POLL_MAX);
     }
     info!(waited = ?started.elapsed(), "the client has settled; restarting its interface");
@@ -162,7 +152,7 @@ async fn restart_when_settled(
         .await
         .inspect_err(|error| warn!(%error, "the restarted client interface was not brought up"))
         .is_ok();
-    Ok(UiRestart::Restarted { plugin_back, shown })
+    Ok(UiRestart { plugin_back, shown })
 }
 
 /// The connected client, for as long as it stays the one connected.
@@ -365,7 +355,7 @@ mod tests {
         let mut hellos = ux.hellos.subscribe();
         assert_eq!(
             restart_when_settled(&ux, &mut hellos).await.unwrap(),
-            UiRestart::Restarted {
+            UiRestart {
                 plugin_back: true,
                 shown: true
             }
@@ -383,32 +373,47 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_client_that_never_settles_keeps_its_new_loader_for_the_next_launch() {
+    async fn a_client_busy_for_an_evening_is_restarted_once_it_goes_idle() {
         let playing = Readiness {
             signed_in: true,
             phase: Phase::InProgress,
         };
-        for stuck in [SIGNING_IN, playing] {
-            let ux = Scripted::new(&[Some(stuck)], Some(secs(1)));
-            let mut hellos = ux.hellos.subscribe();
-            assert_eq!(
-                restart_when_settled(&ux, &mut hellos).await.unwrap(),
-                UiRestart::NotSettled(stuck)
-            );
-            assert!(ux.acts().is_empty(), "neither restarted nor shown");
-            let reads = ux.reads();
-            assert_eq!(
-                reads.last(),
-                Some(&SETTLE_WAIT),
-                "read a last time as the wait ends"
-            );
-            assert!(
-                reads
-                    .windows(2)
-                    .all(|pair| pair[1] - pair[0] <= SETTLE_POLL_MAX),
-                "{reads:?}"
-            );
-        }
+        // Signed in, then three hours of games, a lobby between two of them, and only then idle.
+        let mut readings = vec![Some(SIGNING_IN); 3];
+        readings.extend(std::iter::repeat_n(Some(playing), 3 * 720));
+        readings.push(Some(Readiness {
+            signed_in: true,
+            phase: Phase::Lobby,
+        }));
+        readings.push(Some(IDLE));
+        let ux = Scripted::new(&readings, Some(secs(2)));
+        let mut hellos = ux.hellos.subscribe();
+        assert_eq!(
+            restart_when_settled(&ux, &mut hellos).await.unwrap(),
+            UiRestart {
+                plugin_back: true,
+                shown: true
+            }
+        );
+        let reads = ux.reads();
+        assert_eq!(
+            reads.len(),
+            readings.len(),
+            "read until it settled, never given up"
+        );
+        assert!(
+            reads
+                .windows(2)
+                .all(|pair| pair[1] - pair[0] <= SETTLE_POLL_MAX),
+            "every few seconds"
+        );
+        let last = *reads.last().unwrap();
+        assert!(last > secs(3 * 3600), "{last:?}");
+        assert_eq!(
+            ux.acts(),
+            [("restart", last), ("show", last + secs(2))],
+            "restarted at the first idle reading"
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -419,7 +424,7 @@ mod tests {
         ux.hellos.send_modify(|hellos| *hellos += 1);
         assert_eq!(
             restart_when_settled(&ux, &mut hellos).await.unwrap(),
-            UiRestart::Restarted {
+            UiRestart {
                 plugin_back: false,
                 shown: true
             }
@@ -434,7 +439,7 @@ mod tests {
         let mut hellos = ux.hellos.subscribe();
         assert_eq!(
             restart_when_settled(&ux, &mut hellos).await.unwrap(),
-            UiRestart::Restarted {
+            UiRestart {
                 plugin_back: true,
                 shown: false
             }

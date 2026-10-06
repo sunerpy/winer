@@ -235,6 +235,8 @@ mod tests {
                 },
                 ranked: None,
                 games: Vec::new(),
+                focus: None,
+                complete: true,
             }),
             at,
         )

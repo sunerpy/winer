@@ -27,14 +27,16 @@ Recent form reads how each game was played, not only wins and KDA: the score of 
   queues whose type names the computer as the opponent (Doom Bots, for one); the tutorial counts as
   well.
 - Remakes among the 20 are shown, and count toward no win, KDA, streak or form.
-- In champ select, in game and in a lobby only the mode being played counts: Summoner's Rift
-  (ranked, normal, quickplay) apart from ARAM (classic and Hextech), Arena and the rotating modes
-  each on their own. While that mode has fewer than 5 of the recent games, every mode counts. The
-  History page reads every mode.
-- The games come from the shard's match-history server first, the newest 20 with all ten players
-  of each; where it cannot be read (a shard other than Tencent's, or the server failing) from the
-  client's own list, which holds the player's own row of each game only. A Tencent client's list
-  holds 5 games right after signing in, 20 a few minutes later.
+- In champ select, in game and in a lobby only the mode being played counts, never mixed with
+  another: Summoner's Rift (ranked, normal, quickplay) apart from ARAM (classic and Hextech), Arena
+  and the rotating modes each on their own. With fewer than 20 games of it, the games there are
+  count, and the fewer they are the harder they are pulled toward the average; with none, the
+  player gets no tier there. The History page reads every mode.
+- The games come from the shard's match-history server first, with all ten players of each: the
+  newest 20, then 40 further back at a time, until there are 20 games that count as above, 100 games
+  at most. Where the server cannot be read (a shard other than Tencent's, or the server failing),
+  they come from the client's own list, which holds the player's own row of each game only. A
+  Tencent client's list holds 5 games right after signing in, 20 a few minutes later.
 
 ### Each game's score
 

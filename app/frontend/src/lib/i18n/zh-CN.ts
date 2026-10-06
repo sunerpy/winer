@@ -299,9 +299,9 @@ export const zhCN = {
   "history.formLabel": "近 {n} 场 · 所有模式",
   "history.formHint": "这些数字怎么算",
   "history.formWindow":
-    "取客户端列出的最近 {listed} 场对局里最新的 {window} 场（最多 20 场），各种模式都算，不只是排位。",
+    "取读到的最近 {listed} 场对局里最新的 {window} 场（最多 20 场），各种模式都算，不只是排位。",
   "history.formWindowShort":
-    "取客户端列出的最近对局里最新的 {window} 场（最多 20 场），各种模式都算，不只是排位。",
+    "取最近对局里最新的 {window} 场（最多 20 场），各种模式都算，不只是排位。",
   "history.formModes": "计入的 {n} 场：{modes}。",
   "history.formMode": "{mode} {n} 场",
   "history.formModeJoin": "、",
@@ -310,7 +310,7 @@ export const zhCN = {
     "不计入，也不占这 20 场：自定义对局（这次跳过 {custom} 场）和人机对局（含新手教程，这次跳过 {bots} 场）。",
   "history.formLeftOutShort": "不计入，也不占这 20 场：自定义对局和人机对局（含新手教程）。",
   "history.formSame":
-    "选人和对局中只取当前模式的对局（峡谷和大乱斗分开算；这个模式不到 5 场时取所有模式），评级、称号和喊话都用那一组数字。",
+    "选人、对局和房间里只取当前模式的对局，峡谷和大乱斗分开算、不混在一起，评级、称号和喊话都用那一组数字。",
   "history.formRuleShort": "近 {n} 场：所有模式，不含自定义、人机和重开局",
   "history.rankedRecord": "{queue}的胜负场次，来自客户端的段位数据，和近期战绩不是一回事。",
   "history.standing": "近期战力",

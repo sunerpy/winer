@@ -306,9 +306,9 @@ export const en: Record<MessageKey, string> = {
   "history.formLabel": "Last {n} · all modes",
   "history.formHint": "How these numbers are counted",
   "history.formWindow":
-    "The newest {window} of the {listed} recent games the client lists (20 at most), every mode, not only ranked.",
+    "The newest {window} of the {listed} recent games read (20 at most), every mode, not only ranked.",
   "history.formWindowShort":
-    "The newest {window} of the recent games the client lists (20 at most), every mode, not only ranked.",
+    "The newest {window} of the recent games (20 at most), every mode, not only ranked.",
   "history.formModes": "The {n} counted: {modes}.",
   "history.formMode": "{mode} {n}",
   "history.formModeJoin": ", ",
@@ -319,7 +319,7 @@ export const en: Record<MessageKey, string> = {
   "history.formLeftOutShort":
     "Left out, without taking a place among the 20: custom games and games against the computer, the tutorial included.",
   "history.formSame":
-    "In champ select and in game the numbers read the mode being played only (the Rift apart from ARAM; every mode while it has fewer than 5 games), and ratings, titles and callout use those.",
+    "In champ select, in game and in a lobby the numbers read the mode being played only, the Rift apart from ARAM and never mixed, and ratings, titles and callout use those.",
   "history.formRuleShort":
     "Last {n}: every mode; custom games, games against the computer and remakes left out",
   "history.rankedRecord": "{queue}: wins and losses from the client's rank data, not recent form.",
