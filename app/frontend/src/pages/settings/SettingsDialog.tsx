@@ -33,6 +33,7 @@ import {
 } from "../../ui";
 import { HotkeyRow } from "./HotkeyRow";
 import { BuildSettingsRows } from "./BuildSettings";
+import { StorageRows } from "./StorageRows";
 import { updateLine } from "./UpdateDialog";
 
 const SECTIONS: { id: SettingsSection; label: MessageKey; icon: typeof Palette }[] = [
@@ -479,6 +480,7 @@ function AboutSection({ onOpenUpdate }: { onOpenUpdate: () => void }) {
           {t("settings.openLogs")}
         </Button>
       </Row>
+      <StorageRows />
       <Row label={t("settings.update")} help={updateLine(update, t)}>
         {update.state === "available" ? (
           <Button size="sm" variant="accent" onClick={onOpenUpdate}>

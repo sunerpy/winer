@@ -22,13 +22,26 @@ settings file or a log.
 
 ## What stays on your computer
 
-| What                                | Where                                            |
-| ----------------------------------- | ------------------------------------------------ |
-| Settings                            | `%APPDATA%\app.winer.desktop\settings.json`      |
-| Remembered runes and spells         | `%APPDATA%\app.winer.desktop\loadouts.json`      |
-| Game settings backups (up to 10)    | `%LOCALAPPDATA%\app.winer.desktop\game-settings` |
-| The bundled Pengu Loader and plugin | `%LOCALAPPDATA%\app.winer.desktop\pengu`         |
-| Logs                                | `%LOCALAPPDATA%\app.winer.desktop\logs`          |
+| What                                | Where                                                                                 | How long, and how large at most                                                                          |
+| ----------------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Settings                            | `%APPDATA%\app.winer.desktop\settings.json`                                           | kept, a few KB                                                                                           |
+| Remembered runes and spells         | `%APPDATA%\app.winer.desktop\loadouts.json`                                           | kept, one setup per champion and mode, under 1 MB with every one remembered; forgotten in **Automation** |
+| Game settings backups               | `%LOCALAPPDATA%\app.winer.desktop\game-settings`                                      | 10 at most, a few KB each; a new one past that removes the oldest                                        |
+| The bundled Pengu Loader and plugin | `%LOCALAPPDATA%\app.winer.desktop\pengu`                                              | about 0.5 MB, updated with winer                                                                         |
+| Logs                                | `%LOCALAPPDATA%\app.winer.desktop\logs`                                               | the last 7 days, 50 MB in all and 10 MB a file at most; past that the oldest files go first              |
+| The window's WebView data           | `%LOCALAPPDATA%\app.winer.desktop\EBWebView`                                          | its page cache 32 MB at most; the rest are components WebView2 downloads and updates itself              |
+| Update installers                   | folders starting `winer-` and containing `-updater-` in the system's temporary folder | removed when winer next starts after the update                                                          |
+
+Logs are kept by day (UTC dates). winer checks them when it starts and once a day while it runs, and
+removes the files past those limits.
+
+While it runs, winer also caches icons, match history, players and builds in memory: pictures 32 MB
+at most, everything else a number of entries at most. What goes unused for a while is let go on a
+schedule, and all of it goes when winer quits.
+
+**Storage** in **Settings › About** lists how large each of these is and its limit. **Clear cache**
+removes old logs, update installers and the caches in memory, and clears the WebView's cache the next
+time winer starts; the settings, the remembered runes and spells and the game settings backups stay.
 
 ## The client plugin
 

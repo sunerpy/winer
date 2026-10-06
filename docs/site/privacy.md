@@ -18,13 +18,23 @@ winer 没有账号，不收集使用数据，也没有自己的服务器。它�
 
 ## 保存在本机的数据
 
-| 内容                       | 位置                                             |
-| -------------------------- | ------------------------------------------------ |
-| 设置                       | `%APPDATA%\app.winer.desktop\settings.json`      |
-| 记住的符文和召唤师技能     | `%APPDATA%\app.winer.desktop\loadouts.json`      |
-| 游戏设置备份（最多 10 份） | `%LOCALAPPDATA%\app.winer.desktop\game-settings` |
-| 内置的 Pengu Loader 与插件 | `%LOCALAPPDATA%\app.winer.desktop\pengu`         |
-| 日志                       | `%LOCALAPPDATA%\app.winer.desktop\logs`          |
+| 内容                       | 位置                                                      | 保留多久、最多多大                                                           |
+| -------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| 设置                       | `%APPDATA%\app.winer.desktop\settings.json`               | 一直保留，几 KB                                                              |
+| 记住的符文和召唤师技能     | `%APPDATA%\app.winer.desktop\loadouts.json`               | 一直保留，每个英雄每种模式一套，全部记满也不到 1 MB；可在 **自动化** 里清除  |
+| 游戏设置备份               | `%LOCALAPPDATA%\app.winer.desktop\game-settings`          | 最多 10 份，每份几 KB，超出时删除最旧的一份                                  |
+| 内置的 Pengu Loader 与插件 | `%LOCALAPPDATA%\app.winer.desktop\pengu`                  | 约 0.5 MB，随 winer 更新                                                     |
+| 日志                       | `%LOCALAPPDATA%\app.winer.desktop\logs`                   | 最近 7 天，合计最多 50 MB；单个文件写到 10 MB 后换下一个，超出时先删除最旧的 |
+| 窗口的网页视图数据         | `%LOCALAPPDATA%\app.winer.desktop\EBWebView`              | 其中网页缓存最多 32 MB；其余是 WebView2 自己下载和更新的组件，由它自行管理   |
+| 更新安装包                 | 系统临时文件夹中以 `winer-` 开头、含 `-updater-` 的文件夹 | 更新完成后，winer 下次启动时删除                                             |
+
+日志按天保存（按 UTC 日期）；winer 启动时和运行期间每天检查一次，超出期限或总量的旧文件会被删除。
+
+winer 运行时还会在内存里缓存图标、战绩、玩家和配装数据：图片最多 32 MB，其余各类按条数限制，长时间不用的内容会定时
+释放，退出 winer 后全部清空。
+
+**设置 › 关于** 的 **存储空间** 列出以上内容的大小和上限。**清理缓存** 只删除旧日志、更新安装包和内存中的缓存，网页
+缓存在下次启动 winer 时清除；设置、记住的符文和召唤师技能、游戏设置备份都不会被删除。
 
 ## 客户端插件
 

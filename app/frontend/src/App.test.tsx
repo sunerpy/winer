@@ -442,6 +442,63 @@ describe("App", () => {
   });
 });
 
+describe("storage", () => {
+  async function openStorage(backend: Backend) {
+    const { user } = await renderApp(backend);
+    fireEvent.keyDown(window, { key: ",", ctrlKey: true });
+    const dialog = screen.getByRole("dialog", { name: zhCN["settings.title"] });
+    await user.click(within(dialog).getByRole("tab", { name: zhCN["settings.about"] }));
+    const storage = await within(dialog).findByRole("region", { name: zhCN["storage.title"] });
+    return { user, storage };
+  }
+
+  it("shows what winer keeps with its limits, and clears the cache saying what went", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user, storage } = await openStorage(backend);
+    // The demo install's figures, as measured on a Windows PC, with the limits the shell keeps.
+    expect(
+      await within(storage).findByText(
+        "保留最近 7 天、合计最多 50 MB，单个文件最大 10 MB，超出时先删除最旧的",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(storage).getByText(/^其中可清理的缓存 9.5 MB，网页缓存上限 32 MB/),
+    ).toBeInTheDocument();
+    expect(within(storage).getByText("最多保留 10 份，清理缓存不会删除")).toBeInTheDocument();
+    expect(within(storage).getByText("523 项 · 图片 12 MB")).toBeInTheDocument();
+    expect(within(storage).queryByText(zhCN["storage.webviewPending"])).toBeNull();
+
+    await user.click(within(storage).getByRole("button", { name: zhCN["storage.clear"] }));
+    const status = await within(storage).findByRole("status");
+    expect(status).toHaveTextContent(
+      "已清理旧日志 1 个（863 B）、更新安装包 1 个（6 MB）、内存缓存 523 项。",
+    );
+    expect(status).toHaveTextContent("网页缓存 9.5 MB 将在下次启动 winer 时清除。");
+    expect(call).toHaveBeenCalledWith("clear_caches");
+    // Read again: the log being written, nothing in memory, the WebView's cache due to go.
+    expect(await within(storage).findByText("0 项 · 图片 0 B")).toBeInTheDocument();
+    expect(within(storage).getByText(zhCN["storage.webviewPending"])).toBeInTheDocument();
+  });
+
+  it("says when what winer keeps cannot be read, and reads it again", async () => {
+    let refused = true;
+    const demo = demoBackend();
+    const backend = demoWith({
+      get_storage: () => {
+        if (refused) throw { code: "internal", message: "access denied" };
+        return demo.call("get_storage");
+      },
+    });
+    const { user, storage } = await openStorage(backend);
+    expect(await within(storage).findByText(zhCN["storage.loadFailed"])).toBeInTheDocument();
+    expect(within(storage).getByText("access denied")).toBeInTheDocument();
+    refused = false;
+    await user.click(within(storage).getByRole("button", { name: zhCN["common.retry"] }));
+    expect(await within(storage).findByText("523 项 · 图片 12 MB")).toBeInTheDocument();
+  });
+});
+
 describe("Tools: profile", () => {
   async function openTools(backend: Backend = demoBackend()) {
     const rendered = await renderApp(backend);

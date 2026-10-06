@@ -8,6 +8,7 @@ pub mod backup;
 pub mod bindings;
 pub mod bridge;
 pub mod builds;
+pub mod cache;
 pub mod callout;
 pub mod catalog;
 pub mod friends;

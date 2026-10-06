@@ -608,6 +608,41 @@ export const en: Record<MessageKey, string> = {
   "settings.noticesShow": "Show the licence texts",
   "settings.license":
     "MIT licence. winer is not a Riot Games product and is not endorsed by Riot Games.",
+  // Storage: what winer keeps on disk and in memory, and the cleanup (Settings › About).
+  "storage.title": "Storage",
+  "storage.hint":
+    "What winer keeps on this PC, and the limit of each. Clear cache removes caches, old logs and spent update installers only, never the game settings backups, the settings or the remembered setups.",
+  "storage.clear": "Clear cache",
+  "storage.loadFailed": "Could not read what winer keeps",
+  "storage.files": "{n} files",
+  "storage.copies": "{n} backups",
+  "storage.logs": "Logs",
+  "storage.logsNote":
+    "The last {days} days, {total} in all and {file} a file at most; past that the oldest go first",
+  "storage.webview": "WebView data",
+  "storage.webviewNote":
+    "{cache} of it is cache that can be cleared, the page cache {limit} at most; the rest are components WebView2 downloads and updates itself",
+  "storage.webviewPending": "The WebView's cache goes the next time winer starts",
+  "storage.backups": "Game settings backups",
+  "storage.backupsNote": "{n} at most; Clear cache leaves them",
+  "storage.pengu": "In-client components",
+  "storage.penguNote": "Pengu Loader and winer's client plugin",
+  "storage.settings": "Settings and remembered setups",
+  "storage.settingsNote": "Clear cache leaves them",
+  "storage.updates": "Update installers",
+  "storage.updatesNote":
+    "Left in the system's temporary folder by an update; removed when winer next starts",
+  "storage.memory": "Cache in memory",
+  "storage.memoryValue": "{n} entries · pictures {images}",
+  "storage.memoryNote":
+    "Icons, history, players and builds; pictures {limit} at most, and what expires is let go on a schedule",
+  "storage.cleared": "Removed {items}.",
+  "storage.cleared.separator": ", ",
+  "storage.cleared.logs": "{n} old log files ({size})",
+  "storage.cleared.updates": "{n} update installers ({size})",
+  "storage.cleared.memory": "{n} entries cached in memory",
+  "storage.cleared.webview": "The WebView's cache, {size}, goes the next time winer starts.",
+  "storage.cleared.nothing": "Nothing to clear.",
 
   "update.idle": "Not checked yet",
   "update.checking": "Checking for updates",

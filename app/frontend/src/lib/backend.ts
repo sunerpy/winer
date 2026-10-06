@@ -11,6 +11,7 @@ import type {
   Build,
   CalloutRule,
   ChallengeProfile,
+  CleanupReport,
   Event,
   GameData,
   General,
@@ -31,6 +32,7 @@ import type {
   Settings,
   SkinChoice,
   Snapshot,
+  StorageReport,
   UpdateStatus,
 } from "@winer/shared";
 
@@ -63,6 +65,11 @@ export interface Commands {
   get_app_info: Command<undefined, AppInfo>;
   relaunch_elevated: Command<undefined, null>;
   reveal_logs: Command<undefined, null>;
+  // Storage: what winer keeps, and the cleanup.
+  get_storage: Command<undefined, StorageReport>;
+  /** Removes old logs, spent update installers and the caches in memory now, and the WebView's
+   *  caches at the next start. */
+  clear_caches: Command<undefined, CleanupReport>;
   get_autostart: Command<undefined, boolean>;
   set_autostart: Command<{ enabled: boolean }, boolean>;
   get_update_status: Command<undefined, UpdateStatus>;

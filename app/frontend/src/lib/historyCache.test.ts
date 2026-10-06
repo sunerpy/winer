@@ -61,6 +61,21 @@ describe("history cache", () => {
     expect(cache.list("other", "p")).toBeUndefined();
   });
 
+  it("empties for a cleanup and stays the same account's", () => {
+    const cache = new HistoryCache();
+    cache.scope("me");
+    cache.putList("me", "p", list([3, 2, 1]));
+    cache.putDetail("me", detail(3));
+    cache.putSummary("me", summary("p"));
+    cache.clear();
+    expect(cache.list("me", "p")).toBeUndefined();
+    expect(cache.detail("me", 3)).toBeUndefined();
+    expect(cache.summary("me", "p")).toBeUndefined();
+    expect(cache.viewer).toBe("me");
+    cache.putList("me", "p", list([1]));
+    expect(cache.list("me", "p")?.games).toHaveLength(1);
+  });
+
   it("follows the account the store's snapshot names, before anything is drawn", async () => {
     let emit: (event: Event) => void = () => undefined;
     const backend: Backend = {

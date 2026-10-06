@@ -815,6 +815,69 @@ export type AugmentOption = { id: number,
  */
 rarity: Rarity, tier: AugmentTier | null, rates: Rates, };
 
+export type DiskUse = { files: number, bytes: number, };
+
+export type MemoryUse = { entries: number, imageBytes: number, };
+
+export type StorageLimits = { 
+/**
+ * Log files are kept this many days, today included.
+ */
+logDays: number, logBytes: number, 
+/**
+ * One log file grows to this size; the day then goes on in another.
+ */
+logFileBytes: number, 
+/**
+ * The WebView's page cache.
+ */
+webviewCacheBytes: number, 
+/**
+ * Game settings backups.
+ */
+backups: number, 
+/**
+ * Pictures held in memory.
+ */
+imageBytes: number, };
+
+export type StorageReport = { logs: DiskUse, 
+/**
+ * The WebView's whole folder: its caches, and what WebView2 downloads and manages itself.
+ */
+webview: DiskUse, 
+/**
+ * The caches within it (pages, scripts, shaders), which a cleanup clears.
+ */
+webviewCache: DiskUse, 
+/**
+ * A cleanup asked for the WebView's caches to go; they go at the next start.
+ */
+webviewClearPending: boolean, backups: DiskUse, 
+/**
+ * Pengu Loader and the in-client plugin.
+ */
+pengu: DiskUse, 
+/**
+ * The settings and the remembered runes and spells.
+ */
+settings: DiskUse, 
+/**
+ * Update installers left in the system's temporary folder.
+ */
+updates: DiskUse, memory: MemoryUse, limits: StorageLimits, };
+
+export type CleanupReport = { 
+/**
+ * Every log file but the one being written.
+ */
+logs: DiskUse, updates: DiskUse, 
+/**
+ * The WebView's caches as they are now: in use while the window is open, they go at the next
+ * start.
+ */
+webviewCache: DiskUse, memory: MemoryUse, };
+
 export type PanelHistory = { puuid: string, 
 /**
  * Newest first, at most [`PANEL_GAMES`].

@@ -290,6 +290,33 @@ Linux build host the same day; each answers a plain GET with no key, cookie or u
   `WINER_CDP_MATCH=/index.html`). Put it back to `0` and reload again afterwards: while it is
   open, any local process can drive the logged-in client.
 
+## What winer keeps
+
+Read-only, on the owner's PC (winer 0.0.2, two days after it was installed), 2026-10-06.
+
+- `%LOCALAPPDATA%\app.winer.desktop` held `EBWebView` (78,975,184 bytes in 361 files), `logs`
+  (15,204 bytes, two days at the default filter) and `pengu` (508,204 bytes: `core.dll` 455,864, the
+  plugin 52,228); `%APPDATA%\app.winer.desktop\settings.json` was 1,959 bytes. There was no
+  `game-settings` folder and no updater folder in `%TEMP%`.
+- In `EBWebView` the page cache (`Default\Cache`) was **empty**: the window's pages and pictures come
+  through winer's own protocols (WebView2's `WebResourceRequested`), which it does not store on disk,
+  and scripts served that way are left out of the code cache unless `msWebView2CodeCache` is on. The
+  caches Chromium rebuilds came to 9,927,920 bytes: `GrShaderCache` 5.2 MB, `Default\GPUCache`
+  1.6 MB, `Default\Code Cache` 0.9 MB, and `ShaderCache`, `GraphiteDawnCache`,
+  `Default\DawnGraphiteCache` and `Default\DawnWebGPUCache` at 557,424 bytes each.
+- The rest is what WebView2 downloads and updates itself: `component_crx_cache` 23.3 MB,
+  `WidevineCdm` 22.7 MB, `Subresource Filter` 12.5 MB, `Speech Recognition` 2.7 MB, `hyphen-data`,
+  `ZxcvbnData` and a dozen smaller ones. Microsoft's list of WebView2 browser flags has none that stops
+  it. `--disk-cache-size` is on that list and bounds the page cache; its effect on this folder was not
+  measured, since the page cache was empty anyway.
+- `tauri-plugin-updater` writes each installer to
+  `%TEMP%\winer-<version>-updater-<random>\winer-<version>-installer.exe`, starts it and ends winer
+  with `std::process::exit`, so the file is never removed (read from its 2.10.1 source; no update had
+  run in-app on that PC).
+- The pictures the window holds in memory, as the client serves them (16.19, GET only): a champion
+  icon 28,251 bytes, a profile icon 4,333, a skin's tile 39,905, its centred splash 105,313 and its
+  loading-screen art 58,168. The background picker lists 2,635 skins.
+
 ## Windows host behaviour
 
 - **GitHub through the system proxy.** On the QA host (in China) a direct connection to
@@ -309,8 +336,9 @@ Linux build host the same day; each answers a plain GET with no key, cookie or u
   holds for reading windows: `EnumWindows` from the SSH session lists none of session 1's.
 - WebView2's DevTools port for QA: `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, set by the scheduled
   task's cmd wrapper, never showed up on `msedgewebview2.exe`'s command line. The `qa` cargo feature
-  passes `--remote-debugging-port` through `additional_browser_args` instead, which **replaces**
-  wry's own `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`, so it restates them.
+  passes `--remote-debugging-port` through `additional_browser_args` instead. Every build passes its
+  `--disk-cache-size` the same way (`window.rs`), and that **replaces** wry's own
+  `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`, so they are restated.
 - `PrintWindow(PW_RENDERFULLCONTENT)` captures a WebView2 window fully, but returned an all-black
   image of the client's CEF window after its GPU process had restarted with `--use-gl=disabled`.
 - `decorations: false` keeps Aero Snap, resize borders, shadow and rounded corners; it loses only the
