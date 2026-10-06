@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.5](https://github.com/sunerpy/winer/compare/v0.0.4...v0.0.5) (2026-10-06)
+
+
+### Features
+
+* game-score strength, client restart once settled, safer callout ([#10](https://github.com/sunerpy/winer/issues/10)) ([16c4019](https://github.com/sunerpy/winer/commit/16c4019213d866988a293eceef3d0ed859062cb7))
+
 ## [0.0.4](https://github.com/sunerpy/winer/compare/v0.0.3...v0.0.4) (2026-10-06)
 
 
