@@ -35,8 +35,13 @@ export const FRIENDS_LIST = {
 
 /** The party in the lobby. A miss, or cards that name no member, falls back to the panel. */
 export const LOBBY = {
-  /** One member's card in the party. */
+  /** One member's card in the party. Measured on 16.19 (GZ100, a normal ARAM lobby, 2026-10-06):
+   *  `div.party-members-container` holds one `div.v2-banner-component` per member, whose
+   *  `div.lobby-banner` › `div.lobby-banner-contents` stacks a spacer, the icon
+   *  (`.player-identity-container`), the name (`.player-name-container`) and the challenge tokens
+   *  (`.player-achievements-container`). The rest are guesses for other lobbies. */
   member: [
+    ".v2-banner-component",
     ".lobby-party-member",
     ".party-member",
     "lol-parties-lobby-member",
@@ -45,7 +50,10 @@ export const LOBBY = {
   ],
   /** The member's name on the card. */
   name: [".player-name", ".summoner-name", "[class*='player-name']", "[class*='summoner-name']"],
-  /** The banner the line goes above. */
+  /** Where the line goes: under the tokens, else under the name. The banner hangs from beneath the
+   *  navigation bar, which covers anything placed above it (measured as above). */
+  under: [".player-achievements-container", ".player-name-container"],
+  /** The banner the line goes above where neither of those is found. */
   banner: [".lobby-banner", "lol-regalia-banner-v2-element", "[class*='banner']"],
   /** The avatar, a click on which opens the member's history. Its controls (a crown to promote, an
    *  ✕ to kick) are left to the client. The card's lower half is not taken: the lane pickers sit

@@ -289,6 +289,27 @@ describe("lobby", () => {
     expect(document.querySelectorAll(".winer-lobby, [data-winer-puuid]")).toHaveLength(0);
   });
 
+  it("puts the line under the tokens of the lobby the client draws", () => {
+    // As measured on 16.19 (GZ100, a normal ARAM lobby): the banner hangs from beneath the
+    // navigation bar, so a line above it would be covered.
+    const party = document.createElement("div");
+    party.className = "party-members-container";
+    for (const name of ["Me", "Mate"]) {
+      party.insertAdjacentHTML(
+        "beforeend",
+        `<div class="v2-banner-component"><div class="lobby-banner"><div class="lobby-banner-contents"><div class="banner-spacer"></div><div class="player-identity-container"></div><div class="player-name-container"><div class="player-name"><span class="player-name__game-name">${name}</span></div></div><div class="player-achievements-container"></div></div></div></div>`,
+      );
+    }
+    document.body.append(party);
+    expect(decorateLobby(document, lobbyView(), "zh-CN", () => undefined)).toBe(2);
+    const lines = [...document.querySelectorAll(".winer-lobby")];
+    expect(lines).toHaveLength(2);
+    for (const line of lines) {
+      expect(line.previousElementSibling?.className).toBe("player-achievements-container");
+    }
+    clearLobby(document);
+  });
+
   it("opens a history from a click on the avatar and leaves the client's controls to it", () => {
     document.body.append(lobbyCards(["Me"]));
     decorateLobby(document, lobbyView(), "zh-CN", () => undefined);

@@ -72,8 +72,8 @@ function memberOf(card: Element, members: LobbyMember[]): LobbyMember | null {
   );
 }
 
-/** Writes one line above each member's banner. Returns how many cards it decorated: the cards it
- *  could not tell apart, or that show no one in `view`, get nothing. */
+/** Writes one line on each member's banner, under the tokens. Returns how many cards it decorated:
+ *  the cards it could not tell apart, or that show no one in `view`, get nothing. */
 export function decorateLobby(
   root: ParentNode,
   view: LobbyView,
@@ -100,8 +100,10 @@ export function decorateLobby(
         const puuid = line?.closest(`[${CARD_ATTRIBUTE}]`)?.getAttribute(CARD_ATTRIBUTE);
         if (puuid) open(puuid);
       });
+      const under = first(card, LOBBY.under);
       const banner = first(card, LOBBY.banner);
-      if (banner) banner.before(line);
+      if (under) under.after(line);
+      else if (banner) banner.before(line);
       else card.prepend(line);
     }
     const said = lobbyLine(member, language);
