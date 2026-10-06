@@ -8,6 +8,7 @@ import type {
   AugmentDetail,
   BackupChannel,
   BackupInfo,
+  Build,
   CalloutRule,
   ChallengeProfile,
   Event,
@@ -15,12 +16,17 @@ import type {
   General,
   HotkeyStatus,
   IpcError,
+  LoadoutSummary,
   MatchDetail,
   MatchPage,
+  Mode,
+  PageOutcome,
   PlayerProfile,
   PlayerSummary,
   PluginStatus,
+  Position,
   Presence,
+  RunePage,
   Settings,
   SkinChoice,
   Snapshot,
@@ -79,6 +85,14 @@ export interface Commands {
   // Social.
   get_hotkey_status: Command<undefined, HotkeyStatus>;
   suspend_hotkey: Command<{ suspended: boolean }, HotkeyStatus>;
+  // Runes, spells, builds and item sets.
+  get_build: Command<{ championId: number; mode: Mode; lane: Position | null }, Build>;
+  apply_runes: Command<{ championId: number; page: RunePage }, PageOutcome>;
+  apply_spells: Command<{ spells: [number, number] }, null>;
+  write_item_set: Command<{ championId: number; mode: Mode; lane: Position | null }, null>;
+  clear_item_sets: Command<undefined, number>;
+  get_loadout_summary: Command<undefined, LoadoutSummary>;
+  clear_loadouts: Command<undefined, LoadoutSummary>;
 }
 
 export type CommandName = keyof Commands;

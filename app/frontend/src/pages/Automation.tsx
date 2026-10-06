@@ -21,6 +21,7 @@ import {
   Toggle,
   toast,
 } from "../ui";
+import { ItemSetsPanel, LoadoutPanel } from "./automation/LoadoutRules";
 import { PageBody } from "./common";
 
 const WISHLIST_LIMIT = 20;
@@ -90,6 +91,8 @@ function ModeSummary({ automation, mode }: { automation: Automation; mode: Mode 
     { rule: "callout", label: t("auto.calloutAuto"), on: automation.callout.auto },
     { rule: "bench", label: t("auto.bench"), on: automation.bench.enabled },
     { rule: "playAgain", label: t("auto.playAgain"), on: automation.playAgain },
+    { rule: "loadout", label: t("loadout.rule"), on: automation.loadout.enabled },
+    { rule: "itemSets", label: t("loadout.itemSets"), on: automation.itemSets },
   ];
   const name = t(MODE_LABEL[mode]);
   const active = rules.filter(
@@ -392,6 +395,24 @@ export function AutomationPage() {
             />
           </Card>
         </Panel>
+      )}
+
+      {shown("loadout") && (
+        <LoadoutPanel
+          eyebrow={eyebrow(t("loadout.section"), "loadout")}
+          rule={automation.loadout}
+          onChange={(change) => save((value) => ({ ...value, loadout: change(value.loadout) }))}
+          scope={scope("loadout")}
+        />
+      )}
+
+      {shown("itemSets") && (
+        <ItemSetsPanel
+          eyebrow={eyebrow(t("loadout.itemSetsSection"), "itemSets")}
+          enabled={automation.itemSets}
+          onChange={(itemSets) => save((value) => ({ ...value, itemSets }))}
+          scope={scope("itemSets")}
+        />
       )}
 
       <CalloutPanel

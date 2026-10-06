@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::settings::Settings;
+use crate::{loadout::PageOutcome, settings::Settings};
 
 /// Everything live, in one document. Changes after it arrive as [`Update`]s.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
@@ -633,6 +633,21 @@ pub enum NoticeKind {
     Failed {
         action: String,
         message: String,
+    },
+    // Runes, spells and item sets (`loadout`).
+    /// Set up the runes and summoner spells for the champion just taken.
+    LoadoutApplied {
+        champion_id: i64,
+        /// The client's own recommendation: nothing was remembered for the champion.
+        recommended: bool,
+        /// What became of the rune page; absent where there were no runes to set up.
+        runes: Option<PageOutcome>,
+        /// The two summoner spells are the ones set up.
+        spells: bool,
+    },
+    /// Wrote winer's item set for the champion just taken.
+    ItemSetWritten {
+        champion_id: i64,
     },
 }
 

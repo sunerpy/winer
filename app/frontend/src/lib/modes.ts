@@ -17,6 +17,9 @@ export const APPLICABLE: Record<ScopedRule, readonly Mode[]> = {
   callout: MODES,
   bench: ["aram", "hextech"],
   playAgain: MODES,
+  // Arena has no rune page and hands everyone the same two spells; item sets need a map's shop.
+  loadout: ["ranked", "normal", "aram", "hextech", "other"],
+  itemSets: ["ranked", "normal", "aram", "hextech", "arena"],
 };
 
 export const MODE_LABEL: Record<Mode, MessageKey> = {
@@ -64,6 +67,8 @@ export function defaultScopes(): Scopes {
     callout: [...APPLICABLE.callout],
     bench: [...APPLICABLE.bench],
     playAgain: [...APPLICABLE.playAgain],
+    loadout: [...APPLICABLE.loadout],
+    itemSets: [...APPLICABLE.itemSets],
   };
 }
 

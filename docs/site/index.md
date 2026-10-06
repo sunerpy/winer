@@ -56,6 +56,10 @@ home:
             body: 点一下立刻换成备选席上的英雄，不等冷却；设好心愿英雄后自动换。
             status: available
             link: /guide/live#大乱斗的备选席
+          - title: 配装推荐
+            body: 选人时、游戏中和空闲时都能看英雄的出装、符文、召唤师技能、技能加点和对位，斗魂竞技场和海克斯大乱斗还有强化符文的强弱。
+            status: available
+            link: /guide/live#配装推荐
       - name: 战绩
         items:
           - title: 完整战绩
@@ -84,6 +88,14 @@ home:
             body: 对局结束后自动回到房间，继续排下一局。
             status: available
             link: /guide/automation#对局结束
+          - title: 符文与召唤师技能
+            body: 锁定英雄后换上这个英雄在这个模式里上一局的符文和召唤师技能，没有记录时用客户端推荐的。
+            status: available
+            link: /guide/automation#符文与召唤师技能
+          - title: 装备方案
+            body: 锁定英雄后把配装推荐写成这个英雄的装备方案，只改 winer 自己写的。
+            status: experimental
+            link: /guide/automation#装备方案
       - name: 客户端与工具
         items:
           - title: 客户端插件
@@ -135,6 +147,9 @@ home:
       - name: 所在大区的战绩服务器
         sends: 客户端登录时拿到的访问令牌
         detail: 分页读取战绩；连不上时退回客户端的最近 20 场。
+      - name: 腾讯掌上英雄联盟、OP.GG 与 ARAM.GG
+        sends: 英雄、模式、分路和版本
+        detail: 配装推荐的公开统计，只读取对局页上显示的英雄；可以关闭。
       - name: ARAM.GG 与 GitHub
         sends: 普通的网页请求
         detail: 获取海克斯符文的效果说明（可以关闭），检查和下载更新。

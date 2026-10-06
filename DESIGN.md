@@ -229,6 +229,18 @@ while the client is not connected), `ProfileIcon` (circle), `AssetIcon` (items, 
 - **Bench.** A strip under the champ-select header, shown only in modes with a bench: each
   champion is a 36px button that swaps at once; wishlist champions carry a small accent star;
   the reroll button with its count sits at the right end.
+- **Builds.** A Panel (配装推荐) under the team board in champ select and in the game, and on an
+  idle Live page with a champion and a mode chosen by hand (查看英雄配装). The header names the
+  source and patch (数据：腾讯 101 · 16.19), the games behind the numbers and the source's own tier
+  as a Badge. A Segmented holds the sections (出装 · 符文 · 召唤师技能 · 技能加点, 对位 on the Rift,
+  强化符文 in Arena and Hextech ARAM), only those the source has numbers for; a second one the lane,
+  on the Rift. Each option is an inset row: icons (items and spells 28px; runes 30 / 20 / 15, the
+  keystone first, each style's glyph before its runes), then pick rate, win rate and games as mono
+  readouts at the right end, a win rate two points off half in `win` / `loss`. Augments are grouped
+  by rarity (a dot in its colour), best first: icon, name, the source's grade as a Badge (S accent,
+  A win, B and C neutral) or Arena's average place and first-place share, and what it does. A button
+  that writes to the client (应用符文, 应用召唤师技能, 写入装备方案) says what came of it on a line of
+  its own; a source that did not answer is an ErrorNote with a retry, never an empty grid.
 
 Icons: one family, Lucide (24-unit grid, stroke 2), rendered at 14 / 16 / 20.
 
@@ -256,5 +268,6 @@ honours `prefers-reduced-motion` and the in-app 减少动态 setting.
 - The Windows 11 Snap Layouts flyout is lost to the self-drawn title bar
   (`docs/accepted-tradeoffs.md` T-001).
 - Champion and rank imagery comes from the connected client; with no client the window shows
-  initials and tier names. The one thing fetched from the internet is what augments do (ARAM.GG,
-  a third-party host, switchable in 设置 › 通用); it can lag a patch, and some values arrive as `?`.
+  initials and tier names. From the internet come what augments do (ARAM.GG, a third-party host)
+  and the build panel's statistics (Tencent's League app, OP.GG, ARAM.GG), each switchable in
+  设置 › 通用; both can lag a patch, and some augment values arrive as `?`.

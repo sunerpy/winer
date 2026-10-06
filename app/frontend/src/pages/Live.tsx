@@ -15,6 +15,7 @@ import { useNow } from "../lib/useNow";
 import { useShell } from "../shell/navigation";
 import { Badge, Button, Card, EmptyState, Panel, Segmented, toast } from "../ui";
 import { ConnectionGate, PageBody } from "./common";
+import { BuildLookup, ChampSelectBuild, GameBuild } from "./live/BuildPanel";
 
 const TIMER_PHASES: Record<string, MessageKey> = {
   PLANNING: "live.planning",
@@ -265,6 +266,7 @@ function ChampSelect({ view }: { view: ChampSelectView }) {
             : []),
         ]}
       />
+      <ChampSelectBuild view={view} />
       <Callout lines={view.callout} queueId={view.queueId} />
     </div>
   );
@@ -295,6 +297,7 @@ function Game({ view }: { view: GameView }) {
         <Badge tone="accent">{t("phase.InProgress")}</Badge>
       </Card>
       <Teams teams={teams} initial={Math.max(0, mine)} />
+      <GameBuild view={view} />
     </div>
   );
 }
@@ -335,12 +338,15 @@ function LiveContent() {
   if (game) return <Game view={game} />;
   if (lobby) return <Lobby view={lobby} />;
   return (
-    <EmptyState icon={Swords} title={t("live.idleTitle")}>
-      <p>{t("live.idle")}</p>
-      <p className="mono mt-2 text-[11px] text-fg-subtle">
-        {t("overview.phase")} · {t(`phase.${phase}`)}
-      </p>
-    </EmptyState>
+    <div className="flex flex-col gap-4">
+      <EmptyState icon={Swords} title={t("live.idleTitle")} compact>
+        <p>{t("live.idle")}</p>
+        <p className="mono mt-2 text-[11px] text-fg-subtle">
+          {t("overview.phase")} · {t(`phase.${phase}`)}
+        </p>
+      </EmptyState>
+      <BuildLookup />
+    </div>
   );
 }
 

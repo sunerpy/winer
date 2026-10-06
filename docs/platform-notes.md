@@ -129,6 +129,39 @@ Measured on NJ100, 16.19, 2026-10-05.
   `/lol-match-history/v1/games/{id}` does for the analysis (the test
   `a_page_from_the_server_describes_its_game_as_the_client_does`, on both captures of one game).
 
+## Public build statistics
+
+Read off the captures in `fixtures/builds/` (Jhin, 202, patch 16.19, 2026-10-06) and probed from the
+Linux build host the same day; each answers a plain GET with no key, cookie or user agent.
+
+- Tencent 101 (`mlol.qt.qq.com/go/battle_info/odp_proxy/lol_101strategy_{build,runeinfo,skill,skill_point,confront}`):
+  the payload is the one field of `data._fieldValues`, under a name that changes (`R18087`,
+  `R18119`), holding a JSON document as a string. A lane or patch with no numbers answers `code: 0`
+  with that string empty.
+- A `rune_top_details` row's last number is the row's own games, not the lane's: games divided by the
+  row's pick share gives the same total for every row of a lane (1 241 522 for Jhin bottom), which
+  is the lane's sample. Rows do not name their styles; they follow from the client's
+  `perkstyles.json`.
+- `skill` holds the summoner spells, with the shares last and the other way round from the item rows:
+  `<spell>_<spell>_<win %>_<pick %>`, the picks summing to 99.7. `confront`'s `high_op_details` are
+  the opponents the champion beats (Ezreal 54.09 %, which OP.GG's counters give as 54.3 %),
+  `low_op_details` those it loses to; what their last column measures is not known.
+- Tencent's Hextech ARAM numbers (`fuwen_hero_rank`) come in the same envelope with no patch (a
+  `dtstatdate`). Their augment ids are the client's own (`cherry-augments.json`); their items include
+  mode copies (`126697`) that the client's item catalog also lists. `itemone_json`, `itemcore_json`
+  and `skill_json` are JSON objects keyed by rank, with rates in hundredths of a percent
+  (`4874` = 48.74 %).
+- OP.GG (`lol-api-champion.op.gg/api/global/champions/<mode>/<id>[/<position>]`): the `global`
+  region answers. `ranked/<id>` without a position answers 404, so a lane is always asked for; every
+  answer names the champion's lanes in `summary.positions`, whichever was asked. Arena's `total_place`
+  counts finishes from 0: Jhin's 417 319 over 117 603 games is 3.55, a 4.55 average finish, beside a
+  48.6 % share of top-four finishes.
+- ARAM.GG (`aramgg.com/data/champion-augments/<id>.json`): `[[champion, "<document>", patch, date]]`.
+  The document's tiers are Tencent's (`source: "tencent"`), 1 to 4 for S to C; its win rates are
+  ARAM.GG's own.
+- Arena hands out its summoner spells: the client's `summoner-spells.json` lists two for `CHERRY`
+  (2201 and 2202), and Arena has no rune page, so the rune and spell memory does not act there.
+
 ## Pengu Loader (injected surface)
 
 - Shipped host: Pengu Loader **v1.1.6**, activated by a `version.dll` symlink in the `LeagueClient`

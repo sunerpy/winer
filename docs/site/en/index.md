@@ -56,6 +56,10 @@ home:
             body: Swap to a bench champion in one click without the cooldown, or let a wishlist do it.
             status: available
             link: /en/guide/live#aram-bench
+          - title: Builds
+            body: A champion's items, runes, spells, skill order and matchups in champ select, in game and outside a game, and how strong each augment is in Arena and Hextech ARAM.
+            status: available
+            link: /en/guide/live#builds
       - name: History
         items:
           - title: The whole history
@@ -84,6 +88,14 @@ home:
             body: Returns to the lobby when the game ends, ready for the next one.
             status: available
             link: /en/guide/automation#after-the-game
+          - title: Runes and summoner spells
+            body: Once your champion is locked in, sets up the runes and spells you last played it with in the mode, or the client's recommendation.
+            status: available
+            link: /en/guide/automation#runes-and-summoner-spells
+          - title: Item sets
+            body: Once your champion is locked in, writes its build as an item set, changing only winer's own.
+            status: experimental
+            link: /en/guide/automation#item-sets
       - name: Client and tools
         items:
           - title: Client plugin
@@ -135,6 +147,9 @@ home:
       - name: Your region's match-history server
         sends: the access token the client got at sign-in
         detail: Pages through match history; without it, the client's latest 20 games.
+      - name: The Tencent League app, OP.GG and ARAM.GG
+        sends: the champion, mode, lane and patch
+        detail: Public statistics for the build panel, for the champion on the Live game page only; can be turned off.
       - name: ARAM.GG and GitHub
         sends: plain web requests
         detail: What Hextech ARAM's augments do (can be turned off), and checking for and downloading updates.

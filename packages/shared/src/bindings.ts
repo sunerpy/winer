@@ -243,7 +243,19 @@ export type Notice = {
  */
 at: number, kind: NoticeKind, };
 
-export type NoticeKind = { "kind": "accepted" } | { "kind": "declared", championId: number, } | { "kind": "picked", championId: number, locked: boolean, } | { "kind": "banned", championId: number, } | { "kind": "playedAgain" } | { "kind": "swapped", championId: number, } | { "kind": "calledOut", lines: number, } | { "kind": "presenceRestored", availability: string, } | { "kind": "presenceRefused" } | { "kind": "failed", action: string, message: string, };
+export type NoticeKind = { "kind": "accepted" } | { "kind": "declared", championId: number, } | { "kind": "picked", championId: number, locked: boolean, } | { "kind": "banned", championId: number, } | { "kind": "playedAgain" } | { "kind": "swapped", championId: number, } | { "kind": "calledOut", lines: number, } | { "kind": "presenceRestored", availability: string, } | { "kind": "presenceRefused" } | { "kind": "failed", action: string, message: string, } | { "kind": "loadoutApplied", championId: number, 
+/**
+ * The client's own recommendation: nothing was remembered for the champion.
+ */
+recommended: boolean, 
+/**
+ * What became of the rune page; absent where there were no runes to set up.
+ */
+runes: PageOutcome | null, 
+/**
+ * The two summoner spells are the ones set up.
+ */
+spells: boolean, } | { "kind": "itemSetWritten", championId: number, };
 
 export type PlayerProfile = { puuid: string, name: RiotId | null, level: number, iconId: number, private: boolean, ranked: Ranked, };
 
@@ -338,7 +350,11 @@ suspended: boolean,
  */
 error: string | null, };
 
-export type Settings = { appearance: Appearance, general: General, automation: Automation, plugin: PluginSettings, profile: ProfileSettings, };
+export type Settings = { appearance: Appearance, general: General, automation: Automation, plugin: PluginSettings, profile: ProfileSettings, 
+/**
+ * The build panel and where its numbers come from (`builds`).
+ */
+builds: BuildSettings, };
 
 export type Appearance = { theme: Theme, accent: Accent, density: Density, 
 /**
@@ -381,7 +397,15 @@ playAgain: boolean, callout: CalloutRule, bench: BenchRule,
 /**
  * The kinds of game each rule acts in; a switched-on rule does nothing elsewhere.
  */
-scopes: Scopes, };
+scopes: Scopes, 
+/**
+ * Runes and summoner spells, remembered per champion and mode and set up again (`loadout`).
+ */
+loadout: LoadoutRule, 
+/**
+ * Experimental: write winer's item set for a champion once it is locked in (`loadout`).
+ */
+itemSets: boolean, };
 
 export type AcceptRule = { enabled: boolean, 
 /**
@@ -438,7 +462,7 @@ export type Scopes = { accept: Array<Mode>, pick: Array<Mode>, ban: Array<Mode>,
 /**
  * Where the callout goes out by itself; sending it by hand works everywhere.
  */
-callout: Array<Mode>, bench: Array<Mode>, playAgain: Array<Mode>, };
+callout: Array<Mode>, bench: Array<Mode>, playAgain: Array<Mode>, loadout: Array<Mode>, itemSets: Array<Mode>, };
 
 export type Mode = "ranked" | "normal" | "aram" | "hextech" | "arena" | "other";
 
@@ -587,3 +611,124 @@ export type BridgeMessage = { "type": "hello", version: string, snapshot: Snapsh
 export type PluginMessage = { "type": "hello", version: string, context: string, } | { "type": "log", level: LogLevel, message: string, } | { "type": "benchSwap", championId: number, } | { "type": "openHistory", puuid: string, };
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
+
+export type LoadoutRule = { enabled: boolean, 
+/**
+ * With nothing remembered for the champion, use the client's own recommended page.
+ */
+recommended: boolean, };
+
+export type BuildSettings = { 
+/**
+ * Off, the panel is hidden and nothing is fetched.
+ */
+enabled: boolean, 
+/**
+ * Where Summoner's Rift numbers come from.
+ */
+riftSource: RiftSource, };
+
+export type RiftSource = "tencent" | "opGg";
+
+export type LoadoutSummary = { remembered: number, };
+
+export type PageOutcome = "written" | "noPage";
+
+export type BuildSource = "tencent" | "tencentHextech" | "opGg" | "aramGg";
+
+export type Build = { source: BuildSource, 
+/**
+ * The patch the numbers are from, `16.19`; empty where the source does not say.
+ */
+patch: string, championId: number, mode: Mode, 
+/**
+ * The lane the numbers are for, on the Rift.
+ */
+lane: Position | null, 
+/**
+ * The champion's standing on the source's own scale, 1 the best (OP.GG: 1 to 5).
+ */
+tier: number | null, 
+/**
+ * The games behind the numbers.
+ */
+sample: number | null, spells: Array<SpellOption>, runes: Array<RuneOption>, starting: Array<ItemOption>, boots: Array<ItemOption>, core: Array<ItemOption>, 
+/**
+ * Single items for the slots after the core, most taken first.
+ */
+late: Array<ItemOption>, skillOrders: Array<SkillOrder>, matchups: Matchups, 
+/**
+ * Best first.
+ */
+augments: Array<AugmentOption>, 
+/**
+ * Ids the client cannot name (an item of another patch, an unknown augment, a rune of no
+ * style), left out.
+ */
+dropped: number, };
+
+export type Rates = { 
+/**
+ * The share of the champion's games that took it, 0–1.
+ */
+pick: number | null, 
+/**
+ * The share of those games won, 0–1; in Arena, finished in the top four.
+ */
+win: number | null, 
+/**
+ * The games behind the two.
+ */
+games: number | null, 
+/**
+ * Arena: the average finish, 1 (first) to 8.
+ */
+placement: number | null, 
+/**
+ * Arena: the share of games finished first, 0–1.
+ */
+first: number | null, };
+
+export type SpellOption = { spells: [number, number], rates: Rates, };
+
+export type RunePage = { primaryStyle: number, subStyle: number, perks: Array<number>, };
+
+export type RuneOption = { page: RunePage, rates: Rates, };
+
+export type ItemOption = { 
+/**
+ * One item, or several taken together; a repeated id is bought more than once.
+ */
+items: Array<number>, rates: Rates, };
+
+export type Ability = "Q" | "W" | "E" | "R";
+
+export type SkillOrder = { 
+/**
+ * The basic abilities, maxed first to last.
+ */
+priority: Array<Ability>, 
+/**
+ * The ability taken at each level, from the first.
+ */
+sequence: Array<Ability>, rates: Rates, };
+
+export type Matchup = { championId: number, rates: Rates, };
+
+export type Matchups = { 
+/**
+ * The opponents the champion beats most often, best first.
+ */
+good: Array<Matchup>, 
+/**
+ * The ones it loses to most often, worst first.
+ */
+bad: Array<Matchup>, };
+
+export type AugmentTier = "S" | "A" | "B" | "C";
+
+export type AugmentOption = { id: number, 
+/**
+ * From the client's own catalog.
+ */
+rarity: Rarity, tier: AugmentTier | null, rates: Rates, };
