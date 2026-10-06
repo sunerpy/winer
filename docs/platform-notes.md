@@ -270,6 +270,13 @@ Linux build host the same day; each answers a plain GET with no key, cookie or u
 - **Pengu's `#pengu-root` covers the bench** in champ select: `elementFromPoint` at a bench
   item's centre returns that empty div, so a click's target is `#pengu-root`, not the item. The
   item is still in `elementsFromPoint` at the same point; that is how the plugin finds it.
+- **A champ select row clips its text** (16.19, custom draft, 2026-10-06): each
+  `.summoner-wrapper.visible.left` holds a 78px `.summoner-object` row whose `.player-details`
+  column (156px wide, `overflow: hidden`, 50px) stacks the status (`正在选用……`, 14px), the
+  position (20px) and `.summoner-name`, one 16px line (`overflow: hidden`, ellipsis) around
+  `.name-text` › `.player-name-wrapper`. A line put after the name stays inside that box and never
+  shows; at the end of the column, with the column's overflow let go, it shows in the 14px the row
+  leaves below it. The column's left edge moves with the row's state, 87–127px from the window's.
 - **The Home tab is the activity centre** (16.19, 2026-10-06):
   `div.screen-root[data-screen-name="rcp-fe-lol-activity-center"]` › `section#activity-center` ›
   `main.activity-center__contents` (1055×718), filled by one iframe of Tencent's news and events hub
