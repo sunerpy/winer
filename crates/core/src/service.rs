@@ -64,6 +64,8 @@ const SUBSCRIPTIONS: &[&str] = &[
 const FRIENDS_SETTLE: Duration = Duration::from_millis(300);
 /// The whole friends list is read again this often, in case an event went missing.
 const FRIENDS_REFRESH: Duration = Duration::from_secs(60);
+/// Sooner until it has been read once: chat can still be signing in when the client connects.
+const FRIENDS_RETRY: Duration = Duration::from_secs(5);
 
 /// Between two callout lines: the chat service throttles a burst from one client.
 const MESSAGE_GAP: Duration = Duration::from_millis(350);
@@ -1307,7 +1309,8 @@ impl Service {
     }
 
     /// Reads the friends list now and again every [`FRIENDS_REFRESH`] while `client` stays
-    /// connected; events keep it current in between.
+    /// connected, every [`FRIENDS_RETRY`] until a read has succeeded; events keep it current in
+    /// between.
     fn follow_friends(&self, client: &Client) {
         let (service, client) = (self.clone(), client.clone());
         self.spawn(async move {
@@ -1319,7 +1322,11 @@ impl Service {
                     }
                     Err(error) => debug!(%error, "friends list unavailable"),
                 }
-                sleep(FRIENDS_REFRESH).await;
+                let pause = match lock(&client.live).friends {
+                    Some(_) => FRIENDS_REFRESH,
+                    None => FRIENDS_RETRY,
+                };
+                sleep(pause).await;
                 if !service.is_current(&client) {
                     return;
                 }

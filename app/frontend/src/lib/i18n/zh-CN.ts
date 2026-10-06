@@ -514,7 +514,7 @@ export const zhCN = {
     "在客户端的组队房间里，每位成员的横幅上方显示近期胜率、KDA 和战力分；点成员会在 winer 里打开他的战绩。",
   "social.hotkey": "唤起 winer 的快捷键",
   "social.hotkeyHint":
-    "在任何地方按下都能显示或隐藏 winer，游戏进行中显示时会停在游戏上面。游戏需要用无边框或窗口模式。",
+    "在任何地方按下都能显示或隐藏 winer；游戏中唤出时，窗口会保持在游戏上方。游戏需要使用无边框或窗口模式。",
   "social.hotkeyOff": "未设置",
   "social.hotkeyRecord": "设置快捷键",
   "social.hotkeyChange": "更改快捷键",
@@ -523,7 +523,7 @@ export const zhCN = {
   "social.hotkeyInvalid": "需要 Ctrl、Alt 或 Win 中至少一个，再加一个字母、数字、F 键或方向键。",
   "social.hotkeyClear": "清除快捷键",
   "social.hotkeyActive": "已生效",
-  "social.hotkeyFailed": "没能注册，多半是别的程序占用了这个组合，换一个试试。",
+  "social.hotkeyFailed": "注册失败：这个组合键可能已被其他程序占用，请换一个。",
 } as const;
 
 export type MessageKey = keyof typeof zhCN;

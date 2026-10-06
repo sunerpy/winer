@@ -337,6 +337,12 @@
   border-color: #c8aa6e;
 }
 
+/* The lobby's fallback panel sits left of the friends list down the client's right edge (about
+ * 225px wide; not measured, see selectors.ts), which the friends' decorations draw into. */
+.winer-panel[data-winer-panel="lobby"] {
+  right: 237px;
+}
+
 /* The lobby's fallback panel lists its rows as buttons. */
 .winer-row--button {
   width: 100%;

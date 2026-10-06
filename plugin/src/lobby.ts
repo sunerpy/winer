@@ -13,36 +13,9 @@ import {
 } from "@winer/shared";
 
 import { h } from "./dom";
+import { first, innermost } from "./find";
 import { text } from "./i18n";
-
-/** The client's lobby. NOT MEASURED YET: every selector here is a guess, to be confirmed on the
- *  live client over the client page's debug port (docs/platform-notes.md says how) and then
- *  recorded there. Lists are tried in order; a miss falls back to the panel. */
-export const LOBBY = {
-  /** One member's card in the party. */
-  member: [
-    ".lobby-party-member",
-    ".party-member",
-    "lol-parties-lobby-member",
-    "[class*='lobby-member']",
-    "[class*='party-member']",
-  ],
-  /** The member's name on the card. */
-  name: [".player-name", ".summoner-name", "[class*='player-name']", "[class*='summoner-name']"],
-  /** The banner the line goes above. */
-  banner: [".lobby-banner", "lol-regalia-banner-v2-element", "[class*='banner']"],
-  /** The avatar, a click on which opens the member's history. Its controls (a crown to promote, an
-   *  ✕ to kick) are left to the client. The card's lower half is not taken: the lane pickers sit
-   *  there in draft queues. */
-  avatar: [
-    ".summoner-icon",
-    "lol-regalia-crest-v2-element",
-    "[class*='summoner-icon']",
-    "[class*='avatar']",
-  ],
-  /** Attributes the client may write a member's puuid into. */
-  ids: ["data-puuid", "puuid", "data-summoner-puuid"],
-} as const;
+import { LOBBY } from "./selectors";
 
 const LINE_CLASS = "winer-lobby";
 /** On a member's card: whose card it is, for a click on the avatar. */
@@ -51,20 +24,15 @@ const CARD_ATTRIBUTE = "data-winer-puuid";
 const CONTROLS =
   "button, a, input, select, [role='button'], [class*='button'], [class*='dropdown']";
 
-function first(root: ParentNode, selectors: readonly string[]): Element | null {
-  for (const selector of selectors) {
-    const found = root.querySelector(selector);
-    if (found) return found;
-  }
-  return null;
-}
+const ID_SELECTOR = LOBBY.ids.map((id) => `[${id}]`).join(",");
 
-function all(root: ParentNode, selectors: readonly string[]): Element[] {
-  for (const selector of selectors) {
-    const found = root.querySelectorAll(selector);
-    if (found.length > 0) return [...found];
-  }
-  return [];
+/** A card that can be told apart: it shows a name, or holds an id the client wrote. */
+function identifiable(card: Element): boolean {
+  return (
+    first(card, LOBBY.name) !== null ||
+    card.matches(ID_SELECTOR) ||
+    card.querySelector(ID_SELECTOR) !== null
+  );
 }
 
 /** `胜率 60% · KDA 3.2 · 战力 7.4`, or what stands in while there are no stats. */
@@ -85,8 +53,7 @@ export function lobbyLine(member: LobbyMember, language: Language): string {
 
 /** The member a card shows: by an id the client wrote into it, else by the name on it. */
 function memberOf(card: Element, members: LobbyMember[]): LobbyMember | null {
-  const ids = LOBBY.ids.map((id) => `[${id}]`).join(",");
-  for (const holder of [card, ...card.querySelectorAll(ids)]) {
+  for (const holder of [card, ...card.querySelectorAll(ID_SELECTOR)]) {
     for (const attribute of LOBBY.ids) {
       const value = holder.getAttribute(attribute)?.trim();
       const member = value ? members.find((candidate) => candidate.puuid === value) : undefined;
@@ -105,15 +72,15 @@ function memberOf(card: Element, members: LobbyMember[]): LobbyMember | null {
   );
 }
 
-/** Writes one line above each member's banner. Returns how many member cards it found; the cards
- *  it could not tell apart get nothing. */
+/** Writes one line above each member's banner. Returns how many cards it decorated: the cards it
+ *  could not tell apart, or that show no one in `view`, get nothing. */
 export function decorateLobby(
   root: ParentNode,
   view: LobbyView,
   language: Language,
   open: (puuid: string) => void,
 ): number {
-  const cards = all(root, LOBBY.member);
+  const cards = innermost(root, LOBBY.member, identifiable);
   const kept = new Set<Element>();
   for (const card of cards) {
     const member = memberOf(card, view.members);
@@ -145,7 +112,7 @@ export function decorateLobby(
   root.querySelectorAll(`.${LINE_CLASS}`).forEach((line) => {
     if (!kept.has(line)) line.remove();
   });
-  return cards.length;
+  return kept.size;
 }
 
 export function clearLobby(root: ParentNode): void {

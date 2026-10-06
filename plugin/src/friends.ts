@@ -6,52 +6,16 @@
 import { duration, type FriendView, type FriendsView, type Language } from "@winer/shared";
 
 import { h } from "./dom";
+import { first, innermost } from "./find";
 import { groupSlot } from "./groups";
 import { text } from "./i18n";
-
-/** The client's friends list. NOT MEASURED YET: every selector here is a guess, to be confirmed on
- *  the live client over the client page's debug port (docs/platform-notes.md says how) and then
- *  recorded there. Lists are tried in order; a miss draws nothing. */
-export const FRIENDS_LIST = {
-  /** The roster, the panel that lists the friends. */
-  root: [
-    "lol-social-roster",
-    ".lol-social-roster",
-    "[class*='social-roster']",
-    "[class*='roster-container']",
-  ],
-  /** One friend's entry in it. */
-  member: [
-    "lol-social-roster-member",
-    ".lol-social-roster-member",
-    "[class*='roster-member']",
-    "[class*='member-wrapper']",
-  ],
-  /** The friend's name inside an entry; the line goes after it. */
-  name: [".member-name", "[class*='member-name']", "[class*='summoner-name']", "[class*='name']"],
-  /** Attributes the client may write a friend's puuid (or chat id, `<puuid>@…`) into. */
-  ids: ["data-puuid", "puuid", "data-pid", "pid", "data-id", "data-summoner-puuid"],
-} as const;
+import { FRIENDS_LIST } from "./selectors";
 
 const LINE_CLASS = "winer-friend";
 /** On an entry: the colour slot (1–6) of the friend's group. */
 const GROUP_ATTRIBUTE = "data-winer-friend-group";
 
-function first(root: ParentNode, selectors: readonly string[]): Element | null {
-  for (const selector of selectors) {
-    const found = root.querySelector(selector);
-    if (found) return found;
-  }
-  return null;
-}
-
-function all(root: ParentNode, selectors: readonly string[]): Element[] {
-  for (const selector of selectors) {
-    const found = root.querySelectorAll(selector);
-    if (found.length > 0) return [...found];
-  }
-  return [];
-}
+const ID_SELECTOR = FRIENDS_LIST.ids.map((id) => `[${id}]`).join(",");
 
 /** What the line says: `极地大乱斗 · 12:34`, the mode alone while the start is unknown. */
 export function friendLine(friend: FriendView, now: number, language: Language): string | null {
@@ -73,8 +37,7 @@ function friendOf(
   byPuuid: Map<string, FriendView>,
   byName: Map<string, FriendView>,
 ): FriendView | null {
-  const ids = FRIENDS_LIST.ids.map((id) => `[${id}]`).join(",");
-  for (const holder of [entry.element, ...entry.element.querySelectorAll(ids)]) {
+  for (const holder of [entry.element, ...entry.element.querySelectorAll(ID_SELECTOR)]) {
     for (const attribute of FRIENDS_LIST.ids) {
       const value = holder.getAttribute(attribute)?.trim().toLowerCase();
       if (!value) continue;
@@ -99,10 +62,19 @@ function names(friends: FriendView[]): Map<string, FriendView> {
   return byName;
 }
 
+/** An entry that can be told apart: it holds a name, or an id the client wrote. */
+function identifiable(element: Element): boolean {
+  return (
+    first(element, FRIENDS_LIST.name) !== null ||
+    element.matches(ID_SELECTOR) ||
+    element.querySelector(ID_SELECTOR) !== null
+  );
+}
+
 /** The entries of the client's list: by the entry selectors, or, where none matches, each element
  *  whose own text is a playing friend's name, with its parent taken as the entry. */
 function entriesOf(list: Element, byName: Map<string, FriendView>): Entry[] {
-  const listed = all(list, FRIENDS_LIST.member);
+  const listed = innermost(list, FRIENDS_LIST.member, identifiable);
   if (listed.length > 0) {
     return listed.map((element) => ({ element, name: first(element, FRIENDS_LIST.name) }));
   }

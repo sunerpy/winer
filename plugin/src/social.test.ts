@@ -11,10 +11,12 @@ import type {
 } from "@winer/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { FRIENDS_LIST, clearFriends, decorateFriends, friendLine } from "./friends";
+import { innermost } from "./find";
+import { clearFriends, decorateFriends, friendLine } from "./friends";
 import { groupSlot } from "./groups";
 import { Controller } from "./index";
-import { LOBBY, clearLobby, decorateLobby, interceptAvatarClicks, lobbyLine } from "./lobby";
+import { clearLobby, decorateLobby, interceptAvatarClicks, lobbyLine } from "./lobby";
+import { FRIENDS_LIST, LOBBY } from "./selectors";
 import { lineKey, statsLine } from "./team";
 
 const NOW = 1_800_000_000_000;
@@ -176,6 +178,30 @@ describe("friends", () => {
     expect(list.querySelector(".winer-friend")).toBeNull();
   });
 
+  it("decorates each entry where a guessed class also matches the group around them", () => {
+    const list = document.createElement("div");
+    list.className = "lol-social-roster";
+    // `[class*='roster-member']` matches the group as well as both of its entries.
+    list.innerHTML = `<div class="roster-members-group"><div class="roster-member-row"><span class="member-name">Ann</span></div><div class="roster-member-row"><span class="member-name">Bo</span></div></div>`;
+    document.body.append(list);
+    const view: FriendsView = {
+      friends: [
+        friend("a", "Ann", inGame("极地大乱斗", 3), 1),
+        friend("b", "Bo", inGame("极地大乱斗", 3), 1),
+      ],
+    };
+    expect(decorateFriends(document, view, NOW, "zh-CN")).toEqual({ entries: 2, lines: 2 });
+    const rows = [...list.querySelectorAll(".roster-member-row")];
+    expect(rows.map((row) => row.getAttribute("data-winer-friend-group"))).toEqual(["1", "1"]);
+    expect(rows.map((row) => row.querySelector(".winer-friend")?.textContent)).toEqual([
+      "极地大乱斗 · 3:04",
+      "极地大乱斗 · 3:04",
+    ]);
+    expect(
+      list.querySelector(".roster-members-group")?.hasAttribute("data-winer-friend-group"),
+    ).toBe(false);
+  });
+
   it("leaves a page without the friends list alone", () => {
     document.body.innerHTML = "<main><span>Ann</span></main>";
     expect(
@@ -243,7 +269,10 @@ describe("lobby", () => {
   it("writes a line above each banner that opens the member's history", () => {
     document.body.append(lobbyCards(["Me", "Mate", "Stranger"]));
     const opened: string[] = [];
-    expect(decorateLobby(document, lobbyView(), "zh-CN", (puuid) => opened.push(puuid))).toBe(3);
+    expect(
+      decorateLobby(document, lobbyView(), "zh-CN", (puuid) => opened.push(puuid)),
+      "two cards show a member of the party; the stranger's gets nothing",
+    ).toBe(2);
     const cards = [...document.querySelectorAll(".lobby-party-member")];
     expect(cards.map((card) => card.querySelector(".winer-lobby")?.textContent ?? null)).toEqual([
       "胜率 60% · KDA 5.0 · 战力 7.4",
@@ -275,6 +304,20 @@ describe("lobby", () => {
     (document.querySelector(".player-name") as HTMLElement).click();
     expect(opened, "the name is not the avatar").toEqual(["me"]);
     stop();
+  });
+});
+
+describe("finding the client's elements", () => {
+  it("keeps the inner of two matches and only those the caller can use", () => {
+    document.body.innerHTML = `<ul class="x-list"><li class="x-item"><b>1</b></li><li class="x-item"></li></ul>`;
+    const found = innermost(document, [".missing", "[class*='x-']"], (element) =>
+      Boolean(element.querySelector("b")),
+    );
+    expect(
+      found.map((element) => element.className),
+      "the list holds the item: the item",
+    ).toEqual(["x-item"]);
+    expect(innermost(document, [".missing"], () => true)).toEqual([]);
   });
 });
 
@@ -346,6 +389,15 @@ describe("controller", () => {
     controller.render();
     expect(document.querySelector(".winer-friend"), "the switch takes it off").toBeNull();
     expect(document.querySelector("[data-winer-panel='lobby']")).toBeNull();
+  });
+
+  it("shows the lobby panel where the cards it finds name no one in the party", () => {
+    document.body.append(lobbyCards(["Somebody", "Nobody"]));
+    const controller = new Controller(document);
+    controller.state.hello(snapshot({ lobby: lobbyView() }), settings);
+    controller.render();
+    expect(document.querySelectorAll(".winer-lobby")).toHaveLength(0);
+    expect(document.querySelector("[data-winer-panel='lobby']")?.textContent).toContain("Mate");
   });
 
   it("asks for a history only from the context that draws", () => {

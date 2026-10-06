@@ -918,6 +918,11 @@ mod tests {
             plugin.friend_status && plugin.lobby_panel,
             "both in-client additions start on"
         );
+        let old: Settings = serde_json::from_str(r#"{"plugin":{"teamPanel":false}}"#).unwrap();
+        assert!(
+            old.plugin.friend_status && old.plugin.lobby_panel && !old.plugin.team_panel,
+            "a file from before them gets them on and keeps its own switches"
+        );
     }
 
     #[test]
