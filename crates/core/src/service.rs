@@ -2930,8 +2930,8 @@ mod tests {
             lines,
             [
                 "【敌方·红色方】winer 战绩鉴定",
-                "小心 Strong：人形防御塔，近20场胜率80%，KDA 2.0「常胜将军」",
-                "对面 Weak：移动眼位，近20场胜率20%，可以多抓",
+                "小心【Strong】：人形防御塔，近20场胜率80%，KDA 2.0【常胜将军】",
+                "对面【Weak】：移动眼位，近20场胜率20%，可以多抓",
             ],
             "two rated of three, second and fourth of five tiers; no catalog, so the name stands \
              in for the champion; the title is the one Strong's twenty games earn"
@@ -2941,7 +2941,7 @@ mod tests {
         assert_eq!(allies.len(), 2, "{allies:?}");
         assert_eq!(allies[0], "【我方·蓝色方】winer 战绩鉴定");
         assert!(
-            allies[1].starts_with("峡谷公务员：Me，近20场胜率50%，KDA 2.0，战力"),
+            allies[1].starts_with("峡谷公务员【Me】，近20场胜率50%，KDA 2.0，战力"),
             "rated alone, the middle of five: {allies:?}"
         );
         assert_eq!(

@@ -44,7 +44,9 @@ open their history.
 The callout is ready once every teammate's history has loaded: the first line holds the side,
 "winer rating" and the opening line if you wrote one, then one line per teammate, best first. Each
 line names the teammate's place in your team's list in champ select (P1 to P5, from the top) and
-their name. The default, rich style adds the tier's emoji, the title and the quip, for example:
+their name; in Chinese the name sits in 【】, since the client's chat filter reads across spaces and
+would join a tier and a name into one word (see [How rating works](/en/rating#callout)). The
+default, rich style adds the tier's emoji, the title and the quip, for example:
 
 ```text
 📢 [Blue side] winer rating
@@ -71,8 +73,8 @@ P1 Rift Demigod | 60% | KDA 4.1 | form 7.4 | Light in the Dark
 Once the game starts, the panel has two columns: **Enemies** holds the enemy to watch and the one to
 go after, chosen as [Automation](/en/guide/automation#lines-in-game) describes; **My team** holds one
 line per teammate, best first, as in champ select. In the game the champions are settled and are how
-players tell each other apart, so both columns name every player by champion, without name or seat;
-where the champion is not known, the name stands in. For example:
+players tell each other apart, so both columns name every player by champion (in 【】 in Chinese),
+without name or seat; where the champion is not known, the name stands in. For example:
 
 ```text
 [Enemy · Red side] winer rating

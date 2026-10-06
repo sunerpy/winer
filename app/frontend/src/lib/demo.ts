@@ -597,11 +597,11 @@ function champSelect(): ChampSelectView {
     side: "blue",
     callout: [
       "📢【蓝色方】winer 战绩鉴定",
-      "👑 峡谷通天代：1L 暗夜里的光，近20场胜率60%，KDA 4.1，战力7.4「版本答案」，对面五个人准备举报代练",
-      "🔥 人形防御塔：3L 野区观光客，近20场胜率55%，KDA 3.6，战力6.8「靠谱队友」，塔在人在，人在塔也在",
-      "👌 峡谷公务员：2L 峡谷清道夫，近20场胜率50%，KDA 2.9，战力5.2「正常发挥」，按时上班，准时打卡",
-      "😅 移动眼位：4L 补刀不漏一个，近20场胜率45%，KDA 2.4，战力4.6「峡谷慈善家」，站在哪里，哪里就有视野",
-      "💀 纯正牛马：5L 眼位守护者，近20场胜率40%，KDA 2.0，战力3.9「黑白电视机资深会员」，勤勤恳恳地给对面创造游戏体验",
+      "👑 峡谷通天代：1L【暗夜里的光】，近20场胜率60%，KDA 4.1，战力7.4【版本答案】，对面五个人准备举报代练",
+      "🔥 人形防御塔：3L【野区观光客】，近20场胜率55%，KDA 3.6，战力6.8【靠谱队友】，塔在人在，人在塔也在",
+      "👌 峡谷公务员：2L【峡谷清道夫】，近20场胜率50%，KDA 2.9，战力5.2【正常发挥】，按时上班，准时打卡",
+      "😅 移动眼位：4L【补刀不漏一个】，近20场胜率45%，KDA 2.4，战力4.6【峡谷慈善家】，站在哪里，哪里就有视野",
+      "💀 纯正牛马：5L【眼位守护者】，近20场胜率40%，KDA 2.0，战力3.9【黑白电视机资深会员】，勤勤恳恳地给对面创造游戏体验",
     ],
   };
 }
@@ -639,17 +639,17 @@ export function demoGame(): GameView {
     sides: true,
     callout: [
       "【敌方·红色方】winer 战绩鉴定",
-      "小心 卡兹克：峡谷通天代，近20场胜率65%，KDA 4.6",
-      "对面 亚索：纯正牛马，近20场胜率35%，可以多抓",
+      "小心【卡兹克】：峡谷通天代，近20场胜率65%，KDA 4.6",
+      "对面【亚索】：纯正牛马，近20场胜率35%，可以多抓",
     ],
-    // As champ select's lines, the champion where the seat and the name were.
+    // As champ select's lines, the champion in brackets where the seat and the name were.
     allyCallout: [
       "【我方·蓝色方】winer 战绩鉴定",
-      "峡谷通天代：阿狸，近20场胜率60%，KDA 4.1，战力7.4「版本答案」，对面五个人准备举报代练",
-      "人形防御塔：李青，近20场胜率55%，KDA 3.6，战力6.8「靠谱队友」，塔在人在，人在塔也在",
-      "峡谷公务员：盖伦，近20场胜率50%，KDA 2.9，战力5.2「正常发挥」，按时上班，准时打卡",
-      "移动眼位：金克丝，近20场胜率45%，KDA 2.4，战力4.6「峡谷慈善家」，站在哪里，哪里就有视野",
-      "纯正牛马：锤石，近20场胜率40%，KDA 2.0，战力3.9「黑白电视机资深会员」，勤勤恳恳地给对面创造游戏体验",
+      "峡谷通天代【阿狸】，近20场胜率60%，KDA 4.1，战力7.4【版本答案】，对面五个人准备举报代练",
+      "人形防御塔【李青】，近20场胜率55%，KDA 3.6，战力6.8【靠谱队友】，塔在人在，人在塔也在",
+      "峡谷公务员【盖伦】，近20场胜率50%，KDA 2.9，战力5.2【正常发挥】，按时上班，准时打卡",
+      "移动眼位【金克丝】，近20场胜率45%，KDA 2.4，战力4.6【峡谷慈善家】，站在哪里，哪里就有视野",
+      "纯正牛马【锤石】，近20场胜率40%，KDA 2.0，战力3.9【黑白电视机资深会员】，勤勤恳恳地给对面创造游戏体验",
     ],
   };
 }
@@ -1100,14 +1100,16 @@ export function demoBackend(): Backend {
       // its own leaning and, in the rich style, its emoji.
       const lines = names.map((name, index) => {
         const lean = leanOf(index, names.length, graded);
-        const title = general.titles ? `「${DEMO_TITLES[lean]}」` : "";
+        const title = general.titles ? `【${DEMO_TITLES[lean]}】` : "";
         return rule.style === "compact"
-          ? `${index + 1}L ${name}｜胜率60%｜KDA 4.1｜战力7.4｜暗夜里的光`
-          : `${tierEmoji(index, names.length, graded)} ${name}：${index + 1}L 暗夜里的光，近20场胜率60%，KDA 4.1，战力7.4${title}`;
+          ? `${index + 1}L ${name}｜胜率60%｜KDA 4.1｜战力7.4｜【暗夜里的光】`
+          : `${tierEmoji(index, names.length, graded)} ${name}：${index + 1}L【暗夜里的光】，近20场胜率60%，KDA 4.1，战力7.4${title}`;
       });
-      // As the core does: the side and winer's name lead the first line, the opening line after.
+      // As the core does: the side and winer's name lead the first line, the opening line after
+      // in 【】, unless it opens with a bracket of its own.
       const header = rule.header.trim();
-      const first = `【蓝色方】winer 战绩鉴定${header ? ` · ${header}` : ""}`;
+      const opening = header === "" || header.startsWith("【") ? header : `【${header}】`;
+      const first = `【蓝色方】winer 战绩鉴定${opening}`;
       return [rule.style === "compact" ? first : `📢${first}`, ...lines];
     },
     bench_swap: () => null,
@@ -1216,19 +1218,19 @@ export function demoBackend(): Backend {
       const names = tierNames(rule);
       const graded = rule.tiers === "grades";
       const title = (index: number) =>
-        general.titles ? `「${DEMO_TITLES[leanOf(index, names.length, graded)]}」` : "";
+        general.titles ? `【${DEMO_TITLES[leanOf(index, names.length, graded)]}】` : "";
       const enemies = [
         "【敌方·红色方】winer 战绩鉴定",
-        `小心 阿狸：${names[0]}，近20场胜率60%，KDA 4.1${title(0)}`,
-        `对面 阿狸：${names[names.length - 1]}，近20场胜率60%，可以多抓`,
+        `小心【阿狸】：${names[0]}，近20场胜率60%，KDA 4.1${title(0)}`,
+        `对面【阿狸】：${names[names.length - 1]}，近20场胜率60%，可以多抓`,
       ];
       // No emoji in the game's chat.
       const allies = [
         "【我方·蓝色方】winer 战绩鉴定",
         ...names.map((name, index) =>
           rule.style === "compact"
-            ? `${name} 阿狸｜胜率60%｜KDA 4.1｜战力7.4`
-            : `${name}：阿狸，近20场胜率60%，KDA 4.1，战力7.4${title(index)}`,
+            ? `${name}【阿狸】｜胜率60%｜KDA 4.1｜战力7.4`
+            : `${name}【阿狸】，近20场胜率60%，KDA 4.1，战力7.4${title(index)}`,
         ),
       ];
       return typedLines(enemies, allies, rule.gameTeams);

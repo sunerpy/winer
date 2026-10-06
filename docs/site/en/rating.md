@@ -107,16 +107,23 @@ and F 💀. Emoji show in the client's chat only; lines typed in a game have non
 
 - The first line names your side and "winer rating", followed by the opening line if you wrote one;
   the rich style puts 📢 before it.
+- In Chinese, names, titles and the opening line sit in 【】, and so do champions in the in-game
+  lines: the client's chat masks some words, and it reads across spaces and some punctuation,
+  joining the characters of neighbouring fields. The tier 上等马, a space and the name 会跑路的防御塔
+  hold 马会, which gets masked; the brackets keep the two apart. A hidden name drops its brackets
+  too.
 - `{seat}` is the teammate's place in your team's list in champ select, counted from the top: P1 to
   P5 (1L to 5L in Chinese). A line names the seat and the player, not the champion: champions can
   still change during champ select, seats do not.
-- `{title}` is the recent-form title, empty without one; `{quip}` is the tier's quip. Every tier of
-  the built-in schemes has one (Rift five has three per tier in Chinese), picked per player and per
-  game: the same throughout one champ select, likely another the next game. Custom names have none.
+- `{title}` is the recent-form title in brackets, empty without one; `{quip}` is the tier's quip.
+  Every tier of the built-in schemes has one (Rift five has three per tier in Chinese), picked per
+  player and per game: the same throughout one champ select, likely another the next game. Custom
+  names have none.
 - The line template and the opening line are edited in **Automation › Callout**, with these
   placeholders: `{emoji}` `{standing}` `{seat}` `{name}` `{champion}` `{games}` `{winRate}` `{kda}`
   `{score}` `{title}` `{quip}`. A template of your own is used in either style. It can still use
-  `{champion}`: the champion the teammate has picked or shown when the callout is sent.
+  `{champion}`: the champion the teammate has picked or shown when the callout is sent. A
+  placeholder in 【】, 「」, () or [] that has no value takes its brackets with it.
 
 ### Lines in game
 
@@ -141,7 +148,7 @@ Go after {champion}: {standing}, {winRate} in {games} games
 ```
 
 The first two are about the enemies, the third is the line for each teammate; in the compact
-style a teammate's line is `{standing} {champion} | {winRate} | KDA {kda} | form {score}`. The enemy lines open
+style a teammate's line is `{standing} [{champion}] | {winRate} | KDA {kda} | form {score}`. The enemy lines open
 with the enemy's side and "winer rating", for example "[Enemy · Red side] winer rating"; your
 team's with "[My team · Blue side] winer rating". In a game the champions are settled and are how
 players are told apart, so the defaults name the champion alone, or the name where the champion is

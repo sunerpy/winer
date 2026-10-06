@@ -459,7 +459,8 @@ header: string,
 /**
  * One line per player, with `{standing}`, `{seat}` (the place in champ select's list: `1L`,
  * `P1`), `{name}`, `{champion}`, `{games}`, `{winRate}`, `{kda}`, `{score}`, `{title}` and
- * `{quip}`. Empty means the language's default (`callout::template`).
+ * `{quip}`; a value left blank (a hidden name) takes the brackets around it with it. Empty
+ * means the language's default (`callout::template`).
  */
 template: string, 
 /**
