@@ -61,6 +61,8 @@ const SETTINGS = {
       inGame: false,
       watchTemplate: "",
       targetTemplate: "",
+      allyTemplate: "",
+      gameTeams: "enemies",
     },
     bench: { enabled: false, champions: [] },
     scopes: defaultScopes(),

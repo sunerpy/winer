@@ -1,9 +1,10 @@
-import type { Audience, Automation, CalloutRule, Mode, Scopes } from "@winer/shared";
+import type { Audience, Automation, CalloutRule, GameTeams, Mode, Scopes } from "@winer/shared";
 import { TriangleAlert } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import { ChampionList, ChampionPoolEditor } from "../game/ChampionPoolEditor";
 import { errorMessage } from "../lib/backend";
+import { GAME_LINE_LIMIT } from "../lib/callout";
 import { cx } from "../lib/cx";
 import { useLanguage, useT } from "../lib/i18n";
 import { APPLICABLE, MODES, MODE_LABEL, type ScopedRule, everywhere, toggled } from "../lib/modes";
@@ -33,15 +34,21 @@ const DEFAULT_TEMPLATE: Record<"zh-CN" | "en", string> = {
     "{standing}：{seat} {name}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
   en: "{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}",
 };
-// Callout: the in-game lines' defaults (`callout::watch_template`, `callout::target_template`).
+// Callout: the in-game lines' defaults (`callout::watch_template`, `callout::target_template`,
+// `callout::ally_template`), every player by champion.
 const DEFAULT_WATCH: Record<"zh-CN" | "en", string> = {
-  "zh-CN": "小心 {champion} {name}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}",
-  en: "Watch {champion} ({name}): {standing}, {winRate} in {games} games, KDA {kda}{title}",
+  "zh-CN": "小心 {champion}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}",
+  en: "Watch {champion}: {standing}, {winRate} in {games} games, KDA {kda}{title}",
 };
 const DEFAULT_TARGET: Record<"zh-CN" | "en", string> = {
-  "zh-CN": "对面 {champion} {name}：{standing}，近{games}场胜率{winRate}，可以多抓",
-  en: "Go after {champion} ({name}): {standing}, {winRate} in {games} games",
+  "zh-CN": "对面 {champion}：{standing}，近{games}场胜率{winRate}，可以多抓",
+  en: "Go after {champion}: {standing}, {winRate} in {games} games",
 };
+const DEFAULT_ALLY: Record<"zh-CN" | "en", string> = {
+  "zh-CN": "{standing}：{champion}，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
+  en: "{standing}: {champion}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}",
+};
+const GAME_TEAMS: readonly GameTeams[] = ["enemies", "allies", "both"];
 
 /** Where a rule acts: one switch per kind of game it can act in at all. */
 function ScopeRow({
@@ -174,10 +181,11 @@ function CalloutPreview({
   );
 }
 
-// Callout: in the game, the enemy lines the shortcut types into the game's chat.
+// Callout: in the game, both teams' lines, which the shortcut types into the game's chat.
 
-/** The callout card's second half: typing into the game, opt-in and said to be third-party input,
- *  and the two enemy lines with their preview. */
+/** The callout card's second half: typing into the game, opt-in and said to be third-party input;
+ *  whose lines a press types, at most so many; the two enemy lines and the team's, and what one
+ *  press would type. */
 function GameCallout({
   rule,
   onChange,
@@ -210,6 +218,15 @@ function GameCallout({
           label={t("callout.inGame")}
         />
       </Row>
+      <Row label={t("callout.gameTeams")} help={t("callout.gameTeamsHint", { n: GAME_LINE_LIMIT })}>
+        <Segmented<GameTeams>
+          size="sm"
+          label={t("callout.gameTeams")}
+          value={rule.gameTeams}
+          options={GAME_TEAMS.map((value) => ({ value, label: t(`callout.gameTeams.${value}`) }))}
+          onChange={(gameTeams) => onChange((value) => ({ ...value, gameTeams }))}
+        />
+      </Row>
       <div className="flex flex-col gap-2 py-3">
         <label htmlFor="callout-watch" className="text-[14px] font-medium text-fg">
           {t("callout.watch")}
@@ -225,21 +242,37 @@ function GameCallout({
         <label htmlFor="callout-target" className="mt-1 text-[14px] font-medium text-fg">
           {t("callout.target")}
         </label>
+        <CommitInput
+          id="callout-target"
+          value={rule.targetTemplate}
+          maxLength={200}
+          placeholder={DEFAULT_TARGET[language]}
+          onCommit={(targetTemplate) => onChange((value) => ({ ...value, targetTemplate }))}
+          className="min-w-0"
+        />
+        <label htmlFor="callout-ally" className="mt-1 text-[14px] font-medium text-fg">
+          {t("callout.ally")}
+        </label>
         <div className="flex items-center gap-2">
           <CommitInput
-            id="callout-target"
-            value={rule.targetTemplate}
+            id="callout-ally"
+            value={rule.allyTemplate}
             maxLength={200}
-            placeholder={DEFAULT_TARGET[language]}
-            onCommit={(targetTemplate) => onChange((value) => ({ ...value, targetTemplate }))}
+            placeholder={DEFAULT_ALLY[language]}
+            onCommit={(allyTemplate) => onChange((value) => ({ ...value, allyTemplate }))}
             className="min-w-0 flex-1"
           />
           <Button
             size="sm"
             variant="ghost"
-            disabled={!rule.watchTemplate && !rule.targetTemplate}
+            disabled={!rule.watchTemplate && !rule.targetTemplate && !rule.allyTemplate}
             onClick={() =>
-              onChange((value) => ({ ...value, watchTemplate: "", targetTemplate: "" }))
+              onChange((value) => ({
+                ...value,
+                watchTemplate: "",
+                targetTemplate: "",
+                allyTemplate: "",
+              }))
             }
           >
             {t("auto.reset")}

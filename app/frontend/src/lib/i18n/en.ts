@@ -779,10 +779,10 @@ export const en: Record<MessageKey, string> = {
   // Callout: the shortcut that sends it, and the enemy lines it types into the game's chat.
   "callout.hotkey": "Shortcut to send the callout",
   "callout.hotkeyHint":
-    "In champ select it posts the callout to the team chat, as Send to team does; in a game, with In-game sending on, it types the enemy lines below into the game's team chat. None by default.",
+    "In champ select it posts the callout to the team chat, as Send to team does; in a game, with In-game sending on, it types the in-game lines chosen below into the game's team chat. None by default.",
   "callout.hotkeyTakenByWindow": "This combination brings up winer. Choose another.",
   "callout.hotkeyTakenByCallout": "This combination sends the callout. Choose another.",
-  "callout.gameSection": "In game: the enemy lines",
+  "callout.gameSection": "In-game callout",
   "callout.inGame": "In-game sending",
   "callout.inGameHint":
     "The game's chat has no API, so winer types for you with synthesized key presses: Enter opens the team chat, a line goes in, Enter sends it, line by line. It types only while the game's window is already in front and stops the moment it is not; close the chat box before pressing the shortcut.",
@@ -790,21 +790,35 @@ export const en: Record<MessageKey, string> = {
     "Key presses another program sends to the game are third-party input and may break the game's terms of service; you use it at your own risk. Off by default.",
   "callout.watch": "Enemy to watch",
   "callout.target": "Enemy to go after",
+  "callout.ally": "Each teammate",
   "callout.linesHint":
-    "In a game only the enemy team is talked about: the best rated above the middle of the scheme goes in the line to watch, the worst rated below it in the line to go after, and nobody like that, no line. The placeholders are the team line's; {champion} is the champion the enemy plays and {seat} their place in their team's list. Blank uses the default.",
+    "In a game everyone goes by their champion, or by name where the champion is not known. Two enemies at most: the best rated above the middle of the scheme goes in the line to watch, the worst rated below it in the line to go after, and nobody like that, no line; your team gets one line per teammate, as in champ select. The placeholders are the team line's; {champion} is the champion the player plays and {seat} their place in their team's list. Blank uses the default.",
+  "callout.gameTeams": "Whose lines to type",
+  "callout.gameTeamsHint":
+    "The enemy lines by default. Each line typed holds your keyboard for about a second, so one press types {n} lines at most: with Both, the enemy lines go first, then your team best first, and what does not fit is left out.",
+  "callout.gameTeams.enemies": "Enemies",
+  "callout.gameTeams.allies": "My team",
+  "callout.gameTeams.both": "Both",
   "callout.preview": "Typed in game",
-  "callout.previewHint": "Shown with your own recent form, the enemy on the red side.",
+  "callout.previewHint":
+    "What one press types, shown with your own recent form, your team on the blue side and the enemy on the red.",
   "callout.inGameOn": "In-game sending on",
   "callout.inGameOff": "In-game sending off",
   "callout.liveGameHint":
-    "In a game only the enemy team is talked about: the one to watch and the one to go after. The game's chat has no API, so there is no send button here; the shortcut types them.",
+    "In a game everyone goes by their champion: the enemy lines name the one to watch and the one to go after, your team's lines every teammate. The game's chat has no API, so there is no send button here; the shortcut types them.",
   "callout.liveGameEmpty":
     "Written here once the enemies' history has loaded; nothing while no enemy is clearly stronger or weaker than the middle.",
+  "callout.liveAlliesEmpty": "Written here once your teammates' history has loaded.",
   "callout.liveHotkey": "The shortcut sends it to the team too:",
-  "callout.liveHotkeyGame": "In the game, the shortcut types these lines into the team chat:",
+  "callout.liveHotkeyGame.enemies":
+    "In the game, the shortcut types the enemy lines into the team chat:",
+  "callout.liveHotkeyGame.allies":
+    "In the game, the shortcut types your team's lines into the team chat:",
+  "callout.liveHotkeyGame.both":
+    "In the game, the shortcut types the enemy lines, then your team's, {n} at most:",
   "callout.liveNoHotkey": "Set a shortcut to send the callout to the team with one press.",
   "callout.liveNoHotkeyGame":
-    "Set a shortcut and turn on in-game sending to type these lines into the team chat in the game.",
+    "Set a shortcut and turn on in-game sending to type the callout into the team chat in the game.",
   "callout.liveInGameOff": "In-game sending is off: the shortcut types nothing in the game.",
   "callout.liveHotkeyFailed":
     "The callout's shortcut is not registered: another program probably holds it.",

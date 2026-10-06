@@ -751,10 +751,10 @@ export const zhCN = {
   // Callout: the shortcut that sends it, and the enemy lines it types into the game's chat.
   "callout.hotkey": "发送喊话的快捷键",
   "callout.hotkeyHint":
-    "英雄选择中按下，把喊话发到队伍聊天，和「发送到队伍」一样；游戏中打开「游戏内发送」后，把下面的敌方喊话输入游戏的队伍聊天。默认不设置。",
+    "英雄选择中按下，把喊话发到队伍聊天，和「发送到队伍」一样；游戏中打开「游戏内发送」后，把下面选定的游戏中喊话输入游戏的队伍聊天。默认不设置。",
   "callout.hotkeyTakenByWindow": "这个组合键已用于唤起 winer，请换一个。",
   "callout.hotkeyTakenByCallout": "这个组合键已用于发送喊话，请换一个。",
-  "callout.gameSection": "游戏中：敌方喊话",
+  "callout.gameSection": "游戏中喊话",
   "callout.inGame": "游戏内发送",
   "callout.inGameHint":
     "游戏的聊天没有接口，winer 用模拟按键代你输入：按 Enter 打开队伍聊天，输入一行，再按 Enter 发送，逐行进行。只在游戏窗口已经在前台时输入，窗口一被切走就停下；按快捷键前先关上聊天框。",
@@ -762,20 +762,31 @@ export const zhCN = {
     "向游戏模拟按键属于第三方输入，可能违反游戏的服务条款，使用风险由你自行承担。默认关闭。",
   "callout.watch": "提防的敌人",
   "callout.target": "可以针对的敌人",
+  "callout.ally": "我方每行",
   "callout.linesHint":
-    "游戏中只说敌方：评级在中游以上、最高的一位写进「提防」这一行，中游以下、最低的一位写进「针对」这一行，没有这样的人就不写。占位符与每行内容相同，{champion} 是这位敌人正在玩的英雄，{seat} 是他在对方列表里的位置。留空用默认。",
+    "游戏里按英雄称呼每个人，读不到英雄时改用名称。对面只写两位：评级在中游以上、最高的一位写进「提防」这一行，中游以下、最低的一位写进「针对」这一行，没有这样的人就不写；我方和选人时一样，每位队友一行。占位符与每行内容相同，{champion} 是这位玩家正在玩的英雄，{seat} 是他在本队列表里的位置。留空用默认。",
+  "callout.gameTeams": "游戏中输入哪一方",
+  "callout.gameTeamsHint":
+    "默认只输入对面。每输入一行要占用键盘一秒左右，所以每按一次最多输入 {n} 行：选「双方」时先输入对面，再按档位从高到低输入我方，超出的不输入。",
+  "callout.gameTeams.enemies": "对面",
+  "callout.gameTeams.allies": "我方",
+  "callout.gameTeams.both": "双方",
   "callout.preview": "游戏中会输入",
-  "callout.previewHint": "用你自己的近期战绩演示，敌方以红色方为例。",
+  "callout.previewHint":
+    "按一次快捷键会输入的内容，用你自己的近期战绩演示，我方以蓝色方、敌方以红色方为例。",
   "callout.inGameOn": "游戏内发送已开启",
   "callout.inGameOff": "游戏内发送未开启",
   "callout.liveGameHint":
-    "游戏里只说敌方：最该提防的一位和最好针对的一位。游戏的聊天没有接口，这里没有发送按钮，用快捷键输入。",
+    "游戏里按英雄称呼每个人：对面写最该提防和最好针对的一位，我方逐一写每位队友。游戏的聊天没有接口，这里没有发送按钮，用快捷键输入。",
   "callout.liveGameEmpty": "敌方战绩读完后在这里生成；没有明显偏强或偏弱的敌人时没有内容。",
+  "callout.liveAlliesEmpty": "队友战绩读完后在这里生成。",
   "callout.liveHotkey": "按快捷键也能发送到队伍：",
-  "callout.liveHotkeyGame": "在游戏里按快捷键，winer 把这几行输入队伍聊天：",
+  "callout.liveHotkeyGame.enemies": "在游戏里按快捷键，winer 把对面的几行输入队伍聊天：",
+  "callout.liveHotkeyGame.allies": "在游戏里按快捷键，winer 把我方的几行输入队伍聊天：",
+  "callout.liveHotkeyGame.both": "在游戏里按快捷键，winer 先输入对面、再输入我方，最多 {n} 行：",
   "callout.liveNoHotkey": "设置发送喊话的快捷键后，按一下就能发送到队伍。",
   "callout.liveNoHotkeyGame":
-    "设置发送喊话的快捷键并打开游戏内发送后，可以在游戏里把这几行输入队伍聊天。",
+    "设置发送喊话的快捷键并打开游戏内发送后，可以在游戏里把喊话输入队伍聊天。",
   "callout.liveInGameOff": "游戏内发送未开启：在游戏里按快捷键不会输入任何内容。",
   "callout.liveHotkeyFailed": "发送喊话的快捷键注册失败，可能已被其他程序占用。",
   "callout.configure": "去设置",

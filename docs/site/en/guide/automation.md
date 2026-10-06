@@ -76,12 +76,12 @@ summoner spells for Jhin"; a failure says why. Nothing is posted to chat.
   can still change; a live preview shows the result.
 - **Shortcut to send the callout**: none by default. Once set, pressing it in champ select posts the
   callout to the team chat, as **Send to team** on the Live game page does; in a game, with
-  **In-game sending** on, it types the enemy lines below into the game's team chat. It works while
-  winer's window is hidden, and what it did is noted in **Activity** on the overview. It is set the
-  way the shortcut that brings up winer is (see [Settings](/en/guide/settings)), and the two cannot
-  share a combination.
+  **In-game sending** on, it types the in-game lines chosen below into the game's team chat. It
+  works while winer's window is hidden, and what it did is noted in **Activity** on the overview. It
+  is set the way the shortcut that brings up winer is (see [Settings](/en/guide/settings)), and the
+  two cannot share a combination.
 
-### Enemy lines in game
+### Lines in game
 
 The game's own chat has no API in the client, so the only way in is to type like a player. With
 **In-game sending** on (it is off by default), pressing the callout's shortcut in a game makes winer
@@ -102,27 +102,46 @@ by line, and a line too long for one message goes out as several.
 - Key presses another program sends to the game are third-party input and may break the game's
   terms of service; you use it at your own risk.
 
-In a game the callout talks about the enemy team only, not the teammates it named in champ select,
-since every line typed is one more you wait through:
+**Whose lines to type** decides what one press types:
+
+- **Enemies** (the default): the enemy to watch and the one to go after, three lines at most. Your
+  teammates heard about themselves in champ select, and every line typed is one more you wait
+  through.
+- **My team**: one line per teammate, best first, as in champ select; **Include myself** applies
+  here too.
+- **Both**: the enemy lines, then your team's.
+
+Each line typed holds your keyboard for about a second, so one press types six lines at most: your
+team's first line and five teammates fit exactly; with **Both**, the teammates that do not fit (the
+lowest tiers) are left out.
+
+The two enemies are chosen this way:
 
 - **Enemy to watch**: the best rated of the enemies above the middle of the scheme.
 - **Enemy to go after**: the worst rated of the enemies below it.
 
 A scheme that ranks the team splits around its middle tier: in Rift five the first two tiers are
 above the middle and the last two below; for Rift grades, B and C are the middle. Without such an
-enemy the line is left out, and with neither nothing is sent. Enemies whose history is hidden, did
-not load or holds no games take no part. Modes without sides, such as Arena, have no enemy lines.
-Both lines can be rewritten with the template's placeholders; `{champion}` is the champion the enemy
-plays and `{seat}` their place in their team's list. The defaults name the champion and the player,
-since the champion is how a player is told apart in the game:
+enemy the line is left out, and with neither the enemy lines say nothing. Players whose history is
+hidden, did not load or holds no games take no part. Modes without sides, such as Arena, have no
+in-game lines.
+
+In the game the champions are settled and are how players tell each other apart, so the defaults
+name the champion alone, without name or seat; where the champion is not known, the name stands in.
+All three lines can be rewritten (**Enemy to watch**, **Enemy to go after** and **Each teammate**)
+with the template's placeholders; `{champion}` is the champion the player plays and `{seat}` their
+place in their team's list. With **Both**, one press types, for example:
 
 ```text
 [Enemy · Red side] winer rating
-Watch Lee Sin (Red Jungle): Rift Demigod, 65% in 20 games, KDA 4.6
-Go after Yasuo (Red Top): Pure Workhorse, 35% in 20 games
+Watch Kha'Zix: Rift Demigod, 65% in 20 games, KDA 4.6
+Go after Yasuo: Pure Workhorse, 35% in 20 games
+[My team · Blue side] winer rating
+Rift Demigod: Ahri, 60% in 20 games, KDA 4.1, form 7.4 [Patch Champion], the other team is filing a boosting report
+Human Turret: Lee Sin, 55% in 20 games, KDA 3.6, form 6.8, absurdly steady: carries and survives
 ```
 
-A live preview shows them with your own recent form.
+A live preview shows what one press types, with your own recent form.
 
 ## After the game
 

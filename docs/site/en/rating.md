@@ -99,10 +99,10 @@ Rift Civil Servant: P2 Rift Sweeper, 50% in 20 games, KDA 2.9, form 5.2, not fla
   `{title}` `{quip}`. A template of your own can still use `{champion}`: the champion the teammate
   has picked or shown when the callout is sent.
 
-### Enemy lines in game
+### Lines in game
 
-In a game, the callout's shortcut (with **In-game sending** on) talks about two enemies only, rated
-as teammates are:
+In a game, the callout's shortcut (with **In-game sending** on) talks about two enemies by default,
+rated as teammates are:
 
 - **Enemy to watch**: the best rated of the enemies above the middle of the scheme; within a tier,
   the higher recent-form score.
@@ -112,16 +112,21 @@ as teammates are:
 A scheme that ranks the team splits around its middle tier: of five tiers the first two are above
 the middle and the last two below; of three, only the first and the last count. In Rift grades,
 S+, S and A are above the middle, D, E and F below, and B and C are ordinary form. Without such an
-enemy the line is left out. The defaults:
+enemy the line is left out. **Automation › Callout** can make it talk about your team or both
+instead: one line per teammate, in the tier champ select gives them. The defaults:
 
 ```text
-Watch {champion} ({name}): {standing}, {winRate} in {games} games, KDA {kda}{title}
-Go after {champion} ({name}): {standing}, {winRate} in {games} games
+Watch {champion}: {standing}, {winRate} in {games} games, KDA {kda}{title}
+Go after {champion}: {standing}, {winRate} in {games} games
+{standing}: {champion}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}
 ```
 
-The first line names the enemy's side and "winer rating", for example "[Enemy · Red side] winer
-rating". In a game the champions are settled and are how players are told apart, so the defaults name
-the champion and the player; `{seat}` is still there, the enemy's place in their team's list.
+The first two are about the enemies, the third is the line for each teammate. The enemy lines open
+with the enemy's side and "winer rating", for example "[Enemy · Red side] winer rating"; your
+team's with "[My team · Blue side] winer rating". In a game the champions are settled and are how
+players are told apart, so the defaults name the champion alone, or the name where the champion is
+not known; `{name}` and `{seat}` are still there, `{seat}` being the player's place in their team's
+list.
 
 ## Roast titles
 

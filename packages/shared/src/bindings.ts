@@ -70,10 +70,15 @@ teams: Array<Array<Seat>>,
  */
 sides: boolean, 
 /**
- * The in-game callout as it would be typed now: the enemy to watch and the one to go after
- * (`callout::game_lines`); empty where there is nobody to talk about.
+ * The in-game callout's enemy lines as they would be typed now: the enemy to watch and the one
+ * to go after (`callout::game_lines`); empty where there is nobody to talk about.
  */
-callout: Array<string>, };
+callout: Array<string>, 
+/**
+ * The team's own lines, every rated teammate by champion (`callout::ally_lines`); empty
+ * likewise.
+ */
+allyCallout: Array<string>, };
 
 export type Seat = { 
 /**
@@ -468,12 +473,12 @@ customTiers: Array<string>,
 /**
  * The global shortcut that sends the callout, in [`normalize_hotkey`]'s form: in champ select
  * the team's lines go to its chat, as 发送到队伍 sends them; while the game runs, with
- * [`Self::in_game`] on, the enemy lines are typed into the game's chat. `None`, the default,
- * holds no combination, and the window's own combination is never taken.
+ * [`Self::in_game`] on, the lines [`Self::game_teams`] chooses are typed into the game's chat.
+ * `None`, the default, holds no combination, and the window's own combination is never taken.
  */
 hotkey: string | null, 
 /**
- * While the game runs, the shortcut types the enemy lines into the game's team chat with
+ * While the game runs, the shortcut types the in-game lines into the game's team chat with
  * synthesized key presses: the game's chat has no API. Off by default, since third-party input
  * into the game may break its terms.
  */
@@ -486,7 +491,16 @@ watchTemplate: string,
 /**
  * The line about the enemy to go after; empty means `callout::target_template`.
  */
-targetTemplate: string, };
+targetTemplate: string, 
+/**
+ * The line about each teammate in the game, with the placeholders of `template`; empty means
+ * the language's default (`callout::ally_template`), which names the champion.
+ */
+allyTemplate: string, 
+/**
+ * Whose lines a press of the shortcut types in the game.
+ */
+gameTeams: GameTeams, };
 
 export type Audience = "team" | "me";
 
@@ -854,6 +868,8 @@ active: boolean,
 error: string | null, };
 
 export type CalloutSkip = "notNow" | "nothingToSay" | "inGameOff" | "notInFront" | "keysHeld" | "blocked" | "unsupported";
+
+export type GameTeams = "enemies" | "allies" | "both";
 
 export type GameKind = "matched" | "bots" | "custom";
 

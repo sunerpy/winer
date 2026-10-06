@@ -1086,7 +1086,7 @@ impl Service {
         }
         if let Some(session) = gameflow {
             let mut view = live::game_view(&session, &me, stats, &ranking);
-            // Callout: the enemy lines the shortcut types into the game's chat.
+            // Callout: the lines the shortcut types into the game's chat, both teams by champion.
             if let Some(view) = view.as_mut() {
                 let data = lock(&client.data).clone();
                 let champion = |id: i64| {
@@ -1097,6 +1097,8 @@ impl Service {
                         .map(|champion| champion.short_name.clone())
                 };
                 view.callout = callout::game_lines(view, rule, language, champion);
+                // The team's own lines, by champion.
+                view.ally_callout = callout::ally_lines(view, rule, language, champion);
             }
             self.patch(Patch::Game(view));
         }
@@ -2037,13 +2039,13 @@ impl Service {
     /// settings as saved. The shell acts on it: champ select's lines go out through
     /// [`Self::send_callout`], the game's are typed into the game's chat by the shell itself.
     pub fn callout_press(&self) -> callout::Press {
-        let in_game = self.settings().automation.callout.in_game;
+        let rule = self.settings().automation.callout;
         let state = lock(&self.inner.state);
         callout::press(
             state.phase,
             state.champ_select.as_ref(),
             state.game.as_ref(),
-            in_game,
+            &rule,
         )
     }
 
@@ -2053,8 +2055,8 @@ impl Service {
         self.notice(kind);
     }
 
-    /// What the in-game callout would type under `rule` and `general`, with the user's own form in
-    /// the enemy to watch and the one to go after; for the settings page.
+    /// What one press of the callout's shortcut would type in the game under `rule` and `general`,
+    /// with the user's own form in every line (`callout::game_preview`); for the settings page.
     pub async fn preview_game_callout(
         &self,
         rule: &CalloutRule,
@@ -2866,8 +2868,8 @@ mod tests {
     // ---- The callout's shortcut ----
 
     #[tokio::test]
-    async fn a_running_game_carries_the_enemy_lines_which_the_shortcut_types_only_when_asked() {
-        use crate::view::CalloutSkip;
+    async fn a_running_game_carries_both_teams_lines_which_the_shortcut_types_only_when_asked() {
+        use crate::{settings::GameTeams, view::CalloutSkip};
         let dir = tempfile::tempdir().unwrap();
         let service = Service::new(dir.path().join("settings.json"), Handle::current());
         let client = quiet_client(Phase::InProgress);
@@ -2919,7 +2921,8 @@ mod tests {
         );
         service.patch(Patch::Phase(Phase::InProgress));
         service.render(&client);
-        let lines = service.snapshot().game.expect("the game's view").callout;
+        let game = service.snapshot().game.expect("the game's view");
+        let lines = game.callout;
         assert_eq!(
             lines,
             [
@@ -2927,8 +2930,16 @@ mod tests {
                 "小心 Strong：人形防御塔，近20场胜率80%，KDA 2.0「排位慈善家」",
                 "对面 Weak：移动眼位，近20场胜率20%，可以多抓",
             ],
-            "two rated of three, second and fourth of five tiers; no catalog, no champion; the \
-             title is the one Strong's twenty games earn"
+            "two rated of three, second and fourth of five tiers; no catalog, so the name stands \
+             in for the champion; the title is the one Strong's twenty games earn"
+        );
+        // Callout: the team's own lines, by champion (here the name, for want of a catalog).
+        let allies = game.ally_callout;
+        assert_eq!(allies.len(), 2, "{allies:?}");
+        assert_eq!(allies[0], "【我方·蓝色方】winer 战绩鉴定");
+        assert!(
+            allies[1].starts_with("峡谷公务员：Me，近20场胜率50%，KDA 2.0，战力"),
+            "rated alone, the middle of five: {allies:?}"
         );
         assert_eq!(
             service.callout_press(),
@@ -2938,7 +2949,26 @@ mod tests {
         let mut settings = service.settings();
         settings.automation.callout.in_game = true;
         service.set_settings(settings).unwrap();
-        assert_eq!(service.callout_press(), callout::Press::Game(lines));
+        assert_eq!(
+            service.callout_press(),
+            callout::Press::Game(lines.clone()),
+            "the enemy lines by default"
+        );
+        let mut settings = service.settings();
+        settings.automation.callout.game_teams = GameTeams::Allies;
+        service.set_settings(settings).unwrap();
+        assert_eq!(
+            service.callout_press(),
+            callout::Press::Game(allies.clone())
+        );
+        let mut settings = service.settings();
+        settings.automation.callout.game_teams = GameTeams::Both;
+        service.set_settings(settings).unwrap();
+        assert_eq!(
+            service.callout_press(),
+            callout::Press::Game([lines, allies].concat()),
+            "five lines, within the limit"
+        );
 
         service.patch(Patch::Phase(Phase::EndOfGame));
         assert_eq!(

@@ -460,10 +460,10 @@ pub struct CalloutRule {
     // ---- The callout's shortcut, and the game's own chat (`callout::press`) ----
     /// The global shortcut that sends the callout, in [`normalize_hotkey`]'s form: in champ select
     /// the team's lines go to its chat, as 发送到队伍 sends them; while the game runs, with
-    /// [`Self::in_game`] on, the enemy lines are typed into the game's chat. `None`, the default,
-    /// holds no combination, and the window's own combination is never taken.
+    /// [`Self::in_game`] on, the lines [`Self::game_teams`] chooses are typed into the game's chat.
+    /// `None`, the default, holds no combination, and the window's own combination is never taken.
     pub hotkey: Option<String>,
-    /// While the game runs, the shortcut types the enemy lines into the game's team chat with
+    /// While the game runs, the shortcut types the in-game lines into the game's team chat with
     /// synthesized key presses: the game's chat has no API. Off by default, since third-party input
     /// into the game may break its terms.
     pub in_game: bool,
@@ -472,6 +472,12 @@ pub struct CalloutRule {
     pub watch_template: String,
     /// The line about the enemy to go after; empty means `callout::target_template`.
     pub target_template: String,
+    // ---- The callout in the game: the team's own lines, and whose lines are typed ----
+    /// The line about each teammate in the game, with the placeholders of `template`; empty means
+    /// the language's default (`callout::ally_template`), which names the champion.
+    pub ally_template: String,
+    /// Whose lines a press of the shortcut types in the game.
+    pub game_teams: GameTeams,
 }
 
 impl Default for CalloutRule {
@@ -488,6 +494,8 @@ impl Default for CalloutRule {
             in_game: false,
             watch_template: String::new(),
             target_template: String::new(),
+            ally_template: String::new(),
+            game_teams: GameTeams::default(),
         }
     }
 }
@@ -533,6 +541,20 @@ pub enum Audience {
     Team,
     /// Shown in this client only.
     Me,
+}
+
+/// Whose lines the callout's shortcut types into the game's chat (`callout::typed`), at most
+/// `callout::GAME_LINE_LIMIT` a press.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum GameTeams {
+    /// The enemy to watch and the one to go after: what one speaks up in a game for.
+    #[default]
+    Enemies,
+    /// Every rated teammate, as in champ select, by champion.
+    Allies,
+    /// The enemy lines, then the team's.
+    Both,
 }
 
 /// ARAM: take a champion off the shared bench as soon as one higher on the wishlist appears.
@@ -937,24 +959,54 @@ impl Settings {
             .filter(|combination| self.general.hotkey.as_ref() != Some(combination));
         callout.watch_template = clip(&callout.watch_template, 200);
         callout.target_template = clip(&callout.target_template, 200);
+        callout.ally_template = clip(&callout.ally_template, 200);
         self
     }
 
     /// Brings a file an older winer wrote up to date. Up to 0.0.2 the default callout line named
     /// the champion, up to 0.0.3 it called the form score 评分 and ran the name into the numbers,
-    /// and a template saved as exactly one of those texts would have kept it for good: it becomes
-    /// the default (the same language's, when the text was in the other one). A template the user
-    /// changed stays as written.
+    /// and the in-game lines first named the champion and the player; a template saved as exactly
+    /// one of those texts would have kept it for good: it becomes the default (the same language's,
+    /// when the text was in the other one). A template the user changed stays as written.
     fn migrated(mut self) -> Self {
+        let language = self.general.language;
         let callout = &mut self.automation.callout;
-        if let Some(language) = callout::former_default(&callout.template) {
-            callout.template = if language == self.general.language {
-                String::new()
-            } else {
-                callout::template(language).to_owned()
-            };
-        }
+        migrate(
+            &mut callout.template,
+            callout::former_default,
+            callout::template,
+            language,
+        );
+        migrate(
+            &mut callout.watch_template,
+            callout::former_watch_default,
+            callout::watch_template,
+            language,
+        );
+        migrate(
+            &mut callout.target_template,
+            callout::former_target_default,
+            callout::target_template,
+            language,
+        );
         self
+    }
+}
+
+/// `template` replaced, when `former` finds it a former default line, by the current one: blank
+/// (the default itself) in the window's `language`, the other language's default written out.
+fn migrate(
+    template: &mut String,
+    former: fn(&str) -> Option<Language>,
+    current: fn(Language) -> &'static str,
+    language: Language,
+) {
+    if let Some(written) = former(template) {
+        *template = if written == language {
+            String::new()
+        } else {
+            current(written).to_owned()
+        };
     }
 }
 
@@ -1105,6 +1157,108 @@ mod tests {
         ] {
             assert_eq!(loaded("zh-CN", own).template, own, "changed by the user");
         }
+    }
+
+    /// The in-game lines' first defaults, as a window could have saved them: the champion and the
+    /// player's name.
+    const ZH_WATCH: &str =
+        "小心 {champion} {name}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}";
+    const EN_WATCH: &str =
+        "Watch {champion} ({name}): {standing}, {winRate} in {games} games, KDA {kda}{title}";
+    const ZH_TARGET: &str =
+        "对面 {champion} {name}：{standing}，近{games}场胜率{winRate}，可以多抓";
+    const EN_TARGET: &str = "Go after {champion} ({name}): {standing}, {winRate} in {games} games";
+
+    #[test]
+    fn an_in_game_line_saved_as_its_former_default_becomes_the_new_one_when_loaded() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let loaded = |language: &str, watch: &str, target: &str| {
+            let file = serde_json::json!({
+                "general": { "language": language },
+                "automation": { "callout": {
+                    "watchTemplate": watch, "targetTemplate": target, "allyTemplate": "{champion}", "inGame": true
+                } },
+            });
+            fs::write(&path, file.to_string()).unwrap();
+            SettingsStore::open(&path).get().automation.callout
+        };
+
+        let callout = loaded("zh-CN", ZH_WATCH, &format!(" {ZH_TARGET}  "));
+        assert_eq!(
+            (
+                callout.watch_template.as_str(),
+                callout.target_template.as_str()
+            ),
+            ("", ""),
+            "the defaults, which name the champion alone"
+        );
+        assert!(
+            callout.in_game && callout.ally_template == "{champion}",
+            "nothing else moves"
+        );
+        let callout = loaded("en", EN_WATCH, EN_TARGET);
+        assert_eq!(
+            (
+                callout.watch_template.as_str(),
+                callout.target_template.as_str()
+            ),
+            ("", "")
+        );
+        let callout = loaded("zh-CN", EN_WATCH, EN_TARGET);
+        assert_eq!(
+            (
+                callout.watch_template.as_str(),
+                callout.target_template.as_str()
+            ),
+            (
+                callout::watch_template(Language::En),
+                callout::target_template(Language::En)
+            ),
+            "English lines under the Chinese window stay English"
+        );
+        let callout = loaded("zh-CN", ZH_TARGET, ZH_WATCH);
+        assert_eq!(
+            (
+                callout.watch_template.as_str(),
+                callout.target_template.as_str()
+            ),
+            (ZH_TARGET, ZH_WATCH),
+            "a line moved to the other's place was the user's doing"
+        );
+        let own = "小心 {champion} {name}";
+        assert_eq!(loaded("zh-CN", own, "").watch_template, own);
+    }
+
+    #[test]
+    fn a_file_from_before_the_teams_own_lines_in_game_types_the_enemy_lines() {
+        let old: Settings = serde_json::from_str(
+            r#"{"automation":{"callout":{"inGame":true,"watchTemplate":"注意 {champion}"}}}"#,
+        )
+        .unwrap();
+        let callout = old.normalized().automation.callout;
+        assert_eq!(callout.game_teams, GameTeams::Enemies);
+        assert_eq!(callout.ally_template, "", "the default, by champion");
+        assert!(callout.in_game && callout.watch_template == "注意 {champion}");
+
+        let both: Settings =
+            serde_json::from_str(r#"{"automation":{"callout":{"gameTeams":"both"}}}"#).unwrap();
+        assert_eq!(both.automation.callout.game_teams, GameTeams::Both);
+        assert_eq!(
+            serde_json::to_value(GameTeams::Allies).unwrap(),
+            serde_json::json!("allies")
+        );
+        let mut long = Settings::default();
+        long.automation.callout.ally_template = format!(" {} ", "队".repeat(300));
+        assert_eq!(
+            long.normalized()
+                .automation
+                .callout
+                .ally_template
+                .chars()
+                .count(),
+            200
+        );
     }
 
     #[test]
