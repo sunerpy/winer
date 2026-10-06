@@ -1,6 +1,7 @@
 //! The connection to the client and everything that follows from it: one loop that finds the
 //! client, mirrors its state into a [`Snapshot`] and acts on it for the user.
 
+mod caches;
 mod loadout;
 
 use std::{
@@ -25,6 +26,7 @@ use crate::{
     analysis, augments,
     automation::{self, Availability, ChampAction, Step},
     backup::{self, BackupChannel, BackupFile, BackupInfo},
+    cache::Lru,
     callout, catalog,
     friends::{self, FRIENDS, Friend},
     history::{HistoryCache, NEWEST_TTL, Page as HistoryPage, rate_alone},
@@ -150,9 +152,10 @@ struct Inner {
     players: Mutex<HashMap<String, PlayerEntry>>,
     /// Each player costs three requests; four players at a time keeps the client responsive.
     player_slots: Semaphore,
-    assets: Mutex<HashMap<String, Arc<Asset>>>,
-    /// Augment descriptions, per language, fetched at most once per run.
-    augment_details: tokio::sync::Mutex<HashMap<Language, Arc<Vec<AugmentDetail>>>>,
+    /// Pictures the window has drawn, within `caches::ASSETS`.
+    assets: Mutex<Lru<String, Arc<Asset>>>,
+    /// Augment descriptions, per language, with when they were fetched (`caches`).
+    augment_details: tokio::sync::Mutex<AugmentDetails>,
     /// Where snapshots of the game's settings are kept; the shell names it (`set_backup_dir`).
     backups: OnceLock<PathBuf>,
     /// Remembered runes and spells, and the build panel's numbers (`loadout`).
@@ -160,6 +163,9 @@ struct Inner {
     /// History: pages, whole games and Riot ID lookups, for the signed-in account (`history`).
     history: Mutex<HistoryCache>,
 }
+
+/// Augment descriptions per language, with when they were fetched.
+type AugmentDetails = HashMap<Language, (Instant, Arc<Vec<AugmentDetail>>)>;
 
 /// One live connection to one client process.
 #[derive(Clone)]
@@ -278,7 +284,7 @@ impl Service {
                 client: RwLock::new(None),
                 players: Mutex::new(HashMap::new()),
                 player_slots: Semaphore::new(4),
-                assets: Mutex::new(HashMap::new()),
+                assets: Mutex::new(Lru::new(caches::ASSETS)),
                 augment_details: tokio::sync::Mutex::new(HashMap::new()),
                 backups: OnceLock::new(),
                 loadout: loadout::LoadoutState::new(loadouts),
@@ -290,6 +296,8 @@ impl Service {
     pub fn start(&self) {
         let service = self.clone();
         self.inner.runtime.spawn(async move { service.run().await });
+        // Storage: the caches let go of what has expired.
+        self.start_sweeping();
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -393,7 +401,7 @@ impl Service {
                         .get(&format!("/lol-match-history/v1/games/{game_id}"))
                         .await?,
                 );
-                lock(&self.inner.history).put_game(&me, game.clone());
+                lock(&self.inner.history).put_game(&me, game.clone(), Instant::now());
                 game
             }
         };
@@ -459,7 +467,7 @@ impl Service {
         if !path.starts_with("/lol-game-data/assets/") || path.contains("..") {
             return Err(CoreError::Invalid(format!("not a game-data asset: {path}")));
         }
-        if let Some(asset) = lock(&self.inner.assets).get(path) {
+        if let Some(asset) = lock(&self.inner.assets).get(path, Instant::now()) {
             return Ok(asset.clone());
         }
         let (content_type, bytes) = self.client()?.lcu.bytes(path).await?;
@@ -467,11 +475,8 @@ impl Service {
             content_type: content_type.unwrap_or_else(|| "application/octet-stream".into()),
             bytes,
         });
-        let mut assets = lock(&self.inner.assets);
-        if assets.len() >= 1024 {
-            assets.clear();
-        }
-        assets.insert(path.to_owned(), asset.clone());
+        let size = asset.bytes.len();
+        lock(&self.inner.assets).insert(path.to_owned(), asset.clone(), size, Instant::now());
         Ok(asset)
     }
 
@@ -548,8 +553,9 @@ impl Service {
         Ok(lines.len() as u32)
     }
 
-    /// What each Hextech ARAM augment does, from ARAM.GG, once per run and language; nothing while
-    /// the user has switched it off. A failure is not cached, so the next view tries again.
+    /// What each Hextech ARAM augment does, from ARAM.GG, once per language and half a day
+    /// (`caches::AUGMENT_DETAILS_TTL`); nothing while the user has switched it off. A failure is
+    /// not cached, so the next view tries again.
     pub async fn augment_details(&self) -> Result<Arc<Vec<AugmentDetail>>, CoreError> {
         let general = self.settings().general;
         if !general.augment_details {
@@ -557,7 +563,9 @@ impl Service {
         }
         // Held across the fetch: two views asking at once make one request.
         let mut cache = self.inner.augment_details.lock().await;
-        if let Some(details) = cache.get(&general.language) {
+        if let Some((at, details)) = cache.get(&general.language)
+            && at.elapsed() < caches::AUGMENT_DETAILS_TTL
+        {
             return Ok(details.clone());
         }
         let details = Arc::new(
@@ -566,7 +574,7 @@ impl Service {
                 .map_err(CoreError::Remote)?,
         );
         info!(count = details.len(), "augment descriptions loaded");
-        cache.insert(general.language, details.clone());
+        cache.insert(general.language, (Instant::now(), details.clone()));
         Ok(details)
     }
 
@@ -1155,6 +1163,7 @@ impl Service {
     fn ensure_player(&self, client: &Client, puuid: String) {
         let me = lock(&client.live).me.clone();
         self.scope_account(&me);
+        let shown = caches::players_shown(client);
         {
             let mut players = lock(&self.inner.players);
             let fresh = match players.get(&puuid) {
@@ -1166,10 +1175,8 @@ impl Service {
             if fresh {
                 return;
             }
-            if players.len() > 500 {
-                players.retain(|_, entry| entry.fresh(PLAYER_TTL).is_some());
-            }
             players.insert(puuid.clone(), PlayerEntry::Loading);
+            caches::trim_players(&mut players, &shown, Instant::now());
         }
         let (service, client) = (self.clone(), client.clone());
         self.spawn(async move {
@@ -1184,10 +1191,12 @@ impl Service {
                 }
             };
             let current = service.same_account(&client, &me).is_ok();
+            let shown = caches::players_shown(&client);
             {
                 let mut players = lock(&service.inner.players);
                 if current {
                     players.insert(puuid, entry);
+                    caches::trim_players(&mut players, &shown, Instant::now());
                 } else if matches!(players.get(&puuid), Some(PlayerEntry::Loading)) {
                     // Fetched for an account that has signed out since: the next one asks again.
                     players.remove(&puuid);
@@ -2114,10 +2123,13 @@ impl Service {
         }
         let record = Arc::new(load_record(&client.lcu, puuid, &me).await?);
         self.same_account(&client, &me)?;
-        lock(&self.inner.players).insert(
+        let shown = caches::players_shown(&client);
+        let mut players = lock(&self.inner.players);
+        players.insert(
             puuid.to_owned(),
             PlayerEntry::Ready(record.clone(), Some(Instant::now())),
         );
+        caches::trim_players(&mut players, &shown, Instant::now());
         Ok(record)
     }
 

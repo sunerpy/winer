@@ -794,6 +794,78 @@ pub enum ErrorCode {
     Internal,
 }
 
+// ---- Storage: what winer keeps on disk and in memory, and the cleanup (`service/caches.rs`, the
+// shell's `storage.rs`) ----
+
+/// Files on disk: how many, and how large together.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskUse {
+    pub files: u32,
+    pub bytes: u64,
+}
+
+/// What winer holds in memory: the entries of all its caches, and the bytes of the pictures among
+/// them, the one cache whose entries differ much in size.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryUse {
+    pub entries: u32,
+    pub image_bytes: u64,
+}
+
+/// The limits winer keeps what it stores to.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageLimits {
+    /// Log files are kept this many days, today included.
+    pub log_days: u32,
+    pub log_bytes: u64,
+    /// One log file grows to this size; the day then goes on in another.
+    pub log_file_bytes: u64,
+    /// The WebView's page cache.
+    pub webview_cache_bytes: u64,
+    /// Game settings backups.
+    pub backups: u32,
+    /// Pictures held in memory.
+    pub image_bytes: u64,
+}
+
+/// What winer keeps, for 设置 › 关于.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageReport {
+    pub logs: DiskUse,
+    /// The WebView's whole folder: its caches, and what WebView2 downloads and manages itself.
+    pub webview: DiskUse,
+    /// The caches within it (pages, scripts, shaders), which a cleanup clears.
+    pub webview_cache: DiskUse,
+    /// A cleanup asked for the WebView's caches to go; they go at the next start.
+    pub webview_clear_pending: bool,
+    pub backups: DiskUse,
+    /// Pengu Loader and the in-client plugin.
+    pub pengu: DiskUse,
+    /// The settings and the remembered runes and spells.
+    pub settings: DiskUse,
+    /// Update installers left in the system's temporary folder.
+    pub updates: DiskUse,
+    pub memory: MemoryUse,
+    pub limits: StorageLimits,
+}
+
+/// What a cleanup removed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct CleanupReport {
+    /// Every log file but the one being written.
+    pub logs: DiskUse,
+    pub updates: DiskUse,
+    /// The WebView's caches as they are now: in use while the window is open, they go at the next
+    /// start.
+    pub webview_cache: DiskUse,
+    pub memory: MemoryUse,
+}
+
 // ---- Social: friends' games, the lobby, the hotkey (`friends.rs`, `live.rs`, the shell) ----
 
 /// The friends signed in to chat and what each is playing.

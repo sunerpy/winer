@@ -43,6 +43,7 @@ import {
   DEMO_SPELLS,
   demoLoadoutHandlers,
 } from "./demoLoadout";
+import { demoStorageHandlers } from "./demoStorage";
 import { FEAT_ORDER } from "./feats";
 import { defaultScopes } from "./modes";
 import { MOBILE_MESSAGE } from "./presence";
@@ -1101,6 +1102,8 @@ export function demoBackend(): Backend {
     }),
     relaunch_elevated: () => null,
     reveal_logs: () => null,
+    // Storage: what winer keeps, and the cleanup.
+    ...demoStorageHandlers(),
     get_autostart: () => false,
     set_autostart: ({ enabled }) => enabled,
     get_update_status: () => update,

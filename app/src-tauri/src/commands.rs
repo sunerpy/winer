@@ -15,13 +15,15 @@ use winer_core::{
     profile::{ChallengeProfile, SkinChoice},
     settings::{Audience, CalloutRule, General, Language, Mode},
     view::{
-        AppInfo, AugmentDetail, ErrorCode, GameData, HotkeyStatus, IpcError, MatchDetail,
-        MatchPage, PlayerProfile, PlayerStanding, PlayerSummary, Position, Presence, Snapshot,
-        UpdateStatus,
+        AppInfo, AugmentDetail, CleanupReport, ErrorCode, GameData, HotkeyStatus, IpcError,
+        MatchDetail, MatchPage, PlayerProfile, PlayerStanding, PlayerSummary, Position, Presence,
+        Snapshot, StorageReport, UpdateStatus,
     },
 };
 
-use crate::{Paths, RELEASES_URL, VERSION, elevation, hotkey, plugin_host, updater};
+use crate::{
+    Paths, RELEASES_URL, VERSION, elevation, hotkey, plugin_host, storage::Storage, updater,
+};
 
 type Result<T> = std::result::Result<T, IpcError>;
 
@@ -51,6 +53,9 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         get_app_info,
         relaunch_elevated,
         reveal_logs,
+        // Storage: what winer keeps, and the cleanup.
+        get_storage,
+        clear_caches,
         get_autostart,
         set_autostart,
         get_update_status,
@@ -285,6 +290,23 @@ async fn relaunch_elevated<R: Runtime>(app: AppHandle<R>) -> Result<()> {
 async fn reveal_logs<R: Runtime>(app: AppHandle<R>) -> Result<()> {
     let dir = app.state::<Paths>().log_dir.clone();
     app.opener().reveal_item_in_dir(dir).map_err(internal)
+}
+
+// ---- Storage: what winer keeps, and the cleanup ----
+
+/// What winer keeps on disk and in memory, and the limits it keeps each to.
+#[tauri::command]
+async fn get_storage<R: Runtime>(app: AppHandle<R>) -> Result<StorageReport> {
+    let (storage, service) = (app.state::<Storage>().inner().clone(), service(&app));
+    blocking(move || Ok(storage.report(&service))).await
+}
+
+/// Removes the old logs, the spent update installers and what is cached in memory, and clears the
+/// WebView's caches at the next start. Returns what went.
+#[tauri::command]
+async fn clear_caches<R: Runtime>(app: AppHandle<R>) -> Result<CleanupReport> {
+    let (storage, service) = (app.state::<Storage>().inner().clone(), service(&app));
+    blocking(move || Ok(storage.clean(&service)?)).await
 }
 
 #[tauri::command]
@@ -577,6 +599,31 @@ mod tests {
             DocsPage::Home.url(Language::En),
             "https://firlab.app/winer/en/"
         );
+    }
+
+    // ---- Storage ----
+
+    #[test]
+    fn storage_is_reported_and_cleaned_through_its_commands() {
+        let (app, dir) = app();
+        let logs = crate::logging::Logs::open(&dir.path().join("logs")).unwrap();
+        app.manage(Storage::new(
+            logs,
+            dir.path().join("local"),
+            dir.path().join("config"),
+            dir.path().join("temp"),
+        ));
+        let handle = app.handle().clone();
+        tauri::async_runtime::block_on(async move {
+            let report = get_storage(handle.clone()).await.unwrap();
+            assert_eq!((report.limits.log_days, report.limits.backups), (7, 10));
+            assert!(!report.webview_clear_pending);
+            assert_eq!(
+                clear_caches(handle).await.unwrap(),
+                CleanupReport::default(),
+                "nothing kept, nothing removed"
+            );
+        });
     }
 
     #[test]

@@ -132,6 +132,14 @@ pub fn typescript() -> String {
         builds::AugmentTier,
         builds::AugmentOption,
     );
+    // Storage: what winer keeps on disk and in memory, and the cleanup.
+    declare!(
+        view::DiskUse,
+        view::MemoryUse,
+        view::StorageLimits,
+        view::StorageReport,
+        view::CleanupReport,
+    );
     // The history panel in the client.
     declare!(bridge::PanelHistory, bridge::PanelGame);
     // The callout's shortcut, the game's chat and whose lines are typed there.

@@ -9,6 +9,7 @@ mod game_chat;
 mod hotkey;
 mod logging;
 mod plugin_host;
+mod storage;
 mod tray;
 mod updater;
 mod window;
@@ -69,26 +70,37 @@ fn setup(app: &mut App, start_hidden: bool) -> Result<(), Box<dyn Error>> {
         log_dir: app.path().app_log_dir()?,
         settings: app.path().app_config_dir()?.join("settings.json"),
     };
-    app.manage(logging::init(&paths.log_dir)?);
+    // Storage: the log within its limits (`logging.rs`), checked again once a day.
+    let logs = logging::Logs::open(&paths.log_dir)?;
+    app.manage(logging::init(&logs)?);
+    logs.maintain();
     tracing::info!(
         version = VERSION,
         elevated = elevation::is_elevated(),
         "winer starting"
     );
+    // Storage: what the last cleanup marked goes before the window's WebView starts (`storage.rs`).
+    let local = app.path().app_local_data_dir()?;
+    let storage = storage::Storage::new(
+        logs,
+        local.clone(),
+        app.path().app_config_dir()?,
+        std::env::temp_dir(),
+    );
+    storage.at_start();
+    app.manage(storage);
 
     let service = Service::new(
         &paths.settings,
         tauri::async_runtime::handle().inner().clone(),
     );
-    service.set_backup_dir(app.path().app_local_data_dir()?.join("game-settings"));
+    service.set_backup_dir(local.join(storage::BACKUPS));
     let bridge = tauri::async_runtime::block_on(Bridge::start(service.clone(), VERSION))?;
     app.manage(service.clone());
     app.manage(bridge.clone());
     app.manage(paths);
     app.manage(updater::Updater::default());
-    app.manage(plugin_host::Host::new(
-        app.path().app_local_data_dir()?.join("pengu"),
-    ));
+    app.manage(plugin_host::Host::new(local.join(storage::PENGU)));
     app.manage(hotkey::Hotkey::default());
     // On the main thread here, so it is registered before the window shows.
     hotkey::apply(app.handle(), service.settings().general.hotkey);

@@ -32,7 +32,8 @@ const MY_SELECTION: &str = "/lol-champ-select/v1/session/my-selection";
 
 /// How long one source's numbers for one champion are reused. The sources recount once a day.
 const BUILD_TTL: Duration = Duration::from_secs(6 * 60 * 60);
-/// Past this many cached lookups, the stale ones are dropped.
+/// Cached lookups at most (a build is a few to a few tens of kilobytes): past it the stale ones go,
+/// then the oldest, never one being fetched.
 const BUILD_ENTRIES: usize = 256;
 
 /// One source's numbers for a champion in a kind of game, lane and patch (Tencent's only; the
@@ -450,19 +451,11 @@ impl Service {
             .unwrap_or_default();
         let slot = {
             let mut cache = lock(&self.inner.loadout.builds);
-            if cache.len() >= BUILD_ENTRIES {
-                cache.retain(|_, slot| {
-                    slot.try_lock().map_or(true, |entry| {
-                        entry
-                            .as_ref()
-                            .is_some_and(|(at, _)| at.elapsed() < BUILD_TTL)
-                    })
-                });
+            let key = (source, query.champion_id, query.mode, query.lane, patch);
+            if !cache.contains_key(&key) {
+                make_room(&mut cache, Instant::now());
             }
-            cache
-                .entry((source, query.champion_id, query.mode, query.lane, patch))
-                .or_default()
-                .clone()
+            cache.entry(key).or_default().clone()
         };
         let mut entry = slot.lock().await;
         if let Some((at, build)) = entry.as_ref()
@@ -619,6 +612,89 @@ async fn item_sets(lcu: &Lcu) -> Result<(String, ItemSets), CoreError> {
     let sets = serde_json::from_slice(&body)
         .map_err(|error| CoreError::Invalid(format!("unexpected item sets: {error}")))?;
     Ok((path, sets))
+}
+
+// ---- Storage: the sweep and the cleanup (`service/caches.rs`) ----
+
+/// Lets the lookups go that are past [`BUILD_TTL`] or never got an answer, keeping those being
+/// fetched. Returns how many went.
+fn sweep_builds(cache: &mut HashMap<BuildKey, BuildSlot>, now: Instant) -> usize {
+    let before = cache.len();
+    cache.retain(|_, slot| {
+        slot.try_lock().map_or(true, |entry| {
+            entry
+                .as_ref()
+                .is_some_and(|(at, _)| now.saturating_duration_since(*at) < BUILD_TTL)
+        })
+    });
+    before - cache.len()
+}
+
+/// Makes room for one more lookup within [`BUILD_ENTRIES`]: the stale ones go, then the oldest.
+fn make_room(cache: &mut HashMap<BuildKey, BuildSlot>, now: Instant) {
+    if cache.len() < BUILD_ENTRIES {
+        return;
+    }
+    sweep_builds(cache, now);
+    while cache.len() >= BUILD_ENTRIES {
+        let oldest = cache
+            .iter()
+            .filter_map(|(key, slot)| {
+                let at = slot.try_lock().ok()?.as_ref().map(|(at, _)| *at);
+                Some((at, key))
+            })
+            .min_by_key(|(at, _)| *at)
+            .map(|(_, key)| key.clone());
+        // Every one is being fetched: they are few, and each ends in an answer.
+        let Some(oldest) = oldest else { break };
+        cache.remove(&oldest);
+    }
+}
+
+impl LoadoutState {
+    /// Numbers past their time, and Tencent's patch list once it is that old. Returns how many
+    /// went.
+    pub(super) fn sweep(&self, now: Instant) -> usize {
+        let mut went = sweep_builds(&mut lock(&self.builds), now);
+        if let Ok(mut patches) = self.patches.try_lock()
+            && patches
+                .as_ref()
+                .is_some_and(|(at, _)| now.saturating_duration_since(*at) >= BUILD_TTL)
+        {
+            *patches = None;
+            went += 1;
+        }
+        went
+    }
+
+    /// Lets go of every number, the patch list and what was read from the catalog, keeping only
+    /// what is being fetched. Returns how many entries went.
+    pub(super) fn clear(&self) -> usize {
+        let mut went = {
+            let mut builds = lock(&self.builds);
+            let before = builds.len();
+            builds.retain(|_, slot| slot.try_lock().is_err());
+            before - builds.len()
+        };
+        if let Ok(mut patches) = self.patches.try_lock()
+            && patches.take().is_some()
+        {
+            went += 1;
+        }
+        if lock(&self.known).take().is_some() {
+            went += 1;
+        }
+        went
+    }
+
+    /// Lookups, the patch list and the catalog's reading kept now.
+    pub(super) fn entries(&self) -> usize {
+        let patches = self
+            .patches
+            .try_lock()
+            .map_or(0, |patches| usize::from(patches.is_some()));
+        lock(&self.builds).len() + patches + usize::from(lock(&self.known).is_some())
+    }
 }
 
 #[cfg(test)]
@@ -786,5 +862,79 @@ mod tests {
         assert_eq!(service.loadout_summary().remembered, 0);
         assert_eq!(service.clear_loadouts().unwrap().remembered, 0);
         assert!(dir.path().join("loadouts.json").exists());
+    }
+
+    // Storage.
+
+    /// A lookup answered at `at`, or never answered (`None`).
+    fn slot(at: Option<Instant>) -> BuildSlot {
+        let build = Arc::new(Build::new(BuildSource::OpGg, 1, Mode::Ranked));
+        Arc::new(tokio::sync::Mutex::new(at.map(|at| (at, build))))
+    }
+
+    fn key(champion: i64) -> BuildKey {
+        (
+            BuildSource::OpGg,
+            champion,
+            Mode::Ranked,
+            None,
+            String::new(),
+        )
+    }
+
+    #[test]
+    fn lookups_stay_within_their_cap_the_stale_going_first_then_the_oldest() {
+        let start = Instant::now() + BUILD_TTL;
+        let at = |seconds: u64| start + Duration::from_secs(seconds);
+        let mut cache = HashMap::new();
+        for champion in 0..BUILD_ENTRIES as i64 - 1 {
+            cache.insert(key(champion), slot(Some(at(champion as u64))));
+        }
+        // Being fetched, and older than any: it stays whatever happens.
+        let fetching = slot(Some(start - BUILD_TTL));
+        let _held = fetching.try_lock().unwrap();
+        cache.insert(key(-1), fetching.clone());
+
+        make_room(&mut cache, at(300));
+        assert_eq!(cache.len(), BUILD_ENTRIES - 1);
+        assert!(!cache.contains_key(&key(0)), "the oldest answer went");
+        assert!(cache.contains_key(&key(-1)) && cache.contains_key(&key(1)));
+
+        // A stale answer and one that never came go before any fresh one.
+        cache.insert(key(5), slot(Some(start - BUILD_TTL)));
+        cache.insert(key(6), slot(None));
+        cache.insert(key(1000), slot(Some(at(300))));
+        make_room(&mut cache, at(300));
+        assert_eq!(cache.len(), BUILD_ENTRIES - 2);
+        assert!(!cache.contains_key(&key(5)) && !cache.contains_key(&key(6)));
+        assert!(cache.contains_key(&key(1)), "no fresh answer had to go");
+
+        assert_eq!(
+            sweep_builds(&mut cache, at(300) + BUILD_TTL),
+            BUILD_ENTRIES - 3,
+            "every answer is past its time but the one being fetched"
+        );
+        assert!(cache.contains_key(&key(-1)));
+    }
+
+    #[test]
+    fn a_cleanup_lets_go_of_every_answer_but_one_being_fetched() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = LoadoutState::new(dir.path().join("loadouts.json"));
+        let now = Instant::now();
+        let fetching = slot(None);
+        let _held = fetching.try_lock().unwrap();
+        {
+            let mut builds = lock(&state.builds);
+            builds.insert(key(1), slot(Some(now)));
+            builds.insert(key(2), slot(Some(now)));
+            builds.insert(key(3), fetching.clone());
+        }
+        *state.patches.try_lock().unwrap() = Some((now, Arc::new(vec!["16.19".into()])));
+        assert_eq!(state.entries(), 4);
+        assert_eq!(state.sweep(now), 0, "nothing is past its time");
+        assert_eq!(state.clear(), 3, "two answers and the patch list");
+        assert_eq!(state.entries(), 1);
+        assert!(lock(&state.builds).contains_key(&key(3)));
     }
 }

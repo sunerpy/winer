@@ -6,7 +6,7 @@
 //! private profile, or of itself, is not another's to see.
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -29,8 +29,8 @@ pub const OLDER_TTL: Duration = Duration::from_secs(30 * 60);
 pub const FOUND_TTL: Duration = Duration::from_secs(5 * 60);
 /// Players whose pages are kept, the most recently viewed.
 const PLAYERS: usize = 16;
-/// Games kept whole for scoreboards, and entries kept in pages across players: a parsed game of
-/// ten is a few kilobytes, so this stays at a few megabytes.
+/// Games kept whole for scoreboards, and entries kept in pages across players, the player being
+/// viewed included: a parsed game of ten is a few kilobytes, so this stays at a few megabytes.
 const GAMES: usize = 600;
 /// Riot IDs looked up.
 const FOUND: usize = 64;
@@ -94,7 +94,8 @@ struct Player {
 pub struct HistoryCache {
     viewer: String,
     players: HashMap<String, Player>,
-    games: HashMap<i64, Arc<Game>>,
+    /// Each game with when it was last kept.
+    games: HashMap<i64, (Arc<Game>, Instant)>,
     /// `games`' ids, oldest kept first.
     order: VecDeque<i64>,
     found: HashMap<String, (PlayerProfile, Instant)>,
@@ -151,7 +152,7 @@ impl HistoryCache {
         }
         if page.source == HistorySource::Server {
             for game in page.entries.iter().flatten() {
-                self.keep_game(game.clone());
+                self.keep_game(game.clone(), now);
             }
         }
         let player = self.players.entry(puuid.to_owned()).or_default();
@@ -187,12 +188,12 @@ impl HistoryCache {
     /// A finished game, whole, as a page of the server's or the client's own copy brought it.
     pub fn game(&mut self, viewer: &str, game_id: i64) -> Option<Arc<Game>> {
         self.scope(viewer);
-        self.games.get(&game_id).cloned()
+        self.games.get(&game_id).map(|(game, _)| game.clone())
     }
 
-    pub fn put_game(&mut self, viewer: &str, game: Arc<Game>) {
+    pub fn put_game(&mut self, viewer: &str, game: Arc<Game>, now: Instant) {
         if self.viewer == viewer {
-            self.keep_game(game);
+            self.keep_game(game, now);
         }
     }
 
@@ -227,8 +228,12 @@ impl HistoryCache {
         }
     }
 
-    fn keep_game(&mut self, game: Arc<Game>) {
-        if self.games.insert(game.game_id, game.clone()).is_none() {
+    fn keep_game(&mut self, game: Arc<Game>, now: Instant) {
+        if self
+            .games
+            .insert(game.game_id, (game.clone(), now))
+            .is_none()
+        {
             self.order.push_back(game.game_id);
         }
         while self.order.len() > GAMES {
@@ -238,16 +243,20 @@ impl HistoryCache {
         }
     }
 
+    fn page_entries(&self) -> usize {
+        self.players
+            .values()
+            .flat_map(|player| &player.pages)
+            .map(|kept| kept.page.entries.len())
+            .sum()
+    }
+
     /// Lets the least recently viewed players other than `current` go while there are too many,
-    /// or too many games in their pages.
+    /// or too many games in their pages. Past that, `current`'s own pages go, those fetched longest
+    /// ago first: never the newest, which tells whether the history moved, nor the one kept last.
     fn trim(&mut self, current: &str) {
         loop {
-            let entries: usize = self
-                .players
-                .values()
-                .flat_map(|player| &player.pages)
-                .map(|kept| kept.page.entries.len())
-                .sum();
+            let entries = self.page_entries();
             if self.players.len() <= PLAYERS && entries <= GAMES {
                 return;
             }
@@ -258,10 +267,82 @@ impl HistoryCache {
                 .min_by_key(|(_, player)| player.used)
                 .map(|(puuid, _)| puuid.clone())
             else {
-                return;
+                break;
             };
             self.players.remove(&oldest);
         }
+        let Some(player) = self.players.get_mut(current) else {
+            return;
+        };
+        let mut entries: usize = player
+            .pages
+            .iter()
+            .map(|kept| kept.page.entries.len())
+            .sum();
+        // Pushed last: the page just kept.
+        let last = player.pages.len().saturating_sub(1);
+        let mut order: Vec<usize> = (0..last)
+            .filter(|&index| player.pages[index].begin != 0)
+            .collect();
+        order.sort_by_key(|&index| player.pages[index].fetched);
+        let mut going = Vec::new();
+        for index in order {
+            if entries <= GAMES {
+                break;
+            }
+            entries -= player.pages[index].page.entries.len();
+            going.push(index);
+        }
+        going.sort_unstable();
+        for index in going.into_iter().rev() {
+            player.pages.remove(index);
+        }
+    }
+}
+
+// ---- Storage: the sweep and the cleanup (`service/caches.rs`) ----
+
+impl HistoryCache {
+    /// Pages, whole games and lookups kept now.
+    pub fn entries(&self) -> usize {
+        self.page_entries() + self.games.len() + self.found.len()
+    }
+
+    /// Lets go of what can no longer be shown as it is: pages past [`OLDER_TTL`] (a newest page is
+    /// asked again long before), the players left with none, lookups past [`FOUND_TTL`], and whole
+    /// games no kept page holds that were kept that long ago. Returns how many entries went.
+    pub fn sweep(&mut self, now: Instant) -> usize {
+        let before = self.entries();
+        let old = |at: Instant| now.saturating_duration_since(at) >= OLDER_TTL;
+        for player in self.players.values_mut() {
+            player.pages.retain(|kept| !old(kept.fetched));
+        }
+        self.players.retain(|_, player| !player.pages.is_empty());
+        self.found
+            .retain(|_, (_, at)| now.saturating_duration_since(*at) < FOUND_TTL);
+        let paged: HashSet<i64> = self
+            .players
+            .values()
+            .flat_map(|player| &player.pages)
+            .flat_map(|kept| kept.page.entries.iter().flatten())
+            .map(|game| game.game_id)
+            .collect();
+        self.games
+            .retain(|id, (_, at)| paged.contains(id) || !old(*at));
+        let games = &self.games;
+        self.order.retain(|id| games.contains_key(id));
+        before - self.entries()
+    }
+
+    /// Lets everything go but whose it is. Returns how many entries went.
+    pub fn clear(&mut self) -> usize {
+        let went = self.entries();
+        let viewer = std::mem::take(&mut self.viewer);
+        *self = Self {
+            viewer,
+            ..Self::default()
+        };
+        went
     }
 }
 
@@ -507,7 +588,7 @@ mod tests {
         // A page that arrives after its account signed out is not kept for the next one.
         cache.scope("other");
         cache.put_page(ME, "a", 0, server.page(0, 50), now);
-        cache.put_game(ME, game(7));
+        cache.put_game(ME, game(7), now);
         cache.put_found(ME, "Someone#1", profile("a"), now);
         assert!(cache.page("other", "a", 0, 50, now).is_none());
         assert!(cache.game("other", 7).is_none());
@@ -625,17 +706,85 @@ mod tests {
         assert_eq!(cache.players.len(), PLAYERS);
         assert!(!cache.players.contains_key("p0") && cache.players.contains_key("p19"));
         for id in 0..GAMES as i64 + 50 {
-            cache.put_game(ME, game(id));
+            cache.put_game(ME, game(id), start);
         }
         assert_eq!((cache.games.len(), cache.order.len()), (GAMES, GAMES));
         assert!(cache.game(ME, 0).is_none() && cache.game(ME, GAMES as i64 + 49).is_some());
-        // A player paged far keeps every page while others make room.
+        // A player paged far keeps their pages while others make room, and past the cap lets go of
+        // the pages fetched longest ago: never the newest one, nor the page being read.
         let mut deep = Server::new(1000);
         for chunk in 0..14 {
-            ask(&mut cache, &mut deep, (ME, "deep"), (chunk * 50, 50), start);
+            ask(
+                &mut cache,
+                &mut deep,
+                (ME, "deep"),
+                (chunk * 50, 50),
+                start + Duration::from_secs(u64::from(chunk)),
+            );
         }
         assert!(cache.players.contains_key("deep"));
         assert_eq!(cache.players.len(), 1, "everyone else went");
+        assert!(cache.page_entries() <= GAMES, "{}", cache.page_entries());
+        let later = start + Duration::from_secs(20);
+        assert!(cache.page(ME, "deep", 0, 50, later).is_some());
+        assert!(cache.page(ME, "deep", 650, 50, later).is_some());
+        assert!(
+            cache.page(ME, "deep", 50, 50, later).is_none(),
+            "the second page, fetched longest ago after the newest, went first"
+        );
+        let asked = deep.requests;
+        ask(&mut cache, &mut deep, (ME, "deep"), (50, 50), later);
+        assert_eq!(deep.requests, asked + 1, "and is asked for again");
+    }
+
+    #[test]
+    fn a_sweep_lets_go_of_what_can_no_longer_be_shown_and_keeps_the_rest() {
+        let start = Instant::now();
+        let mut cache = HistoryCache::default();
+        let mut old = Server::new(60);
+        // Games of their own: 2060 down to 2001.
+        let mut new = Server {
+            ids: (2001..=2060).rev().collect(),
+            requests: 0,
+        };
+        ask(&mut cache, &mut old, (ME, "old"), (0, 50), start);
+        cache.put_found(ME, "Old#1", profile("old"), start);
+        cache.put_game(ME, game(1000), start);
+        let soon = start + OLDER_TTL - Duration::from_secs(60);
+        ask(&mut cache, &mut new, (ME, "new"), (0, 50), soon);
+        ask(&mut cache, &mut new, (ME, "new"), (50, 50), soon);
+        cache.put_found(ME, "New#1", profile("new"), soon);
+        assert_eq!(
+            cache.sweep(soon),
+            1,
+            "only the lookup is past its five minutes"
+        );
+
+        let at = start + OLDER_TTL;
+        // `old`'s page and the game kept alone are half an hour old; `old`'s games went with
+        // their page, `new`'s stay with theirs.
+        assert_eq!(cache.sweep(at), 50 + 50 + 1);
+        assert!(!cache.players.contains_key("old"));
+        assert!(cache.game(ME, 1000).is_none() && cache.game(ME, 60).is_none());
+        assert!(cache.game(ME, 2060).is_some() && cache.game(ME, 2001).is_some());
+        assert!(cache.page(ME, "new", 50, 50, at).is_some());
+        assert!(cache.found(ME, "New#1", soon).is_some());
+        assert_eq!(cache.order.len(), cache.games.len());
+        assert_eq!(cache.entries(), 60 + 60 + 1);
+    }
+
+    #[test]
+    fn a_cleanup_empties_the_cache_but_keeps_whose_it_is() {
+        let now = Instant::now();
+        let mut cache = HistoryCache::default();
+        let mut server = Server::new(30);
+        ask(&mut cache, &mut server, (ME, "a"), (0, 50), now);
+        cache.put_found(ME, "A#1", profile("a"), now);
+        assert_eq!(cache.clear(), 30 + 30 + 1);
+        assert_eq!((cache.entries(), cache.viewer()), (0, ME));
+        assert!(!cache.scope(ME), "still the same account's");
+        ask(&mut cache, &mut server, (ME, "a"), (0, 50), now);
+        assert_eq!(server.requests, 2, "asked for again");
     }
 
     fn summary(games: u32, wins: u32, kills: f64, deaths: f64, assists: f64) -> PlayerSummary {

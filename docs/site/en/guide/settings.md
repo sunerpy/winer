@@ -94,6 +94,19 @@ The rating scheme, custom tiers, roast titles and the basis of every rating: see
 The version, whether winer runs as administrator, the log folder, and **Updates**. winer checks for
 updates by itself after it starts and while it runs; this checks again on demand.
 
+**Storage** lists what winer keeps on your PC, how large each is and its limit: the logs, the
+window's WebView data, the game settings backups, the in-client components, the settings and
+remembered setups, update installers and the cache in memory. Where each lives is in
+[Data and privacy](/en/privacy).
+
+- **Clear cache**: removes the old logs (not the one being written), the installers an update left
+  behind and the caches in memory; the WebView's cache is in use while the window is open, so it goes
+  the next time winer starts. The game settings backups, the settings and the remembered runes and
+  spells stay. Afterwards a line under the list says what went, and how large it was.
+- Without a cleanup nothing grows past its limit either: logs keep the last 7 days and 50 MB in all,
+  the caches in memory let go of what expires, the WebView's page cache holds 32 MB at most, and
+  update installers go at the next start.
+
 ## Keyboard shortcuts
 
 | Keys             | Does                             |

@@ -72,6 +72,13 @@ export class HistoryCache {
     return this.#viewer;
   }
 
+  /** Lets go of everything shown, still the same account's (Settings › About's cleanup). */
+  clear(): void {
+    this.#lists.clear();
+    this.#details.clear();
+    this.#summaries.clear();
+  }
+
   list(viewer: string, puuid: string): HistoryList | undefined {
     return viewer === this.#viewer ? this.#lists.get(puuid) : undefined;
   }
