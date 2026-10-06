@@ -13,20 +13,22 @@
 #   uploaded.
 # - `tauri build --no-bundle` runs the frontend toolchain and Rust build scripts
 #   WITHOUT any signing material; `tauri bundle` is the only step that sees
-#   TAURI_SIGNING_PRIVATE_KEY and the per-OS Apple/Azure secrets.
+#   TAURI_SIGNING_PRIVATE_KEY and the Azure signing secrets.
 # - The signing-key guard in `preflight` fails before any 15-36 minute leg
 #   starts when the updater is enabled but the key secret is missing.
 # - Attestation runs in the no-compile `updater` job over the downloaded bytes,
 #   so no job that executes dependency code holds id-token: write.
 #
-# Out of scope: app stores, Snap/Flatpak/AUR, mobile targets, non-GitHub update
-# servers, certificate procurement, and candidate promotion (deferred until the
-# same-run profile has shipped real releases; see the reference).
+# Out of scope: app stores, other platforms, non-GitHub update servers,
+# certificate procurement, and candidate promotion (deferred until the same-run
+# profile has shipped real releases; see the reference).
 #
-# winer ships for Windows x64 only (.github/release-targets.json): one NSIS leg.
-# Its Rust workspace is the repository root, so the cache and the bundle
-# directory are the root's `target/`. scripts/install.ps1 rides along as a
-# release asset, checksummed and attested like the installer.
+# winer ships for Windows x64 only (.github/release-targets.json): one NSIS leg,
+# and nothing is built or tested for another platform. The other jobs only run
+# release tooling (release-please, minisign, gh) on Ubuntu runners. Its Rust
+# workspace is the repository root, so the cache and the bundle directory are
+# the root's `target/`. scripts/install.ps1 rides along as a release asset,
+# checksummed and attested like the installer.
 name: Release
 
 on:
@@ -191,15 +193,6 @@ jobs:
             exit 1
           fi
 
-      # ubuntu-22.04 is the glibc floor documented by Tauri for Linux bundles.
-      - name: Install Tauri Linux dependencies
-        if: matrix.platform == 'linux'
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-09-12
         with:
@@ -263,11 +256,9 @@ jobs:
           "${tauri[@]}" build --no-bundle --target "$TARGET"
 
       # Phase 2: bundling, code signing and updater signatures. The Tauri CLI
-      # imports APPLE_CERTIFICATE into a temporary keychain itself and signs the
-      # updater artifacts with TAURI_SIGNING_PRIVATE_KEY after bundling, so any
-      # bundle.windows.signCommand output is what the .sig covers. Secrets are
-      # scoped to the OS that needs them; empty values are unset because the
-      # bundler treats an empty APPLE_CERTIFICATE as a certificate to import.
+      # signs the updater artifacts with TAURI_SIGNING_PRIVATE_KEY after
+      # bundling, so any bundle.windows.signCommand output is what the .sig
+      # covers. Empty secrets are unset rather than passed as empty values.
       - name: Bundle and sign
         shell: bash
         env:
@@ -276,32 +267,17 @@ jobs:
           NODE_OPTIONS: --max_old_space_size=4096
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ matrix.platform == 'macos' && secrets.APPLE_CERTIFICATE || '' }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ matrix.platform == 'macos' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
-          APPLE_SIGNING_IDENTITY: ${{ matrix.platform == 'macos' && secrets.APPLE_SIGNING_IDENTITY || '' }}
-          APPLE_API_KEY: ${{ matrix.platform == 'macos' && secrets.APPLE_API_KEY || '' }}
-          APPLE_API_ISSUER: ${{ matrix.platform == 'macos' && secrets.APPLE_API_ISSUER || '' }}
-          APPLE_API_KEY_CONTENT: ${{ matrix.platform == 'macos' && secrets.APPLE_API_KEY_CONTENT || '' }}
-          AZURE_TENANT_ID: ${{ matrix.platform == 'windows' && secrets.AZURE_TENANT_ID || '' }}
-          AZURE_CLIENT_ID: ${{ matrix.platform == 'windows' && secrets.AZURE_CLIENT_ID || '' }}
-          AZURE_CLIENT_SECRET: ${{ matrix.platform == 'windows' && secrets.AZURE_CLIENT_SECRET || '' }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         run: |
           set -euo pipefail
           for name in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD \
-            APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY \
-            APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_CONTENT \
             AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET; do
             if [ -z "${!name:-}" ]; then
               unset "$name"
             fi
           done
-          if [ -n "${APPLE_API_KEY_CONTENT:-}" ]; then
-            # notarytool wants the App Store Connect key as a file.
-            APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
-            printf '%s\n' "$APPLE_API_KEY_CONTENT" >"$APPLE_API_KEY_PATH"
-            export APPLE_API_KEY_PATH
-            unset APPLE_API_KEY_CONTENT
-          fi
           case "$PACKAGE_MANAGER" in
             npm) tauri=(npm run tauri --) ;;
             pnpm) tauri=(pnpm tauri) ;;
@@ -310,12 +286,9 @@ jobs:
           esac
           "${tauri[@]}" bundle --target "$TARGET" --bundles "$BUNDLES"
 
-      # Copies dmg/app.tar.gz/nsis/msi/deb/rpm/AppImage (+ .sig) into dist/ with
-      # collision-free names and records name/size/sha256 per file. Fails when
-      # the updater bundle has no .sig. `python3` is the one interpreter name
-      # present on every hosted image (Ubuntu python-is-python3, Homebrew Python
-      # on macOS, the python3.exe symlink in the Windows toolcache); bare
-      # `python` is not on PATH on macos-15.
+      # Copies the NSIS installer (+ .sig) into dist/ with a collision-free name
+      # and records name/size/sha256 per file. Fails when the updater bundle has
+      # no .sig. `python3` is the python3.exe symlink in the Windows toolcache.
       - name: Collect bundles and evidence
         shell: bash
         env:
@@ -331,7 +304,6 @@ jobs:
       # The one-line installer resolves the installer by version at run time, so the copy in
       # this tag is the one published with it.
       - name: Add the install script
-        if: matrix.platform == 'windows'
         shell: bash
         run: cp scripts/install.ps1 dist/install.ps1
 

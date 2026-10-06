@@ -17,7 +17,7 @@
   "notes": [
     "Windows x64 only: one NSIS leg in release-targets.json.",
     "The Rust workspace is the repository root and the Tauri crate is app/src-tauri, so caches and bundles use the root target/.",
-    "ci.yml adds a native Windows job: the Windows-only code compiles to nothing on Linux.",
+    "ci.yml builds and tests the Rust workspace on Windows only (no Linux job): winer ships for Windows alone. The frontend and release-config jobs stay on Ubuntu runners, as they build nothing for a platform.",
     "release-please uses versioning always-bump-patch: every release before 0.1.0 bumps the patch number only.",
     "No .oxfmtignore: oxfmt reads ignorePatterns from .oxfmtrc.json and only .gitignore/.prettierignore by default."
   ]

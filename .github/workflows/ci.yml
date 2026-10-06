@@ -1,10 +1,11 @@
-# CI for winer: the plugin and the window's frontend, the Rust workspace on Linux and on Windows,
-# and the release configuration. The commands are AGENTS.md's baseline; `CI Success` is the one
-# status the ruleset on `main` requires.
+# CI for winer: the plugin and the window's frontend, the Rust workspace on Windows, and the release
+# configuration. The commands are AGENTS.md's baseline; `CI Success` is the one status the ruleset
+# on `main` requires.
 #
-# The Windows job is the proof for the Windows-only code (reading the client's command line,
-# elevation, the registry), which compiles to nothing on Linux. The release workflow's bundle leg
-# is the proof that the installer builds.
+# winer ships for Windows only, so the Rust workspace is built and tested on Windows alone; the
+# release workflow's bundle leg is the proof that the installer builds. The frontend and the release
+# configuration jobs build and test nothing for any platform (Node and Python tooling, the same
+# output on every OS), so they stay on the cheaper Ubuntu runners.
 name: CI
 
 on:
@@ -68,23 +69,15 @@ jobs:
       - name: Build
         run: pnpm build
 
-  rust:
-    name: Rust (Linux)
-    runs-on: ubuntu-22.04
+  windows:
+    name: Rust (Windows)
+    runs-on: windows-2025
     timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Install Tauri Linux dependencies
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev \
-            libsoup-3.0-dev build-essential pkg-config
 
       - name: Set up pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -115,64 +108,21 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: ". -> target"
-          shared-key: tauri-ci
+          shared-key: tauri-ci-windows
 
       - name: Format check
+        shell: bash
         run: cargo fmt --all --check
 
       - name: Clippy
+        shell: bash
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
       # In a whole-workspace build a reqwest feature the app turns on is on for every crate, so the
       # two library crates are also built and tested on their own.
       - name: Test the library crates on their own
-        run: cargo test --locked -p lcu -p winer-core
-
-      - name: Test the workspace
-        run: cargo test --locked --workspace
-
-  windows:
-    name: Rust (Windows)
-    runs-on: windows-2025
-    timeout-minutes: 45
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        with:
-          package_json_file: package.json
-
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: package.json
-          cache: pnpm
-
-      - name: Install dependencies (frozen lockfile)
-        run: pnpm install --frozen-lockfile
-
-      - name: Build the plugin and the frontend for embedding
-        run: pnpm build
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-09-12
-        with:
-          toolchain: 1.96.0
-          components: clippy
-
-      - name: Cache Rust artifacts
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: ". -> target"
-          shared-key: tauri-ci-windows
-
-      - name: Clippy
         shell: bash
-        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+        run: cargo test --locked -p lcu -p winer-core
 
       - name: Test the workspace
         shell: bash
@@ -198,7 +148,7 @@ jobs:
 
   ci-success:
     name: CI Success
-    needs: [frontend, rust, windows, config]
+    needs: [frontend, windows, config]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
