@@ -27,6 +27,8 @@ for one client build or one privilege level, it says so.
   `away` and `offline` take; the client's own identity then shows 在线, 离开 and 离线. `dnd` is
   ignored (the availability reads back unchanged; the client sets it itself during a game), and
   `mobile` is kept but shown as 在线分组, a group name, not a status. Read the value back to know.
+  On GZ100 (16.19.821.7343, 2026-10-06) `online` and `spectating` were kept as well and shown as
+  在线 and 正在观战中: whatever the client keeps, it names through the table below.
 - zh_CN `champion-summary.json`: `name` is the title the client shows (`黑暗之女`), `description` is the
   short name (`安妮`), `alias` is the English key (`Annie`).
 - Ranked: `/lol-ranked/v1/ranked-stats/{puuid}` → `queueMap.RANKED_SOLO_5x5` etc. Unranked is
@@ -102,12 +104,61 @@ Read-only, NJ100, 16.19, 2026-10-06.
 - `/lol-challenges/v1/challenges/local-player` is a map of **399** challenges by id (about 1 MB); 349
   had `currentLevel: "NONE"`. Each carries `levelToIconPath`, one token picture per level, under
   `/lol-game-data/assets/`. `summary-player-data` names the token slots in
-  `selectedChallengesString` (`"101304"` with one token; how several are joined was not seen), the
-  same tokens in `topChallenges`, and the title in `title` (`itemId`, `name`). It offers no list of
-  banner accents to choose from (`bannerId: ""`).
+  `selectedChallengesString` (`"101304"` with one token, `"101101,101205,2023005"` with three on
+  GZ100), the same tokens in `topChallenges`, the title in `title` (`itemId`, `name`) and the banner
+  in `bannerId` (below).
 - `/lol-chat/v1/me` → `lol` of an unranked account has no `rankedLeagueQueue`, `rankedLeagueTier` or
   `rankedLeagueDivision` key at all, only `rankedPrevSeasonTier: ""` and
   `rankedPrevSeasonDivision: "NA"`; `challengeTokensSelected` repeats the token string.
+
+### What friends read for a status
+
+GZ100, 16.19.821.7343, 2026-10-06, over the API and the client page (port 9223). Every write was put
+back as it was found.
+
+- The text comes from the client's own `lol-social-status` element, the same in the friends list and
+  in the player's own identity block: a game state first, else the status message as
+  `“{statusMessage}”`, else `availability_<value>` from `/fe/lol-social/trans.json`, plus
+  ` - productName` or ` - platformId` only for a friend in another product or on another shard.
+- zh_CN's `availability_mobile` is **在线分组**, the same string as the friends list's mobile group
+  (`group_label_mobile`, `dropdown_hide_mobile`: 隐藏 在线分组). None of the 53 translation files the
+  page loads has 手机在线, so no availability reads as that. The identity shows
+  `availability-icon mobile` and `status-message mobile`: 在线分组.
+- `PUT {"statusMessage": "手机在线"}` (201) read back at once and was still there 3 s later; with
+  the availability still `mobile`, the identity block showed `“手机在线”` in a
+  `status-message-quoted` span inside `status-message-wrapper mobile`. The quotation marks are
+  characters of the template, not CSS (`::before` and `::after` are `none`). A post-game room's
+  participant list, the chat server's copy of the presence, carried the message too.
+- `/lol-platform-config/v1/namespaces/LcuSocial` has `StatusesDisabled: true`; the element showed
+  the message anyway. Read from the client's code, not seen: the friend hover card prints the
+  message in the same marks, the client's own status input is off under that flag, and its idle
+  service clears a status message when the interface starts (winer's remembered presence puts it
+  back).
+- `lol.gameStatus: "mobile"` beside `availability: "mobile"` did not take (read back `outOfGame`).
+  `productName`, `product` and `platformId` in the body were ignored (201, unchanged).
+
+### Banner
+
+GZ100, 16.19.821.7343, 2026-10-06.
+
+- `/lol-regalia/v3/inventory/REGALIA_BANNER` maps every banner id (37) to `isOwned`, `purchaseDate`
+  and `items` (`assetPath`, `idSecondary`, `isSelectable`, `isTencentOnly`, `localizedName`). `1`
+  is the default (`default.png`, no name), `2` the banner of last season's rank, one item per tier
+  (`idSecondary` `UNRANKED` … `CHALLENGER`); the rest are events' banners, 580 × 1480 pictures.
+- The client's own customizer (`rcp-fe-lol-shared-components`) offers the default (`1`, type
+  `blank`), the rank banner (`2`, type `lastSeasonHighestRank`, disabled without a last-season
+  rank) and every event's banner above `2`, unowned ones greyed. Saving posts
+  `update-player-preferences` with `bannerAccent: "<id>"` and `PUT`s
+  `/lol-regalia/v2/current-summoner/regalia` with the type. An empty `bannerId` reads as the default,
+  or as the rank banner while the type is `lastSeasonHighestRank`.
+- `POST update-player-preferences` with the tokens, the title and `bannerAccent: "24"` answered 204:
+  the summary's `bannerId` (also through `summary-player-data/player/{puuid}`) and the chat
+  presence's `lol.bannerIdSelected` became `24` at once; tokens, title, regalia and the account
+  loadout's `REGALIA_BANNER_SLOT` (item 1) stayed as they were. `bannerAccent: ""` put both back to
+  empty. What the profile page and the hover card then draw was not looked at.
+- `PUT …/regalia` with `preferredBannerType: "lastSeasonHighestRank"` (201) changed the preference
+  and the presence's `regalia` (`bannerType` 1 → 2), while `bannerType` stayed `blank` for an
+  account with no last-season rank; `blank` put both back.
 
 ## Match history from the shard's server (SGP)
 

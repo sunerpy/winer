@@ -305,14 +305,17 @@ export const zhCN = {
   "tools.current": "当前：{status}",
   "tools.statusRefused": "客户端没有接受这个状态。",
   "tools.message": "个性签名",
-  "tools.messageHint": "显示在你名字下方的一行字。",
+  "tools.messageHint": "好友在你名字下方看到的一行字，客户端会给它加上引号。",
   "tools.messagePlaceholder": "写点什么",
   "tools.client": "客户端",
   "tools.restartUi": "重启客户端界面",
   "tools.restartUiHint": "只重启客户端的界面进程，登录状态和正在进行的游戏都不受影响。",
   "tools.restarted": "客户端界面正在重启",
 
-  "profile.mobileHint": "好友看到你在手机上在线。",
+  "profile.mobileHint": "好友看到手机图标，文字是客户端对这个状态的叫法“在线分组”。",
+  "profile.mobileMessage": "签名显示“手机在线”",
+  "profile.mobileMessageHint":
+    "客户端把手机状态显示成“在线分组”。打开后，没有个性签名时 winer 把签名设为“手机在线”，好友在好友列表和资料卡里看到带引号的“手机在线”；换成其他状态时撤下。",
   "profile.remember": "记住在线状态",
   "profile.rememberHint":
     "客户端启动和每局结束后会把状态改回在线；打开后，winer 会在那之后的一分钟内把状态和签名改回这里选的。",
@@ -341,7 +344,7 @@ export const zhCN = {
   "profile.background.pages": "皮肤翻页",
   "profile.background.loadFailed": "没有读到皮肤列表",
 
-  "profile.challenges.title": "挑战徽章与称号",
+  "profile.challenges.title": "挑战徽章、称号与旗帜",
   "profile.challenges.hint":
     "资料卡上的三个挑战徽章从左到右排列，每个可以选一项已经达到等级的挑战。",
   "profile.challenges.slot": "第 {n} 个徽章",
@@ -354,10 +357,14 @@ export const zhCN = {
   "profile.challenges.titleLabel": "称号",
   "profile.challenges.noTitle": "未设置",
   "profile.challenges.chooseTitle": "选择称号",
+  "profile.challenges.bannerLabel": "旗帜",
+  "profile.challenges.chooseBanner": "选择旗帜",
+  "profile.challenges.defaultBanner": "默认旗帜",
+  "profile.challenges.rankBanner": "上赛季段位旗帜",
   "profile.challenges.apply": "应用",
   "profile.challenges.reset": "还原",
-  "profile.challenges.done": "徽章和称号已更新",
-  "profile.challenges.partly": "客户端没有完全接受，下面是它现在显示的徽章和称号。",
+  "profile.challenges.done": "徽章、称号和旗帜已更新",
+  "profile.challenges.partly": "客户端没有完全接受，下面是它现在显示的徽章、称号和旗帜。",
   "profile.challenges.loadFailed": "没有读到挑战数据",
 
   "profile.rank.title": "段位伪装",

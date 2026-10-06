@@ -759,6 +759,11 @@ pub struct PresenceRule {
     pub availability: String,
     /// Put back as well when set; `None` leaves the client's own.
     pub status_message: Option<String>,
+    /// While the mobile state is chosen and no message of the user's own is set, the status
+    /// message says 手机在线: the Tencent client names that state 在线分组, while friends read a
+    /// status message as written, in quotation marks (`docs/platform-notes.md`). Another state
+    /// takes it away again. Off by default.
+    pub mobile_message: bool,
 }
 
 impl Default for PresenceRule {
@@ -767,6 +772,7 @@ impl Default for PresenceRule {
             remember: false,
             availability: "chat".into(),
             status_message: None,
+            mobile_message: false,
         }
     }
 }
@@ -796,6 +802,28 @@ impl PresenceRule {
     pub const AVAILABILITIES: [&str; 4] = ["chat", "away", "mobile", "offline"];
     /// The client's own limit on a status message is longer; the window's field stops here.
     pub const MESSAGE_LIMIT: usize = 120;
+    /// What the status message says for the mobile state under [`Self::mobile_message`], in the
+    /// Tencent client's language whatever the window's: it is there for that client's friends.
+    pub const MOBILE_MESSAGE: &str = "手机在线";
+
+    /// The status message this rule puts back over `current`, the client's: the user's own when one
+    /// is kept; for the mobile state with its message on and no own message, the mobile message,
+    /// though only where the client shows none while nothing is kept (`None` leaves the client's
+    /// own); otherwise as kept.
+    pub fn kept_message(&self, current: &str) -> Option<String> {
+        let own = self
+            .status_message
+            .as_deref()
+            .is_some_and(|message| !message.trim().is_empty());
+        if !own && self.mobile_message && self.availability == "mobile" {
+            let mobile = Self::MOBILE_MESSAGE.to_owned();
+            return match self.status_message {
+                Some(_) => Some(mobile),
+                None => current.trim().is_empty().then_some(mobile),
+            };
+        }
+        self.status_message.clone()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
@@ -842,6 +870,13 @@ impl Settings {
         }
         if let Some(message) = &presence.status_message {
             presence.status_message = Some(clip(message, PresenceRule::MESSAGE_LIMIT));
+        }
+        // While the mobile message is on, that message is winer's to put up and take down, never one
+        // the user keeps: kept, it would come back after the state had moved on.
+        if presence.mobile_message
+            && presence.status_message.as_deref() == Some(PresenceRule::MOBILE_MESSAGE)
+        {
+            presence.status_message = None;
         }
         // A combination that is not one turns the shortcut off rather than registering nonsense.
         self.general.hotkey = self.general.hotkey.as_deref().and_then(normalize_hotkey);
@@ -1117,6 +1152,7 @@ mod tests {
             remember: true,
             availability: "dnd".into(),
             status_message: Some(format!("  {}  ", "签".repeat(200))),
+            mobile_message: false,
         };
         let presence = settings.normalized().profile.presence;
         assert_eq!(presence.availability, "chat", "the client sets dnd itself");
@@ -1129,6 +1165,78 @@ mod tests {
         let mut mobile = Settings::default();
         mobile.profile.presence.availability = "mobile".into();
         assert_eq!(mobile.normalized().profile.presence.availability, "mobile");
+    }
+
+    #[test]
+    fn the_mobile_message_starts_off_and_is_never_kept_as_the_users_own() {
+        assert!(!Settings::default().profile.presence.mobile_message);
+        // A file from before the switch has it off.
+        let old: Settings = serde_json::from_str(
+            r#"{"profile":{"presence":{"remember":true,"availability":"mobile","statusMessage":null}}}"#,
+        )
+        .unwrap();
+        assert!(!old.profile.presence.mobile_message);
+
+        let mut settings = Settings::default();
+        settings.profile.presence = PresenceRule {
+            remember: true,
+            availability: "mobile".into(),
+            status_message: Some(PresenceRule::MOBILE_MESSAGE.into()),
+            mobile_message: true,
+        };
+        assert_eq!(
+            settings
+                .clone()
+                .normalized()
+                .profile
+                .presence
+                .status_message,
+            None,
+            "the message on screen when remembering was winer's"
+        );
+        settings.profile.presence.mobile_message = false;
+        assert_eq!(
+            settings
+                .normalized()
+                .profile
+                .presence
+                .status_message
+                .as_deref(),
+            Some(PresenceRule::MOBILE_MESSAGE),
+            "with the switch off it is the user's"
+        );
+    }
+
+    #[test]
+    fn the_kept_message_is_the_users_own_before_the_mobile_states() {
+        let rule = |status_message: Option<&str>, mobile_message: bool| PresenceRule {
+            remember: true,
+            availability: "mobile".into(),
+            status_message: status_message.map(str::to_owned),
+            mobile_message,
+        };
+        let mobile = Some(PresenceRule::MOBILE_MESSAGE.to_owned());
+        assert_eq!(
+            rule(Some("下班了"), true).kept_message(""),
+            Some("下班了".into())
+        );
+        assert_eq!(rule(None, true).kept_message(""), mobile);
+        assert_eq!(
+            rule(None, true).kept_message("今晚上分"),
+            None,
+            "nothing kept: the client's own stays"
+        );
+        assert_eq!(rule(Some(""), true).kept_message("今晚上分"), mobile);
+        assert_eq!(
+            rule(Some(""), false).kept_message("今晚上分"),
+            Some(String::new())
+        );
+        assert_eq!(rule(None, false).kept_message(""), None);
+        let away = PresenceRule {
+            availability: "away".into(),
+            ..rule(None, true)
+        };
+        assert_eq!(away.kept_message(""), None);
     }
 
     #[test]

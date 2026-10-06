@@ -1,6 +1,13 @@
-// The challenge tokens and the title on the player's profile: three slots, left to right, each
-// any challenge with a level, and one title from the ones the player has.
-import type { ChallengeProfile, ChallengeToken, Language, TitleChoice } from "@winer/shared";
+// The challenge tokens, the title and the banner on the player's profile: three slots, left to
+// right, each any challenge with a level, one title from the ones the player has, and one banner
+// from the ones they own.
+import type {
+  BannerChoice,
+  ChallengeProfile,
+  ChallengeToken,
+  Language,
+  TitleChoice,
+} from "@winer/shared";
 import { tierLabel } from "@winer/shared";
 import { ChevronDown, Plus, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -24,8 +31,10 @@ import {
 import { Art } from "./Art";
 
 const SLOTS = [0, 1, 2] as const;
-/** Challenge tokens are drawn for the game's dark ground. */
+/** Challenge tokens and banners are drawn for the game's dark ground. */
 const TOKEN_GROUND = "bg-glyph-plate text-glyph-ink";
+/** The client draws a banner 580 × 1480. */
+const BANNER_SHAPE = "aspect-[580/1480]";
 
 function levelOf(token: ChallengeToken, language: Language): string {
   return token.level ? tierLabel(token.level, language, true) : "";
@@ -210,17 +219,110 @@ function TitlePicker({
   );
 }
 
-/** Whether the client shows the tokens and the title asked for. */
+/** A banner by its name: the client names neither its default nor the rank banner. */
+function useBannerName(): (banner: BannerChoice | undefined, id: string) => string {
+  const t = useT();
+  return (banner, id) => {
+    if (banner?.kind === "default" || (!banner && id === "")) {
+      return t("profile.challenges.defaultBanner");
+    }
+    if (banner?.kind === "rank") return t("profile.challenges.rankBanner");
+    return banner?.name || `#${id}`;
+  };
+}
+
+/** The banner shown, and every one the player can choose, as tall tiles of the client's art. */
+function BannerPicker({
+  banners,
+  value,
+  onChange,
+}: {
+  banners: readonly BannerChoice[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const t = useT();
+  const bannerName = useBannerName();
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLDivElement>(null);
+  const chosen = banners.find((banner) => banner.id === value);
+  return (
+    <div ref={anchor}>
+      <Button
+        size="sm"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <Art
+          path={chosen?.art}
+          alt=""
+          ground={TOKEN_GROUND}
+          className={cx("h-6 rounded-[2px]", BANNER_SHAPE)}
+        />
+        {bannerName(chosen, value)}
+        <ChevronDown size={13} strokeWidth={2} aria-hidden />
+      </Button>
+      <Popover
+        open={open}
+        onClose={() => setOpen(false)}
+        anchor={anchor}
+        placement="bottom-end"
+        className="w-[336px] p-2"
+        label={t("profile.challenges.chooseBanner")}
+      >
+        <ul className="grid max-h-[360px] grid-cols-5 gap-1 overflow-y-auto pr-1">
+          {banners.map((banner) => {
+            const name = bannerName(banner, banner.id);
+            const selected = banner.id === value;
+            return (
+              <li key={banner.id}>
+                <button
+                  type="button"
+                  aria-pressed={selected}
+                  aria-label={name}
+                  title={name}
+                  onClick={() => {
+                    onChange(banner.id);
+                    setOpen(false);
+                  }}
+                  className={cx(
+                    "flex w-full flex-col items-center gap-1 rounded-6 p-1 hover-wash",
+                    selected && "bg-accent-soft",
+                  )}
+                >
+                  <Art
+                    path={banner.art}
+                    alt=""
+                    ground={TOKEN_GROUND}
+                    className={cx("w-full rounded-4", BANNER_SHAPE)}
+                  />
+                  <span className="w-full truncate text-center text-[10.5px] text-fg-muted">
+                    {name}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </Popover>
+    </div>
+  );
+}
+
+/** Whether the client shows the tokens, the title and the banner asked for (`null`: not asked). */
 function shows(
   profile: ChallengeProfile,
   tokens: readonly number[],
   title: number | null,
+  banner: string | null,
 ): boolean {
   const shown = profile.tokens.map((token) => token.id);
   return (
     shown.length === tokens.length &&
     shown.every((id, index) => id === tokens[index]) &&
-    (title === null || profile.title?.id === title)
+    (title === null || profile.title?.id === title) &&
+    (banner === null || profile.banner === banner)
   );
 }
 
@@ -232,6 +334,8 @@ export function ChallengePanel() {
   const [shown, setShown] = useState<ChallengeProfile | null>(null);
   const [slots, setSlots] = useState<(number | null)[]>([null, null, null]);
   const [title, setTitle] = useState<number | null>(null);
+  /** The banner chosen here: empty for the default. */
+  const [banner, setBanner] = useState("");
   const [saving, setSaving] = useState(false);
   const [partly, setPartly] = useState(false);
 
@@ -239,6 +343,7 @@ export function ChallengePanel() {
     setShown(data);
     setSlots(SLOTS.map((index) => data.tokens[index]?.id ?? null));
     setTitle(data.title?.id ?? null);
+    setBanner(data.banner);
   };
   useEffect(() => {
     if (profile.data) take(profile.data);
@@ -252,10 +357,13 @@ export function ChallengePanel() {
     return map;
   }, [shown]);
   const chosen = slots.filter((id): id is number => id !== null);
+  /** The banner goes out only when it changed: the regalia need not be touched otherwise. */
+  const bannerChange = shown !== null && banner !== shown.banner ? banner : null;
   const changed =
     shown !== null &&
     (chosen.join() !== shown.tokens.map((token) => token.id).join() ||
-      title !== (shown.title?.id ?? null));
+      title !== (shown.title?.id ?? null) ||
+      bannerChange !== null);
 
   const apply = async () => {
     setSaving(true);
@@ -263,8 +371,9 @@ export function ChallengePanel() {
       const result = await store.backend.call("set_challenge_profile", {
         challengeIds: chosen,
         titleId: title,
+        bannerId: bannerChange,
       });
-      const took = shows(result, chosen, title);
+      const took = shows(result, chosen, title, bannerChange);
       take(result);
       setPartly(!took);
       if (took) toast(t("profile.challenges.done"), "ok");
@@ -315,6 +424,11 @@ export function ChallengePanel() {
           <Row label={t("profile.challenges.titleLabel")} className="mt-1">
             <TitlePicker titles={shown.titles} value={title} onChange={setTitle} />
           </Row>
+          {shown.banners.length > 0 && (
+            <Row label={t("profile.challenges.bannerLabel")}>
+              <BannerPicker banners={shown.banners} value={banner} onChange={setBanner} />
+            </Row>
+          )}
           {partly && (
             <p role="alert" className="pb-2 text-[12px] leading-4 text-warning">
               {t("profile.challenges.partly")}

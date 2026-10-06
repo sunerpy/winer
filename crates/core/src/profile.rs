@@ -1,7 +1,7 @@
 //! What friends see of the player, and what winer keeps there for them: the profile background,
-//! the challenge tokens and title, the rank in the friends list and the chat status put back after
-//! the client resets it. The client's documents go in and the window's views come out; the
-//! requests themselves are the service's.
+//! the challenge tokens, title and banner, the rank in the friends list and the chat status put
+//! back after the client resets it. The client's documents go in and the window's views come out;
+//! the requests themselves are the service's.
 
 use std::{
     collections::HashMap,
@@ -124,11 +124,13 @@ pub struct ClientChallenge {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ChallengeSummary {
-    /// The tokens in their slots as one string of ids: `101304` for one.
+    /// The tokens in their slots as one string of ids, comma-joined: `101101,101205,2023005`.
     pub selected_challenges_string: String,
     /// The same tokens, described.
     pub top_challenges: Vec<ClientChallenge>,
     pub title: Option<ClientTitle>,
+    /// The banner chosen last, by its id in the regalia's inventory; empty while none is.
+    pub banner_id: String,
 }
 
 /// A title of `/lol-challenges/v2/titles/local-player`, or the summary's current one.
@@ -170,6 +172,10 @@ pub struct ChallengeProfile {
     /// Every challenge with a level, the highest first: what a slot can hold.
     pub challenges: Vec<ChallengeToken>,
     pub titles: Vec<TitleChoice>,
+    /// The banner the profile shows, as the id of one of `banners`: empty for the default.
+    pub banner: String,
+    /// What the banner can be (`banner_choices`); empty when the client lists no banners.
+    pub banners: Vec<BannerChoice>,
 }
 
 /// The ids in `selectedChallengesString`, in slot order. One token reads `101304`; whatever stands
@@ -206,6 +212,8 @@ pub fn challenge_profile(
     challenges: &HashMap<String, ClientChallenge>,
     summary: &ChallengeSummary,
     titles: &[ClientTitle],
+    banners: &HashMap<String, ClientBanner>,
+    regalia: &Regalia,
 ) -> ChallengeProfile {
     let mut known: HashMap<i64, &ClientChallenge> = HashMap::new();
     for challenge in challenges.values().chain(&summary.top_challenges) {
@@ -242,6 +250,7 @@ pub fn challenge_profile(
             });
         }
     }
+    let banner = shown_banner(&summary.banner_id, &regalia.preferred_banner_type);
     ChallengeProfile {
         tokens,
         title: summary
@@ -254,6 +263,8 @@ pub fn challenge_profile(
             }),
         challenges: choices,
         titles: choices_of_title,
+        banners: banner_choices(banners, regalia, &banner),
+        banner,
     }
 }
 
@@ -270,24 +281,211 @@ pub fn check_tokens(tokens: &[i64]) -> Result<(), String> {
     Ok(())
 }
 
-/// The body of `POST /lol-challenges/v1/update-player-preferences`: the tokens in slot order, and
-/// the title by its `itemId`, which the client takes as a string.
-pub fn preferences_request(tokens: &[i64], title: Option<i64>) -> Value {
+/// The body of `POST /lol-challenges/v1/update-player-preferences`: the tokens in slot order, the
+/// title by its `itemId`, which the client takes as a string, and the banner as `bannerAccent`, an
+/// empty one for the default (`docs/platform-notes.md`).
+pub fn preferences_request(tokens: &[i64], title: Option<i64>, banner: Option<&str>) -> Value {
     let mut body = json!({ "challengeIds": tokens });
     if let Some(title) = title {
         body["title"] = json!(title.to_string());
+    }
+    if let Some(banner) = banner {
+        body["bannerAccent"] = json!(banner);
     }
     body
 }
 
 /// Whether the client shows what was asked for.
-pub fn shows(profile: &ChallengeProfile, tokens: &[i64], title: Option<i64>) -> bool {
+pub fn shows(
+    profile: &ChallengeProfile,
+    tokens: &[i64],
+    title: Option<i64>,
+    banner: Option<&str>,
+) -> bool {
     profile
         .tokens
         .iter()
         .map(|token| token.id)
         .eq(tokens.iter().copied())
         && title.is_none_or(|id| profile.title.as_ref().is_some_and(|shown| shown.id == id))
+        && banner.is_none_or(|id| profile.banner == id)
+}
+
+// ---- Banner ------------------------------------------------------------------------------------
+
+/// The client's own default banner. A summary that names it, or names none, shows it, unless the
+/// regalia draws the rank banner (`shown_banner`).
+const DEFAULT_BANNER: &str = "1";
+/// The banner of last season's highest rank, drawn in that tier's art.
+pub const RANK_BANNER: &str = "2";
+/// How the regalia draws the banner: plain for the default and every event's, the tier for the
+/// rank banner.
+const BLANK_TYPE: &str = "blank";
+const RANK_TYPE: &str = "lastSeasonHighestRank";
+
+/// One banner of `/lol-regalia/v3/inventory/REGALIA_BANNER`, a map by id of every banner there is,
+/// owned or not.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ClientBanner {
+    pub is_owned: bool,
+    /// One per variant: the rank banner has one per tier (`idSecondary`), the others one.
+    pub items: Vec<ClientBannerItem>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ClientBannerItem {
+    pub id: String,
+    /// The tier of a rank banner's variant (`GOLD`); empty for the others.
+    pub id_secondary: String,
+    pub asset_path: String,
+    pub is_selectable: bool,
+    /// Empty for the default and the rank banner.
+    pub localized_name: String,
+}
+
+/// `/lol-regalia/v2/current-summoner/regalia`, the part a banner needs.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Regalia {
+    /// `blank` or `lastSeasonHighestRank`; empty while unread.
+    pub preferred_banner_type: String,
+    pub preferred_crest_type: String,
+    pub selected_prestige_crest: i64,
+    /// `None` without a ranked tier last season, when the client offers no rank banner.
+    pub last_season_highest_rank: Option<String>,
+}
+
+/// What a banner is, which also says how the window names it: the client names neither its
+/// default nor the rank banner.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum BannerKind {
+    Default,
+    Rank,
+    Event,
+}
+
+/// A banner the profile can show.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct BannerChoice {
+    /// What `bannerAccent` takes; empty for the default.
+    pub id: String,
+    pub kind: BannerKind,
+    /// As the client names it; empty for the default and the rank banner.
+    pub name: String,
+    /// An LCU asset path; banners are drawn 580 × 1480.
+    pub art: String,
+}
+
+/// The banner the profile shows, as a choice's id, read the way the client's own customizer reads
+/// it: a summary naming none leaves it to the regalia's type, and one naming the default is the
+/// default.
+pub fn shown_banner(banner_id: &str, banner_type: &str) -> String {
+    match banner_id {
+        "" if banner_type == RANK_TYPE => RANK_BANNER.to_owned(),
+        "" | DEFAULT_BANNER => String::new(),
+        id => id.to_owned(),
+    }
+}
+
+/// What the banner can be, as the client's customizer offers it: its default first, the rank
+/// banner when there is a rank to show (or it is the one shown), then every event's banner the
+/// player owns, by id. The banner shown is listed even when it is no longer owned, so the window
+/// can draw it. Nothing at all when the client lists no banners.
+pub fn banner_choices(
+    inventory: &HashMap<String, ClientBanner>,
+    regalia: &Regalia,
+    shown: &str,
+) -> Vec<BannerChoice> {
+    if inventory.is_empty() {
+        return Vec::new();
+    }
+    fn selectable(banner: &ClientBanner) -> Option<&ClientBannerItem> {
+        banner.items.iter().find(|item| item.is_selectable)
+    }
+    let mut choices = vec![BannerChoice {
+        id: String::new(),
+        kind: BannerKind::Default,
+        name: String::new(),
+        art: inventory
+            .get(DEFAULT_BANNER)
+            .and_then(selectable)
+            .map(|item| item.asset_path.clone())
+            .unwrap_or_default(),
+    }];
+    let tier = regalia
+        .last_season_highest_rank
+        .as_deref()
+        .filter(|tier| !tier.is_empty());
+    if let Some(banner) = inventory.get(RANK_BANNER)
+        && (tier.is_some() || shown == RANK_BANNER)
+    {
+        let art = tier
+            .and_then(|tier| {
+                banner
+                    .items
+                    .iter()
+                    .find(|item| item.id_secondary.eq_ignore_ascii_case(tier))
+            })
+            .or_else(|| selectable(banner));
+        choices.push(BannerChoice {
+            id: RANK_BANNER.to_owned(),
+            kind: BannerKind::Rank,
+            name: String::new(),
+            art: art.map(|item| item.asset_path.clone()).unwrap_or_default(),
+        });
+    }
+    let mut events: Vec<(u64, BannerChoice)> = inventory
+        .iter()
+        .filter_map(|(id, banner)| {
+            let number = id.parse::<u64>().ok().filter(|number| *number > 2)?;
+            let item = selectable(banner)?;
+            (banner.is_owned || id == shown).then(|| {
+                let choice = BannerChoice {
+                    id: id.clone(),
+                    kind: BannerKind::Event,
+                    name: item.localized_name.clone(),
+                    art: item.asset_path.clone(),
+                };
+                (number, choice)
+            })
+        })
+        .collect();
+    events.sort_by_key(|(number, _)| *number);
+    choices.extend(events.into_iter().map(|(_, choice)| choice));
+    choices
+}
+
+/// A banner's id as `bannerAccent` takes it: digits, or nothing for the default.
+pub fn check_banner(id: &str) -> Result<(), String> {
+    if id.len() <= 12 && id.chars().all(|c| c.is_ascii_digit()) {
+        Ok(())
+    } else {
+        Err(format!("{id} is not a banner"))
+    }
+}
+
+/// The body of `PUT /lol-regalia/v2/current-summoner/regalia` that draws `banner` the way it is
+/// drawn, the crest as it was, as the client's customizer saves it; `None` when the regalia
+/// already draws it so, or was not read.
+pub fn regalia_request(regalia: &Regalia, banner: &str) -> Option<Value> {
+    let wanted = if banner == RANK_BANNER {
+        RANK_TYPE
+    } else {
+        BLANK_TYPE
+    };
+    (!regalia.preferred_crest_type.is_empty() && regalia.preferred_banner_type != wanted).then(
+        || {
+            json!({
+                "preferredCrestType": regalia.preferred_crest_type,
+                "preferredBannerType": wanted,
+                "selectedPrestigeCrest": regalia.selected_prestige_crest,
+            })
+        },
+    )
 }
 
 // ---- Rank in the friends list ------------------------------------------------------------------
@@ -402,6 +600,25 @@ const REFUSED_WITHIN: Duration = Duration::from_secs(10);
 /// Corrections refused in a row before winer stops sending them.
 const MAX_REFUSALS: u8 = 3;
 
+/// The status message that goes with the mobile state under the mobile-message switch (`on`):
+/// [`PresenceRule::MOBILE_MESSAGE`] once the client shows that state with no message, nothing where
+/// winer's no longer belongs (another state, or the switch off). `None` leaves the message as it
+/// is, which a message of the user's own always is, and so is any while the client sets the state
+/// itself (`dnd`).
+pub fn mobile_message_for(availability: &str, current: &str, on: bool) -> Option<String> {
+    if !PresenceRule::AVAILABILITIES.contains(&availability) {
+        return None;
+    }
+    if on && availability == "mobile" {
+        current
+            .trim()
+            .is_empty()
+            .then(|| PresenceRule::MOBILE_MESSAGE.to_owned())
+    } else {
+        (current == PresenceRule::MOBILE_MESSAGE).then(String::new)
+    }
+}
+
 /// The client sets the status itself from champ select to the end of the game (`dnd`).
 pub fn client_owns_status(phase: Phase) -> bool {
     matches!(
@@ -509,8 +726,8 @@ impl Keeper {
     }
 
     /// What puts `me` right under `settings`: the disguised rank whenever it is on, the remembered
-    /// status and message only inside the window and outside a game, never over the client's own
-    /// `dnd`. `None` when nothing needs to change.
+    /// status and message (`PresenceRule::kept_message`) only inside the window and outside a game,
+    /// never over the client's own `dnd`. `None` when nothing needs to change.
     pub fn plan(
         &self,
         me: &ChatMe,
@@ -540,8 +757,8 @@ impl Keeper {
                 body.insert("availability".into(), json!(rule.availability));
                 availability = Some(rule.availability.clone());
             }
-            if let Some(message) = &rule.status_message
-                && *message != me.status_message
+            if let Some(message) = rule.kept_message(&me.status_message)
+                && message != me.status_message
             {
                 body.insert("statusMessage".into(), json!(message));
             }
@@ -660,7 +877,7 @@ mod tests {
         let mut summary: ChallengeSummary = fixture("live/profile/challenges-summary.json");
         let titles: Vec<ClientTitle> = fixture("live/profile/titles-local-player.json");
 
-        let profile = challenge_profile(&challenges, &summary, &titles);
+        let profile = challenge_profile(&challenges, &summary, &titles, &banners(), &regalia());
         assert_eq!(profile.tokens.len(), 1);
         let token = &profile.tokens[0];
         assert_eq!(
@@ -697,7 +914,13 @@ mod tests {
         // A token the local list does not describe is still named from the summary, and one
         // neither knows still holds its slot.
         summary.selected_challenges_string = "999,101304".into();
-        let profile = challenge_profile(&HashMap::new(), &summary, &titles);
+        let profile = challenge_profile(
+            &HashMap::new(),
+            &summary,
+            &titles,
+            &HashMap::new(),
+            &Regalia::default(),
+        );
         assert_eq!(
             profile
                 .tokens
@@ -706,17 +929,31 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![(999, ""), (101304, "闪电战")]
         );
+        assert_eq!(profile.banner, "");
+        assert!(
+            profile.banners.is_empty(),
+            "no banners where the client lists none"
+        );
     }
 
     #[test]
     fn preferences_go_out_in_slot_order_with_the_title_as_text() {
         assert_eq!(
-            preferences_request(&[505005, 101304], Some(1436)),
+            preferences_request(&[505005, 101304], Some(1436), None),
             json!({ "challengeIds": [505005, 101304], "title": "1436" })
         );
         assert_eq!(
-            preferences_request(&[], None),
+            preferences_request(&[], None, None),
             json!({ "challengeIds": [] })
+        );
+        assert_eq!(
+            preferences_request(&[101101], None, Some("24")),
+            json!({ "challengeIds": [101101], "bannerAccent": "24" })
+        );
+        assert_eq!(
+            preferences_request(&[101101], None, Some(""))["bannerAccent"],
+            "",
+            "the default goes out as an empty accent, which the client reads back as none"
         );
         assert!(check_tokens(&[1, 2, 3]).is_ok());
         assert!(check_tokens(&[1, 2, 3, 4]).is_err());
@@ -728,12 +965,151 @@ mod tests {
     fn a_profile_shows_what_was_asked_only_slot_for_slot() {
         let challenges: HashMap<String, ClientChallenge> =
             fixture("live/profile/challenges-local-player.json");
-        let summary: ChallengeSummary = fixture("live/profile/challenges-summary.json");
-        let profile = challenge_profile(&challenges, &summary, &[]);
-        assert!(shows(&profile, &[101304], Some(1436)));
-        assert!(shows(&profile, &[101304], None));
-        assert!(!shows(&profile, &[101304, 505005], Some(1436)));
-        assert!(!shows(&profile, &[101304], Some(1)));
+        let mut summary: ChallengeSummary = fixture("live/profile/challenges-summary.json");
+        let profile = challenge_profile(&challenges, &summary, &[], &banners(), &regalia());
+        assert!(shows(&profile, &[101304], Some(1436), None));
+        assert!(shows(&profile, &[101304], None, Some("")));
+        assert!(!shows(&profile, &[101304, 505005], Some(1436), None));
+        assert!(!shows(&profile, &[101304], Some(1), None));
+        assert!(!shows(&profile, &[101304], None, Some("24")));
+
+        summary.banner_id = "24".into();
+        let profile = challenge_profile(&challenges, &summary, &[], &banners(), &regalia());
+        assert!(shows(&profile, &[101304], Some(1436), Some("24")));
+        assert!(!shows(&profile, &[101304], Some(1436), Some("")));
+    }
+
+    fn banners() -> HashMap<String, ClientBanner> {
+        fixture("live/profile/regalia-banners.json")
+    }
+
+    fn regalia() -> Regalia {
+        fixture("live/profile/regalia.json")
+    }
+
+    #[test]
+    fn the_banner_picker_offers_the_default_and_the_banners_the_player_owns() {
+        let regalia = regalia();
+        let choices = banner_choices(&banners(), &regalia, "");
+        assert_eq!(
+            choices
+                .iter()
+                .map(|choice| (choice.id.as_str(), choice.kind, choice.name.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("", BannerKind::Default, ""),
+                ("6", BannerKind::Event, "北极星(2023)贵族旗帜"),
+                ("24", BannerKind::Event, "魄罗之王的旗帜"),
+            ],
+            "no rank banner without last season's rank, and no banner the player does not own"
+        );
+        assert_eq!(
+            choices[0].art,
+            "/lol-game-data/assets/ASSETS/Regalia/BannerSkins/default.png"
+        );
+        assert_eq!(
+            choices[2].art,
+            "/lol-game-data/assets/ASSETS/Regalia/BannerSkins/ARAM_Banner.png"
+        );
+
+        // With a rank last season, its banner comes second, in that tier's art.
+        let ranked = Regalia {
+            last_season_highest_rank: Some("GOLD".into()),
+            ..regalia.clone()
+        };
+        let choices = banner_choices(&banners(), &ranked, "");
+        assert_eq!(
+            (choices[1].id.as_str(), choices[1].kind),
+            (RANK_BANNER, BannerKind::Rank)
+        );
+        assert!(choices[1].art.ends_with("/gold.png"), "{}", choices[1].art);
+
+        // The banner shown is listed even when it is not owned, so the window can draw it.
+        let shown = banner_choices(&banners(), &regalia, "3");
+        assert!(shown.iter().any(|choice| choice.id == "3"));
+        assert!(banner_choices(&HashMap::new(), &regalia, "").is_empty());
+    }
+
+    #[test]
+    fn the_banner_shown_is_read_as_the_clients_customizer_reads_it() {
+        assert_eq!(shown_banner("", "blank"), "", "none chosen: the default");
+        assert_eq!(shown_banner("1", "blank"), "", "the default by its id");
+        assert_eq!(shown_banner("24", "blank"), "24");
+        assert_eq!(
+            shown_banner("", "lastSeasonHighestRank"),
+            RANK_BANNER,
+            "none chosen and drawn by rank: the rank banner"
+        );
+        assert_eq!(shown_banner("24", "lastSeasonHighestRank"), "24");
+        assert_eq!(shown_banner("1", "lastSeasonHighestRank"), "");
+    }
+
+    #[test]
+    fn a_banner_changes_the_regalia_only_where_it_is_drawn_otherwise() {
+        let regalia = regalia();
+        assert_eq!(regalia_request(&regalia, "24"), None, "drawn plain already");
+        assert_eq!(regalia_request(&regalia, ""), None);
+        assert_eq!(
+            regalia_request(&regalia, RANK_BANNER),
+            Some(json!({
+                "preferredCrestType": "prestige",
+                "preferredBannerType": "lastSeasonHighestRank",
+                "selectedPrestigeCrest": 14
+            }))
+        );
+        let by_rank = Regalia {
+            preferred_banner_type: "lastSeasonHighestRank".into(),
+            ..regalia
+        };
+        assert_eq!(
+            regalia_request(&by_rank, "24").unwrap()["preferredBannerType"],
+            "blank"
+        );
+        assert_eq!(
+            regalia_request(&Regalia::default(), RANK_BANNER),
+            None,
+            "a regalia not read is not written"
+        );
+        assert!(check_banner("").is_ok());
+        assert!(check_banner("24").is_ok());
+        assert!(check_banner("2a").is_err());
+        assert!(check_banner("-1").is_err());
+    }
+
+    #[test]
+    fn the_mobile_message_goes_up_with_the_mobile_state_and_down_after_it() {
+        let mobile = PresenceRule::MOBILE_MESSAGE;
+        assert_eq!(
+            mobile_message_for("mobile", "", true),
+            Some(mobile.to_owned())
+        );
+        assert_eq!(
+            mobile_message_for("mobile", "今晚上分", true),
+            None,
+            "the user's own message stays"
+        );
+        assert_eq!(
+            mobile_message_for("mobile", mobile, true),
+            None,
+            "up already"
+        );
+        assert_eq!(
+            mobile_message_for("chat", mobile, true),
+            Some(String::new()),
+            "another state takes it down"
+        );
+        assert_eq!(mobile_message_for("away", "今晚上分", true), None);
+        assert_eq!(
+            mobile_message_for("mobile", mobile, false),
+            Some(String::new()),
+            "switched off, winer's message goes"
+        );
+        assert_eq!(mobile_message_for("mobile", "", false), None);
+        assert_eq!(
+            mobile_message_for("dnd", mobile, true),
+            None,
+            "in a game the client sets the state, and the message waits"
+        );
     }
 
     #[test]
@@ -849,6 +1225,7 @@ mod tests {
             remember: true,
             availability: "offline".into(),
             status_message: Some("今晚上分".into()),
+            mobile_message: false,
         };
         assert_eq!(
             keeper.plan(&me, &settings, Phase::None, now),
@@ -881,6 +1258,58 @@ mod tests {
         assert_eq!(
             fix.body,
             json!({ "availability": "offline", "statusMessage": "下班了" })
+        );
+    }
+
+    #[test]
+    fn the_keeper_puts_the_mobile_message_back_with_the_mobile_state() {
+        let now = Instant::now();
+        let mut keeper = Keeper::default();
+        keeper.open_window(now);
+        let mut settings = ProfileSettings {
+            presence: PresenceRule {
+                remember: true,
+                availability: "mobile".into(),
+                status_message: None,
+                mobile_message: true,
+            },
+            ..ProfileSettings::default()
+        };
+        // The client came back online with no message.
+        let mut me = chat_me();
+        me.status_message = String::new();
+        let fix = keeper.plan(&me, &settings, Phase::None, now).unwrap();
+        assert_eq!(
+            fix.body,
+            json!({ "availability": "mobile", "statusMessage": PresenceRule::MOBILE_MESSAGE })
+        );
+
+        // A message the client shows while none is kept is left, as without the mobile message.
+        me.status_message = "今晚上分".into();
+        assert_eq!(
+            keeper.plan(&me, &settings, Phase::None, now).unwrap().body,
+            json!({ "availability": "mobile" })
+        );
+        // One the user keeps comes back instead of the mobile message.
+        settings.presence.status_message = Some("下班了".into());
+        assert_eq!(
+            keeper.plan(&me, &settings, Phase::None, now).unwrap().body,
+            json!({ "availability": "mobile", "statusMessage": "下班了" })
+        );
+        // Kept empty, the state's message goes up whatever the client shows.
+        settings.presence.status_message = Some(String::new());
+        assert_eq!(
+            keeper.plan(&me, &settings, Phase::None, now).unwrap().body,
+            json!({ "availability": "mobile", "statusMessage": PresenceRule::MOBILE_MESSAGE })
+        );
+
+        // Another remembered state brings no mobile message.
+        settings.presence.availability = "away".into();
+        settings.presence.status_message = None;
+        me.status_message = String::new();
+        assert_eq!(
+            keeper.plan(&me, &settings, Phase::None, now).unwrap().body,
+            json!({ "availability": "away" })
         );
     }
 

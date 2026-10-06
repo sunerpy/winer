@@ -312,7 +312,8 @@ export const en: Record<MessageKey, string> = {
   "tools.current": "Now: {status}",
   "tools.statusRefused": "The client did not take that status.",
   "tools.message": "Status message",
-  "tools.messageHint": "The line under your name.",
+  "tools.messageHint":
+    "The line friends see under your name; the client puts it in quotation marks.",
   "tools.messagePlaceholder": "Say something",
   "tools.client": "Client",
   "tools.restartUi": "Restart the client UI",
@@ -320,7 +321,11 @@ export const en: Record<MessageKey, string> = {
     "Restarts only the client's window; your sign-in and any running game are untouched.",
   "tools.restarted": "The client UI is restarting",
 
-  "profile.mobileHint": "Friends see you online on mobile.",
+  "profile.mobileHint":
+    'Friends see a phone icon and 在线分组 ("online group"), the client\'s own wording for this state.',
+  "profile.mobileMessage": "Say 手机在线 in my status message",
+  "profile.mobileMessageHint":
+    'The client words the mobile state 在线分组 ("online group"). With this on and no status message of your own, winer sets the message to 手机在线 ("on mobile"), which friends see in quotation marks in their friends list and on your hover card; another status takes it away.',
   "profile.remember": "Remember my status",
   "profile.rememberHint":
     "The client sets you back to online when it starts and after each game; with this on, winer puts the status and message chosen here back within a minute of that.",
@@ -349,7 +354,7 @@ export const en: Record<MessageKey, string> = {
   "profile.background.pages": "Skin pages",
   "profile.background.loadFailed": "Could not read the skins",
 
-  "profile.challenges.title": "Challenge tokens and title",
+  "profile.challenges.title": "Challenge tokens, title and banner",
   "profile.challenges.hint":
     "The three challenge tokens on your profile, left to right; each can be any challenge you have reached a level in.",
   "profile.challenges.slot": "Token {n}",
@@ -362,9 +367,13 @@ export const en: Record<MessageKey, string> = {
   "profile.challenges.titleLabel": "Title",
   "profile.challenges.noTitle": "None",
   "profile.challenges.chooseTitle": "Choose a title",
+  "profile.challenges.bannerLabel": "Banner",
+  "profile.challenges.chooseBanner": "Choose a banner",
+  "profile.challenges.defaultBanner": "Default banner",
+  "profile.challenges.rankBanner": "Last season's rank",
   "profile.challenges.apply": "Apply",
   "profile.challenges.reset": "Undo changes",
-  "profile.challenges.done": "Tokens and title updated",
+  "profile.challenges.done": "Tokens, title and banner updated",
   "profile.challenges.partly": "The client did not take all of it; below is what it shows now.",
   "profile.challenges.loadFailed": "Could not read the challenges",
 

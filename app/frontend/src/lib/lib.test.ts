@@ -74,7 +74,7 @@ const SETTINGS = {
   },
   profile: {
     rankDisguise: { enabled: false, queue: "solo", tier: "DIAMOND", division: "I" },
-    presence: { remember: false, availability: "chat", statusMessage: null },
+    presence: { remember: false, availability: "chat", statusMessage: null, mobileMessage: false },
   },
   builds: { enabled: true, riftSource: "tencent" },
 } satisfies Settings;

@@ -5,9 +5,15 @@
 The actions on the **Tools** page act on the client directly:
 
 - **Status**: online, away, mobile or invisible, the same as switching it in the client; invisible
-  shows as offline to friends, and mobile shows you online on the phone app. A status the client
-  set itself (in game, say) shows as the current one.
-- **Status message**: the line under your name.
+  shows as offline to friends. Mobile shows friends a phone icon, but the Tencent client words the
+  state 在线分组 ("online group"). A status the client set itself (in game, say) shows as the
+  current one.
+- **Say 手机在线 in my status message**: a switch that appears while mobile is chosen. With it on
+  and no status message of your own, winer sets the message to 手机在线 ("on mobile"), which friends
+  see in quotation marks in their friends list and on your hover card; another status takes it
+  away, and a message you wrote yourself is left alone. With **Remember my status** on, it comes
+  back with the status. Off by default.
+- **Status message**: the line friends see under your name; the client puts it in quotation marks.
 - **Remember my status**: the client sets you back to online when it starts and after each game.
   With this on, winer puts the status and message chosen here back within a minute of connecting to
   the client and of each game ending. It does so once per change; if the client undoes it three
@@ -23,11 +29,13 @@ Pick one and press **Set as background**. winer then reads the client's profile 
 may refuse a skin you do not own; if the background did not change, the page says so, and what the
 client shows is what counts.
 
-### Challenge tokens and title
+### Challenge tokens, title and banner
 
 The three challenge tokens on your profile, left to right: each can be any challenge you have
-reached a level in, or empty. The title is one of those you have earned. After **Apply** the page
-shows the tokens and title the client actually took, and says so when it did not take all of them.
+reached a level in, or empty. The title is one of those you have earned. The banner is the client's
+default or one you own, and the banner of last season's rank when you had a ranked tier last
+season. After **Apply** the page shows the tokens, title and banner the client actually took, and
+says so when it did not take all of them.
 
 ### Rank disguise
 

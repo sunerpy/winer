@@ -102,6 +102,8 @@ pub fn typescript() -> String {
         profile::ChallengeProfile,
         profile::ChallengeToken,
         profile::TitleChoice,
+        profile::BannerChoice,
+        profile::BannerKind,
         backup::BackupInfo,
         backup::BackupChannel,
         plugin::PluginStatus,
