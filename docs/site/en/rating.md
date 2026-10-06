@@ -55,24 +55,28 @@ whose history is hidden or failed to load gets no tier.
 By default one line per teammate:
 
 ```text
-{standing}: {champion} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}
+{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}
 ```
 
 For example:
 
 ```text
 [Blue side] winer rating
-Rift Demigod: Ahri Light in the Dark, 60% in 20 games, KDA 4.1, score 7.4 [Patch Champion], the other team is filing a boosting report
-Rift Civil Servant: Garen Rift Sweeper, 50% in 20 games, KDA 2.9, score 5.2, not flashy, but every job got done
+Rift Demigod: P1 Light in the Dark, 60% in 20 games, KDA 4.1, score 7.4 [Patch Champion], the other team is filing a boosting report
+Rift Civil Servant: P2 Rift Sweeper, 50% in 20 games, KDA 2.9, score 5.2, not flashy, but every job got done
 ```
 
 - The first line names your side and "winer rating", followed by the opening line if you wrote one.
+- `{seat}` is the teammate's place in your team's list in champ select, counted from the top: P1 to
+  P5 (1L to 5L in Chinese). A line names the seat and the player, not the champion: champions can
+  still change during champ select, seats do not.
 - `{title}` is the recent-form title, empty without one; `{quip}` is the tier's quip. Every tier of
   the built-in schemes has one (Rift five has three per tier in Chinese), picked per player and per
   game: the same throughout one champ select, likely another the next game. Custom names have none.
 - The line template and the opening line are edited in **Automation › Callout**, with these
-  placeholders: `{standing}` `{champion}` `{name}` `{games}` `{winRate}` `{kda}` `{score}`
-  `{title}` `{quip}`.
+  placeholders: `{standing}` `{seat}` `{name}` `{champion}` `{games}` `{winRate}` `{kda}` `{score}`
+  `{title}` `{quip}`. A template of your own can still use `{champion}`: the champion the teammate
+  has picked or shown when the callout is sent.
 
 ## Roast titles
 

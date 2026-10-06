@@ -9,8 +9,10 @@ The Tencent client is started with administrator rights by WeGame, and a program
 read it. winer notices and asks to restart as administrator: choose **Yes** in the User Account
 Control prompt. If you cancelled it, **Restart as administrator** in the window asks again.
 
-Once connected, winer sets up the Pengu Loader it ships and the client plugin by itself; there is
-nothing to do. See [In-client](/en/guide/client).
+Once connected, winer sets up the Pengu Loader it ships and the client plugin by itself. The first
+activation of Pengu Loader needs administrator rights once: when winer is not running as
+administrator, it asks to restart that way; choose **Yes**. See
+[In-client](/en/guide/client#the-first-activation-needs-administrator-rights).
 
 ## 2. Enter champ select
 

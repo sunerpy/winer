@@ -120,20 +120,21 @@ pub(crate) fn relaunch_elevated() -> std::io::Result<()> {
     imp::launch_elevated(&format!("{REPLACE}{}", std::process::id()))
 }
 
-/// The client turned out to run elevated while winer does not: ask Windows, once per process, to
-/// restart winer elevated, and quit when the user agrees. Only the system's consent prompt shows.
-/// A refusal is final for this run; the window keeps its own button for it.
-pub(crate) fn ask_once<R: Runtime>(app: &AppHandle<R>) {
+/// winer turned out to need administrator rights it runs without (`reason`, for the log): the
+/// client runs elevated, or only an administrator can link the loader into it. Ask Windows, once
+/// per process, to restart winer elevated, and quit when the user agrees. Only the system's
+/// consent prompt shows. A refusal is final for this run; the window keeps its own button for it.
+pub(crate) fn ask_once<R: Runtime>(app: &AppHandle<R>, reason: &'static str) {
     if is_elevated() || ASKED.swap(true, Ordering::AcqRel) {
         return;
     }
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || match relaunch_elevated() {
         Ok(()) => {
-            info!("restarting elevated for the elevated client");
+            info!(reason, "restarting elevated");
             app.exit(0);
         }
-        Err(error) => warn!(%error, "not restarted elevated"),
+        Err(error) => warn!(%error, reason, "not restarted elevated"),
     });
 }
 

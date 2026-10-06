@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.3](https://github.com/sunerpy/winer/compare/v0.0.2...v0.0.3) (2026-10-06)
+
+
+### Bug Fixes
+
+* ask for admin rights to link the loader, and name callout seats ([#4](https://github.com/sunerpy/winer/issues/4)) ([d8daafd](https://github.com/sunerpy/winer/commit/d8daafde4cb64b2960dd7b4b9afa5ad829415192))
+
 ## [0.0.2](https://github.com/sunerpy/winer/compare/v0.0.1...v0.0.2) (2026-10-05)
 
 

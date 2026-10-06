@@ -9,7 +9,10 @@ use std::{
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::view::{Position, Tier};
+use crate::{
+    callout,
+    view::{Position, Tier},
+};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
@@ -442,8 +445,9 @@ pub struct CalloutRule {
     pub include_self: bool,
     /// Sent before the players' lines, as written; empty sends none.
     pub header: String,
-    /// One line per player, with `{standing}`, `{champion}`, `{name}`, `{games}`, `{winRate}`,
-    /// `{kda}` and `{score}`. Empty means the language's default (`callout::template`).
+    /// One line per player, with `{standing}`, `{seat}` (the place in champ select's list: `1L`,
+    /// `P1`), `{name}`, `{champion}`, `{games}`, `{winRate}`, `{kda}`, `{score}`, `{title}` and
+    /// `{quip}`. Empty means the language's default (`callout::template`).
     pub template: String,
     /// How the team is split, and what the tiers are called.
     pub tiers: TierSet,
@@ -841,6 +845,22 @@ impl Settings {
         self.general.hotkey = self.general.hotkey.as_deref().and_then(normalize_hotkey);
         self
     }
+
+    /// Brings a file an older winer wrote up to date. Up to 0.0.2 the default callout line named
+    /// the champion, and a template saved as exactly that text would have kept it for good: it
+    /// becomes the default, which names the seat (the same language's, when the text was in the
+    /// other one). A template the user changed stays as written.
+    fn migrated(mut self) -> Self {
+        let callout = &mut self.automation.callout;
+        if let Some(language) = callout::former_default(&callout.template) {
+            callout.template = if language == self.general.language {
+                String::new()
+            } else {
+                callout::template(language).to_owned()
+            };
+        }
+        self
+    }
 }
 
 /// Trimmed and cut to `limit` characters (not bytes: names are usually CJK).
@@ -874,7 +894,7 @@ impl SettingsStore {
         };
         Self {
             path,
-            current: Mutex::new(settings.normalized()),
+            current: Mutex::new(settings.normalized().migrated()),
         }
     }
 
@@ -942,6 +962,44 @@ mod tests {
         fs::write(&path, b"{ not json").unwrap();
         assert_eq!(SettingsStore::open(&path).get(), Settings::default());
         assert!(path.with_extension("json.invalid").exists());
+    }
+
+    /// 0.0.2's default lines, as its window could have saved them: they named the champion.
+    const ZH_0_0_2: &str =
+        "{standing}：{champion} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}";
+    const EN_0_0_2: &str = "{standing}: {champion} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}";
+
+    #[test]
+    fn a_template_saved_as_the_former_default_becomes_the_new_one_when_loaded() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let loaded = |language: &str, template: &str| {
+            let file = serde_json::json!({
+                "general": { "language": language },
+                "automation": { "callout": { "template": template, "header": "冲" } },
+            });
+            fs::write(&path, file.to_string()).unwrap();
+            SettingsStore::open(&path).get().automation.callout
+        };
+
+        let callout = loaded("zh-CN", ZH_0_0_2);
+        assert_eq!(callout.template, "", "the default, which names the seat");
+        assert_eq!(callout.header, "冲", "nothing else moves");
+        assert_eq!(loaded("en", EN_0_0_2).template, "");
+        assert_eq!(loaded("zh-CN", &format!("  {ZH_0_0_2} ")).template, "");
+        assert_eq!(
+            loaded("zh-CN", EN_0_0_2).template,
+            callout::template(Language::En),
+            "an English line under the Chinese window stays English"
+        );
+
+        for own in [
+            "{standing}：{champion} {name}",
+            "{standing}：{champion} {name} 近{games}场胜率{winRate}",
+            "{name} 玩 {champion}",
+        ] {
+            assert_eq!(loaded("zh-CN", own).template, own, "changed by the user");
+        }
     }
 
     #[test]

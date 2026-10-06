@@ -121,7 +121,7 @@ export const zhCN = {
   "auto.previewOffline": "连接客户端后显示预览。",
   "auto.template": "每行内容",
   "auto.templateHint":
-    "每位队友一行，可用 {standing} {champion} {name} {games} {winRate} {kda} {score} {title} {quip}。留空用默认。",
+    "每位队友一行，可用 {standing} {seat} {name} {champion} {games} {winRate} {kda} {score} {title} {quip}；{seat} 是选人界面里我方从上往下的位置（1L 到 5L）。留空用默认。",
   "auto.reset": "恢复默认",
   "auto.section.bench": "备选席",
   "auto.bench": "自动换心愿英雄",
@@ -404,6 +404,10 @@ export const zhCN = {
   "plugin.loaderWaiting": "连上客户端后自动安装",
   "plugin.loaderOccupied": "客户端目录里已有别的 version.dll，winer 没有改动它",
   "plugin.loaderFailed": "没有装好：{error}",
+  "plugin.loaderFailedHint": "这是 Windows 给出的原因；winer 每次连上客户端都会再试一次。",
+  "plugin.loaderNeedsAdmin": "需要管理员权限才能激活",
+  "plugin.needsAdmin":
+    "激活 Pengu Loader 要在客户端目录里创建一个链接，Windows 只允许管理员创建这种链接，所以第一次激活需要一次管理员权限，之后不再需要。winer 已经请求以管理员身份重启；如果在系统提示里选了“否”，点“以管理员身份重启”再试一次。",
   "plugin.loaderOff": "已停用",
   "plugin.loaderWhere": "不需要另外安装：winer 连上客户端时自动为它激活自带的 Pengu Loader。",
   "plugin.enable": "启用客户端增强",

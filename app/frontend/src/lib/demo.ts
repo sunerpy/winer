@@ -434,7 +434,8 @@ function seats(): Seat[] {
   });
 }
 
-/** Hextech ARAM: one team, a bench and a reroll, the callout already written. */
+/** Hextech ARAM: one team, a bench and a reroll, the callout already written: best tier first,
+ *  each line naming the seat (the place in the team as champ select lists it) and the player. */
 function champSelect(): ChampSelectView {
   return {
     gameId: 1,
@@ -450,11 +451,11 @@ function champSelect(): ChampSelectView {
     side: "blue",
     callout: [
       "【蓝色方】winer 战绩鉴定",
-      "峡谷通天代：阿狸 暗夜里的光 近20场胜率60% KDA 4.1 评分7.4「版本答案」，对面五个人准备举报代练",
-      "人形防御塔：李青 野区观光客 近20场胜率55% KDA 3.6 评分6.8，塔在人在，人在塔也在",
-      "峡谷公务员：盖伦 峡谷清道夫 近20场胜率50% KDA 2.9 评分5.2，按时上班，准时打卡",
-      "移动眼位：金克丝 补刀不漏一个 近20场胜率45% KDA 2.4 评分4.6「峡谷慈善家」，站在哪里，哪里就有视野",
-      "纯正牛马：锤石 眼位守护者 近20场胜率40% KDA 2.0 评分3.9「黑白电视机资深会员」，勤勤恳恳地给对面创造游戏体验",
+      "峡谷通天代：1L 暗夜里的光 近20场胜率60% KDA 4.1 评分7.4「版本答案」，对面五个人准备举报代练",
+      "人形防御塔：3L 野区观光客 近20场胜率55% KDA 3.6 评分6.8，塔在人在，人在塔也在",
+      "峡谷公务员：2L 峡谷清道夫 近20场胜率50% KDA 2.9 评分5.2，按时上班，准时打卡",
+      "移动眼位：4L 补刀不漏一个 近20场胜率45% KDA 2.4 评分4.6「峡谷慈善家」，站在哪里，哪里就有视野",
+      "纯正牛马：5L 眼位守护者 近20场胜率40% KDA 2.0 评分3.9「黑白电视机资深会员」，勤勤恳恳地给对面创造游戏体验",
     ],
   };
 }
@@ -717,6 +718,7 @@ export function demoBackend(): Backend {
     bundledLoader: "1.1.6",
     occupied: false,
     setupError: null,
+    needsElevation: false,
     installedVersion: "0.2.0",
     bundledVersion: "0.2.0",
     current: true,
@@ -843,8 +845,9 @@ export function demoBackend(): Backend {
             ? own
             : TIER_NAMES.horses["zh-CN"];
       const title = general.titles ? "「版本答案」" : "";
+      // As the core does: the tiers take the seats in order, 1L for the best.
       const lines = names.map(
-        (name) => `${name}：阿狸 暗夜里的光 近20场胜率60% KDA 4.1 评分7.4${title}`,
+        (name, index) => `${name}：${index + 1}L 暗夜里的光 近20场胜率60% KDA 4.1 评分7.4${title}`,
       );
       // As the core does: the side and winer's name lead the first line, the opening line after.
       const header = rule.header.trim();
