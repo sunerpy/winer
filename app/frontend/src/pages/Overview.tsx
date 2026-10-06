@@ -1,16 +1,22 @@
-import { averageLine, riotId, type Settings } from "@winer/shared";
-import { ArrowRight, Swords } from "lucide-react";
+import { averageLine, duration, riotId, type FriendView, type Settings } from "@winer/shared";
+import { ArrowRight, Eye, Swords } from "lucide-react";
+import { useMemo } from "react";
 
+import { FormLabel } from "../game/FormRules";
+import { GroupBadge, groupStripe } from "../game/groups";
 import { MatchRow } from "../game/MatchRow";
 import { ChampionIcon, ProfileIcon } from "../game/icons";
 import { FormLine, KdaValue, RankBadge, ResultStrip, StreakBadge, WinRate } from "../game/stats";
 import { errorMessage } from "../lib/backend";
+import { cx } from "../lib/cx";
+import { useCached } from "../lib/historyCache";
 import { useLanguage, useT } from "../lib/i18n";
 import { MODES, MODE_LABEL, type ScopedRule } from "../lib/modes";
 import { useCatalog, useLive, useNotices, useSettings, useStore } from "../lib/store";
 import { useAsync } from "../lib/useAsync";
+import { useNow } from "../lib/useNow";
 import { useShell } from "../shell/navigation";
-import { noticeText } from "../shell/notices";
+import { isFailure, noticeText } from "../shell/notices";
 import { Button, Card, EmptyState, ErrorNote, Panel, Skeleton, Toggle, toast } from "../ui";
 import { ConnectionBanner, PageBody } from "./common";
 
@@ -53,7 +59,10 @@ function MeCard() {
             <dd className="mt-1 flex flex-col gap-1">
               <RankBadge rank={rank} />
               {rank && (
-                <span className="text-[11.5px] text-fg-muted">
+                <span
+                  className="text-[11.5px] text-fg-muted"
+                  title={t("history.rankedRecord", { queue: t(label) })}
+                >
                   <span className="mono">
                     {rank.wins}
                     {t("common.win")} {rank.losses}
@@ -74,17 +83,29 @@ function FormCard() {
   const t = useT();
   const store = useStore();
   const puuid = useLive((snapshot) => snapshot.me?.puuid);
-  const summary = useAsync(
+  // History: the History page's header keeps the same summary.
+  const summary = useCached(
+    puuid ? store.history.summary(puuid, puuid) : undefined,
     () => store.backend.call("get_player_summary", { puuid: puuid ?? "" }),
-    [puuid],
-    Boolean(puuid),
+    (value) => store.history.putSummary(puuid ?? "", value),
+    { refresh: true, deps: [puuid], enabled: Boolean(puuid) },
   );
   const form = summary.data?.recent;
+  // What the numbers count, for the rule beside them.
+  const standing = useAsync(
+    () => store.backend.call("get_player_standing", { puuid: puuid ?? "" }),
+    [puuid],
+    Boolean(puuid) && summary.data !== undefined,
+  );
 
   return (
     <Panel
       eyebrow={t("overview.form")}
-      title={form && form.games > 0 ? t("common.recent", { n: form.games }) : undefined}
+      title={
+        form && form.games > 0 ? (
+          <FormLabel form={form} scope={standing.data?.scope ?? null} />
+        ) : undefined
+      }
       right={form && <StreakBadge streak={form.streak} />}
       className="col-span-12 @[900px]:col-span-7"
     >
@@ -295,7 +316,7 @@ function ActivityCard() {
               <span className="mono w-16 shrink-0 text-[11px] text-fg-subtle">
                 {new Date(notice.at).toLocaleTimeString(language, { hour12: false })}
               </span>
-              <span className={notice.kind.kind === "failed" ? "text-danger" : "text-fg"}>
+              <span className={isFailure(notice.kind) ? "text-danger" : "text-fg"}>
                 {noticeText(notice.kind, t, catalog)}
               </span>
             </li>
@@ -306,16 +327,123 @@ function ActivityCard() {
   );
 }
 
+/** In champ select or in a game: what the friends panel lists. */
+function playing(friend: FriendView): boolean {
+  return friend.status.state === "inGame" || friend.status.state === "champSelect";
+}
+
+/** One friend at play: the mode, how long it has been going (ticking here, from the start the
+ *  presence gives), and the colour and number shared with the friends in the same game. */
+function FriendRow({ friend, now }: { friend: FriendView; now: number }) {
+  const t = useT();
+  const { navigate } = useShell();
+  const status = friend.status;
+  const name = riotId(friend.name) || t("common.hidden");
+  const [state, mode, since] =
+    status.state === "inGame"
+      ? [t("social.inGame"), status.mode, status.startedAt]
+      : status.state === "champSelect"
+        ? [t("social.champSelect"), status.mode, status.since]
+        : ["", "", 0];
+  const elapsed = since > 0 ? duration((now - since) / 1000) : null;
+  return (
+    <li
+      data-group={friend.group ?? undefined}
+      className={cx(
+        "min-w-0 rounded-6 bg-inset hairline",
+        friend.group !== null && groupStripe(friend.group),
+      )}
+    >
+      <button
+        type="button"
+        aria-label={t("live.openHistory", { name })}
+        onClick={() => navigate({ page: "history", puuid: friend.puuid })}
+        className="flex w-full min-w-0 items-center gap-2.5 rounded-6 py-2 pr-2.5 pl-3 text-left hover-wash"
+      >
+        <ProfileIcon id={friend.iconId} size={28} />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-[13px] font-medium text-fg">{name}</span>
+          <span className="truncate text-[11.5px] text-fg-subtle">
+            {mode ? `${mode} · ${state}` : state}
+          </span>
+        </span>
+        {friend.group !== null && (
+          <GroupBadge
+            group={friend.group}
+            label={String(friend.group)}
+            title={t("social.together", { n: friend.group })}
+          />
+        )}
+        {status.state === "inGame" && status.observable && (
+          <span title={t("social.observable")} className="shrink-0 text-fg-subtle">
+            <Eye size={13} strokeWidth={2} aria-hidden />
+            <span className="sr-only">{t("social.observable")}</span>
+          </span>
+        )}
+        {elapsed && (
+          <span
+            title={t("social.elapsed", { time: elapsed })}
+            className="mono w-12 shrink-0 text-right text-[12px] text-fg-muted"
+          >
+            {elapsed}
+          </span>
+        )}
+      </button>
+    </li>
+  );
+}
+
+function FriendsCard() {
+  const t = useT();
+  const friends = useLive((snapshot) => snapshot.friends);
+  const shown = useMemo(() => friends?.friends.filter(playing) ?? [], [friends]);
+  const now = useNow(1000, shown.length > 0);
+  return (
+    <Panel
+      eyebrow={t("social.friends")}
+      title={shown.length > 0 ? t("social.friendsPlaying", { n: shown.length }) : undefined}
+      className="col-span-12"
+    >
+      {friends === null ? (
+        <div aria-busy className="grid grid-cols-2 gap-1.5">
+          <span className="sr-only">{t("social.friendsLoading")}</span>
+          {[0, 1].map((key) => (
+            <Skeleton key={key} className="h-12 w-full" />
+          ))}
+        </div>
+      ) : shown.length === 0 ? (
+        <EmptyState compact title={t("social.friendsEmpty")} />
+      ) : (
+        <div className="@container">
+          <ul className="grid grid-cols-1 gap-1.5 @[640px]:grid-cols-2 @[960px]:grid-cols-3">
+            {shown.map((friend) => (
+              <FriendRow key={friend.puuid} friend={friend} now={now} />
+            ))}
+          </ul>
+          {shown.some((friend) => friend.group !== null) && (
+            <p className="mt-2 text-[11.5px] text-fg-subtle">{t("social.togetherHint")}</p>
+          )}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 function RecentMatches() {
   const t = useT();
   const store = useStore();
   const { navigate } = useShell();
   const puuid = useLive((snapshot) => snapshot.me?.puuid);
+  const hideCustom = useSettings().history.hideCustomGames;
+  // History: ten asked for, so five remain where custom games are hidden.
   const page = useAsync(
-    () => store.backend.call("get_match_history", { puuid: puuid ?? "", begin: 0, count: 5 }),
+    () => store.backend.call("get_match_history", { puuid: puuid ?? "", begin: 0, count: 10 }),
     [puuid],
     Boolean(puuid),
   );
+  const games = (page.data?.games ?? [])
+    .filter((game) => !(hideCustom && game.kind === "custom"))
+    .slice(0, 5);
   const now = Date.now();
   return (
     <Panel
@@ -328,9 +456,9 @@ function RecentMatches() {
       }
       className="col-span-12"
     >
-      {page.data && page.data.games.length > 0 ? (
+      {games.length > 0 ? (
         <div className="flex flex-col gap-1.5">
-          {page.data.games.map((game) => (
+          {games.map((game) => (
             <MatchRow
               key={game.gameId}
               game={game}
@@ -354,7 +482,12 @@ function RecentMatches() {
           onRetry={page.reload}
         />
       ) : (
-        <EmptyState compact title={t("history.empty")} />
+        <EmptyState
+          compact
+          title={
+            page.data && page.data.games.length > 0 ? t("history.emptyHidden") : t("history.empty")
+          }
+        />
       )}
     </Panel>
   );
@@ -391,6 +524,7 @@ export function OverviewPage() {
           <FormCard />
           <AutomationCard />
           <ActivityCard />
+          <FriendsCard />
           <RecentMatches />
         </div>
       ) : (

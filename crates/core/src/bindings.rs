@@ -4,7 +4,7 @@
 
 use ts_rs::{Config, TS};
 
-use crate::{bridge, plugin, settings, view};
+use crate::{backup, bridge, builds, loadout, plugin, profile, settings, view};
 
 pub fn typescript() -> String {
     let config = Config::new().with_large_int("number");
@@ -65,6 +65,14 @@ pub fn typescript() -> String {
         view::UpdateStatus,
         view::IpcError,
         view::ErrorCode,
+        // Social.
+        view::FriendsView,
+        view::FriendView,
+        view::FriendStatus,
+        view::LobbyView,
+        view::LobbyMember,
+        view::LanePreference,
+        view::HotkeyStatus,
         settings::Settings,
         settings::Appearance,
         settings::Theme,
@@ -84,10 +92,70 @@ pub fn typescript() -> String {
         settings::Mode,
         settings::ChampionPool,
         settings::PluginSettings,
+        // The profile tools: background, challenges, rank disguise, remembered status, backups.
+        settings::ProfileSettings,
+        settings::RankDisguise,
+        settings::DisguiseQueue,
+        settings::Division,
+        settings::PresenceRule,
+        profile::SkinChoice,
+        profile::ChallengeProfile,
+        profile::ChallengeToken,
+        profile::TitleChoice,
+        profile::BannerChoice,
+        profile::BannerKind,
+        backup::BackupInfo,
+        backup::BackupChannel,
         plugin::PluginStatus,
         bridge::BridgeMessage,
         bridge::PluginMessage,
         bridge::LogLevel,
+    );
+    // Runes, spells, builds and item sets.
+    declare!(
+        settings::LoadoutRule,
+        settings::BuildSettings,
+        settings::RiftSource,
+        loadout::LoadoutSummary,
+        loadout::PageOutcome,
+        builds::BuildSource,
+        builds::Build,
+        builds::Rates,
+        builds::SpellOption,
+        builds::RunePage,
+        builds::RuneOption,
+        builds::ItemOption,
+        builds::Ability,
+        builds::SkillOrder,
+        builds::Matchup,
+        builds::Matchups,
+        builds::AugmentTier,
+        builds::AugmentOption,
+    );
+    // Storage: what winer keeps on disk and in memory, and the cleanup.
+    declare!(
+        view::DiskUse,
+        view::MemoryUse,
+        view::StorageLimits,
+        view::StorageReport,
+        view::CleanupReport,
+    );
+    // The history panel in the client.
+    declare!(bridge::PanelHistory, bridge::PanelGame);
+    // The callout's shortcut, the game's chat and whose lines are typed there.
+    declare!(
+        view::CalloutHotkeyStatus,
+        view::CalloutSkip,
+        settings::GameTeams
+    );
+    // The callout's two ways of writing a player.
+    declare!(settings::CalloutStyle);
+    // History: what the numbers count, custom games, a player rated alone.
+    declare!(
+        view::GameKind,
+        view::FormScope,
+        view::PlayerStanding,
+        settings::HistorySettings,
     );
     out
 }

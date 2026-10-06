@@ -235,3 +235,514 @@
   background: #4a2224;
   color: #ff9d96;
 }
+
+/* Social: groups, friends' games, the lobby. The six group colours are the desktop's Hextech
+ * `--group-*` tokens by value: always beside a number, never the only sign. */
+.winer-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-weight: 700;
+  background: #223142;
+  color: #ece6d6;
+}
+
+.winer-group::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--winer-group, #9ba7b3);
+}
+
+[data-winer-group="1"],
+[data-winer-friend-group="1"] {
+  --winer-group: #e69f00;
+}
+
+[data-winer-group="2"],
+[data-winer-friend-group="2"] {
+  --winer-group: #56b4e9;
+}
+
+[data-winer-group="3"],
+[data-winer-friend-group="3"] {
+  --winer-group: #2ec4a0;
+}
+
+[data-winer-group="4"],
+[data-winer-friend-group="4"] {
+  --winer-group: #cc79a7;
+}
+
+[data-winer-group="5"],
+[data-winer-friend-group="5"] {
+  --winer-group: #f0e442;
+}
+
+[data-winer-group="6"],
+[data-winer-friend-group="6"] {
+  --winer-group: #e8705a;
+}
+
+/* A friend playing with other friends: a stripe on the left edge of their entry, which moves
+ * nothing. */
+[data-winer-friend-group] {
+  box-shadow: inset 3px 0 0 var(--winer-group) !important;
+}
+
+/* A friend's game after their name: `极地大乱斗 · 12:34`. */
+.winer-friend {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  font:
+    500 11px/13px "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    sans-serif;
+  color: #c8aa6e;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* A lobby member's form above their banner; a click opens their history in winer. */
+.winer-lobby {
+  display: block;
+  max-width: 100%;
+  margin: 0 auto 4px;
+  padding: 2px 6px;
+  overflow: hidden;
+  border: 1px solid #2e4157;
+  border-radius: 4px;
+  background: rgba(1, 10, 19, 0.85);
+  color: #ece6d6;
+  font:
+    600 11px/14px "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    sans-serif;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.winer-lobby:hover {
+  border-color: #c8aa6e;
+}
+
+/* The lobby's fallback panel sits left of the friends list down the client's right edge (about
+ * 225px wide; not measured, see selectors.ts), which the friends' decorations draw into. */
+.winer-panel[data-winer-panel="lobby"] {
+  right: 237px;
+}
+
+/* The lobby's fallback panel lists its rows as buttons. */
+.winer-row--button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.winer-row--button:hover {
+  background: #162230;
+}
+
+/* The home page while 隐藏首页推广 is on: winer's note in the hub's own box, centred on the
+ * activity centre's dark ground. A card in the page's flow, so flat: surface and hairline. */
+.winer-home {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 24px;
+  color: #ece6d6;
+  font:
+    13px/20px "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    sans-serif;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+}
+
+.winer-home-card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 440px;
+  padding: 16px;
+  border: 1px solid #223142;
+  border-radius: 10px;
+  background: #101923;
+}
+
+.winer-home-mark {
+  color: #d9bf86;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.winer-home-text {
+  margin: 0;
+}
+
+.winer-home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 4px;
+}
+
+.winer-home-show {
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid #2e4157;
+  border-radius: 6px;
+  background: transparent;
+  color: #ece6d6;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.winer-home-show:hover {
+  border-color: #c8aa6e;
+  background: #162230;
+}
+
+.winer-home-show:focus-visible {
+  outline: 2px solid #c8aa6e;
+  outline-offset: 2px;
+}
+
+/* fg-muted rather than fg-subtle, which falls just under 4.5:1 on the surface for 12px text. */
+.winer-home-hint {
+  color: #9ba7b3;
+  font-size: 12px;
+}
+
+/* The history panel: a player's latest games over the client page, beside the line clicked. A
+ * floating card, so it is lifted; the rows take the window's history rows' tints by value
+ * (`win-soft`, `loss-soft`: 10% of the result's colour in the surface). Small text is fg-muted:
+ * fg-subtle falls just under 4.5:1 on the surface. */
+.winer-panel[data-winer-panel="history"] {
+  right: auto;
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  max-height: calc(100vh - 16px);
+  outline: none;
+}
+
+.winer-history-top {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 8px 8px 12px;
+  border-bottom: 1px solid #223142;
+}
+
+.winer-history-who {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.winer-history-who .winer-name {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.winer-tag {
+  margin-left: 2px;
+  color: #9ba7b3;
+  font-weight: 400;
+}
+
+.winer-icon--round {
+  border-radius: 50%;
+}
+
+.winer-history-summary {
+  flex-wrap: wrap;
+  row-gap: 2px;
+  font-size: 11px;
+  line-height: 15px;
+  color: #9ba7b3;
+}
+
+.winer-history-close {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #9ba7b3;
+  font:
+    600 12px/24px "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    sans-serif;
+  cursor: pointer;
+}
+
+.winer-history-close:hover {
+  background: rgba(236, 230, 214, 0.08);
+  color: #ece6d6;
+}
+
+.winer-history-body {
+  flex: 1;
+  min-height: 0;
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.winer-history-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 6px;
+  color: #9ba7b3;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.winer-history-note--failed .winer-history-message {
+  color: #f0736a;
+}
+
+.winer-history-detail {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.winer-history-retry {
+  box-sizing: border-box;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid #2e4157;
+  border-radius: 6px;
+  background: transparent;
+  color: #ece6d6;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.winer-history-retry:hover {
+  border-color: #c8aa6e;
+  background: #162230;
+}
+
+.winer-games {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.winer-game {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 9px;
+  border-radius: 6px;
+  background: #162230;
+  box-shadow: inset 3px 0 0 #2e4157;
+}
+
+.winer-game--win {
+  background: #162b2e;
+  box-shadow: inset 3px 0 0 #4ccb93;
+}
+
+.winer-game--loss {
+  background: #26222a;
+  box-shadow: inset 3px 0 0 #f0736a;
+}
+
+.winer-game-what {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.winer-game-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.winer-game-result {
+  flex: none;
+  color: #9ba7b3;
+  font-weight: 700;
+}
+
+.winer-game--win .winer-game-result {
+  color: #4ccb93;
+}
+
+.winer-game--loss .winer-game-result {
+  color: #f0736a;
+}
+
+.winer-game-queue {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.winer-game-place {
+  flex: none;
+  color: #9ba7b3;
+}
+
+.winer-game-when {
+  overflow: hidden;
+  color: #9ba7b3;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.winer-game-kda {
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.winer-game-slash {
+  color: #9ba7b3;
+  font-weight: 400;
+}
+
+/* MVP solid in the accent, SVP raised with a hairline, as on the window's history rows. */
+.winer-award {
+  flex: none;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+}
+
+.winer-award--mvp {
+  background: #c8aa6e;
+  color: #1a1408;
+}
+
+.winer-award--svp {
+  background: #142030;
+  color: #ece6d6;
+  box-shadow: inset 0 0 0 1px #2e4157;
+}
+
+.winer-history-foot {
+  flex: none;
+  padding: 7px 12px 9px;
+  border-top: 1px solid #223142;
+}
+
+.winer-history-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #d9bf86;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.winer-history-link:hover {
+  text-decoration: underline;
+}
+
+.winer-history-close:focus-visible,
+.winer-history-retry:focus-visible,
+.winer-history-link:focus-visible {
+  outline: 2px solid #c8aa6e;
+  outline-offset: 2px;
+}
+
+/* A teammate's line in champ select names its player: a click opens their history. Only the
+ * line's own text takes the click; the row around it stays the client's. */
+.winer-inline[data-winer-puuid] {
+  width: max-content;
+  max-width: 100%;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.winer-inline[data-winer-puuid]:hover {
+  color: #ece6d6;
+}
+
+/* Champ select (16.19): the client clips a row's details column to its three lines, and the name's
+ * box inside it to one 16px line. The line goes at the end of the column (team.ts) and shows below
+ * it, in the 14px the 78px row leaves there, cut with an ellipsis short of the champion grid. */
+.player-details:has(> .winer-inline) {
+  overflow: visible;
+}
+
+.player-details > .winer-inline {
+  max-width: 220px;
+  height: 14px;
+  margin-top: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* An ellipsis cuts inline content only, not flex items: here the parts flow inline. */
+.player-details > .winer-inline > .winer-line {
+  display: inline;
+}
+
+.player-details > .winer-inline > .winer-line > * + * {
+  margin-left: 6px;
+}
+
+/* A fallback panel's own row keeps its highlight as a button. */
+.winer-row--self.winer-row--button {
+  background: #162230;
+}

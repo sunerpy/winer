@@ -5,7 +5,8 @@ use serde::de::DeserializeOwned;
 
 use crate::{
     model::{ChampionSummary, ClientAugment, Item, Perk, PerkStyles, Queue, SummonerSpell},
-    view::{AssetInfo, AugmentInfo, ChampionInfo, GameData, QueueInfo, Rarity},
+    rating,
+    view::{AssetInfo, AugmentInfo, ChampionInfo, GameData, GameKind, QueueInfo, Rarity},
 };
 
 pub async fn load(lcu: &Lcu) -> GameData {
@@ -52,6 +53,20 @@ pub fn build(
     queues: Vec<Queue>,
 ) -> GameData {
     let asset = |id: i64, name: String, icon: String| AssetInfo { id, name, icon };
+    let roles = champions
+        .iter()
+        .filter_map(|champion| {
+            let role = champion
+                .roles
+                .first()
+                .and_then(|role| rating::Role::parse(role))?;
+            Some((champion.id, role))
+        })
+        .collect();
+    let kinds = queues
+        .iter()
+        .map(|queue| (queue.id, queue_kind(queue)))
+        .collect();
     let mut champions: Vec<ChampionInfo> = champions
         .into_iter()
         .filter(|champion| champion.id > 0)
@@ -71,6 +86,8 @@ pub fn build(
 
     GameData {
         champions,
+        roles,
+        kinds,
         items: items
             .into_iter()
             .filter(|item| item.id > 0)
@@ -103,6 +120,25 @@ pub fn build(
                 ranked: queue.is_ranked,
             })
             .collect(),
+    }
+}
+
+// ---- History: what a queue's games say about a player ----
+
+/// What a queue's games are, in the catalog's own words (16.19, `docs/platform-notes.md`): its
+/// `category` (`PvP`, `VersusAi`, `Custom`) and `isCustom`, and its `type`, which also names the
+/// bot queues filed under `PvP`: Doom Bots (`NIGHTMARE_BOT`) and Jade's co-op (`JADE_BOT`).
+pub fn queue_kind(queue: &Queue) -> GameKind {
+    let kind = queue.kind.to_ascii_uppercase();
+    if queue.is_custom || queue.category.eq_ignore_ascii_case("Custom") {
+        GameKind::Custom
+    } else if queue.category.eq_ignore_ascii_case("VersusAi")
+        || kind == "BOT"
+        || kind.ends_with("_BOT")
+    {
+        GameKind::Bots
+    } else {
+        GameKind::Matched
     }
 }
 
@@ -147,6 +183,43 @@ mod tests {
             .expect("solo queue");
         assert_eq!(solo.name, "排位赛 单排/双排");
         assert!(data.items.len() > 100 && data.spells.len() > 10);
+    }
+
+    #[test]
+    fn the_live_catalog_tells_games_against_the_computer_and_custom_lobbies_apart() {
+        let queues: Vec<Queue> = fixture("live/ranked/queues.json");
+        let kind = |id: i64| {
+            queues
+                .iter()
+                .find(|queue| queue.id == id)
+                .map(queue_kind)
+                .unwrap_or_else(|| panic!("queue {id} is in the catalog"))
+        };
+        // Co-op vs AI on SWIFTPLAY and the ARAM bots, filed as VersusAi.
+        for id in [870, 880, 890, 860] {
+            assert_eq!(kind(id), GameKind::Bots, "{id}");
+        }
+        // Doom Bots and Jade's co-op are PvP to the catalog; their type says otherwise.
+        for id in [4210, 4220, 4320] {
+            assert_eq!(kind(id), GameKind::Bots, "{id}");
+        }
+        for id in [3220, 3270, 3140] {
+            assert_eq!(kind(id), GameKind::Custom, "{id}");
+        }
+        for id in [420, 440, 430, 450, 2400, 1700, 900] {
+            assert_eq!(kind(id), GameKind::Matched, "{id}");
+        }
+        let count = |wanted| {
+            queues
+                .iter()
+                .filter(|queue| queue_kind(queue) == wanted)
+                .count()
+        };
+        assert_eq!(
+            (count(GameKind::Bots), count(GameKind::Custom)),
+            (21, 20),
+            "fifteen VersusAi, five Doom Bots, one Jade co-op; twenty custom"
+        );
     }
 
     #[test]

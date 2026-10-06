@@ -18,6 +18,19 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   return element;
 }
 
+/** A player's profile icon, round, from the client's own game data; nothing for an unknown icon. */
+export function profileIcon(id: number, size: number): HTMLElement | null {
+  if (id <= 0) return null;
+  return h("img", {
+    class: "winer-icon winer-icon--round",
+    src: `/lol-game-data/assets/v1/profile-icons/${id}.jpg`,
+    width: String(size),
+    height: String(size),
+    alt: "",
+    draggable: "false",
+  });
+}
+
 /** Same-origin game-data image: the plugin runs inside the client, so no proxy is needed. */
 export function championIcon(id: number, size: number): HTMLElement {
   if (id <= 0)

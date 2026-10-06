@@ -1,0 +1,266 @@
+[
+  {
+    "championId": 1,
+    "chromaPath": null,
+    "disabled": false,
+    "id": 1000,
+    "isBase": true,
+    "lastSelected": false,
+    "name": "黑暗之女",
+    "ownership": {
+      "loyaltyReward": false,
+      "owned": true,
+      "rental": {
+        "endDate": 0,
+        "purchaseDate": 0,
+        "rented": false,
+        "winCountRemaining": 0
+      },
+      "xboxGPReward": false
+    },
+    "relatedPrimeContentId": "",
+    "relatedPrimeItemId": 0,
+    "skinAugments": {
+      "augments": []
+    },
+    "splashPath": "/lol-game-data/assets/ASSETS/Characters/Annie/Skins/Base/Images/annie_splash_centered_0.jpg",
+    "stillObtainable": false,
+    "tilePath": "/lol-game-data/assets/ASSETS/Characters/Annie/Skins/Base/Images/annie_splash_tile_0.jpg"
+  },
+  {
+    "championId": 1,
+    "chromaPath": null,
+    "disabled": false,
+    "id": 1001,
+    "isBase": false,
+    "lastSelected": false,
+    "name": "哥特萝莉 安妮",
+    "ownership": {
+      "loyaltyReward": false,
+      "owned": false,
+      "rental": {
+        "endDate": 0,
+        "purchaseDate": 0,
+        "rented": false,
+        "winCountRemaining": 0
+      },
+      "xboxGPReward": false
+    },
+    "relatedPrimeContentId": "",
+    "relatedPrimeItemId": 0,
+    "skinAugments": {
+      "augments": []
+    },
+    "splashPath": "/lol-game-data/assets/ASSETS/Characters/Annie/Skins/Skin01/Images/annie_splash_centered_1.jpg",
+    "stillObtainable": false,
+    "tilePath": "/lol-game-data/assets/ASSETS/Characters/Annie/Skins/Skin01/Images/annie_splash_tile_1.jpg"
+  },
+  {
+    "championId": 103,
+    "chromaPath": null,
+    "disabled": false,
+    "id": 103000,
+    "isBase": true,
+    "lastSelected": false,
+    "name": "九尾妖狐",
+    "ownership": {
+      "loyaltyReward": false,
+      "owned": true,
+      "rental": {
+        "endDate": 0,
+        "purchaseDate": 0,
+        "rented": false,
+        "winCountRemaining": 0
+      },
+      "xboxGPReward": false
+    },
+    "relatedPrimeContentId": "",
+    "relatedPrimeItemId": 0,
+    "skinAugments": {
+      "augments": []
+    },
+    "splashPath": "/lol-game-data/assets/ASSETS/Characters/Ahri/Skins/Base/Images/ahri_splash_centered_0.jpg",
+    "stillObtainable": false,
+    "tilePath": "/lol-game-data/assets/ASSETS/Characters/Ahri/Skins/Base/Images/ahri_splash_tile_0.jpg"
+  },
+  {
+    "championId": 103,
+    "chromaPath": "/lol-game-data/assets/v1/champion-chroma-images/103/103001.png",
+    "disabled": false,
+    "id": 103001,
+    "isBase": false,
+    "lastSelected": false,
+    "name": "高丽风情 阿狸",
+    "ownership": {
+      "loyaltyReward": false,
+      "owned": false,
+      "rental": {
+        "endDate": 0,
+        "purchaseDate": 0,
+        "rented": false,
+        "winCountRemaining": 0
+      },
+      "xboxGPReward": false
+    },
+    "relatedPrimeContentId": "",
+    "relatedPrimeItemId": 0,
+    "skinAugments": {
+      "augments": []
+    },
+    "splashPath": "/lol-game-data/assets/ASSETS/Characters/Ahri/Skins/Skin01/Images/ahri_splash_centered_1.jpg",
+    "stillObtainable": false,
+    "tilePath": "/lol-game-data/assets/ASSETS/Characters/Ahri/Skins/Skin01/Images/ahri_splash_tile_1.jpg"
+  },
+  {
+    "championId": 103,
+    "chromaPath": "/lol-game-data/assets/v1/champion-chroma-images/103/103015.png",
+    "disabled": false,
+    "id": 103015,
+    "isBase": false,
+    "lastSelected": false,
+    "name": "K/DA 阿狸",
+    "ownership": {
+      "loyaltyReward": false,
+      "owned": true,
+      "rental": {
+        "endDate": 0,
+        "purchaseDate": 0,
+        "rented": false,
+        "winCountRemaining": 0
+      },
+      "xboxGPReward": false
+    },
+    "relatedPrimeContentId": "",
+    "relatedPrimeItemId": 0,
+    "skinAugments": {
+      "augments": []
+    },
+    "splashPath": "/lol-game-data/assets/ASSETS/Characters/Ahri/Skins/Skin15/Images/ahri_splash_centered_15.jpg",
+    "stillObtainable": false,
+    "tilePath": "/lol-game-data/assets/ASSETS/Characters/Ahri/Skins/Skin15/Images/ahri_splash_tile_15.jpg"
+  },
+  {
+    "championId": 103,
+    "chromaPath": null,
+    "disabled": false,
+    "id": 103016,
+    "isBase": false,
+    "lastSelected": false,
+    "name": "至臻 K/DA 阿狸",
+    "ownership": {
+      "loyaltyReward": false,
+      "owned": false,
+      "rental": {
+        "endDate": 0,
+        "purchaseDate": 0,
+        "rented": false,
+        "winCountRemaining": 0
+      },
+      "xboxGPReward": false
+    },
+    "relatedPrimeContentId": "",
+    "relatedPrimeItemId": 0,
+    "skinAugments": {
+      "augments": []
+    },
+    "splashPath": "/lol-game-data/assets/ASSETS/Characters/Ahri/Skins/Skin16/Images/ahri_splash_centered_16.jpg",
+    "stillObtainable": false,
+    "tilePath": "/lol-game-data/assets/ASSETS/Characters/Ahri/Skins/Skin16/Images/ahri_splash_tile_16.jpg"
+  },
+  {
+    "championId": 7,
+    "chromaPath": "/lol-game-data/assets/v1/champion-chroma-images/7/7055.png",
+    "disabled": false,
+    "id": 7055,
+    "isBase": false,
+    "lastSelected": false,
+    "name": "殿堂传奇 乐芙兰",
+    "ownership": {
+      "loyaltyReward": false,
+      "owned": false,
+      "rental": {
+        "endDate": 0,
+        "purchaseDate": 0,
+        "rented": false,
+        "winCountRemaining": 0
+      },
+      "xboxGPReward": false
+    },
+    "relatedPrimeContentId": "",
+    "relatedPrimeItemId": 0,
+    "skinAugments": {
+      "augments": [
+        {
+          "contentId": "37ebc24a-f536-4765-8249-06536cf73379",
+          "overlays": [
+            {
+              "centeredLCOverlayPath": "/lol-game-data/assets/ASSETS/Characters/Leblanc/Skins/Skin55/LCOverlays/splash_centered_signature.png",
+              "socialCardLCOverlayPath": "/lol-game-data/assets/ASSETS/Characters/Leblanc/Skins/Skin55/LCOverlays/social_card_signature.png",
+              "tileLCOverlayPath": "/lol-game-data/assets/ASSETS/Characters/Leblanc/Skins/Skin55/LCOverlays/splash_tile_signature.png",
+              "uncenteredLCOverlayPath": "/lol-game-data/assets/ASSETS/Characters/Leblanc/Skins/Skin55/LCOverlays/splash_uncentered_signature.png"
+            }
+          ]
+        }
+      ]
+    },
+    "splashPath": "/lol-game-data/assets/ASSETS/Characters/Leblanc/Skins/Skin55/Images/Leblanc_splash_centered_55.jpg",
+    "stillObtainable": false,
+    "tilePath": "/lol-game-data/assets/ASSETS/Characters/Leblanc/Skins/Skin55/Images/Leblanc_splash_tile_55.jpg"
+  },
+  {
+    "championId": 60001,
+    "chromaPath": null,
+    "disabled": false,
+    "id": 60001000,
+    "isBase": true,
+    "lastSelected": false,
+    "name": "黑暗之女",
+    "ownership": {
+      "loyaltyReward": false,
+      "owned": true,
+      "rental": {
+        "endDate": 0,
+        "purchaseDate": 0,
+        "rented": false,
+        "winCountRemaining": 0
+      },
+      "xboxGPReward": false
+    },
+    "relatedPrimeContentId": "2d23dcfc-67d1-44d7-b045-54d96e8370b2",
+    "relatedPrimeItemId": 1000,
+    "skinAugments": {
+      "augments": []
+    },
+    "splashPath": "/lol-game-data/assets/ASSETS/Characters/Jade_Annie/Skins/Base/Images/Jade_Annie_splash_centered_0.project_jade.jpg",
+    "stillObtainable": false,
+    "tilePath": "/lol-game-data/assets/ASSETS/Characters/Jade_Annie/Skins/Base/Images/Jade_Annie_splash_tile_0.project_jade.jpg"
+  },
+  {
+    "championId": 60001,
+    "chromaPath": null,
+    "disabled": false,
+    "id": 60001001,
+    "isBase": false,
+    "lastSelected": false,
+    "name": "哥特萝莉 安妮",
+    "ownership": {
+      "loyaltyReward": false,
+      "owned": false,
+      "rental": {
+        "endDate": 0,
+        "purchaseDate": 0,
+        "rented": false,
+        "winCountRemaining": 0
+      },
+      "xboxGPReward": false
+    },
+    "relatedPrimeContentId": "46358cd4-3f36-4987-9db8-aab046adf43f",
+    "relatedPrimeItemId": 1001,
+    "skinAugments": {
+      "augments": []
+    },
+    "splashPath": "/lol-game-data/assets/ASSETS/Characters/Jade_Annie/Skins/Skin01/Images/Jade_Annie_splash_centered_1.project_jade.jpg",
+    "stillObtainable": false,
+    "tilePath": "/lol-game-data/assets/ASSETS/Characters/Jade_Annie/Skins/Skin01/Images/Jade_Annie_splash_tile_1.project_jade.jpg"
+  }
+]

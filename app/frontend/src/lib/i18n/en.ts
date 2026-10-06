@@ -117,6 +117,11 @@ export const en: Record<MessageKey, string> = {
   "auto.audience.team": "Team chat",
   "auto.audience.me": "Only me",
   "auto.calloutSelf": "Include myself",
+  "auto.calloutStyle": "Callout style",
+  "auto.calloutStyleHint":
+    "Compact: one line a player, the same fields in the same order, easy to compare. Rich: the tier's emoji, the title and the quip as well. Emoji show in the client's chat only; lines typed in a game have none.",
+  "auto.style.compact": "Compact",
+  "auto.style.rich": "Rich",
   "auto.header": "Opening line",
   "auto.headerHint": "Sent as its own line before the players'; blank sends none.",
   "auto.preview": "Preview",
@@ -124,7 +129,7 @@ export const en: Record<MessageKey, string> = {
   "auto.previewOffline": "Connect the client to see a preview.",
   "auto.template": "Line template",
   "auto.templateHint":
-    "One line per teammate, with {standing} {seat} {name} {champion} {games} {winRate} {kda} {score} {title} {quip}; {seat} is the place in your team's list in champ select, P1 to P5. Blank uses the default.",
+    "One line per teammate, with {emoji} {standing} {seat} {name} {champion} {games} {winRate} {kda} {score} {title} {quip}; {seat} is the place in your team's list in champ select, P1 to P5, and {emoji} the tier's emoji. Blank uses the chosen style's default.",
   "auto.reset": "Reset",
   "auto.section.bench": "Bench",
   "auto.bench": "Take wishlist champions",
@@ -249,7 +254,7 @@ export const en: Record<MessageKey, string> = {
   "augment.prismatic": "Prismatic",
   "history.share": "{p} of team",
   "history.scoreHint":
-    "winer score (0–10): takedowns, damage, damage taken, gold, objectives, vision, crowd control and survival against the game's average player, who scores 6.0.",
+    "winer score (0–10): gold, survival, kills, assists, damage and damage taken (on the Rift also farming and vision) against the game's average player, who scores 6.0; the weights are calibrated on WeGame's MVP and SVP.",
   "history.version": "Patch",
   "history.awardMvp": "MVP: the best score on the winning side",
   "history.awardSvp": "SVP: the best score on the losing side",
@@ -297,6 +302,41 @@ export const en: Record<MessageKey, string> = {
   "feat.doubleWhy": "Best streak of the game: a double kill.",
   "history.placement": "#{n}",
   "history.offline": "Connect the client to look up games.",
+  // History: what the numbers count, custom games, a player rated alone.
+  "history.formLabel": "Last {n} · all modes",
+  "history.formHint": "How these numbers are counted",
+  "history.formWindow":
+    "The newest {window} of the {listed} recent games the client lists (20 at most), every mode, not only ranked.",
+  "history.formWindowShort":
+    "The newest {window} of the recent games the client lists (20 at most), every mode, not only ranked.",
+  "history.formModes": "The {n} counted: {modes}.",
+  "history.formMode": "{mode} {n}",
+  "history.formModeJoin": ", ",
+  "history.formRemakes":
+    "{n} remakes among them show as grey ticks and count toward nothing: not wins, KDA, streak or form.",
+  "history.formLeftOut":
+    "Left out, without taking a place among the 20: custom games ({custom} passed over this time) and games against the computer, the tutorial included ({bots} passed over).",
+  "history.formLeftOutShort":
+    "Left out, without taking a place among the 20: custom games and games against the computer, the tutorial included.",
+  "history.formSame": "Champ select's ratings, titles and callout read the same numbers.",
+  "history.formRuleShort":
+    "Last {n}: every mode; custom games, games against the computer and remakes left out",
+  "history.rankedRecord": "{queue}: wins and losses from the client's rank data, not recent form.",
+  "history.standing": "Recent form",
+  "history.standingHint": "How the tier is set",
+  "history.standingScore":
+    "Form {score} (0–10): half win rate, half KDA over the games counted; few games pull it toward 5.0.",
+  "history.standingAlone":
+    "In champ select, {scheme} ranks the team's five by form. Alone there is nobody to rank against, so the player takes Rift grades' fixed band first ({grade}), and the eight grades are spread in order over {scheme}'s {tiers} tiers: “{label}”. In champ select the tier also depends on the teammates and can differ.",
+  "history.standingGraded":
+    "Rift grades use fixed bands, not teammates: {grade}, “{label}”, as in champ select.",
+  "history.standingWords":
+    "Titles and quips follow champ select's rules; titles can be turned off in Settings › Rating.",
+  "history.hideCustom": "Hide custom games",
+  "history.hiddenCustom": "{n} hidden",
+  "history.emptyHidden": "Only custom games here, hidden as set.",
+  "history.showCustom": "Show custom games",
+  "history.refreshFailed": "Could not read the newest games; these are the last ones read.",
 
   "tools.title": "Tools",
   "tools.social": "Social",
@@ -312,13 +352,107 @@ export const en: Record<MessageKey, string> = {
   "tools.current": "Now: {status}",
   "tools.statusRefused": "The client did not take that status.",
   "tools.message": "Status message",
-  "tools.messageHint": "The line under your name.",
+  "tools.messageHint":
+    "The line friends see under your name; the client puts it in quotation marks.",
   "tools.messagePlaceholder": "Say something",
   "tools.client": "Client",
   "tools.restartUi": "Restart the client UI",
   "tools.restartUiHint":
     "Restarts only the client's window; your sign-in and any running game are untouched.",
   "tools.restarted": "The client UI is restarting",
+
+  "profile.mobileHint":
+    'Friends see a phone icon and 在线分组 ("online group"), the client\'s own wording for this state.',
+  "profile.mobileMessage": "Say 手机在线 in my status message",
+  "profile.mobileMessageHint":
+    'The client words the mobile state 在线分组 ("online group"). With this on and no status message of your own, winer sets the message to 手机在线 ("on mobile"), which friends see in quotation marks in their friends list and on your hover card; another status takes it away.',
+  "profile.remember": "Remember my status",
+  "profile.rememberHint":
+    "The client sets you back to online when it starts and after each game; with this on, winer puts the status and message chosen here back within a minute of that.",
+  "profile.notice.restored": "Status put back: {status}",
+  "profile.notice.refused":
+    "The client kept changing the status or rank back, so winer stopped; change this setting or reconnect the client to try again.",
+
+  "profile.background.title": "Profile background",
+  "profile.background.hint":
+    "Every skin can be chosen, owned or not; the client may refuse one you do not own, and what it shows afterwards is what counts.",
+  "profile.background.current": "Current background",
+  "profile.background.none": "No profile background set",
+  "profile.background.search": "Search champions or skins",
+  "profile.background.champion": "Filter by champion",
+  "profile.background.allChampions": "All champions",
+  "profile.background.owned": "Owned only",
+  "profile.background.count": "{n} skins",
+  "profile.background.unowned": "Not owned",
+  "profile.background.empty": "No skin matches. Try another name or champion.",
+  "profile.background.pick": "Pick a skin below, then Set as background.",
+  "profile.background.chosen": "Chosen: {name}",
+  "profile.background.apply": "Set as background",
+  "profile.background.done": "{name} is your profile background",
+  "profile.background.refused":
+    "The client did not switch to {name}; the background is still {current}. A skin you do not own may be refused.",
+  "profile.background.pages": "Skin pages",
+  "profile.background.loadFailed": "Could not read the skins",
+
+  "profile.challenges.title": "Challenge tokens, title and banner",
+  "profile.challenges.hint":
+    "The three challenge tokens on your profile, left to right; each can be any challenge you have reached a level in.",
+  "profile.challenges.slot": "Token {n}",
+  "profile.challenges.choose": "Choose a token",
+  "profile.challenges.clearSlot": "Clear token {n}",
+  "profile.challenges.clear": "Clear",
+  "profile.challenges.search": "Search challenges",
+  "profile.challenges.none": "No challenge has reached a level yet.",
+  "profile.challenges.noMatch": "No challenge matches",
+  "profile.challenges.titleLabel": "Title",
+  "profile.challenges.noTitle": "None",
+  "profile.challenges.chooseTitle": "Choose a title",
+  "profile.challenges.bannerLabel": "Banner",
+  "profile.challenges.chooseBanner": "Choose a banner",
+  "profile.challenges.defaultBanner": "Default banner",
+  "profile.challenges.rankBanner": "Last season's rank",
+  "profile.challenges.apply": "Apply",
+  "profile.challenges.reset": "Undo changes",
+  "profile.challenges.done": "Tokens, title and banner updated",
+  "profile.challenges.partly": "The client did not take all of it; below is what it shows now.",
+  "profile.challenges.loadFailed": "Could not read the challenges",
+
+  "profile.rank.title": "Rank disguise",
+  "profile.rank.enable": "Rank disguise",
+  "profile.rank.hint":
+    "Changes only the rank friends see in the friends list and on your hover card. Your real rank, matchmaking and your own profile in the client stay as they are. Off, your real rank shows again.",
+  "profile.rank.queue": "Queue",
+  "profile.rank.tier": "Tier",
+  "profile.rank.division": "Division",
+  "profile.rank.preview": "Friends see: {rank} · {queue}",
+  "profile.rank.offPreview": "While it is off, friends see your real rank.",
+
+  "profile.backup.title": "Game settings backup",
+  "profile.backup.hint":
+    "Saves the client's general settings and key bindings. Ten backups are kept; the oldest goes first. Restore from the lobby or the home screen.",
+  "profile.backup.create": "Back up",
+  "profile.backup.import": "Import",
+  "profile.backup.created": "Backed up the current game settings",
+  "profile.backup.imported": "Backup imported",
+  "profile.backup.empty": "No backups yet",
+  "profile.backup.emptyHint":
+    "Back up saves the current general settings and key bindings; winer never backs up on its own.",
+  "profile.backup.general": "General",
+  "profile.backup.hotkeys": "Key bindings",
+  "profile.backup.all": "Everything",
+  "profile.backup.restore": "Restore",
+  "profile.backup.restoreMenu": "Settings to restore",
+  "profile.backup.restoredGeneral": "General settings restored",
+  "profile.backup.restoredHotkeys": "Key bindings restored",
+  "profile.backup.restoredAll": "All settings restored",
+  "profile.backup.busy":
+    "Settings cannot be restored during a game. Go back to the lobby or the home screen first.",
+  "profile.backup.reveal": "Show in folder",
+  "profile.backup.delete": "Delete",
+  "profile.backup.confirmDelete": "Confirm delete",
+  "profile.backup.deleted": "Backup deleted",
+  "profile.backup.importFailed": "That file is not a winer settings backup: {message}",
+  "profile.backup.loadFailed": "Could not read the backups",
 
   "plugin.title": "In-client",
   "plugin.about":
@@ -354,13 +488,13 @@ export const en: Record<MessageKey, string> = {
   "plugin.features": "In-client features",
   "plugin.teamPanel": "Teammate panel in champ select",
   "plugin.teamPanelHint":
-    "In every mode's champ select: each teammate's rank, win rate and recent form, and your side.",
+    "In every mode's champ select: each teammate's rank, win rate and recent form, and your side; a click on a teammate's line shows their history.",
   "plugin.hidePromotions": "Hide home-page promotions",
   "plugin.benchNoCooldown": "Instant bench swaps in the client",
   "plugin.benchNoCooldownHint":
     "ARAM and Hextech ARAM only, the modes with a bench: a click on a bench champion in the client swaps it in at once, without the cooldown. winer must be running.",
   "plugin.hidePromotionsHint":
-    "Hides the activity centre and esports pop-ups on the client home page.",
+    "Hides the esports pop-up and puts a short note in place of the news and events on the client's home page; “Show for now” on the note brings them back until the client restarts.",
   "plugin.dir": "Pengu Loader folder",
   "plugin.dirHint":
     "Only for a Pengu Loader of your own, e.g. C:\\Pengu Loader; left empty, winer uses its own.",
@@ -391,14 +525,14 @@ export const en: Record<MessageKey, string> = {
   "rating.tierSlot": "Tier {n}",
   "rating.titles": "Roast titles",
   "rating.titlesHint":
-    "Titles from the numbers: three wins in a row is “Patch Champion”, the top damage in a loss is “The Dean”.",
+    "Titles from the numbers, leaning the way the tier does: above the middle only praise, such as “Patch Champion” for three wins in a row; only below it a “Grey-screen Regular”. Kills, deaths and assists are set against the same mode's average player.",
   "rating.basis": "How it is rated",
   "rating.basis.form":
-    "Recent form (0–10): the last 20 games, customs left out, half win rate and half KDA; few games pull it toward 5.0, so a lucky game or two cannot rank first.",
+    "Recent form (0–10): the last 20 games, custom games, games against the computer and remakes left out, half win rate and half KDA; few games pull it toward 5.0, so a lucky game or two cannot rank first.",
   "rating.basis.tiers":
     "Rift five, the horses, the food chain and custom names rank the team by recent form and split it evenly over the tiers, so five players in five tiers get one each; Rift grades use fixed bands and no comparison: S+ from 7.6, S 6.8, A 5.9, B 5.3, C 4.8, D 4.3, E 3.8, lower is F.",
   "rating.basis.game":
-    "One game's score (scoreboard): takedowns, damage, damage taken, gold, objectives, vision, crowd control and survival, each against the game's average, which scores 6.0; its grade is S+ from 9.0, S 8.0, A 7.0, B 6.0, C 5.0, D 4.0, E 3.0.",
+    "One game's score (scoreboard): gold, survival, kills, assists, damage and damage taken, on the Rift also farming and vision, each against the game's average, which scores 6.0, with one set of weights for the Rift and one for ARAM, both calibrated on WeGame; its grade is S+ from 9.0, S 8.0, A 7.0, B 6.0, C 5.0, D 4.0, E 3.0.",
   "rating.basis.titles":
     "Titles: recent streaks, KDA, deaths and assists per game; on the scoreboard the game's damage share, kill participation, damage taken and gold share.",
   "rating.docs": "Full explanation",
@@ -473,8 +607,47 @@ export const en: Record<MessageKey, string> = {
   "settings.update": "Updates",
   "settings.checkUpdate": "Check for updates",
   "settings.releases": "Releases",
+  "settings.notices": "Third-party licences",
+  "settings.noticesHint":
+    "The licence texts of components shipped inside winer, such as Pengu Loader.",
+  "settings.noticesShow": "Show the licence texts",
   "settings.license":
     "MIT licence. winer is not a Riot Games product and is not endorsed by Riot Games.",
+  // Storage: what winer keeps on disk and in memory, and the cleanup (Settings › About).
+  "storage.title": "Storage",
+  "storage.hint":
+    "What winer keeps on this PC, and the limit of each. Clear cache removes caches, old logs and spent update installers only, never the game settings backups, the settings or the remembered setups.",
+  "storage.clear": "Clear cache",
+  "storage.loadFailed": "Could not read what winer keeps",
+  "storage.files": "{n} files",
+  "storage.copies": "{n} backups",
+  "storage.logs": "Logs",
+  "storage.logsNote":
+    "The last {days} days, {total} in all and {file} a file at most; past that the oldest go first",
+  "storage.webview": "WebView data",
+  "storage.webviewNote":
+    "{cache} of it is cache that can be cleared, the page cache {limit} at most; the rest are components WebView2 downloads and updates itself",
+  "storage.webviewPending": "The WebView's cache goes the next time winer starts",
+  "storage.backups": "Game settings backups",
+  "storage.backupsNote": "{n} at most; Clear cache leaves them",
+  "storage.pengu": "In-client components",
+  "storage.penguNote": "Pengu Loader and winer's client plugin",
+  "storage.settings": "Settings and remembered setups",
+  "storage.settingsNote": "Clear cache leaves them",
+  "storage.updates": "Update installers",
+  "storage.updatesNote":
+    "Left in the system's temporary folder by an update; removed when winer next starts",
+  "storage.memory": "Cache in memory",
+  "storage.memoryValue": "{n} entries · pictures {images}",
+  "storage.memoryNote":
+    "Icons, history, players and builds; pictures {limit} at most, and what expires is let go on a schedule",
+  "storage.cleared": "Removed {items}.",
+  "storage.cleared.separator": ", ",
+  "storage.cleared.logs": "{n} old log files ({size})",
+  "storage.cleared.updates": "{n} update installers ({size})",
+  "storage.cleared.memory": "{n} entries cached in memory",
+  "storage.cleared.webview": "The WebView's cache, {size}, goes the next time winer starts.",
+  "storage.cleared.nothing": "Nothing to clear.",
 
   "update.idle": "Not checked yet",
   "update.checking": "Checking for updates",
@@ -500,8 +673,205 @@ export const en: Record<MessageKey, string> = {
   "notice.calledOut": "Sent the callout ({n} lines)",
   "notice.failed": "Automation failed: {message}",
 
+  // Runes, spells, builds and item sets.
+  "loadout.panel": "Builds",
+  "loadout.source": "Data: {source}",
+  "loadout.sourcePatch": "Data: {source} · {patch}",
+  "loadout.source.tencent": "Tencent 101",
+  "loadout.source.tencentHextech": "Tencent League app",
+  "loadout.source.opGg": "OP.GG",
+  "loadout.source.aramGg": "ARAM.GG",
+  "loadout.sample": "{n} games",
+  "loadout.tierHint": "{source}'s tier for this champion, 1 the strongest",
+  "loadout.dropped":
+    "{n} more entries the client does not know (items of another patch, unknown runes) are left out.",
+  "loadout.tabs": "Build sections",
+  "loadout.tab.items": "Items",
+  "loadout.tab.runes": "Runes",
+  "loadout.tab.spells": "Spells",
+  "loadout.tab.skills": "Skills",
+  "loadout.tab.matchups": "Matchups",
+  "loadout.tab.augments": "Augments",
+  "loadout.lane": "Lane",
+  "loadout.pick": "Pick rate",
+  "loadout.win": "Win rate",
+  "loadout.games": "Games",
+  "loadout.starting": "Starting items",
+  "loadout.boots": "Boots",
+  "loadout.core": "Core items",
+  "loadout.late": "Late options",
+  "loadout.empty": "This source has no numbers for this section.",
+  "loadout.applyRunes": "Use these runes",
+  "loadout.applySpells": "Take these spells",
+  "loadout.writeItemSet": "Write the item set",
+  "loadout.runesWritten": "Written to winer's rune page, now the current page.",
+  "loadout.runesNoPage":
+    "Not written: there is no room for winer's rune page and the current page is one of yours. Delete a page, or select the client's temporary page, and try again.",
+  "loadout.spellsApplied": "These two summoner spells are taken.",
+  "loadout.itemSetWritten": "Item set written; find it among the in-game shop's item sets.",
+  "loadout.priority": "Max order",
+  "loadout.sequence": "Points for the first {n} levels",
+  "loadout.good": "Good matchups",
+  "loadout.bad": "Hard matchups",
+  "loadout.matchupHint": "The win rate is this champion's own against that one.",
+  "loadout.augmentFilter": "Filter augments by name",
+  "loadout.augmentNoMatch": "No augment has that name.",
+  "loadout.augmentTier": "{source}'s grade for this augment",
+  "loadout.placement": "Average place {n}",
+  "loadout.first": "First {p}",
+  "loadout.placementShort": "Avg. place",
+  "loadout.placementHint":
+    "Arena is judged by the average place and the share of first places, not by wins.",
+  "loadout.failed": "No build numbers came back",
+  "loadout.noData": "There are no build numbers for this mode.",
+  "loadout.pickHint": "Hover or lock in a champion to see its build here.",
+  "loadout.lookup": "Look up a champion",
+  "loadout.lookupHint": "Choose a champion and a mode; it works outside a game too.",
+  "loadout.choose": "Choose a champion",
+  "loadout.mode": "Mode",
+  "loadout.rift": "Summoner's Rift",
+  "loadout.section": "Runes and summoner spells",
+  "loadout.rule": "Set up runes and summoner spells",
+  "loadout.ruleHint":
+    "Once your champion is locked in (in the ARAMs, each time it changes), sets up the runes and summoner spells you last played it with in this mode. Once per champion, so a change you make afterwards stands.",
+  "loadout.recommended": "Use the client's recommendation",
+  "loadout.recommendedHint":
+    "With nothing remembered for the champion in this mode, uses the client's own recommended page and spells.",
+  "loadout.remembered": "{n} remembered",
+  "loadout.rememberedHint":
+    "When a game starts, the runes and spells you go in with are remembered, per champion and mode, on this computer only.",
+  "loadout.forget": "Forget them",
+  "loadout.forgotten": "Remembered runes and spells forgotten",
+  "loadout.pageNote":
+    'winer uses one rune page, named "winer · <champion>". Without it and with no room for it, only the client\'s temporary page is written; your own pages never are.',
+  "loadout.itemSetsSection": "Item sets",
+  "loadout.itemSets": "Write item sets",
+  "loadout.itemSetsHint":
+    "Once your champion is locked in, writes the build as the champion's item set. Only winer's own sets change; yours stay as they are.",
+  "loadout.experimental": "Experimental",
+  "loadout.itemSetsNote":
+    "Not recommended yet, still an experiment: a set written in champ select is in that game's shop; one written after the game started, from the next game.",
+  "loadout.itemSetsNeedBuilds": "Needs Builds turned on in Settings › General.",
+  "loadout.clearItemSets": "Remove winer's item sets",
+  "loadout.clearedItemSets": "Removed {n} of winer's item sets",
+  "loadout.builds": "Builds",
+  "loadout.buildsHint":
+    "Shows item, rune, spell, skill and matchup statistics on the Live game page, from public data by the Tencent League app, OP.GG and ARAM.GG. Off, nothing is fetched.",
+  "loadout.riftSource": "Summoner's Rift data",
+  "loadout.riftSourceHint": "Tencent 101 counts the Chinese servers; OP.GG counts the world.",
+  "loadout.notice.remembered": "Set up the remembered {what} for {champion}",
+  "loadout.notice.recommended": "Set up the client's recommended {what} for {champion}",
+  "loadout.notice.noPage": "{champion}'s runes unchanged: no room for winer's rune page",
+  "loadout.notice.noPageToo": "{applied}; runes unchanged: no room for winer's rune page",
+  "loadout.notice.itemSet": "Wrote the item set for {champion}",
+  "loadout.what.both": "runes and summoner spells",
+  "loadout.what.runes": "runes",
+  "loadout.what.spells": "summoner spells",
+
   "status.shortcuts": "Ctrl 1–6 pages · Ctrl , settings · Ctrl B sidebar",
   "error.title": "This page hit an error",
   "error.hint":
     "Other pages are fine. Retry, or open the log folder and send the newest log to the developers.",
+
+  // Social: friends' games, the lobby, the global shortcut.
+  "social.friends": "Friends",
+  "social.friendsPlaying": "{n} in champ select or a game",
+  "social.friendsEmpty": "No friend is in champ select or a game right now.",
+  "social.friendsLoading": "Reading the friends list",
+  "social.inGame": "In game",
+  "social.champSelect": "Champ select",
+  "social.elapsed": "{time} in",
+  "social.observable": "Spectatable",
+  "social.together": "Together {n}",
+  "social.togetherHint": "Friends with the same colour and number are in one game or one party.",
+  "social.lobby": "Lobby",
+  "social.lobbyHint":
+    "Your party's recent form before the game starts; a player opens their history.",
+  "social.lobbyCustom": "Custom lobby",
+  "social.leader": "Leader",
+  "social.you": "You",
+  "social.score": "Form {score}",
+  "social.fill": "Fill",
+  "social.pluginFriends": "Friends' games in the friends list",
+  "social.pluginFriendsHint":
+    "In the client's friends list on the right: the mode and running time of each friend's game; friends playing together share a colour.",
+  "social.pluginLobby": "Lobby members' form",
+  "social.pluginLobbyHint":
+    "In the client's lobby: recent win rate, KDA and form score above each member's banner; a click on a member shows their history.",
+  "social.hotkey": "Shortcut to bring up winer",
+  "social.hotkeyHint":
+    "Shows or hides winer from anywhere; shown during a game, it stays above the game. The game must run borderless or windowed.",
+  "social.hotkeyOff": "Off",
+  "social.hotkeyRecord": "Set a shortcut",
+  "social.hotkeyChange": "Change the shortcut",
+  "social.hotkeyListening": "Press the keys…",
+  "social.hotkeyListeningHint": "Esc cancels.",
+  "social.hotkeyInvalid": "Use Ctrl, Alt or Win, plus a letter, a digit, an F key or an arrow.",
+  "social.hotkeyClear": "Clear the shortcut",
+  "social.hotkeyActive": "Active",
+  "social.hotkeyFailed":
+    "Not registered: another program probably holds this combination. Try another.",
+
+  // The history panel in the client.
+  "overlay.historyInClient": "Recent games inside the client",
+  "overlay.historyInClientHint":
+    "A click on a player in the lobby or in champ select shows their latest games in a panel inside the client; off, it opens their history in winer's window.",
+  // Callout: the shortcut that sends it, and the enemy lines it types into the game's chat.
+  "callout.hotkey": "Shortcut to send the callout",
+  "callout.hotkeyHint":
+    "In champ select it posts the callout to the team chat, as Send to team does; in a game, with In-game sending on, it types the in-game lines chosen below into the game's team chat. None by default.",
+  "callout.hotkeyTakenByWindow": "This combination brings up winer. Choose another.",
+  "callout.hotkeyTakenByCallout": "This combination sends the callout. Choose another.",
+  "callout.gameSection": "In-game callout",
+  "callout.inGame": "In-game sending",
+  "callout.inGameHint":
+    "The game's chat has no API, so winer types for you with synthesized key presses: Enter opens the team chat, a line goes in, Enter sends it, line by line. It types only while the game's window is already in front and stops the moment it is not; close the chat box before pressing the shortcut.",
+  "callout.inGameRisk":
+    "Key presses another program sends to the game are third-party input and may break the game's terms of service; you use it at your own risk. Off by default.",
+  "callout.watch": "Enemy to watch",
+  "callout.target": "Enemy to go after",
+  "callout.ally": "Each teammate",
+  "callout.linesHint":
+    "In a game everyone goes by their champion, or by name where the champion is not known. Two enemies at most: the best rated above the middle of the scheme goes in the line to watch, the worst rated below it in the line to go after, and nobody like that, no line; your team gets one line per teammate, as in champ select. The placeholders are the team line's; {champion} is the champion the player plays and {seat} their place in their team's list. Blank uses the default.",
+  "callout.gameTeams": "Whose lines to type",
+  "callout.gameTeamsHint":
+    "The enemy lines by default. Each line typed holds your keyboard for about a second, so one press types {n} lines at most: with Both, the enemy lines go first, then your team best first, and what does not fit is left out.",
+  "callout.gameTeams.enemies": "Enemies",
+  "callout.gameTeams.allies": "My team",
+  "callout.gameTeams.both": "Both",
+  "callout.preview": "Typed in game",
+  "callout.previewHint":
+    "What one press types, shown with your own recent form, your team on the blue side and the enemy on the red.",
+  "callout.inGameOn": "In-game sending on",
+  "callout.inGameOff": "In-game sending off",
+  "callout.liveGameHint":
+    "In a game everyone goes by their champion: the enemy lines name the one to watch and the one to go after, your team's lines every teammate. The game's chat has no API, so there is no send button here; the shortcut types them.",
+  "callout.liveGameEmpty":
+    "Written here once the enemies' history has loaded; nothing while no enemy is clearly stronger or weaker than the middle.",
+  "callout.liveAlliesEmpty": "Written here once your teammates' history has loaded.",
+  "callout.liveHotkey": "The shortcut sends it to the team too:",
+  "callout.liveHotkeyGame.enemies":
+    "In the game, the shortcut types the enemy lines into the team chat:",
+  "callout.liveHotkeyGame.allies":
+    "In the game, the shortcut types your team's lines into the team chat:",
+  "callout.liveHotkeyGame.both":
+    "In the game, the shortcut types the enemy lines, then your team's, {n} at most:",
+  "callout.liveNoHotkey": "Set a shortcut to send the callout to the team with one press.",
+  "callout.liveNoHotkeyGame":
+    "Set a shortcut and turn on in-game sending to type the callout into the team chat in the game.",
+  "callout.liveInGameOff": "In-game sending is off: the shortcut types nothing in the game.",
+  "callout.liveHotkeyFailed":
+    "The callout's shortcut is not registered: another program probably holds it.",
+  "callout.configure": "Set up",
+  "callout.notice.typed": "Typed the callout into the game's chat ({n} lines)",
+  "callout.notice.stopped": "The callout stopped part of the way: {reason} ({n} sent)",
+  "callout.notice.skipped": "Callout not sent: {reason}",
+  "callout.skip.notNow": "the shortcut sends only in champ select and in a game",
+  "callout.skip.nothingToSay": "nobody to talk about",
+  "callout.skip.inGameOff": "in-game sending is off",
+  "callout.skip.notInFront": "the game's window is not in front",
+  "callout.skip.keysHeld": "a key stayed held down",
+  "callout.skip.blocked":
+    "the system refused the key presses; winer may run with fewer rights than the game",
+  "callout.skip.unsupported": "in-game sending works on Windows only",
 };

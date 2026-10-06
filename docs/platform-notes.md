@@ -27,6 +27,8 @@ for one client build or one privilege level, it says so.
   `away` and `offline` take; the client's own identity then shows 在线, 离开 and 离线. `dnd` is
   ignored (the availability reads back unchanged; the client sets it itself during a game), and
   `mobile` is kept but shown as 在线分组, a group name, not a status. Read the value back to know.
+  On GZ100 (16.19.821.7343, 2026-10-06) `online` and `spectating` were kept as well and shown as
+  在线 and 正在观战中: whatever the client keeps, it names through the table below.
 - zh_CN `champion-summary.json`: `name` is the title the client shows (`黑暗之女`), `description` is the
   short name (`安妮`), `alias` is the English key (`Annie`).
 - Ranked: `/lol-ranked/v1/ranked-stats/{puuid}` → `queueMap.RANKED_SOLO_5x5` etc. Unranked is
@@ -88,6 +90,76 @@ for one client build or one privilege level, it says so.
   (`--app-port`, served by `LeagueClient`) and an open WAMP socket survive it, the plugin is back
   within seconds, and the window returns **un-minimized** even if it was minimized before.
 
+## Profile and chat presence
+
+Read-only, NJ100, 16.19, 2026-10-06.
+
+- `/lol-champions/v1/inventories/{summonerId}/skins-minimal` lists **2635** skins, owned or not, each
+  with `championId`, `isBase`, `ownership.owned`, `disabled`, and `tilePath` / `splashPath` under
+  `/lol-game-data/assets/` (so the `lcu` protocol serves them). **515** of them belong to the mode's
+  copies of champions (`championId` 60000 and up, skin ids such as 60001000) and repeat the real
+  champions' skins name for name. A base skin is named after the champion's title (`九尾妖狐`).
+- `/lol-summoner/v1/current-summoner/summoner-profile` → `backgroundSkinId` (0 when none is chosen),
+  `backgroundSkinAugments`, and `regalia` as a JSON string.
+- `/lol-challenges/v1/challenges/local-player` is a map of **399** challenges by id (about 1 MB); 349
+  had `currentLevel: "NONE"`. Each carries `levelToIconPath`, one token picture per level, under
+  `/lol-game-data/assets/`. `summary-player-data` names the token slots in
+  `selectedChallengesString` (`"101304"` with one token, `"101101,101205,2023005"` with three on
+  GZ100), the same tokens in `topChallenges`, the title in `title` (`itemId`, `name`) and the banner
+  in `bannerId` (below).
+- `/lol-chat/v1/me` → `lol` of an unranked account has no `rankedLeagueQueue`, `rankedLeagueTier` or
+  `rankedLeagueDivision` key at all, only `rankedPrevSeasonTier: ""` and
+  `rankedPrevSeasonDivision: "NA"`; `challengeTokensSelected` repeats the token string.
+
+### What friends read for a status
+
+GZ100, 16.19.821.7343, 2026-10-06, over the API and the client page (port 9223). Every write was put
+back as it was found.
+
+- The text comes from the client's own `lol-social-status` element, the same in the friends list and
+  in the player's own identity block: a game state first, else the status message as
+  `“{statusMessage}”`, else `availability_<value>` from `/fe/lol-social/trans.json`, plus
+  ` - productName` or ` - platformId` only for a friend in another product or on another shard.
+- zh_CN's `availability_mobile` is **在线分组**, the same string as the friends list's mobile group
+  (`group_label_mobile`, `dropdown_hide_mobile`: 隐藏 在线分组). None of the 53 translation files the
+  page loads has 手机在线, so no availability reads as that. The identity shows
+  `availability-icon mobile` and `status-message mobile`: 在线分组.
+- `PUT {"statusMessage": "手机在线"}` (201) read back at once and was still there 3 s later; with
+  the availability still `mobile`, the identity block showed `“手机在线”` in a
+  `status-message-quoted` span inside `status-message-wrapper mobile`. The quotation marks are
+  characters of the template, not CSS (`::before` and `::after` are `none`). A post-game room's
+  participant list, the chat server's copy of the presence, carried the message too.
+- `/lol-platform-config/v1/namespaces/LcuSocial` has `StatusesDisabled: true`; the element showed
+  the message anyway. Read from the client's code, not seen: the friend hover card prints the
+  message in the same marks, the client's own status input is off under that flag, and its idle
+  service clears a status message when the interface starts (winer's remembered presence puts it
+  back).
+- `lol.gameStatus: "mobile"` beside `availability: "mobile"` did not take (read back `outOfGame`).
+  `productName`, `product` and `platformId` in the body were ignored (201, unchanged).
+
+### Banner
+
+GZ100, 16.19.821.7343, 2026-10-06.
+
+- `/lol-regalia/v3/inventory/REGALIA_BANNER` maps every banner id (37) to `isOwned`, `purchaseDate`
+  and `items` (`assetPath`, `idSecondary`, `isSelectable`, `isTencentOnly`, `localizedName`). `1`
+  is the default (`default.png`, no name), `2` the banner of last season's rank, one item per tier
+  (`idSecondary` `UNRANKED` … `CHALLENGER`); the rest are events' banners, 580 × 1480 pictures.
+- The client's own customizer (`rcp-fe-lol-shared-components`) offers the default (`1`, type
+  `blank`), the rank banner (`2`, type `lastSeasonHighestRank`, disabled without a last-season
+  rank) and every event's banner above `2`, unowned ones greyed. Saving posts
+  `update-player-preferences` with `bannerAccent: "<id>"` and `PUT`s
+  `/lol-regalia/v2/current-summoner/regalia` with the type. An empty `bannerId` reads as the default,
+  or as the rank banner while the type is `lastSeasonHighestRank`.
+- `POST update-player-preferences` with the tokens, the title and `bannerAccent: "24"` answered 204:
+  the summary's `bannerId` (also through `summary-player-data/player/{puuid}`) and the chat
+  presence's `lol.bannerIdSelected` became `24` at once; tokens, title, regalia and the account
+  loadout's `REGALIA_BANNER_SLOT` (item 1) stayed as they were. `bannerAccent: ""` put both back to
+  empty. What the profile page and the hover card then draw was not looked at.
+- `PUT …/regalia` with `preferredBannerType: "lastSeasonHighestRank"` (201) changed the preference
+  and the presence's `regalia` (`bannerType` 1 → 2), while `bannerType` stayed `blank` for an
+  account with no last-season rank; `blank` put both back.
+
 ## Match history from the shard's server (SGP)
 
 Measured on NJ100, 16.19, 2026-10-05.
@@ -107,6 +179,57 @@ Measured on NJ100, 16.19, 2026-10-05.
 - Turned into the LCU's shape (`crates/core/src/sgp.rs`), a game reads exactly as
   `/lol-match-history/v1/games/{id}` does for the analysis (the test
   `a_page_from_the_server_describes_its_game_as_the_client_does`, on both captures of one game).
+  So a scoreboard opened from a server page is drawn from that page's game, with no request.
+
+## Kinds of game
+
+Read-only, GZ100, 16.19.821.7343, 2026-10-06 (`fixtures/live/ranked/queues.json`,
+`fixtures/live/history/client-list-gz100.json`).
+
+- `/lol-game-queues/v1/queues` lists 141 queues: `category` `PvP` (106), `Custom` (20, each also
+  `isCustom: true`) and `VersusAi` (15). Co-op vs AI is `VersusAi`, `type` `BOT`, `ARAM_BOT` or
+  `RIOTSCRIPT_BOT`; the ones open now are 870, 880 and 890 (入门级, 新手级, 一般级, on `SWIFTPLAY`).
+  Doom Bots (`NIGHTMARE_BOT`, 4210–4260) and Jade's co-op (`JADE_BOT`, 4320) are filed under
+  `PvP`: only their `type` says the opponent is the computer.
+- A custom game in a match list carries `gameType: CUSTOM_GAME` and the custom queue's own id
+  (3220 for an all-random ARAM lobby, 3270 for a Hextech ARAM one), not 0. The tutorial's games
+  are `TUTORIAL_GAME` by Riot's documented types; none was seen here.
+- The client's own list on GZ100 answered 30 games to `begIndex=0&endIndex=19` (NJ100 had
+  answered 20): what it holds, whatever the range. Two of those 30 were custom and three remakes
+  (`gameEndedInEarlySurrender`, 130–168 s).
+
+## Public build statistics
+
+Read off the captures in `fixtures/builds/` (Jhin, 202, patch 16.19, 2026-10-06) and probed from the
+Linux build host the same day; each answers a plain GET with no key, cookie or user agent.
+
+- Tencent 101 (`mlol.qt.qq.com/go/battle_info/odp_proxy/lol_101strategy_{build,runeinfo,skill,skill_point,confront}`):
+  the payload is the one field of `data._fieldValues`, under a name that changes (`R18087`,
+  `R18119`), holding a JSON document as a string. A lane or patch with no numbers answers `code: 0`
+  with that string empty.
+- A `rune_top_details` row's last number is the row's own games, not the lane's: games divided by the
+  row's pick share gives the same total for every row of a lane (1 241 522 for Jhin bottom), which
+  is the lane's sample. Rows do not name their styles; they follow from the client's
+  `perkstyles.json`.
+- `skill` holds the summoner spells, with the shares last and the other way round from the item rows:
+  `<spell>_<spell>_<win %>_<pick %>`, the picks summing to 99.7. `confront`'s `high_op_details` are
+  the opponents the champion beats (Ezreal 54.09 %, which OP.GG's counters give as 54.3 %),
+  `low_op_details` those it loses to; what their last column measures is not known.
+- Tencent's Hextech ARAM numbers (`fuwen_hero_rank`) come in the same envelope with no patch (a
+  `dtstatdate`). Their augment ids are the client's own (`cherry-augments.json`); their items include
+  mode copies (`126697`) that the client's item catalog also lists. `itemone_json`, `itemcore_json`
+  and `skill_json` are JSON objects keyed by rank, with rates in hundredths of a percent
+  (`4874` = 48.74 %).
+- OP.GG (`lol-api-champion.op.gg/api/global/champions/<mode>/<id>[/<position>]`): the `global`
+  region answers. `ranked/<id>` without a position answers 404, so a lane is always asked for; every
+  answer names the champion's lanes in `summary.positions`, whichever was asked. Arena's `total_place`
+  counts finishes from 0: Jhin's 417 319 over 117 603 games is 3.55, a 4.55 average finish, beside a
+  48.6 % share of top-four finishes.
+- ARAM.GG (`aramgg.com/data/champion-augments/<id>.json`): `[[champion, "<document>", patch, date]]`.
+  The document's tiers are Tencent's (`source: "tencent"`), 1 to 4 for S to C; its win rates are
+  ARAM.GG's own.
+- Arena hands out its summoner spells: the client's `summoner-spells.json` lists two for `CHERRY`
+  (2201 and 2202), and Arena has no rune page, so the rune and spell memory does not act there.
 
 ## Pengu Loader (injected surface)
 
@@ -147,6 +270,24 @@ Measured on NJ100, 16.19, 2026-10-05.
 - **Pengu's `#pengu-root` covers the bench** in champ select: `elementFromPoint` at a bench
   item's centre returns that empty div, so a click's target is `#pengu-root`, not the item. The
   item is still in `elementsFromPoint` at the same point; that is how the plugin finds it.
+- **A champ select row clips its text** (16.19, custom draft, 2026-10-06): each
+  `.summoner-wrapper.visible.left` holds a 78px `.summoner-object` row whose `.player-details`
+  column (156px wide, `overflow: hidden`, 50px) stacks the status (`正在选用……`, 14px), the
+  position (20px) and `.summoner-name`, one 16px line (`overflow: hidden`, ellipsis) around
+  `.name-text` › `.player-name-wrapper`. A line put after the name stays inside that box and never
+  shows; at the end of the column, with the column's overflow let go, it shows in the 14px the row
+  leaves below it. The column's left edge moves with the row's state, 87–127px from the window's.
+- **The Home tab is the activity centre** (16.19, 2026-10-06):
+  `div.screen-root[data-screen-name="rcp-fe-lol-activity-center"]` › `section#activity-center` ›
+  `main.activity-center__contents` (1055×718), filled by one iframe of Tencent's news and events hub
+  (`lol.qq.com/client/v3/index.html`) in `lol-uikit-section-controller` › `div.managed-iframe` ›
+  `div.managed-iframe-wrapper`, the iframe its only child; `div.persistent-control-panel` beside
+  `main` holds a mute button. Hiding the screen root or the section leaves the whole tab black. A
+  hidden iframe under `<body>`, `lol.qq.com/client/client_lcu_bg.html`, shares the hub's host and
+  the start of its path, so the hub is found by where it sits. The esports pop-up is
+  `iframe#contestPop` (`lol.qq.com/plugin/esports/pop.html`), a child of `<body>` at an inline
+  `display: none` until it pops (not seen popping); there is no `iframe#tv-official-pop`. The page's
+  `sessionStorage` is usable.
 - The page is `visibilityState: hidden` while the client window is minimized or hidden, and then
   `requestAnimationFrame` never fires: anything the plugin draws waits until the window is shown.
 - `POST /lol-champ-select/v1/session/bench/swap/{id}` answered OK for a champion that was on the
@@ -155,6 +296,33 @@ Measured on NJ100, 16.19, 2026-10-05.
   page is reachable over CDP (`scripts/windows/cdp.mjs` with `WINER_CDP_PORT` and
   `WINER_CDP_MATCH=/index.html`). Put it back to `0` and reload again afterwards: while it is
   open, any local process can drive the logged-in client.
+
+## What winer keeps
+
+Read-only, on the owner's PC (winer 0.0.2, two days after it was installed), 2026-10-06.
+
+- `%LOCALAPPDATA%\app.winer.desktop` held `EBWebView` (78,975,184 bytes in 361 files), `logs`
+  (15,204 bytes, two days at the default filter) and `pengu` (508,204 bytes: `core.dll` 455,864, the
+  plugin 52,228); `%APPDATA%\app.winer.desktop\settings.json` was 1,959 bytes. There was no
+  `game-settings` folder and no updater folder in `%TEMP%`.
+- In `EBWebView` the page cache (`Default\Cache`) was **empty**: the window's pages and pictures come
+  through winer's own protocols (WebView2's `WebResourceRequested`), which it does not store on disk,
+  and scripts served that way are left out of the code cache unless `msWebView2CodeCache` is on. The
+  caches Chromium rebuilds came to 9,927,920 bytes: `GrShaderCache` 5.2 MB, `Default\GPUCache`
+  1.6 MB, `Default\Code Cache` 0.9 MB, and `ShaderCache`, `GraphiteDawnCache`,
+  `Default\DawnGraphiteCache` and `Default\DawnWebGPUCache` at 557,424 bytes each.
+- The rest is what WebView2 downloads and updates itself: `component_crx_cache` 23.3 MB,
+  `WidevineCdm` 22.7 MB, `Subresource Filter` 12.5 MB, `Speech Recognition` 2.7 MB, `hyphen-data`,
+  `ZxcvbnData` and a dozen smaller ones. Microsoft's list of WebView2 browser flags has none that stops
+  it. `--disk-cache-size` is on that list and bounds the page cache; its effect on this folder was not
+  measured, since the page cache was empty anyway.
+- `tauri-plugin-updater` writes each installer to
+  `%TEMP%\winer-<version>-updater-<random>\winer-<version>-installer.exe`, starts it and ends winer
+  with `std::process::exit`, so the file is never removed (read from its 2.10.1 source; no update had
+  run in-app on that PC).
+- The pictures the window holds in memory, as the client serves them (16.19, GET only): a champion
+  icon 28,251 bytes, a profile icon 4,333, a skin's tile 39,905, its centred splash 105,313 and its
+  loading-screen art 58,168. The background picker lists 2,635 skins.
 
 ## Windows host behaviour
 
@@ -175,8 +343,9 @@ Measured on NJ100, 16.19, 2026-10-05.
   holds for reading windows: `EnumWindows` from the SSH session lists none of session 1's.
 - WebView2's DevTools port for QA: `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, set by the scheduled
   task's cmd wrapper, never showed up on `msedgewebview2.exe`'s command line. The `qa` cargo feature
-  passes `--remote-debugging-port` through `additional_browser_args` instead, which **replaces**
-  wry's own `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`, so it restates them.
+  passes `--remote-debugging-port` through `additional_browser_args` instead. Every build passes its
+  `--disk-cache-size` the same way (`window.rs`), and that **replaces** wry's own
+  `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`, so they are restated.
 - `PrintWindow(PW_RENDERFULLCONTENT)` captures a WebView2 window fully, but returned an all-black
   image of the client's CEF window after its GPU process had restarted with `--use-gl=disabled`.
 - `decorations: false` keeps Aero Snap, resize borders, shadow and rounded corners; it loses only the

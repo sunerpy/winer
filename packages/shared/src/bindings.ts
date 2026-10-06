@@ -4,13 +4,21 @@ export type Snapshot = {
 /**
  * The revision of the last patch applied; updates at or below it are stale.
  */
-rev: number, connection: Connection, me: Me | null, phase: Phase, champSelect: ChampSelectView | null, game: GameView | null, };
+rev: number, connection: Connection, me: Me | null, phase: Phase, champSelect: ChampSelectView | null, game: GameView | null, 
+/**
+ * `None` until the client has listed the friends once.
+ */
+friends: FriendsView | null, 
+/**
+ * The party, while the client shows the lobby (in it, in queue, match found).
+ */
+lobby: LobbyView | null, };
 
 export type Update = { rev: number, patch: Patch, };
 
-export type Patch = { "key": "connection", "value": Connection } | { "key": "me", "value": Me | null } | { "key": "phase", "value": Phase } | { "key": "champSelect", "value": ChampSelectView | null } | { "key": "game", "value": GameView | null };
+export type Patch = { "key": "connection", "value": Connection } | { "key": "me", "value": Me | null } | { "key": "phase", "value": Phase } | { "key": "champSelect", "value": ChampSelectView | null } | { "key": "game", "value": GameView | null } | { "key": "friends", "value": FriendsView | null } | { "key": "lobby", "value": LobbyView | null };
 
-export type Event = { "type": "update", "data": Update } | { "type": "notice", "data": Notice } | { "type": "settings", "data": Settings } | { "type": "gameData" };
+export type Event = { "type": "update", "data": Update } | { "type": "notice", "data": Notice } | { "type": "settings", "data": Settings } | { "type": "gameData" } | { "type": "openHistory", "data": { puuid: string, } };
 
 export type Connection = { "status": "searching" } | { "status": "accessDenied" } | { "status": "connecting", port: number, } | { "status": "connected", port: number, platformId: string, };
 
@@ -60,7 +68,17 @@ teams: Array<Array<Seat>>,
 /**
  * The teams are the blue and the red side; Arena's and Swarm's are not.
  */
-sides: boolean, };
+sides: boolean, 
+/**
+ * The in-game callout's enemy lines as they would be typed now: the enemy to watch and the one
+ * to go after (`callout::game_lines`); empty where there is nobody to talk about.
+ */
+callout: Array<string>, 
+/**
+ * The team's own lines, every rated teammate by champion (`callout::ally_lines`); empty
+ * likewise.
+ */
+allyCallout: Array<string>, };
 
 export type Seat = { 
 /**
@@ -155,7 +173,11 @@ export type MatchSummary = { gameId: number, queueId: number, gameMode: string, 
 /**
  * Seconds.
  */
-duration: number, line: PlayerLine, };
+duration: number, line: PlayerLine, 
+/**
+ * Against players, against the computer, or a custom game (`analysis::game_kind`).
+ */
+kind: GameKind, };
 
 export type MatchDetail = { gameId: number, queueId: number, gameMode: string, gameVersion: string, startedAt: number, duration: number, teams: Array<TeamDetail>, };
 
@@ -235,7 +257,19 @@ export type Notice = {
  */
 at: number, kind: NoticeKind, };
 
-export type NoticeKind = { "kind": "accepted" } | { "kind": "declared", championId: number, } | { "kind": "picked", championId: number, locked: boolean, } | { "kind": "banned", championId: number, } | { "kind": "playedAgain" } | { "kind": "swapped", championId: number, } | { "kind": "calledOut", lines: number, } | { "kind": "failed", action: string, message: string, };
+export type NoticeKind = { "kind": "accepted" } | { "kind": "declared", championId: number, } | { "kind": "picked", championId: number, locked: boolean, } | { "kind": "banned", championId: number, } | { "kind": "playedAgain" } | { "kind": "swapped", championId: number, } | { "kind": "calledOut", lines: number, } | { "kind": "presenceRestored", availability: string, } | { "kind": "presenceRefused" } | { "kind": "failed", action: string, message: string, } | { "kind": "loadoutApplied", championId: number, 
+/**
+ * The client's own recommendation: nothing was remembered for the champion.
+ */
+recommended: boolean, 
+/**
+ * What became of the rune page; absent where there were no runes to set up.
+ */
+runes: PageOutcome | null, 
+/**
+ * The two summoner spells are the ones set up.
+ */
+spells: boolean, } | { "kind": "itemSetWritten", championId: number, } | { "kind": "typedInGame", lines: number, } | { "kind": "typingStopped", lines: number, reason: CalloutSkip, } | { "kind": "calloutSkipped", reason: CalloutSkip, };
 
 export type PlayerProfile = { puuid: string, name: RiotId | null, level: number, iconId: number, private: boolean, ranked: Ranked, };
 
@@ -249,7 +283,11 @@ export type AppInfo = { version: string,
 /**
  * The process runs elevated; required to read an elevated client's credentials.
  */
-elevated: boolean, logDir: string, settingsPath: string, };
+elevated: boolean, logDir: string, settingsPath: string, 
+/**
+ * The licences of the third-party components shipped inside winer (`THIRD_PARTY_NOTICES.md`).
+ */
+notices: string, };
 
 export type UpdateStatus = { "state": "idle" } | { "state": "checking" } | { "state": "upToDate", version: string, checkedAt: number, } | { "state": "available", version: string, current: string, notes: string | null, date: string | null, } | { "state": "downloading", version: string, received: number, total: number | null, } | { "state": "installing", version: string, } | { "state": "failed", message: string, };
 
@@ -257,7 +295,88 @@ export type IpcError = { code: ErrorCode, message: string, };
 
 export type ErrorCode = "notConnected" | "notFound" | "invalid" | "busy" | "client" | "internal";
 
-export type Settings = { appearance: Appearance, general: General, automation: Automation, plugin: PluginSettings, };
+export type FriendsView = { 
+/**
+ * In game first (the longest-running game first), then champ select, in queue, the rest.
+ * Offline friends are left out: nothing shows them, and a long list would ride along with
+ * every patch.
+ */
+friends: Array<FriendView>, };
+
+export type FriendView = { puuid: string, name: RiotId | null, iconId: number, 
+/**
+ * `chat`, `away`, `dnd` or `mobile`, as the client shows it beside the name.
+ */
+availability: string, status: FriendStatus, 
+/**
+ * Friends in one game, or one party, share a number from 1, which picks the colour they are
+ * drawn in; a friend playing without other friends has none.
+ */
+group: number | null, };
+
+export type FriendStatus = { "state": "outOfGame" } | { "state": "inQueue", mode: string, queueId: number, since: number, } | { "state": "champSelect", mode: string, queueId: number, since: number, } | { "state": "inGame", mode: string, queueId: number, 
+/**
+ * When the game started, epoch milliseconds; zero when the presence does not say.
+ */
+startedAt: number, 
+/**
+ * The game can be spectated.
+ */
+observable: boolean, };
+
+export type LobbyView = { queueId: number, 
+/**
+ * A custom game's lobby, where everyone in it plays, on both teams.
+ */
+custom: boolean, 
+/**
+ * In the lobby's order, the local player among them; bots are left out.
+ */
+members: Array<LobbyMember>, };
+
+export type LobbyMember = { puuid: string, name: RiotId | null, iconId: number, isSelf: boolean, leader: boolean, 
+/**
+ * The lanes asked for, first choice first; empty in queues without positions.
+ */
+positions: Array<LanePreference>, stats: PlayerStats, 
+/**
+ * Recent form, 0–10 (`rating::form_score`), once the stats are in.
+ */
+score: number | null, };
+
+export type LanePreference = "top" | "jungle" | "middle" | "bottom" | "utility" | "fill";
+
+export type HotkeyStatus = { 
+/**
+ * The combination the settings name (`Alt+Backquote`); `None` while the shortcut is off.
+ */
+shortcut: string | null, 
+/**
+ * The system has it registered for winer right now.
+ */
+active: boolean, 
+/**
+ * Let go while the settings record a new combination.
+ */
+suspended: boolean, 
+/**
+ * Why the system refused it, in its own words; usually another program holds the combination.
+ */
+error: string | null, 
+/**
+ * The second shortcut, which sends the callout; let go and taken back together with this one.
+ */
+callout: CalloutHotkeyStatus, };
+
+export type Settings = { appearance: Appearance, general: General, automation: Automation, plugin: PluginSettings, profile: ProfileSettings, 
+/**
+ * The build panel and where its numbers come from (`builds`).
+ */
+builds: BuildSettings, 
+/**
+ * History: what the history lists show.
+ */
+history: HistorySettings, };
 
 export type Appearance = { theme: Theme, accent: Accent, density: Density, 
 /**
@@ -283,7 +402,12 @@ augmentDetails: boolean,
 /**
  * The roast titles beside a grade (`rating::FormTitle` and the scoreboard's own).
  */
-titles: boolean, };
+titles: boolean, 
+/**
+ * The global shortcut that shows and hides the window, in [`normalize_hotkey`]'s form; `None`
+ * turns it off. A file without the field gets the default; `null` keeps it off.
+ */
+hotkey: string | null, };
 
 export type Language = "zh-CN" | "en";
 
@@ -295,7 +419,15 @@ playAgain: boolean, callout: CalloutRule, bench: BenchRule,
 /**
  * The kinds of game each rule acts in; a switched-on rule does nothing elsewhere.
  */
-scopes: Scopes, };
+scopes: Scopes, 
+/**
+ * Runes and summoner spells, remembered per champion and mode and set up again (`loadout`).
+ */
+loadout: LoadoutRule, 
+/**
+ * Experimental: write winer's item set for a champion once it is locked in (`loadout`).
+ */
+itemSets: boolean, };
 
 export type AcceptRule = { enabled: boolean, 
 /**
@@ -337,7 +469,43 @@ tiers: TierSet,
 /**
  * The user's own tier names, best first, for `TierSet::Custom`: two to five, blanks skipped.
  */
-customTiers: Array<string>, };
+customTiers: Array<string>, 
+/**
+ * The global shortcut that sends the callout, in [`normalize_hotkey`]'s form: in champ select
+ * the team's lines go to its chat, as 发送到队伍 sends them; while the game runs, with
+ * [`Self::in_game`] on, the lines [`Self::game_teams`] chooses are typed into the game's chat.
+ * `None`, the default, holds no combination, and the window's own combination is never taken.
+ */
+hotkey: string | null, 
+/**
+ * While the game runs, the shortcut types the in-game lines into the game's team chat with
+ * synthesized key presses: the game's chat has no API. Off by default, since third-party input
+ * into the game may break its terms.
+ */
+inGame: boolean, 
+/**
+ * The line about the enemy to watch, with the placeholders of `template`; empty means the
+ * language's default (`callout::watch_template`).
+ */
+watchTemplate: string, 
+/**
+ * The line about the enemy to go after; empty means `callout::target_template`.
+ */
+targetTemplate: string, 
+/**
+ * The line about each teammate in the game, with the placeholders of `template`; empty means
+ * the language's default (`callout::ally_template`), which names the champion.
+ */
+allyTemplate: string, 
+/**
+ * Whose lines a press of the shortcut types in the game.
+ */
+gameTeams: GameTeams, 
+/**
+ * The default line of each player (`callout::template`) and of each teammate in the game
+ * (`callout::ally_template`): one short line to compare, or emoji, title and quip as well.
+ */
+style: CalloutStyle, };
 
 export type Audience = "team" | "me";
 
@@ -353,7 +521,7 @@ export type Scopes = { accept: Array<Mode>, pick: Array<Mode>, ban: Array<Mode>,
 /**
  * Where the callout goes out by itself; sending it by hand works everywhere.
  */
-callout: Array<Mode>, bench: Array<Mode>, playAgain: Array<Mode>, };
+callout: Array<Mode>, bench: Array<Mode>, playAgain: Array<Mode>, loadout: Array<Mode>, itemSets: Array<Mode>, };
 
 export type Mode = "ranked" | "normal" | "aram" | "hextech" | "arena" | "other";
 
@@ -370,7 +538,8 @@ auto: boolean,
  */
 teamPanel: boolean, 
 /**
- * Hide the activity centre and esports pop-ups on the client home page.
+ * Hide the esports pop-ups, and put a short note in place of the home page's news and events
+ * hub; the note brings the hub back until the client restarts.
  */
 hidePromotions: boolean, 
 /**
@@ -381,7 +550,127 @@ benchNoCooldown: boolean,
 /**
  * Pengu Loader's directory, when it cannot be found from the client.
  */
-loaderDir: string | null, };
+loaderDir: string | null, 
+/**
+ * In the client's friends list: the mode and running time of a friend's game, and one colour
+ * for the friends playing together.
+ */
+friendStatus: boolean, 
+/**
+ * In the client's lobby: each member's recent form above their banner, and a click that opens
+ * their history in winer.
+ */
+lobbyPanel: boolean, 
+/**
+ * A click on a player in the client's lobby or champ select shows their latest games in a
+ * panel over the client page; off, the click opens their history in winer's window.
+ */
+historyInClient: boolean, };
+
+export type ProfileSettings = { rankDisguise: RankDisguise, presence: PresenceRule, };
+
+export type RankDisguise = { enabled: boolean, queue: DisguiseQueue, tier: Tier, 
+/**
+ * Not shown from Master up, which have no divisions.
+ */
+division: Division, };
+
+export type DisguiseQueue = "solo" | "flex";
+
+export type Division = "I" | "II" | "III" | "IV";
+
+export type PresenceRule = { remember: boolean, 
+/**
+ * `chat`, `away`, `mobile` or `offline`: the states the client takes from winer.
+ */
+availability: string, 
+/**
+ * Put back as well when set; `None` leaves the client's own.
+ */
+statusMessage: string | null, 
+/**
+ * While the mobile state is chosen and no message of the user's own is set, the status
+ * message says 手机在线: the Tencent client names that state 在线分组, while friends read a
+ * status message as written, in quotation marks (`docs/platform-notes.md`). Another state
+ * takes it away again. Off by default.
+ */
+mobileMessage: boolean, };
+
+export type SkinChoice = { id: number, championId: number, 
+/**
+ * As the client names it; a base skin carries the champion's title (`九尾妖狐`).
+ */
+name: string, owned: boolean, base: boolean, 
+/**
+ * LCU asset paths, served to the window through the `lcu` protocol.
+ */
+tile: string, splash: string, };
+
+export type ChallengeProfile = { 
+/**
+ * The tokens in the profile's slots, left to right: three at most.
+ */
+tokens: Array<ChallengeToken>, title: TitleChoice | null, 
+/**
+ * Every challenge with a level, the highest first: what a slot can hold.
+ */
+challenges: Array<ChallengeToken>, titles: Array<TitleChoice>, 
+/**
+ * The banner the profile shows, as the id of one of `banners`: empty for the default.
+ */
+banner: string, 
+/**
+ * What the banner can be (`banner_choices`); empty when the client lists no banners.
+ */
+banners: Array<BannerChoice>, };
+
+export type ChallengeToken = { id: number, name: string, description: string, 
+/**
+ * `None` for a token the client describes without a level.
+ */
+level: Tier | null, 
+/**
+ * The token at its level, an LCU asset path; empty when the client names none.
+ */
+icon: string, };
+
+export type TitleChoice = { 
+/**
+ * The title's `itemId`, which is what the client takes.
+ */
+id: number, name: string, };
+
+export type BannerChoice = { 
+/**
+ * What `bannerAccent` takes; empty for the default.
+ */
+id: string, kind: BannerKind, 
+/**
+ * As the client names it; empty for the default and the rank banner.
+ */
+name: string, 
+/**
+ * An LCU asset path; banners are drawn 580 × 1480.
+ */
+art: string, };
+
+export type BannerKind = "default" | "rank" | "event";
+
+export type BackupInfo = { 
+/**
+ * The name of its file, and the order it was made in.
+ */
+id: number, 
+/**
+ * Epoch milliseconds when the settings were read from the client.
+ */
+takenAt: number, 
+/**
+ * Bytes on disk.
+ */
+size: number, channels: Array<BackupChannel>, };
+
+export type BackupChannel = "general" | "hotkeys";
 
 export type PluginStatus = { loaderDir: string | null, 
 /**
@@ -418,8 +707,273 @@ current: boolean,
  */
 connected: number, };
 
-export type BridgeMessage = { "type": "hello", version: string, snapshot: Snapshot, settings: Settings, } | { "type": "event", event: Event, };
+export type BridgeMessage = { "type": "hello", version: string, snapshot: Snapshot, settings: Settings, } | { "type": "event", event: Event, } | { "type": "historyResult", requestId: number, page: PanelHistory | null, error: IpcError | null, };
 
-export type PluginMessage = { "type": "hello", version: string, context: string, } | { "type": "log", level: LogLevel, message: string, } | { "type": "benchSwap", championId: number, };
+export type PluginMessage = { "type": "hello", version: string, context: string, } | { "type": "log", level: LogLevel, message: string, } | { "type": "benchSwap", championId: number, } | { "type": "openHistory", puuid: string, } | { "type": "history", puuid: string, requestId: number, };
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
+
+export type LoadoutRule = { enabled: boolean, 
+/**
+ * With nothing remembered for the champion, use the client's own recommended page.
+ */
+recommended: boolean, };
+
+export type BuildSettings = { 
+/**
+ * Off, the panel is hidden and nothing is fetched.
+ */
+enabled: boolean, 
+/**
+ * Where Summoner's Rift numbers come from.
+ */
+riftSource: RiftSource, };
+
+export type RiftSource = "tencent" | "opGg";
+
+export type LoadoutSummary = { remembered: number, };
+
+export type PageOutcome = "written" | "noPage";
+
+export type BuildSource = "tencent" | "tencentHextech" | "opGg" | "aramGg";
+
+export type Build = { source: BuildSource, 
+/**
+ * The patch the numbers are from, `16.19`; empty where the source does not say.
+ */
+patch: string, championId: number, mode: Mode, 
+/**
+ * The lane the numbers are for, on the Rift.
+ */
+lane: Position | null, 
+/**
+ * The champion's standing on the source's own scale, 1 the best (OP.GG: 1 to 5).
+ */
+tier: number | null, 
+/**
+ * The games behind the numbers.
+ */
+sample: number | null, spells: Array<SpellOption>, runes: Array<RuneOption>, starting: Array<ItemOption>, boots: Array<ItemOption>, core: Array<ItemOption>, 
+/**
+ * Single items for the slots after the core, most taken first.
+ */
+late: Array<ItemOption>, skillOrders: Array<SkillOrder>, matchups: Matchups, 
+/**
+ * Best first.
+ */
+augments: Array<AugmentOption>, 
+/**
+ * Ids the client cannot name (an item of another patch, an unknown augment, a rune of no
+ * style), left out.
+ */
+dropped: number, };
+
+export type Rates = { 
+/**
+ * The share of the champion's games that took it, 0–1.
+ */
+pick: number | null, 
+/**
+ * The share of those games won, 0–1; in Arena, finished in the top four.
+ */
+win: number | null, 
+/**
+ * The games behind the two.
+ */
+games: number | null, 
+/**
+ * Arena: the average finish, 1 (first) to 8.
+ */
+placement: number | null, 
+/**
+ * Arena: the share of games finished first, 0–1.
+ */
+first: number | null, };
+
+export type SpellOption = { spells: [number, number], rates: Rates, };
+
+export type RunePage = { primaryStyle: number, subStyle: number, perks: Array<number>, };
+
+export type RuneOption = { page: RunePage, rates: Rates, };
+
+export type ItemOption = { 
+/**
+ * One item, or several taken together; a repeated id is bought more than once.
+ */
+items: Array<number>, rates: Rates, };
+
+export type Ability = "Q" | "W" | "E" | "R";
+
+export type SkillOrder = { 
+/**
+ * The basic abilities, maxed first to last.
+ */
+priority: Array<Ability>, 
+/**
+ * The ability taken at each level, from the first.
+ */
+sequence: Array<Ability>, rates: Rates, };
+
+export type Matchup = { championId: number, rates: Rates, };
+
+export type Matchups = { 
+/**
+ * The opponents the champion beats most often, best first.
+ */
+good: Array<Matchup>, 
+/**
+ * The ones it loses to most often, worst first.
+ */
+bad: Array<Matchup>, };
+
+export type AugmentTier = "S" | "A" | "B" | "C";
+
+export type AugmentOption = { id: number, 
+/**
+ * From the client's own catalog.
+ */
+rarity: Rarity, tier: AugmentTier | null, rates: Rates, };
+
+export type DiskUse = { files: number, bytes: number, };
+
+export type MemoryUse = { entries: number, imageBytes: number, };
+
+export type StorageLimits = { 
+/**
+ * Log files are kept this many days, today included.
+ */
+logDays: number, logBytes: number, 
+/**
+ * One log file grows to this size; the day then goes on in another.
+ */
+logFileBytes: number, 
+/**
+ * The WebView's page cache.
+ */
+webviewCacheBytes: number, 
+/**
+ * Game settings backups.
+ */
+backups: number, 
+/**
+ * Pictures held in memory.
+ */
+imageBytes: number, };
+
+export type StorageReport = { logs: DiskUse, 
+/**
+ * The WebView's whole folder: its caches, and what WebView2 downloads and manages itself.
+ */
+webview: DiskUse, 
+/**
+ * The caches within it (pages, scripts, shaders), which a cleanup clears.
+ */
+webviewCache: DiskUse, 
+/**
+ * A cleanup asked for the WebView's caches to go; they go at the next start.
+ */
+webviewClearPending: boolean, backups: DiskUse, 
+/**
+ * Pengu Loader and the in-client plugin.
+ */
+pengu: DiskUse, 
+/**
+ * The settings and the remembered runes and spells.
+ */
+settings: DiskUse, 
+/**
+ * Update installers left in the system's temporary folder.
+ */
+updates: DiskUse, memory: MemoryUse, limits: StorageLimits, };
+
+export type CleanupReport = { 
+/**
+ * Every log file but the one being written.
+ */
+logs: DiskUse, updates: DiskUse, 
+/**
+ * The WebView's caches as they are now: in use while the window is open, they go at the next
+ * start.
+ */
+webviewCache: DiskUse, memory: MemoryUse, };
+
+export type PanelHistory = { puuid: string, 
+/**
+ * Newest first, at most [`PANEL_GAMES`].
+ */
+games: Array<PanelGame>, };
+
+export type PanelGame = { gameId: number, queueId: number, 
+/**
+ * The queue's name in the client's catalog (`极地大乱斗`); empty where the catalog has none.
+ */
+queue: string, championId: number, win: boolean, remake: boolean, kills: number, deaths: number, assists: number, 
+/**
+ * Epoch milliseconds.
+ */
+startedAt: number, 
+/**
+ * Seconds.
+ */
+duration: number, award: Award | null, 
+/**
+ * Arena placement, 1–8.
+ */
+placement: number | null, };
+
+export type CalloutHotkeyStatus = { 
+/**
+ * The combination the settings name; `None` while there is none.
+ */
+shortcut: string | null, 
+/**
+ * The system has it registered for winer right now.
+ */
+active: boolean, 
+/**
+ * Why the system refused it, in its own words.
+ */
+error: string | null, };
+
+export type CalloutSkip = "notNow" | "nothingToSay" | "inGameOff" | "notInFront" | "keysHeld" | "blocked" | "unsupported";
+
+export type GameTeams = "enemies" | "allies" | "both";
+
+export type CalloutStyle = "compact" | "rich";
+
+export type GameKind = "matched" | "bots" | "custom";
+
+export type FormScope = { 
+/**
+ * Games in the client's list the form was read from.
+ */
+listed: number, 
+/**
+ * Custom games passed over on the way to the newest twenty.
+ */
+custom: number, 
+/**
+ * Games against the computer passed over likewise.
+ */
+bots: number, 
+/**
+ * Remakes among the games looked at: shown, never counted.
+ */
+remakes: number, };
+
+export type PlayerStanding = { scope: FormScope, 
+/**
+ * Absent without a counted game.
+ */
+rating: SeatRating | null, 
+/**
+ * The fixed band of 峡谷八档 (`rating::FORM_GRADES`), 0 (S+) to 7 (F), the tier was read from.
+ */
+band: number | null, };
+
+export type HistorySettings = { 
+/**
+ * Custom games stay out of the lists. On by default: practice and lobbies among friends are
+ * not the games a history is opened for, and they push those down the first page.
+ */
+hideCustomGames: boolean, };

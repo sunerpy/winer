@@ -8,6 +8,8 @@
   "mapId": 12,
   "isRanked": true,
   "category": "PvP",
+  "type": "ARAM_CLASH",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -19,6 +21,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "ONEFORALL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -30,6 +34,8 @@
   "mapId": 520,
   "isRanked": false,
   "category": "Custom",
+  "type": "WIPMODEWIP5",
+  "isCustom": true,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -41,6 +47,8 @@
   "mapId": 11,
   "isRanked": true,
   "category": "PvP",
+  "type": "CLASH",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -52,6 +60,8 @@
   "mapId": 22,
   "isRanked": true,
   "category": "PvP",
+  "type": "RANKED_TFT_TURBO",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -63,6 +73,8 @@
   "mapId": 11,
   "isRanked": true,
   "category": "PvP",
+  "type": "RANKED_PREMADE_5x5",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -74,6 +86,8 @@
   "mapId": 520,
   "isRanked": true,
   "category": "PvP",
+  "type": "NOVA_RANKED_SOLO_5x5",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -85,6 +99,8 @@
   "mapId": 33,
   "isRanked": false,
   "category": "PvP",
+  "type": "STRAWBERRY",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -96,6 +112,8 @@
   "mapId": 35,
   "isRanked": false,
   "category": "PvP",
+  "type": "BRAWL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -107,6 +125,8 @@
   "mapId": 33,
   "isRanked": false,
   "category": "PvP",
+  "type": "STRAWBERRY",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -118,6 +138,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "TUTORIAL_MODULE_2",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -129,6 +151,8 @@
   "mapId": 11,
   "isRanked": true,
   "category": "PvP",
+  "type": "RANKED_FLEX_SR",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -140,6 +164,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "VersusAi",
+  "type": "RIOTSCRIPT_BOT",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -151,6 +177,8 @@
   "mapId": 30,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHERRY",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -162,6 +190,8 @@
   "mapId": 11,
   "isRanked": true,
   "category": "PvP",
+  "type": "RANKED_SOLO_5x5",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -173,6 +203,8 @@
   "mapId": 12,
   "isRanked": false,
   "category": "PvP",
+  "type": "ARAM_UNRANKED_1x1",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -184,6 +216,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -195,6 +229,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "FIVE_YEAR_ANNIVERSARY_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -206,6 +242,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "SF_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -217,6 +255,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "NIGHTMARE_BOT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -228,6 +268,8 @@
   "mapId": 12,
   "isRanked": false,
   "category": "PvP",
+  "type": "KIWI",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -239,6 +281,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "TUTORIAL_MODULE_3",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -250,6 +294,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -261,6 +307,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "NIGHTMARE_BOT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -272,6 +320,8 @@
   "mapId": 14,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -283,6 +333,8 @@
   "mapId": 520,
   "isRanked": true,
   "category": "PvP",
+  "type": "NOVA_RANKED_SOLO_5x5",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -294,6 +346,8 @@
   "mapId": 12,
   "isRanked": false,
   "category": "VersusAi",
+  "type": "ARAM_BOT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -305,6 +359,8 @@
   "mapId": 12,
   "isRanked": false,
   "category": "Custom",
+  "type": "ARAM_UNRANKED_5x5",
+  "isCustom": true,
   "queueAvailability": "Available"
  },
  {
@@ -316,6 +372,8 @@
   "mapId": 12,
   "isRanked": false,
   "category": "Custom",
+  "type": "ARAM_UNRANKED_5x5",
+  "isCustom": true,
   "queueAvailability": "Available"
  },
  {
@@ -327,6 +385,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHONCC_TREASURE_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -338,6 +398,8 @@
   "mapId": 120,
   "isRanked": false,
   "category": "PvP",
+  "type": "ARAM_UNRANKED_5x5",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -349,6 +411,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "LNY23_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -360,6 +424,8 @@
   "mapId": 12,
   "isRanked": false,
   "category": "VersusAi",
+  "type": "ARAM_BOT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -371,6 +437,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "NIGHTMARE_BOT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -382,6 +450,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "Custom",
+  "type": "NORMAL",
+  "isCustom": true,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -393,6 +463,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "ULTBOOK",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -404,6 +476,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "VersusAi",
+  "type": "RIOTSCRIPT_BOT",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -415,6 +489,8 @@
   "mapId": 12,
   "isRanked": true,
   "category": "PvP",
+  "type": "ARAM_CLASH",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -426,6 +502,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "LNY23_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -437,6 +515,8 @@
   "mapId": 14,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -448,6 +528,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "SET_REVIVAL_TFT",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -459,6 +541,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "Custom",
+  "type": "NORMAL",
+  "isCustom": true,
   "queueAvailability": "Available"
  },
  {
@@ -470,6 +554,8 @@
   "mapId": 12,
   "isRanked": false,
   "category": "Custom",
+  "type": "KIWI",
+  "isCustom": true,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -481,6 +567,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "SET_REVIVAL_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -492,6 +580,8 @@
   "mapId": 12,
   "isRanked": false,
   "category": "PvP",
+  "type": "KIWI_RANKED",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -503,6 +593,8 @@
   "mapId": 30,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHERRY",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -514,6 +606,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHONCC_TREASURE_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -525,6 +619,8 @@
   "mapId": 111,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -536,6 +632,8 @@
   "mapId": 11,
   "isRanked": true,
   "category": "PvP",
+  "type": "CLASH",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -547,6 +645,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "Custom",
+  "type": "URF",
+  "isCustom": true,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -558,6 +658,8 @@
   "mapId": 12,
   "isRanked": false,
   "category": "Custom",
+  "type": "ARAM_UNRANKED_5x5",
+  "isCustom": true,
   "queueAvailability": "Available"
  },
  {
@@ -569,6 +671,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "VersusAi",
+  "type": "RIOTSCRIPT_BOT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -580,6 +684,8 @@
   "mapId": 30,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHERRY",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -591,6 +697,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "SWIFTPLAY",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -602,6 +710,8 @@
   "mapId": 11,
   "isRanked": true,
   "category": "PvP",
+  "type": "URF_CLASH",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -613,6 +723,8 @@
   "mapId": 520,
   "isRanked": false,
   "category": "PvP",
+  "type": "SWIFTPLAY",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -624,6 +736,8 @@
   "mapId": 111,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -635,6 +749,8 @@
   "mapId": 33,
   "isRanked": false,
   "category": "PvP",
+  "type": "STRAWBERRY",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -646,6 +762,8 @@
   "mapId": 12,
   "isRanked": false,
   "category": "Custom",
+  "type": "ARAM_UNRANKED_5x5",
+  "isCustom": true,
   "queueAvailability": "Available"
  },
  {
@@ -657,6 +775,8 @@
   "mapId": 14,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -668,6 +788,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -679,6 +801,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -690,6 +814,8 @@
   "mapId": 453,
   "isRanked": false,
   "category": "PvP",
+  "type": "JADE_BOT",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -701,6 +827,8 @@
   "mapId": 12,
   "isRanked": false,
   "category": "PvP",
+  "type": "ARAM_UNRANKED_5x5",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -712,6 +840,8 @@
   "mapId": 12,
   "isRanked": false,
   "category": "PvP",
+  "type": "KIWI",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -723,6 +853,8 @@
   "mapId": 14,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -734,6 +866,8 @@
   "mapId": 30,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHERRY",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -745,6 +879,8 @@
   "mapId": 30,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHERRY",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -756,6 +892,8 @@
   "mapId": 22,
   "isRanked": true,
   "category": "PvP",
+  "type": "RANKED_TFT",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -767,6 +905,8 @@
   "mapId": 11,
   "isRanked": true,
   "category": "PvP",
+  "type": "RANKED_SOLO_5x5",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -778,6 +918,8 @@
   "mapId": 120,
   "isRanked": false,
   "category": "VersusAi",
+  "type": "ARAM_BOT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -789,6 +931,8 @@
   "mapId": 14,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -800,6 +944,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHONCC_TREASURE_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -811,6 +957,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "VersusAi",
+  "type": "BOT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -822,6 +970,8 @@
   "mapId": 14,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -833,6 +983,8 @@
   "mapId": 520,
   "isRanked": false,
   "category": "PvP",
+  "type": "WIPMODEWIP5",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -844,6 +996,8 @@
   "mapId": 30,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHERRY",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -855,6 +1009,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "Custom",
+  "type": "NORMAL_TFT",
+  "isCustom": true,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -866,6 +1022,8 @@
   "mapId": 14,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -877,6 +1035,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "VersusAi",
+  "type": "RIOTSCRIPT_BOT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -888,6 +1048,8 @@
   "mapId": 12,
   "isRanked": false,
   "category": "PvP",
+  "type": "KIWI",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -899,6 +1061,8 @@
   "mapId": 14,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -910,6 +1074,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "TUTORIAL_MODULE_1",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -921,6 +1087,8 @@
   "mapId": 22,
   "isRanked": true,
   "category": "PvP",
+  "type": "RANKED_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -932,6 +1100,8 @@
   "mapId": 11,
   "isRanked": true,
   "category": "PvP",
+  "type": "URF_CLASH",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -943,6 +1113,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "NIGHTMARE_BOT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -954,6 +1126,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHONCC_TREASURE_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -965,6 +1139,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -976,6 +1152,8 @@
   "mapId": 30,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHERRY",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -987,6 +1165,8 @@
   "mapId": 12,
   "isRanked": false,
   "category": "Custom",
+  "type": "KIWI",
+  "isCustom": true,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -998,6 +1178,8 @@
   "mapId": 453,
   "isRanked": false,
   "category": "Custom",
+  "type": "JADE",
+  "isCustom": true,
   "queueAvailability": "Available"
  },
  {
@@ -1009,6 +1191,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "Custom",
+  "type": "NORMAL",
+  "isCustom": true,
   "queueAvailability": "Available"
  },
  {
@@ -1020,6 +1204,8 @@
   "mapId": 21,
   "isRanked": false,
   "category": "PvP",
+  "type": "NEXUSBLITZ",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1031,6 +1217,8 @@
   "mapId": 33,
   "isRanked": false,
   "category": "PvP",
+  "type": "STRAWBERRY",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1042,6 +1230,8 @@
   "mapId": 14,
   "isRanked": true,
   "category": "PvP",
+  "type": "RANKED_SOLO_5x5",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1053,6 +1243,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "Custom",
+  "type": "NORMAL",
+  "isCustom": true,
   "queueAvailability": "Available"
  },
  {
@@ -1064,6 +1256,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "TUTORIAL_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1075,6 +1269,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1086,6 +1282,8 @@
   "mapId": 14,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1097,6 +1295,8 @@
   "mapId": 22,
   "isRanked": true,
   "category": "PvP",
+  "type": "RANKED_TFT_PAIRS",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1108,6 +1308,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "NIGHTMARE_BOT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1119,6 +1321,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHONCC_TREASURE_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1130,6 +1334,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "Custom",
+  "type": "PAIRS_TFT",
+  "isCustom": true,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1141,6 +1347,8 @@
   "mapId": 22,
   "isRanked": true,
   "category": "PvP",
+  "type": "RANKED_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1152,6 +1360,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "SF_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1163,6 +1373,8 @@
   "mapId": 453,
   "isRanked": true,
   "category": "PvP",
+  "type": "JADE_RANKED_SOLO_5x5",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -1174,6 +1386,8 @@
   "mapId": 111,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1185,6 +1399,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1196,6 +1412,8 @@
   "mapId": 30,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHERRY_UNRANKED",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1207,6 +1425,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "VersusAi",
+  "type": "RIOTSCRIPT_BOT",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -1218,6 +1438,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "PVE_PUZZLE_TFT",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -1229,6 +1451,8 @@
   "mapId": 30,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHERRY",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -1240,6 +1464,8 @@
   "mapId": 520,
   "isRanked": true,
   "category": "PvP",
+  "type": "NOVA_RANKED_SOLO_5x5",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1251,6 +1477,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL_TFT",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -1262,6 +1490,8 @@
   "mapId": 120,
   "isRanked": false,
   "category": "PvP",
+  "type": "ARAM_UNRANKED_5x5",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1273,6 +1503,8 @@
   "mapId": 520,
   "isRanked": false,
   "category": "PvP",
+  "type": "SWIFTPLAY",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1284,6 +1516,8 @@
   "mapId": 12,
   "isRanked": false,
   "category": "Custom",
+  "type": "KIWI",
+  "isCustom": true,
   "queueAvailability": "Available"
  },
  {
@@ -1295,6 +1529,8 @@
   "mapId": 14,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1306,6 +1542,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "Custom",
+  "type": "TURBO_TFT",
+  "isCustom": true,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1317,6 +1555,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHONCC_TREASURE_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1328,6 +1568,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "VersusAi",
+  "type": "RIOTSCRIPT_BOT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1339,6 +1581,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "URF",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -1350,6 +1594,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "VersusAi",
+  "type": "BOT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1361,6 +1607,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "Custom",
+  "type": "NORMAL",
+  "isCustom": true,
   "queueAvailability": "Available"
  },
  {
@@ -1372,6 +1620,8 @@
   "mapId": 453,
   "isRanked": false,
   "category": "Custom",
+  "type": "JADE",
+  "isCustom": true,
   "queueAvailability": "Available"
  },
  {
@@ -1383,6 +1633,8 @@
   "mapId": 14,
   "isRanked": false,
   "category": "VersusAi",
+  "type": "BOT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1394,6 +1646,8 @@
   "mapId": 14,
   "isRanked": false,
   "category": "VersusAi",
+  "type": "BOT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1405,6 +1659,8 @@
   "mapId": 22,
   "isRanked": true,
   "category": "PvP",
+  "type": "RANKED_TFT_DOUBLE_UP",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -1416,6 +1672,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1427,6 +1685,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "URF",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1438,6 +1698,8 @@
   "mapId": 111,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1449,6 +1711,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "VersusAi",
+  "type": "BOT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1460,6 +1724,8 @@
   "mapId": 111,
   "isRanked": false,
   "category": "VersusAi",
+  "type": "BOT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1471,6 +1737,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1482,6 +1750,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHONCC_TREASURE_TFT",
+  "isCustom": false,
   "queueAvailability": "Available"
  },
  {
@@ -1493,6 +1763,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHONCC_TREASURE_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1504,6 +1776,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "NORMAL_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1515,6 +1789,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "PvP",
+  "type": "URF",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1526,6 +1802,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "CHONCC_TREASURE_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  },
  {
@@ -1537,6 +1815,8 @@
   "mapId": 11,
   "isRanked": false,
   "category": "Custom",
+  "type": "NORMAL",
+  "isCustom": true,
   "queueAvailability": "Available"
  },
  {
@@ -1548,6 +1828,8 @@
   "mapId": 22,
   "isRanked": false,
   "category": "PvP",
+  "type": "PROMETHIUM_TFT",
+  "isCustom": false,
   "queueAvailability": "PlatformDisabled"
  }
 ]

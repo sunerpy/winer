@@ -9,7 +9,7 @@ use winer_core::{
     view::{Connection, Event, Patch},
 };
 
-use crate::{elevation, plugin_host, tray};
+use crate::{elevation, hotkey, plugin_host, tray, window};
 
 /// Every core [`Event`], unchanged.
 pub(crate) const EVENT: &str = "winer://event";
@@ -17,6 +17,8 @@ pub(crate) const EVENT: &str = "winer://event";
 pub(crate) const RESYNC: &str = "winer://resync";
 /// A new [`winer_core::view::UpdateStatus`].
 pub(crate) const UPDATE: &str = "winer://update";
+/// A new [`winer_core::view::HotkeyStatus`].
+pub(crate) const HOTKEY: &str = "winer://hotkey";
 
 pub(crate) fn forward<R: Runtime>(app: AppHandle<R>, service: Service, bridge: Bridge) {
     let mut events = service.subscribe();
@@ -80,7 +82,19 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
         {
             elevation::ask_once(app, "the client runs elevated");
         }
-        Event::Settings(settings) => tray::sync(app, settings),
+        Event::Settings(settings) => {
+            tray::sync(app, settings);
+            hotkey::apply(app, settings.general.hotkey.clone());
+            // Callout: its own shortcut.
+            hotkey::apply_callout(app, settings.automation.callout.hotkey.clone());
+        }
+        // Social: a click in the client asked for a player's history, which the window opens.
+        Event::OpenHistory { .. } => window::show(app),
+        Event::Update(update) => {
+            if let Patch::Phase(phase) = update.patch {
+                hotkey::on_phase(app, phase);
+            }
+        }
         _ => {}
     }
 }

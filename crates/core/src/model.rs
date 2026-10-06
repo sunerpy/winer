@@ -411,6 +411,12 @@ pub struct LobbyMember {
     pub is_leader: bool,
     pub first_position_preference: String,
     pub second_position_preference: String,
+    /// The Riot ID; chat calls the tag `gameTag`, the summoner `tagLine`.
+    pub game_name: String,
+    #[serde(alias = "gameTag")]
+    pub tag_line: String,
+    /// A custom game's bot, which has no history.
+    pub is_bot: bool,
 }
 
 /// `/entitlements/v1/token`: the client's access token for its shard's own servers. Not `Debug`,
@@ -485,6 +491,17 @@ pub struct PerkStyle {
     pub id: i64,
     pub name: String,
     pub icon_path: String,
+    /// The keystones, three rows of runes and three of shards, in page order.
+    pub slots: Vec<PerkSlot>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PerkSlot {
+    /// `kKeyStone`, `kMixedRegularSplashable` or `kStatMod`.
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub perks: Vec<i64>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -497,7 +514,13 @@ pub struct Queue {
     pub game_mode: String,
     pub map_id: i64,
     pub is_ranked: bool,
+    /// `PvP`, `VersusAi` or `Custom`.
     pub category: String,
+    // History: what a queue's games say about a player (`catalog::queue_kind`).
+    /// The queue's own type: `RANKED_SOLO_5x5`, `ARAM_BOT`, `NIGHTMARE_BOT`, …
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub is_custom: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]

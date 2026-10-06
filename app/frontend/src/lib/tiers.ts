@@ -102,10 +102,48 @@ export const GAME_TITLE: Record<GameTitle, { name: MessageKey; why: MessageKey }
   solo: { name: "title.solo", why: "title.soloWhy" },
 };
 
+/** The counts the per-game titles ask for. ARAM's games hold about twice the Rift's kills and
+ *  deaths and over three times its assists, so its bars stand where as few of its players reach
+ *  them as reach the Rift's: measured on the games WeGame scored (`fixtures/wegame/calibration.json`,
+ *  1,260 Rift and 1,390 ARAM lines). Ten deaths are one Rift player in twelve but two ARAM players in
+ *  three. Shares of the team need no such bars. */
+const BARS = {
+  rift: {
+    feedKills: 1,
+    feedDeaths: 8,
+    aliveDeaths: 0,
+    aliveTakedowns: 10,
+    trade: 10,
+    grey: 10,
+    assists: 10,
+  },
+  aram: {
+    feedKills: 4,
+    feedDeaths: 15,
+    aliveDeaths: 3,
+    aliveTakedowns: 35,
+    trade: 18,
+    grey: 18,
+    assists: 31,
+  },
+} as const;
+
+/** The bars of a game of `mode` (the client's game mode): ARAM's for both ARAMs, the Rift's for
+ *  every other. */
+export function barsOf(mode: string): (typeof BARS)[keyof typeof BARS] {
+  return mode === "ARAM" || mode === "KIWI" ? BARS.aram : BARS.rift;
+}
+
 /** The title one game earns a line on its team, the most telling first; `null` where nothing
- *  stands out, in a remake, or on a team of one. */
-export function gameTitle(line: PlayerLine, team: readonly PlayerLine[]): GameTitle | null {
+ *  stands out, in a remake, or on a team of one. Counts are read against the game's `mode`
+ *  (`barsOf`). */
+export function gameTitle(
+  line: PlayerLine,
+  team: readonly PlayerLine[],
+  mode = "CLASSIC",
+): GameTitle | null {
   if (line.remake || team.length < 2) return null;
+  const bars = barsOf(mode);
   const total = (pick: (player: PlayerLine) => number) =>
     team.reduce((sum, player) => sum + pick(player), 0);
   const share = line.damageShare ?? 0;
@@ -122,21 +160,22 @@ export function gameTitle(line: PlayerLine, team: readonly PlayerLine[]): GameTi
       total((player) => player.gold),
     );
   const kda = (line.kills + line.assists) / Math.max(1, line.deaths);
-  // The bottom lane's carry: a support shares the lane but not the damage.
+  // The bottom lane's carry: a support shares the lane but not the damage. ARAM has no lanes.
   const carry = line.position === "bottom" && share >= 0.18;
-  if (line.kills <= 1 && line.deaths >= 8) return "bodhisattva";
-  if (line.deaths === 0 && line.kills + line.assists >= 10) return "immortal";
+  if (line.kills <= bars.feedKills && line.deaths >= bars.feedDeaths) return "bodhisattva";
+  if (line.deaths <= bars.aliveDeaths && line.kills + line.assists >= bars.aliveTakedowns)
+    return "immortal";
   if (carry && line.deaths <= 2 && share >= 0.25) return "carryAlive";
   if (carry && line.deaths >= 9) return "carryFeeding";
   if (!line.win && share >= 0.3) return "dean";
   if (line.win && share < 0.12) return "puzzle";
-  if (line.kills >= 10 && line.deaths >= 10) return "trader";
-  if (line.deaths >= 10) return "greyScreen";
+  if (line.kills >= bars.trade && line.deaths >= bars.trade) return "trader";
+  if (line.deaths >= bars.grey) return "greyScreen";
   if (kda >= 5 && share < 0.15) return "kSaver";
   if (taken >= 0.3) return "turret";
   if (gold >= 0.24 && share < 0.17) return "banker";
   if (gold <= 0.17 && share >= 0.25) return "underdog";
-  if (line.assists >= 10 && line.assists >= 3 * Math.max(1, line.kills)) return "helper";
+  if (line.assists >= bars.assists && line.assists >= 3 * Math.max(1, line.kills)) return "helper";
   if (line.killParticipation !== null && line.killParticipation < 0.35) return "solo";
   return null;
 }

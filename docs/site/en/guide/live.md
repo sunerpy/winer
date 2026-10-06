@@ -1,7 +1,6 @@
 # Live game and callout
 
-The **Live game** page analyses both teams in champ select and while the game runs, and empties
-once the client is back in the lobby.
+The **Live game** page lists your party in a lobby, analyses both teams in champ select and while the game runs, with the [build](#builds) of your champion, and empties once the client is back on its home screen, leaving the champion lookup.
 
 ## Game analysis
 
@@ -20,20 +19,44 @@ moves between them.
   which one your team is on, and the callout's first line carries `[Blue side]` or `[Red side]`.
   Arena has no sides.
 - **Parties**: once the game is running, players queued together carry the same number
-  ("Party 1", "Party 2").
+  ("Party 1", "Party 2") and one colour per party; the number always shows, so the colour is never
+  needed to tell them apart. In champ select, the teammates who came in from your own lobby are
+  marked too.
 - **Tiers**: from recent form, in the scheme chosen in **Settings › Rating**; the rules are in
   [How rating works](/en/rating).
+
+## Lobby
+
+In a lobby (and while it queues or a match is found), the **Live game** page lists every member of
+your party: name, the positions asked for, rank, win rate and KDA over the last 20 games, recent
+form score and the latest games; the party's leader carries **Leader**. Choose a member to open
+their history. In a custom lobby, everyone in it is listed.
+
+## Friends
+
+The **Friends** panel on the **Overview** page lists the friends in champ select or in a game: the
+mode, the state and how long it has been going, counted by the second; a game that can be watched
+carries an eye. Friends in one game or one party share a colour and a number. Choose a friend to
+open their history.
 
 ## Callout
 
 The callout is ready once every teammate's history has loaded: the first line holds the side,
 "winer rating" and the opening line if you wrote one, then one line per teammate, best first. Each
 line names the teammate's place in your team's list in champ select (P1 to P5, from the top) and
-their name, for example:
+their name. The default, rich style adds the tier's emoji, the title and the quip, for example:
+
+```text
+📢 [Blue side] winer rating
+👑 Rift Demigod: P1 Light in the Dark, 60% in 20 games, KDA 4.1, form 7.4 [Patch Champion], the other team is filing a boosting report
+```
+
+With **Callout style** set to compact in **Automation › Callout**, each player gets one short line,
+the same fields in the same order, to compare at a glance:
 
 ```text
 [Blue side] winer rating
-Rift Demigod: P1 Light in the Dark, 60% in 20 games, KDA 4.1, score 7.4 [Patch Champion], the other team is filing a boosting report
+P1 Rift Demigod | 60% | KDA 4.1 | form 7.4 | Light in the Dark
 ```
 
 - **Send to team**: posts it to the team chat of champ select, where your teammates see it.
@@ -41,6 +64,27 @@ Rift Demigod: P1 Light in the Dark, 60% in 20 games, KDA 4.1, score 7.4 [Patch C
 - **Automatically**: turn on **Send in champ select automatically** in **Automation › Callout** and
   choose who gets it and whether your own line is in it. The opening line and the line template are
   edited there too, with a live preview.
+- **Shortcut**: with a shortcut to send the callout set in **Automation › Callout**, pressing it in
+  champ select does what **Send to team** does, without winer's window open. The panel's last line
+  names the shortcut, or says where to set one.
+
+Once the game starts, the panel has two columns: **Enemies** holds the enemy to watch and the one to
+go after, chosen as [Automation](/en/guide/automation#lines-in-game) describes; **My team** holds one
+line per teammate, best first, as in champ select. In the game the champions are settled and are how
+players tell each other apart, so both columns name every player by champion, without name or seat;
+where the champion is not known, the name stands in. For example:
+
+```text
+[Enemy · Red side] winer rating
+Watch Kha'Zix: Rift Demigod, 65% in 20 games, KDA 4.6
+Go after Yasuo: Pure Workhorse, 35% in 20 games
+```
+
+The game's chat has no API, so the panel has no send button then: with **In-game sending** on,
+pressing the callout's shortcut in the game types the chosen lines into the team chat. By default
+that is the enemy column; **Automation › Callout** can switch it to your team's or both. The panel's
+heading says whether in-game sending is on; its last line names the shortcut and what a press types.
+Modes without sides, such as Arena, have no in-game lines and show no such panel.
 
 ## ARAM bench
 
@@ -48,3 +92,56 @@ In ARAM and Hextech ARAM the champions on the bench are listed at the top of the
 and you swap at once, without the client's cooldown. While rerolls remain, **Reroll** sits on the
 right. With a wishlist set in **Automation › Bench**, a wishlist champion that ranks above the one
 you hold is taken by itself; wishlist champions carry a star.
+
+## Builds
+
+In champ select, the build of the champion you hover or lock in sits under the analysis; while the
+game runs, switch to winer to see the one you are playing. Without a game, choose a champion and a
+mode at the bottom of the page. The panel has sections:
+
+- **Items**: starting items, boots, core items (three together) and late options, each with its
+  pick rate and win rate.
+- **Runes**: the most played pages with their pick rate, win rate and games. **Use these runes**
+  writes the page to winer's own rune page and makes it current; the rules are in
+  [Automation](/en/guide/automation#runes-and-summoner-spells).
+- **Spells**: the usual pairs. In champ select, **Take these spells** takes them at once; a spell
+  you already hold stays on its key.
+- **Skills**: the max order and the points for the first 15 levels.
+- **Matchups** (Summoner's Rift): the opponents the champion beats most and loses to most; the win
+  rate is the champion's own against them.
+- **Augments** (Arena, Hextech ARAM): grouped as prismatic, gold and silver, best first, with a
+  filter by name. Hextech ARAM shows each augment's grade (S to C); Arena shows the average place and
+  the share of first places, because wins do not count there. What an augment does comes from
+  ARAM.GG (it can be turned off in **Settings › General**). Augments are picked in the game, so this
+  section opens first while the game runs.
+
+A section without numbers is left out; Hextech ARAM, for one, has no rune or spell statistics. On
+Summoner's Rift a switch on the right changes the lane; with no lane assigned (blind pick, a
+lookup), the lane the champion is played in most comes first.
+
+### Where the numbers come from
+
+The panel's heading names the source and the patch, for example "Data: Tencent 101 · 16.19", and
+the games behind the numbers.
+
+| Mode           | Source                                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Ranked, Normal | Tencent's 101 statistics from the League app (the Chinese servers); **Settings › General** switches to OP.GG (the world) |
+| ARAM           | OP.GG                                                                                                                    |
+| Hextech ARAM   | Tencent's League app, and ARAM.GG when that does not answer                                                              |
+| Arena          | OP.GG                                                                                                                    |
+| Other modes    | no build numbers                                                                                                         |
+
+These are public statistics from third parties and can lag a patch; in a patch's first days, when
+there are none yet, the previous patch's are used. When a source does not answer, the panel says so
+and offers **Retry**. Items and augments the client does not know (from another patch, say) are left
+out. winer reads the numbers of the champion on screen only, keeps them for a few hours, and never
+reads other champions ahead. With **Builds** off in **Settings › General**, the panel is hidden and
+nothing is fetched.
+
+### Writing the item set
+
+**Write the item set** in **Items** writes the items as the champion's item set, named after the
+champion ("winer · Jhin"), which the in-game shop lists. One written in champ select is there in
+that game; one written after the game started, from the next game. Writing it by itself, and removing it, are in
+[Automation](/en/guide/automation#item-sets).

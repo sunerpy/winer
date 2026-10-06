@@ -39,10 +39,30 @@ has already asked for those rights to connect to it, so the activation asks noth
 
 - **Teammate panel in champ select**: a line under each teammate's name in champ select: tier and
   title, rank, recent win rate, KDA and streak; your own line also carries your side of the map.
-  Where the client's team list cannot be found, a compact panel shows the same.
+  Where the client's team list cannot be found, a compact panel shows the same. A click on the line,
+  or on a teammate in the panel, shows their history: see **Recent games inside the client** below.
 - **Instant bench swaps in the client**: in ARAM, a click on a bench champion in the client swaps it
   in without the client's cooldown.
-- **Hide home-page promotions**: hides the event hub and esports pop-ups on the client's home page.
+- **Friends' games in the friends list**: in the client's friends list on the right, a friend in a
+  game gets a line under their name with the mode and how long the game has run, counted by the
+  second; friends in one game or one party carry a stripe of the same colour on the left.
+- **Lobby members' form**: in a lobby, recent win rate, KDA and form score above each member's
+  banner. A click on that line or on the member's picture shows their history: see **Recent games
+  inside the client** below. Where the client's member cards cannot be found, a compact panel shows
+  the same, and its members open their history too.
+- **Recent games inside the client**: a click on a player in the lobby or in champ select opens a
+  card beside them in the client, with no need to switch to winer's window. At the top are their
+  rank, recent win rate, KDA, form score and streak (in champ select also their tier and title);
+  below are their last 10 games (without custom games while the History page hides them), each with
+  the champion, the result, the mode, kills / deaths / assists and how long ago it was. When the
+  games cannot be read, the card says why and offers **Retry**. **Full history in winer** at the
+  bottom opens winer's window. `Esc`, the ✕ at the top right or a second click on the same player
+  closes the card; it also closes when the client leaves the lobby or champ select, or shows the
+  match-found prompt. With this option off, a click on a player opens their history in winer's
+  window instead.
+- **Hide home-page promotions**: hides the esports pop-up and puts a short note in place of the
+  news and events on the client's home page. **Show for now** on the note brings them back until the
+  client restarts; with the option off, the home page shows as usual.
 
 Each has its own switch under **In-client › In-client features** and takes effect at once.
 

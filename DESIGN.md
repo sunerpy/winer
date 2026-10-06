@@ -54,7 +54,10 @@ the surface.
 Semantic colours, per mode: `ok`, `danger`, `warning`, `info`, and the two game results —
 `win` / `loss` (green and red, whatever the accent: blue is a side, never a result) with `-soft`
 tints for row backgrounds. The map's two sides have their own pair, `side-blue` / `side-red`, used
-only as a dot or chip beside the side's name. `best` (amber, with `best-soft`) marks a game's best
+only as a dot or chip beside the side's name. Groups (friends in one game or party, a premade party)
+take `group-1` … `group-6` in turn: colour-blind-safe hues after Okabe and Ito, set per theme and
+each ≥ 3:1 on canvas, surface and both insets, drawn as a dot or a 3px stripe and always beside the
+group's number, never as text. `best` (amber, with `best-soft`) marks a game's best
 value. The game's line-art icons (augments, runes) sit on `glyph-plate`, the game's own dark ground,
 in every theme: drawn for it, they vanish on a light surface. Rank tiers have fixed colours (`TIER_COLORS` in `@winer/shared`) used only as a dot or
 an emblem stroke next to the tier's name, never as text.
@@ -111,11 +114,18 @@ Groups and entries (glyph + label; the rail keeps the label as name and tooltip)
 Footer entries: the theme switch (opens a menu) and 设置 Settings (opens a dialog; carries
 `aria-haspopup="dialog"`, never `aria-current`). Collapse lives in the brand row, not the footer.
 
-The settings dialog's sections are 外观, 通用, 评级 and 关于, a vertical tab rail on the left. 评级
+The settings dialog's sections are 外观, 通用, 评级 and 关于, a vertical tab rail on the left. 通用
+holds the global shortcut that summons the window: its keys as `Kbd` caps, 更改快捷键 (a recorder
+that takes the next combination, Esc cancelling, while the shell lets the old one go) and a ✕ that
+turns it off; a lamp says 已生效, or the row says in `danger` that the system refused it. 评级
 holds the rating scheme as radio cards (name, one-line hint, the tiers best to worst; two columns
 from 520px), the custom names as five inputs while 自定义 is chosen, the titles switch, and 评价依据
 in an inset block whose 完整说明 opens the site's rating page (`docs/site/rating.md`). 自动化 › 喊话 shows the scheme by
-name with 去设置, which opens this section.
+name with 去设置, which opens this section. The same card holds the callout's own shortcut, recorded
+the way 通用's is (neither takes the other's combination), and under a hairline its 游戏中喊话
+section: the in-game sending switch, whose risk line is `warning` with a triangle; 游戏中输入哪一方
+as a Segmented (对面 · 我方 · 双方), its hint naming the most lines one press types; the two enemy
+lines and the team's line as inputs, and what one press would type as their preview.
 
 ## Components
 
@@ -134,6 +144,7 @@ Primitives (`app/frontend/src/ui`), each with its states:
 | CommitInput  | an Input that saves on blur or Enter, never per key                              | commits only when the text changed while focused; a saved value comes back normalized                                                  |
 | Dialog       | sized frame `min(absolute, viewport)`, lifted surface, corner ✕                  | focus trapped (edges only), Esc and scrim close, focus restored by the shell                                                           |
 | Popover      | a layer of its own (portal, fixed), anchored to its trigger                      | prefers a side, flips when that side has no room, never leaves the window; closes on an outside pointer or Esc                         |
+| Hint         | a 20px help glyph (14px circle-help) beside a figure; a Popover with the rule    | the glyph's name is the question, also its tooltip; the panel takes the focus when it opens and gives it back on Esc                   |
 | Toast        | bottom-right stack, auto-dismiss 4s                                              | ok · danger · info                                                                                                                     |
 | Pager        | ‹ · page numbers · ›, mono 12px, the current page in `accent-soft`               | the first, the last known and two either side of the current; a trailing … while more pages may follow; ‹ and › disable at the ends    |
 | EmptyState   | glyph, title, one sentence saying what to do, optional action                    |                                                                                                                                        |
@@ -163,14 +174,43 @@ while the client is not connected), `ProfileIcon` (circle), `AssetIcon` (items, 
   or 50 games (remembered), cut from what has arrived: a filter
   fills its page from as many requests as it takes. A Pager under the list, the range (第 11–20
   场, and 共 N 场 once the last page is known) beside the filters. Turning a page closes the open
-  scoreboard and brings the list's head into view.
+  scoreboard and brings the list's head into view. Beside the filters a Toggle, 隐藏自定义对局 (on
+  by default, kept in the settings), with what it hides as a mono count; a page of nothing but
+  custom games says so and offers to show them. A player seen a moment ago is drawn at once from
+  what was shown, on the page left, and checked for new games behind it; a scoreboard opened
+  before opens without a skeleton.
+- **Player header.** The profile, both ranks, then recent form under a label that says what it
+  counts (近 18 场 · 所有模式, in the ranks' 11px `fg-subtle`) with a Hint giving the rule: the
+  games looked at, the modes counted, the remakes and the games passed over. Then 近期战力: the
+  tier Badge and title chip of champ select and the quip as a `fg-subtle` line, with a Hint saying
+  how one player's tier is read. A summary of form anywhere (the overview's 近期状态, a team
+  board's 近 N 场) names the same scope, as a label or a tooltip; ranked wins and losses say they
+  are the queue's.
 - **Team board.** Champ select and the running game show one team at a time in a Panel (对局分析),
   the local player's team first; a Segmented switches to the other where both are known. One row
   per player: champion, name, tier and party badges, rank, recent win rate, KDA and streak on the
-  left (a button that opens the player's history), the latest games on the right as 64px tiles:
+  left (a button that opens the player's history; a premade party's badge is led by its group's
+  colour), the latest games on the right as 64px tiles:
   champion, K/D/A in mono, the mode's short name, tinted and underlined `win` / `loss` (a remake
   neutral), the queue, result and age as the tooltip. Six tiles show, eight to twelve where the row
   is wider (container queries). The local player's row carries the accent's inset edge.
+- **Lobby.** While the client shows the lobby, the live page lists the party as the team board's
+  rows: profile icon, name, 你 / 房主 badges and the lanes asked for, rank and recent form, the
+  form score in mono, and the latest games as tiles on the right. A row opens the member's history.
+- **Friends.** The overview's 好友动态 lists the friends in champ select or in a game, an inset row
+  each: profile icon, name, mode · state, an eye where the game can be spectated and the elapsed
+  time in mono, ticking by the second. Friends in one game or party carry their group's stripe and
+  a neutral badge led by its colour, with the number. A row opens the friend's history. In the
+  client, a friend in a game gets the same `mode · time` line under their name in Hextech gold,
+  and a group the same stripe; the lobby's members get one line of form above their banner.
+- **History in the client.** A click on a lobby member (their line or picture) or a champ-select
+  teammate's line opens a 320px card beside them over the client page, in the plugin's panel
+  frame: profile icon, Riot ID (the tag in `fg-muted`), the line's summary as chips (tier, title,
+  rank, win rate, KDA, form score, streak), then the latest ten games as rows tinted `win-soft` /
+  `loss-soft` with a 3px edge of the result's colour: champion, 胜 / 负 in that colour, queue, age
+  and length, K / D / A, MVP and SVP as on the history rows; 在 winer 中查看完整战绩 at the foot.
+  One card at a time; it takes the focus and gives it back, and Esc, its ✕, a second click on the
+  player, leaving the lobby or champ select, and the match-found dialog close it.
 - **Sides.** On a map of two sides a team carries its side: the board's switch says 我方 · 红色方,
   a lone team a `side-blue` or `side-red` dot and its name. The callout's first line names the side
   (【蓝色方】) before the opening line. In the client the local player's line starts with the same
@@ -205,7 +245,15 @@ while the client is not connected), `ProfileIcon` (circle), `AssetIcon` (items, 
   the client's amber. 设置 › 评级 turns titles off everywhere.
 - **Callout.** A Panel beside the team in one-team modes (ARAM) and under both teams otherwise:
   the lines exactly as they will be sent, in an inset block, then 发送到队伍 (accent) and
-  仅自己可见 (outline). An accent badge in the header says when automatic sending is on.
+  仅自己可见 (outline). An accent badge in the header says when automatic sending is on. A last line
+  under a hairline names the callout's shortcut in `Kbd` caps after a lamp (ok; `danger` when the
+  system refused it; off without one), with 去设置 as a link to 自动化. In the game the panel holds
+  two inset blocks under their names, 对面 (the enemy to watch and the one to go after) and 我方
+  (every rated teammate, as in champ select), side by side from 720px of panel width and stacked
+  below it, every player named by champion; and no buttons, since the game's chat has no API: the
+  header's badge says whether in-game sending is on (accent) or off (neutral), the last line what
+  the shortcut types there (which side, and for both the most lines a press types). A map without
+  two sides has no such panel.
 - **Augments.** Hextech ARAM and Arena lines show their augments instead of runes: the client's
   icon in a 1.5px ring of its rarity (`--rarity-silver`, `--rarity-gold`, `--rarity-prismatic`,
   the game's own colours in every theme), name, rarity and description as the tooltip. On the
@@ -213,6 +261,18 @@ while the client is not connected), `ProfileIcon` (circle), `AssetIcon` (items, 
 - **Bench.** A strip under the champ-select header, shown only in modes with a bench: each
   champion is a 36px button that swaps at once; wishlist champions carry a small accent star;
   the reroll button with its count sits at the right end.
+- **Builds.** A Panel (配装推荐) under the team board in champ select and in the game, and on an
+  idle Live page with a champion and a mode chosen by hand (查看英雄配装). The header names the
+  source and patch (数据：腾讯 101 · 16.19), the games behind the numbers and the source's own tier
+  as a Badge. A Segmented holds the sections (出装 · 符文 · 召唤师技能 · 技能加点, 对位 on the Rift,
+  强化符文 in Arena and Hextech ARAM), only those the source has numbers for; a second one the lane,
+  on the Rift. Each option is an inset row: icons (items and spells 28px; runes 30 / 20 / 15, the
+  keystone first, each style's glyph before its runes), then pick rate, win rate and games as mono
+  readouts at the right end, a win rate two points off half in `win` / `loss`. Augments are grouped
+  by rarity (a dot in its colour), best first: icon, name, the source's grade as a Badge (S accent,
+  A win, B and C neutral) or Arena's average place and first-place share, and what it does. A button
+  that writes to the client (应用符文, 应用召唤师技能, 写入装备方案) says what came of it on a line of
+  its own; a source that did not answer is an ErrorNote with a retry, never an empty grid.
 
 Icons: one family, Lucide (24-unit grid, stroke 2), rendered at 14 / 16 / 20.
 
@@ -240,5 +300,6 @@ honours `prefers-reduced-motion` and the in-app 减少动态 setting.
 - The Windows 11 Snap Layouts flyout is lost to the self-drawn title bar
   (`docs/accepted-tradeoffs.md` T-001).
 - Champion and rank imagery comes from the connected client; with no client the window shows
-  initials and tier names. The one thing fetched from the internet is what augments do (ARAM.GG,
-  a third-party host, switchable in 设置 › 通用); it can lag a patch, and some values arrive as `?`.
+  initials and tier names. From the internet come what augments do (ARAM.GG, a third-party host)
+  and the build panel's statistics (Tencent's League app, OP.GG, ARAM.GG), each switchable in
+  设置 › 通用; both can lag a patch, and some augment values arrive as `?`.

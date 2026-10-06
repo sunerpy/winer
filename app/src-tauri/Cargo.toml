@@ -45,6 +45,7 @@ serde.workspace = true
 serde_json.workspace = true
 tauri.workspace = true
 tauri-plugin-autostart.workspace = true
+tauri-plugin-global-shortcut.workspace = true
 tauri-plugin-opener.workspace = true
 tauri-plugin-single-instance.workspace = true
 tauri-plugin-updater.workspace = true
@@ -62,6 +63,8 @@ windows-sys = { workspace = true, features = [
   "Win32_System_Threading",
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
+  # The callout typed into the game's chat (`game_chat.rs`): SendInput and the keys' state.
+  "Win32_UI_Input_KeyboardAndMouse",
 ] }
 
 [dev-dependencies]

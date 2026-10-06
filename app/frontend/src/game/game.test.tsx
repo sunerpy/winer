@@ -251,6 +251,7 @@ describe("augments", () => {
       startedAt: 0,
       duration: 1433,
       line: line("ann", 8.6, award, 45_000, 0.31),
+      kind: "matched" as const,
     });
     const { rerender } = render(
       <StoreContext value={augmentStore()}>
@@ -288,6 +289,7 @@ describe("augments", () => {
               ...line("ann", 8.6, "mvp", 45_000, 0.31),
               feats: ["penta", "mostKills", "firstBlood", "mostGold"],
             },
+            kind: "matched",
           }}
         />
       </StoreContext>
@@ -339,6 +341,7 @@ describe("augments", () => {
       startedAt: 0,
       duration: 1433,
       line: { ...line("ann", null, null, 1, 0), augments: [1004] },
+      kind: "matched" as const,
     };
     render(
       <StoreContext value={augmentStore()}>

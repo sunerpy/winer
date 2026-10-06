@@ -1,5 +1,6 @@
 // Small readouts of rank and form, shared by every page that shows a player.
 import {
+  GRADE_LETTERS,
   TIER_COLORS,
   formatKda,
   kda,
@@ -7,11 +8,14 @@ import {
   percent,
   rankLabel,
   streakLabel,
+  tierTone,
   winRate,
   type Rank,
   type Ranked,
   type RecentForm,
   type RecentMatch,
+  type SeatRating,
+  type TierTone,
 } from "@winer/shared";
 
 import { Flame } from "lucide-react";
@@ -19,7 +23,7 @@ import { Flame } from "lucide-react";
 import { useLanguage, useT } from "../lib/i18n";
 import { cx } from "../lib/cx";
 import { useCatalog } from "../lib/store";
-import { Badge } from "../ui";
+import { Badge, type Tone } from "../ui";
 
 /** Tier dot, tier and division, and LP. */
 export function RankBadge({
@@ -124,6 +128,32 @@ export function TitleChip({
       {name}
       {why && <span className="sr-only">{`：${why}`}</span>}
     </span>
+  );
+}
+
+/** A tier's badge by where it sits between best and worst (DESIGN.md, Tiers). */
+const TIER_TONE: Record<TierTone, Tone> = {
+  best: "accent",
+  good: "win",
+  middle: "neutral",
+  weak: "warning",
+  worst: "loss",
+};
+
+/** The tier recent form earns, led by the grade's letter where the scheme grades; the score is the
+ *  tooltip. */
+export function TierBadge({ rating }: { rating: SeatRating }) {
+  const t = useT();
+  return (
+    <Badge
+      tone={TIER_TONE[tierTone(rating.tier, rating.tiers)]}
+      title={t("live.score", { score: rating.score.toFixed(1) })}
+    >
+      {rating.grade !== null && (
+        <span className="mono font-semibold">{GRADE_LETTERS[rating.grade]}</span>
+      )}
+      {rating.label}
+    </Badge>
   );
 }
 

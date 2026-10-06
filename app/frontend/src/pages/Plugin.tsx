@@ -205,6 +205,28 @@ function FeaturesPanel() {
           label={t("plugin.benchNoCooldown")}
         />
       </Row>
+      <Row label={t("social.pluginFriends")} help={t("social.pluginFriendsHint")}>
+        <Toggle
+          checked={plugin.friendStatus}
+          onChange={(friendStatus) => save((value) => ({ ...value, friendStatus }))}
+          label={t("social.pluginFriends")}
+        />
+      </Row>
+      <Row label={t("social.pluginLobby")} help={t("social.pluginLobbyHint")}>
+        <Toggle
+          checked={plugin.lobbyPanel}
+          onChange={(lobbyPanel) => save((value) => ({ ...value, lobbyPanel }))}
+          label={t("social.pluginLobby")}
+        />
+      </Row>
+      {/* The history panel in the client. */}
+      <Row label={t("overlay.historyInClient")} help={t("overlay.historyInClientHint")}>
+        <Toggle
+          checked={plugin.historyInClient}
+          onChange={(historyInClient) => save((value) => ({ ...value, historyInClient }))}
+          label={t("overlay.historyInClient")}
+        />
+      </Row>
       <Row label={t("plugin.hidePromotions")} help={t("plugin.hidePromotionsHint")}>
         <Toggle
           checked={plugin.hidePromotions}

@@ -13,6 +13,7 @@ import {
 } from "react";
 
 import { useT } from "../lib/i18n";
+import { useObservable } from "../lib/observable";
 import { useLive, useStore, useUpdateStatus } from "../lib/store";
 import { useWindowChrome } from "../lib/window";
 import { AutomationPage } from "../pages/Automation";
@@ -121,6 +122,14 @@ export function Shell() {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const main = useRef<HTMLElement>(null);
   useNoticeToasts();
+
+  // A lobby member clicked in the client: the shell has raised the window, the history opens.
+  const historyRequest = useObservable(store.historyRequest);
+  useEffect(() => {
+    if (!historyRequest) return;
+    setSettings(null);
+    setRoute({ page: "history", puuid: historyRequest.puuid });
+  }, [historyRequest]);
 
   // Every page scrolls in the one <main>: each opens at its top, not where the last was left.
   useLayoutEffect(() => {

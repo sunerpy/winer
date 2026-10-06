@@ -1,12 +1,15 @@
-//! The desktop shell: one window, a tray icon, the `lcu` asset protocol and the commands the
-//! frontend calls. Everything about the League client itself lives in `winer-core`.
+//! The desktop shell: one window, a tray icon, a global shortcut, the `lcu` asset protocol and the
+//! commands the frontend calls. Everything about the League client itself lives in `winer-core`.
 
 mod assets;
 mod commands;
 mod elevation;
 mod events;
+mod game_chat;
+mod hotkey;
 mod logging;
 mod plugin_host;
+mod storage;
 mod tray;
 mod updater;
 mod window;
@@ -49,6 +52,11 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(hotkey::on_shortcut)
+                .build(),
+        )
         .register_asynchronous_uri_scheme_protocol("lcu", assets::protocol)
         .invoke_handler(commands::handler())
         .on_window_event(window::on_event)
@@ -62,25 +70,42 @@ fn setup(app: &mut App, start_hidden: bool) -> Result<(), Box<dyn Error>> {
         log_dir: app.path().app_log_dir()?,
         settings: app.path().app_config_dir()?.join("settings.json"),
     };
-    app.manage(logging::init(&paths.log_dir)?);
+    // Storage: the log within its limits (`logging.rs`), checked again once a day.
+    let logs = logging::Logs::open(&paths.log_dir)?;
+    app.manage(logging::init(&logs)?);
+    logs.maintain();
     tracing::info!(
         version = VERSION,
         elevated = elevation::is_elevated(),
         "winer starting"
     );
+    // Storage: what the last cleanup marked goes before the window's WebView starts (`storage.rs`).
+    let local = app.path().app_local_data_dir()?;
+    let storage = storage::Storage::new(
+        logs,
+        local.clone(),
+        app.path().app_config_dir()?,
+        std::env::temp_dir(),
+    );
+    storage.at_start();
+    app.manage(storage);
 
     let service = Service::new(
         &paths.settings,
         tauri::async_runtime::handle().inner().clone(),
     );
+    service.set_backup_dir(local.join(storage::BACKUPS));
     let bridge = tauri::async_runtime::block_on(Bridge::start(service.clone(), VERSION))?;
     app.manage(service.clone());
     app.manage(bridge.clone());
     app.manage(paths);
     app.manage(updater::Updater::default());
-    app.manage(plugin_host::Host::new(
-        app.path().app_local_data_dir()?.join("pengu"),
-    ));
+    app.manage(plugin_host::Host::new(local.join(storage::PENGU)));
+    app.manage(hotkey::Hotkey::default());
+    // On the main thread here, so it is registered before the window shows.
+    hotkey::apply(app.handle(), service.settings().general.hotkey);
+    // Callout: the shortcut that sends it, none by default.
+    hotkey::apply_callout(app.handle(), service.settings().automation.callout.hotkey);
 
     // Subscribed before the service starts: the core's events are not replayed, and the first
     // `Connected` is what sets up the loader and points the plugin at this session's bridge.

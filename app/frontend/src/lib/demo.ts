@@ -1,27 +1,52 @@
 // A believable client for `pnpm dev` in a browser: one summoner in champ select with a full team,
 // twenty games of history and a working settings round trip. Never part of a release bundle.
 import type {
+  BackupInfo,
+  BannerChoice,
+  CalloutRule,
+  ChallengeProfile,
+  ChallengeToken,
   ChampSelectView,
   Event,
   Feat,
+  FormScope,
+  FriendsView,
   GameData,
+  GameKind,
+  GameView,
+  HotkeyStatus,
+  LobbyView,
   MatchDetail,
   MatchPage,
   MatchSummary,
   PlayerLine,
+  PlayerStanding,
   PlayerSummary,
   PluginStatus,
+  Presence,
   Rank,
   RecentMatch,
   Seat,
   Settings,
+  SkinChoice,
   Snapshot,
+  TitleChoice,
   UpdateStatus,
 } from "@winer/shared";
 
 import type { ArgsOf, Backend, CommandName, Commands } from "./backend";
+import { typedLines } from "./callout";
+import {
+  DEMO_AUGMENTS,
+  DEMO_ITEMS,
+  DEMO_PERKS,
+  DEMO_SPELLS,
+  demoLoadoutHandlers,
+} from "./demoLoadout";
+import { demoStorageHandlers } from "./demoStorage";
 import { FEAT_ORDER } from "./feats";
 import { defaultScopes } from "./modes";
+import { MOBILE_MESSAGE } from "./presence";
 import { TIER_NAMES } from "./tiers";
 
 const CHAMPIONS: [number, string, string, string][] = [
@@ -50,14 +75,15 @@ const GAME_DATA: GameData = {
     alias,
     icon: "",
   })),
-  items: [],
-  spells: [],
-  perks: [],
+  items: DEMO_ITEMS,
+  spells: DEMO_SPELLS,
+  perks: DEMO_PERKS,
   augments: [
     { id: 1004, name: "回归基本功", icon: "", rarity: "prismatic" },
     { id: 2103, name: "狙神飞星", icon: "", rarity: "gold" },
     { id: 1116, name: "闪现向前", icon: "", rarity: "gold" },
     { id: 2102, name: "高压锅", icon: "", rarity: "silver" },
+    ...DEMO_AUGMENTS,
   ],
   queues: [
     { id: 420, name: "排位赛 单排/双排", gameMode: "CLASSIC", ranked: true },
@@ -65,6 +91,9 @@ const GAME_DATA: GameData = {
     { id: 430, name: "匹配模式", gameMode: "CLASSIC", ranked: false },
     { id: 450, name: "极地大乱斗", gameMode: "ARAM", ranked: false },
     { id: 2400, name: "海克斯大乱斗", gameMode: "KIWI", ranked: false },
+    // History: a custom lobby's queue and co-op vs AI, as the Tencent client names them.
+    { id: 3220, name: "嚎哭深渊 全随机", gameMode: "ARAM", ranked: false },
+    { id: 870, name: "入门级", gameMode: "SWIFTPLAY", ranked: false },
   ],
 };
 
@@ -248,11 +277,126 @@ function scoreboard(gameId: number): MatchDetail {
   };
 }
 
+// ---- History: games form leaves out, and a player rated alone ----
+
+/** Games of a demo player's history not played against players through matchmaking, by place:
+ *  the demo player's past their first fifty, the player the search finds at the top. */
+const LEFT_OUT: Record<string, Record<number, GameKind>> = {
+  [DEMO_PLAYER]: { 52: "custom", 55: "bots", 60: "custom" },
+  "demo-3": { 0: "custom", 3: "custom", 7: "bots" },
+};
+
+const kindOf = (puuid: string, index: number): GameKind => LEFT_OUT[puuid]?.[index] ?? "matched";
+
+/** Sixty games to show whatever is hidden: a player's custom games come on top of them. */
+function historyLength(puuid: string): number {
+  return 60 + Object.values(LEFT_OUT[puuid] ?? {}).filter((kind) => kind === "custom").length;
+}
+
+/** The newest twenty games against players among `games`, and what was passed over on the way,
+ *  as the core reads form (`analysis::recent_form`). */
+function formGames(games: MatchSummary[]): { counted: MatchSummary[]; scope: FormScope } {
+  const scope: FormScope = { listed: games.length, custom: 0, bots: 0, remakes: 0 };
+  const counted: MatchSummary[] = [];
+  for (const game of games) {
+    if (counted.length === 20) break;
+    if (game.kind === "custom") scope.custom += 1;
+    else if (game.kind === "bots") scope.bots += 1;
+    else counted.push(game);
+  }
+  return { counted, scope };
+}
+
+/** The core's form bands (`rating::FORM_GRADES`), S+ to E; below them F. */
+const FORM_GRADES = [7.6, 6.8, 5.9, 5.3, 4.8, 4.3, 3.8];
+/** One quip per tier of the default five, from the core's own (`callout.rs`). */
+const RIFT_FIVE_QUIPS = [
+  "对面五个人准备举报代练",
+  "稳得离谱，能C还能活",
+  "无功无过，绩效合格",
+  "站在哪里，哪里就有视野",
+  "队友看完战绩陷入沉思",
+];
+
+type Lean = "above" | "middle" | "below";
+
+/** Where a tier stands against its scheme's middle, as the core's `rating::lean` reads it. */
+function leanOf(tier: number, tiers: number, graded: boolean): Lean {
+  if (graded) return tier <= 2 ? "above" : tier >= 5 ? "below" : "middle";
+  const order = 2 * tier + 1 - tiers;
+  return order < 0 ? "above" : order > 0 ? "below" : "middle";
+}
+
+/** The demo's title for each leaning, as `rating::form_title` gives an unremarkable player. */
+const DEMO_TITLES: Record<Lean, string> = {
+  above: "靠谱队友",
+  middle: "正常发挥",
+  below: "陪跑选手",
+};
+
+/** As the core's `callout::tier_emoji`: the best tier crowned, the worst done for. */
+function tierEmoji(tier: number, tiers: number, graded: boolean): string {
+  if (tier === 0) return "👑";
+  if (tier === tiers - 1) return "💀";
+  return { above: "🔥", middle: "👌", below: "😅" }[leanOf(tier, tiers, graded)];
+}
+
+/** A player rated alone as the core does it (`history::rate_alone`): the fixed band of the form
+ *  score, spread over the scheme's tiers the way a team is. */
+function standingOf(summary: PlayerSummary, scope: FormScope, settings: Settings): PlayerStanding {
+  const form = summary.recent;
+  if (form.games === 0) return { scope, rating: null, band: null };
+  const kda = (form.kills + form.assists) / Math.max(1, form.deaths);
+  const raw = 10 * (0.5 * (form.wins / form.games) + 0.5 * (1 - Math.exp(-kda / 3)));
+  const confidence = form.games / (form.games + 5);
+  const score = Math.round((confidence * raw + (1 - confidence) * 5) * 10) / 10;
+  const found = FORM_GRADES.findIndex((floor) => score >= floor);
+  const band = found === -1 ? FORM_GRADES.length : found;
+  const rule = settings.automation.callout;
+  const own = rule.customTiers.map((name) => name.trim()).filter(Boolean);
+  const names =
+    rule.tiers !== "custom"
+      ? TIER_NAMES[rule.tiers]["zh-CN"]
+      : own.length >= 2
+        ? own
+        : TIER_NAMES.horses["zh-CN"];
+  const graded = rule.tiers === "grades";
+  const tier = graded
+    ? Math.min(band, names.length - 1)
+    : Math.min(names.length - 1, Math.floor(((band + 0.5) / 8) * names.length - 1e-9));
+  const lean = leanOf(tier, names.length, graded);
+  const title =
+    lean === "above"
+      ? form.streak >= 3
+        ? "版本答案"
+        : "靠谱队友"
+      : lean === "below"
+        ? form.streak <= -3
+          ? "排位慈善家"
+          : "陪跑选手"
+        : "正常发挥";
+  return {
+    scope,
+    band,
+    rating: {
+      score,
+      tier,
+      tiers: names.length,
+      label: names[tier] ?? "",
+      grade: graded ? tier : null,
+      title: settings.general.titles && form.games >= 5 ? title : null,
+      quip: rule.tiers === "riftFive" ? (RIFT_FIVE_QUIPS[tier] ?? null) : null,
+    },
+  };
+}
+
 function history(puuid: string, name: string, seed: number, count: number): MatchSummary[] {
   const pick = random(seed);
   return Array.from({ length: count }, (_, index) => {
     const win = pick() > 0.45;
-    const queueId = [420, 2400, 430, 2400, 440][Math.floor(pick() * 5)] ?? 420;
+    const kind = kindOf(puuid, index);
+    const drawn = [420, 2400, 430, 2400, 440][Math.floor(pick() * 5)] ?? 420;
+    const queueId = kind === "custom" ? 3220 : kind === "bots" ? 870 : drawn;
     const gameId = 9_000_000_000 + seed * 100 + index;
     const own = line(pick, puuid, name, win, champion(pick));
     const score = standIn(own);
@@ -273,17 +417,29 @@ function history(puuid: string, name: string, seed: number, count: number): Matc
     return {
       gameId,
       queueId,
-      gameMode: queueId === 2400 ? "KIWI" : "CLASSIC",
+      gameMode:
+        queueId === 2400
+          ? "KIWI"
+          : queueId === 3220
+            ? "ARAM"
+            : queueId === 870
+              ? "SWIFTPLAY"
+              : "CLASSIC",
       startedAt: NOW - (index + 1) * 3_600_000 * (1 + pick() * 5),
       duration: 1200 + Math.floor(pick() * 900),
       // Hextech ARAM is played with augments instead of runes.
       line: queueId === 2400 ? { ...played, augments: [1004, 2103, 1116, 2102] } : played,
+      kind,
     };
   });
 }
 
+/** What a demo player's form counts: their thirty newest games, as a client lists them. */
+const scopeOf = (puuid: string, name: string, seed: number): FormScope =>
+  formGames(history(puuid, name, seed, 30)).scope;
+
 function summary(puuid: string, name: string, seed: number, rank: Rank | null): PlayerSummary {
-  const games = history(puuid, name, seed, 20);
+  const games = formGames(history(puuid, name, seed, 30)).counted;
   const matches: RecentMatch[] = games.map((game) => ({
     gameId: game.gameId,
     queueId: game.queueId,
@@ -347,8 +503,14 @@ const TEAM: [string, string, Rank | null, Seat["position"]][] = [
   ["demo-5", "眼位守护者", null, "utility"],
 ];
 
+/** The seed a demo player's summary is drawn from. */
+const seedOf = (puuid: string): number => {
+  const index = TEAM.findIndex(([id]) => id === puuid);
+  return index === -1 ? puuid.length : index + 3;
+};
+
 const SUMMARIES = new Map(
-  TEAM.map(([puuid, name, tierRank], index) => [puuid, summary(puuid, name, index + 3, tierRank)]),
+  TEAM.map(([puuid, name, tierRank]) => [puuid, summary(puuid, name, seedOf(puuid), tierRank)]),
 );
 
 /** Five players in the default five Rift tiers, as the core ranks them: one in each tier. */
@@ -434,12 +596,247 @@ function champSelect(): ChampSelectView {
     rerollsRemaining: 1,
     side: "blue",
     callout: [
-      "【蓝色方】winer 战绩鉴定",
-      "峡谷通天代：1L 暗夜里的光 近20场胜率60% KDA 4.1 评分7.4「版本答案」，对面五个人准备举报代练",
-      "人形防御塔：3L 野区观光客 近20场胜率55% KDA 3.6 评分6.8，塔在人在，人在塔也在",
-      "峡谷公务员：2L 峡谷清道夫 近20场胜率50% KDA 2.9 评分5.2，按时上班，准时打卡",
-      "移动眼位：4L 补刀不漏一个 近20场胜率45% KDA 2.4 评分4.6「峡谷慈善家」，站在哪里，哪里就有视野",
-      "纯正牛马：5L 眼位守护者 近20场胜率40% KDA 2.0 评分3.9「黑白电视机资深会员」，勤勤恳恳地给对面创造游戏体验",
+      "📢【蓝色方】winer 战绩鉴定",
+      "👑 峡谷通天代：1L 暗夜里的光，近20场胜率60%，KDA 4.1，战力7.4「版本答案」，对面五个人准备举报代练",
+      "🔥 人形防御塔：3L 野区观光客，近20场胜率55%，KDA 3.6，战力6.8「靠谱队友」，塔在人在，人在塔也在",
+      "👌 峡谷公务员：2L 峡谷清道夫，近20场胜率50%，KDA 2.9，战力5.2「正常发挥」，按时上班，准时打卡",
+      "😅 移动眼位：4L 补刀不漏一个，近20场胜率45%，KDA 2.4，战力4.6「峡谷慈善家」，站在哪里，哪里就有视野",
+      "💀 纯正牛马：5L 眼位守护者，近20场胜率40%，KDA 2.0，战力3.9「黑白电视机资深会员」，勤勤恳恳地给对面创造游戏体验",
+    ],
+  };
+}
+
+// Callout: a running game, with both teams' lines the shortcut can type into the game's chat.
+
+/** The demo team in a ranked game on the blue side against five rated players on the red side,
+ *  the enemy to watch, the one to go after and the team's own lines written as the core writes
+ *  them: every player by champion. */
+export function demoGame(): GameView {
+  const enemies: Seat[] = (
+    [
+      ["demo-r1", "红方上单", 157, 4, 3.4, "纯正牛马"],
+      ["demo-r2", "红方打野", 121, 0, 7.6, "峡谷通天代"],
+      ["demo-r3", "红方中单", 238, 2, 5.4, "峡谷公务员"],
+      ["demo-r4", "红方射手", 81, 1, 6.6, "人形防御塔"],
+      ["demo-r5", "红方辅助", 89, 3, 4.5, "移动眼位"],
+    ] as const
+  ).map(([puuid, name, championId, tier, score, label]) => ({
+    puuid,
+    name: { gameName: name, tagLine: "20001" },
+    championId,
+    intent: false,
+    position: null,
+    spells: [4, 14],
+    isSelf: false,
+    premade: null,
+    stats: { state: "ready", ...summary(puuid, name, championId % 7, null) },
+    rating: { score, tier, tiers: 5, label, grade: null, title: null, quip: null },
+  }));
+  return {
+    gameId: 2,
+    queueId: 420,
+    teams: [seats().map((seat) => ({ ...seat, intent: false })), enemies],
+    sides: true,
+    callout: [
+      "【敌方·红色方】winer 战绩鉴定",
+      "小心 卡兹克：峡谷通天代，近20场胜率65%，KDA 4.6",
+      "对面 亚索：纯正牛马，近20场胜率35%，可以多抓",
+    ],
+    // As champ select's lines, the champion where the seat and the name were.
+    allyCallout: [
+      "【我方·蓝色方】winer 战绩鉴定",
+      "峡谷通天代：阿狸，近20场胜率60%，KDA 4.1，战力7.4「版本答案」，对面五个人准备举报代练",
+      "人形防御塔：李青，近20场胜率55%，KDA 3.6，战力6.8「靠谱队友」，塔在人在，人在塔也在",
+      "峡谷公务员：盖伦，近20场胜率50%，KDA 2.9，战力5.2「正常发挥」，按时上班，准时打卡",
+      "移动眼位：金克丝，近20场胜率45%，KDA 2.4，战力4.6「峡谷慈善家」，站在哪里，哪里就有视野",
+      "纯正牛马：锤石，近20场胜率40%，KDA 2.0，战力3.9「黑白电视机资深会员」，勤勤恳恳地给对面创造游戏体验",
+    ],
+  };
+}
+
+// ---- The profile tools: a wardrobe, challenges with levels, and settings backed up before. ----
+
+/** Skin lines the demo's champions come in, after their base skin. */
+const SKIN_LINES = ["星之守护者", "源计划", "K/DA", "灵魂莲华", "西部魔影", "未来战士", "冰雪节"];
+
+/** Every demo champion's base skin and two to four more, some owned, as the client lists them. */
+const SKINS: SkinChoice[] = CHAMPIONS.flatMap(([id, title, short, alias], index) => {
+  const art = (number: number) => {
+    const folder = number === 0 ? "Base" : `Skin${String(number).padStart(2, "0")}`;
+    const images = `/lol-game-data/assets/ASSETS/Characters/${alias}/Skins/${folder}/Images`;
+    const file = alias.toLowerCase();
+    return {
+      tile: `${images}/${file}_splash_tile_${number}.jpg`,
+      splash: `${images}/${file}_splash_centered_${number}.jpg`,
+    };
+  };
+  const lines = SKIN_LINES.slice(index % 3, (index % 3) + 2 + (index % 3));
+  return [
+    { id: id * 1000, championId: id, name: title, owned: true, base: true, ...art(0) },
+    ...lines.map((line, at) => ({
+      id: id * 1000 + at + 1,
+      championId: id,
+      name: `${line} ${short}`,
+      owned: (index + at) % 3 === 0,
+      base: false,
+      ...art(at + 1),
+    })),
+  ];
+});
+
+const CHALLENGE_CHOICES: ChallengeToken[] = [
+  ["101304", "闪电战", "赢得【极地大乱斗】对局且对局时长低于13分钟", "MASTER"],
+  ["101101", "伤害爆表", "在【极地大乱斗】中造成超过1800点每分钟伤害", "MASTER"],
+  ["505005", "射手收藏家", "使用不同的射手英雄获得S-或更高评分", "DIAMOND"],
+  ["505006", "辅助收藏家", "使用不同的辅助英雄获得S-或更高评分", "DIAMOND"],
+  [
+    "101000",
+    "极地权威",
+    "获取来自【极地斗士】、【极地妙手】、【极地战士】等分组中的成就进度",
+    "PLATINUM",
+  ],
+  ["101203", "雪球大战", "在【极地大乱斗】中用雪球命中英雄", "PLATINUM"],
+  ["101104", "回血不如回温泉", "在【极地大乱斗】中击杀近期获得过治疗包的对手", "GOLD"],
+  ["101206", "魄罗破咯", "在【极地大乱斗】中导致一个魄罗爆炸", "BRONZE"],
+].map(([id, name, description, level]) => ({
+  id: Number(id),
+  name: name ?? "",
+  description: description ?? "",
+  level: level as ChallengeToken["level"],
+  icon: `/lol-game-data/assets/ASSETS/Challenges/Config/${id}/Tokens/${level}.png`,
+}));
+
+const TITLE_CHOICES: TitleChoice[] = [
+  { id: 1, name: "初窥门径" },
+  { id: 10120601, name: "魄罗饲养员" },
+  { id: 10120303, name: "雪球狙神" },
+  { id: 1435, name: "混沌代理人" },
+  { id: 1436, name: "日光浴恶魔" },
+];
+
+/** The client's default banner, then the banners the demo player owns, as the core lists them. */
+const BANNER_CHOICES: BannerChoice[] = [
+  ["", "default", "", "default.png"],
+  ["6", "event", "北极星(2023)贵族旗帜", "wn2023.png"],
+  ["24", "event", "魄罗之王的旗帜", "ARAM_Banner.png"],
+].map(([id, kind, name, file]) => ({
+  id: id ?? "",
+  kind: kind as BannerChoice["kind"],
+  name: name ?? "",
+  art: `/lol-game-data/assets/ASSETS/Regalia/BannerSkins/${file}`,
+}));
+
+/** What the status message becomes when the client shows `availability` with `current`, as the
+ *  core's `mobile_message_for` decides it; `null` leaves it. */
+function mobileMessageFor(availability: string, current: string, on: boolean): string | null {
+  if (!["chat", "away", "mobile", "offline"].includes(availability)) return null;
+  if (on && availability === "mobile") return current.trim() ? null : MOBILE_MESSAGE;
+  return current === MOBILE_MESSAGE ? "" : null;
+}
+
+// Social: friends at play and a party in the lobby, as the core draws them.
+
+/** Friends in game and in champ select: two in one ARAM game (group 1), one in a ranked game that
+ *  can be spectated, one picking; and one at the home screen, whom the panel leaves out. */
+function friends(): FriendsView {
+  const now = Date.now();
+  const friend = (
+    puuid: string,
+    gameName: string,
+    status: FriendsView["friends"][number]["status"],
+    group: number | null = null,
+  ): FriendsView["friends"][number] => ({
+    puuid,
+    name: { gameName, tagLine: String(20_000 + puuid.length) },
+    iconId: 29,
+    availability: status.state === "outOfGame" ? "chat" : "dnd",
+    status,
+    group,
+  });
+  return {
+    friends: [
+      friend("friend-1", "上分小能手", {
+        state: "inGame",
+        mode: "排位赛 单排/双排",
+        queueId: 420,
+        startedAt: now - 25 * 60_000 - 12_000,
+        observable: true,
+      }),
+      friend(
+        "friend-2",
+        "峡谷夜行者",
+        {
+          state: "inGame",
+          mode: "极地大乱斗",
+          queueId: 450,
+          startedAt: now - 12 * 60_000 - 34_000,
+          observable: false,
+        },
+        1,
+      ),
+      friend(
+        "friend-3",
+        "补兵机器",
+        {
+          state: "inGame",
+          mode: "极地大乱斗",
+          queueId: 450,
+          startedAt: now - 12 * 60_000 - 33_000,
+          observable: false,
+        },
+        1,
+      ),
+      friend("friend-4", "辅助永不死", {
+        state: "champSelect",
+        mode: "海克斯大乱斗",
+        queueId: 2400,
+        since: now - 40_000,
+      }),
+      friend("friend-5", "周末玩家", { state: "outOfGame" }),
+    ],
+  };
+}
+
+/** A party of three in a ranked lobby, the local player leading it; one member still loading. */
+export function demoLobby(): LobbyView {
+  const ready = (puuid: string): LobbyView["members"][number]["stats"] => {
+    const stats = SUMMARIES.get(puuid);
+    return stats ? { state: "ready", ...stats } : { state: "loading" };
+  };
+  return {
+    queueId: 420,
+    custom: false,
+    members: [
+      {
+        puuid: "demo-me",
+        name: { gameName: "暗夜里的光", tagLine: "10003" },
+        iconId: 29,
+        isSelf: true,
+        leader: true,
+        positions: ["middle", "fill"],
+        stats: ready("demo-me"),
+        score: 7.4,
+      },
+      {
+        puuid: "demo-2",
+        name: { gameName: "峡谷清道夫", tagLine: "10004" },
+        iconId: 29,
+        isSelf: false,
+        leader: false,
+        positions: ["top", "jungle"],
+        stats: ready("demo-2"),
+        score: 5.2,
+      },
+      {
+        puuid: "demo-6",
+        name: { gameName: "新来的队友", tagLine: "10009" },
+        iconId: 29,
+        isSelf: false,
+        leader: false,
+        positions: ["utility"],
+        stats: { state: "loading" },
+        score: null,
+      },
     ],
   };
 }
@@ -452,7 +849,13 @@ const DEFAULT_SETTINGS: Settings = {
     fontSize: 13,
     reduceMotion: false,
   },
-  general: { closeToTray: true, language: "zh-CN", augmentDetails: true, titles: true },
+  general: {
+    closeToTray: true,
+    language: "zh-CN",
+    augmentDetails: true,
+    titles: true,
+    hotkey: "Alt+Backquote",
+  },
   automation: {
     accept: { enabled: true, delayMs: 1500 },
     pick: {
@@ -481,9 +884,18 @@ const DEFAULT_SETTINGS: Settings = {
       template: "",
       tiers: "riftFive",
       customTiers: [],
+      hotkey: null,
+      inGame: false,
+      watchTemplate: "",
+      targetTemplate: "",
+      allyTemplate: "",
+      gameTeams: "enemies",
+      style: "rich",
     },
     bench: { enabled: true, champions: [103, 99, 22] },
     scopes: defaultScopes(),
+    loadout: { enabled: false, recommended: true },
+    itemSets: false,
   },
   plugin: {
     auto: true,
@@ -491,15 +903,54 @@ const DEFAULT_SETTINGS: Settings = {
     hidePromotions: false,
     benchNoCooldown: true,
     loaderDir: null,
+    friendStatus: true,
+    lobbyPanel: true,
+    // The history panel in the client.
+    historyInClient: true,
   },
+  profile: {
+    rankDisguise: { enabled: false, queue: "solo", tier: "DIAMOND", division: "I" },
+    presence: { remember: false, availability: "chat", statusMessage: null, mobileMessage: false },
+  },
+  builds: { enabled: true, riftSource: "tencent" },
+  history: { hideCustomGames: true },
 };
+
+/** The tier names `rule` ranks with, best first, as the core resolves them (`callout::tier_names`):
+ *  fewer than two names of the user's own stand in for none. */
+function tierNames(rule: CalloutRule): string[] {
+  if (rule.tiers !== "custom") return TIER_NAMES[rule.tiers]["zh-CN"];
+  const own = rule.customTiers.map((name) => name.trim()).filter(Boolean);
+  return own.length >= 2 ? own : TIER_NAMES.horses["zh-CN"];
+}
 
 export function demoBackend(): Backend {
   let settings = DEFAULT_SETTINGS;
   const listeners = new Set<(event: Event) => void>();
   const updateListeners = new Set<(status: UpdateStatus) => void>();
+  const hotkeyListeners = new Set<(status: HotkeyStatus) => void>();
   const emit = (event: Event) => listeners.forEach((listener) => listener(event));
   let update: UpdateStatus = { state: "upToDate", version: "0.2.0", checkedAt: NOW };
+  // The shell's shortcuts: each registered whenever it is named and not let go for the recorder.
+  const held = (shortcut: string | null, suspended: boolean) => ({
+    shortcut,
+    active: shortcut !== null && !suspended,
+    error: null,
+  });
+  let hotkey: HotkeyStatus = {
+    ...held(settings.general.hotkey, false),
+    suspended: false,
+    callout: held(settings.automation.callout.hotkey, false),
+  };
+  const setHotkey = (
+    shortcut: string | null,
+    suspended: boolean,
+    callout: string | null = hotkey.callout.shortcut,
+  ) => {
+    hotkey = { ...held(shortcut, suspended), suspended, callout: held(callout, suspended) };
+    hotkeyListeners.forEach((listener) => listener(hotkey));
+    return hotkey;
+  };
   let plugin: PluginStatus = {
     loaderDir: "C:\\Users\\Player\\AppData\\Local\\app.winer.desktop\\pengu",
     active: true,
@@ -527,6 +978,41 @@ export function demoBackend(): Backend {
     phase: "ChampSelect",
     champSelect: champSelect(),
     game: null,
+    friends: friends(),
+    // The client shows no lobby during champ select.
+    lobby: null,
+  };
+
+  // The profile the demo player shows, and what they backed up before.
+  let presence: Presence = { availability: "chat", statusMessage: "今晚上分" };
+  /** The mobile state's message, put up or taken down as the core does. */
+  const followMobileMessage = (on: boolean): Presence => {
+    const message = mobileMessageFor(presence.availability, presence.statusMessage, on);
+    if (message !== null) presence = { ...presence, statusMessage: message };
+    return presence;
+  };
+  let background: number | null = 103003;
+  let shown = { tokens: [101304, 505005], title: 1436 as number | null, banner: "24" };
+  const challengeProfile = (): ChallengeProfile => ({
+    tokens: shown.tokens.flatMap((id) => CHALLENGE_CHOICES.filter((token) => token.id === id)),
+    title: TITLE_CHOICES.find((title) => title.id === shown.title) ?? null,
+    challenges: CHALLENGE_CHOICES,
+    titles: TITLE_CHOICES,
+    banner: shown.banner,
+    banners: BANNER_CHOICES,
+  });
+  let backups: BackupInfo[] = [
+    {
+      id: NOW - 86_400_000,
+      takenAt: NOW - 86_400_000,
+      size: 8_402,
+      channels: ["general", "hotkeys"],
+    },
+    { id: NOW - 5 * 86_400_000, takenAt: NOW - 5 * 86_400_000, size: 5_877, channels: ["hotkeys"] },
+  ];
+  const keep = (backup: BackupInfo) => {
+    backups = [backup, ...backups].sort((a, b) => b.id - a.id).slice(0, 10);
+    return backup;
   };
 
   setTimeout(
@@ -543,15 +1029,25 @@ export function demoBackend(): Backend {
   );
 
   const handlers: { [K in CommandName]: (args: Commands[K]["args"]) => Commands[K]["result"] } = {
-    get_snapshot: () => ({ ...snapshot, champSelect: champSelect() }),
+    get_snapshot: () => ({ ...snapshot, champSelect: champSelect(), friends: friends() }),
     get_settings: () => settings,
     set_settings: ({ settings: next }) => {
       settings = next;
+      if (
+        settings.general.hotkey !== hotkey.shortcut ||
+        settings.automation.callout.hotkey !== hotkey.callout.shortcut
+      )
+        setHotkey(settings.general.hotkey, hotkey.suspended, settings.automation.callout.hotkey);
       return settings;
     },
     get_game_data: () => GAME_DATA,
     get_match_history: ({ puuid, begin, count }): MatchPage => {
-      const all = history(puuid, SUMMARIES.get(puuid)?.name?.gameName ?? "对手", puuid.length, 60);
+      const all = history(
+        puuid,
+        SUMMARIES.get(puuid)?.name?.gameName ?? "对手",
+        puuid.length,
+        historyLength(puuid),
+      );
       return {
         puuid,
         begin,
@@ -584,28 +1080,35 @@ export function demoBackend(): Backend {
       };
     },
     get_player_summary: ({ puuid }) =>
-      SUMMARIES.get(puuid) ?? summary(puuid, "对手", puuid.length, rank("GOLD", "III", 40)),
-    get_presence: () => ({ availability: "chat", statusMessage: "今晚上分" }),
-    set_availability: () => null,
-    set_status_message: () => null,
+      SUMMARIES.get(puuid) ?? summary(puuid, "对手", seedOf(puuid), rank("GOLD", "III", 40)),
+    get_presence: () => presence,
+    set_availability: ({ availability }) => {
+      presence = { ...presence, availability };
+      return settings.profile.presence.mobileMessage ? followMobileMessage(true) : presence;
+    },
+    apply_mobile_message: () => followMobileMessage(settings.profile.presence.mobileMessage),
+    set_status_message: ({ message }) => {
+      presence = { ...presence, statusMessage: message };
+      return null;
+    },
     restart_client_ui: () => null,
     send_callout: () => champSelect().callout.length,
     preview_callout: ({ rule, general }) => {
-      const own = rule.customTiers.map((name) => name.trim()).filter(Boolean);
-      const names =
-        rule.tiers !== "custom"
-          ? TIER_NAMES[rule.tiers]["zh-CN"]
-          : own.length >= 2
-            ? own
-            : TIER_NAMES.horses["zh-CN"];
-      const title = general.titles ? "「版本答案」" : "";
-      // As the core does: the tiers take the seats in order, 1L for the best.
-      const lines = names.map(
-        (name, index) => `${name}：${index + 1}L 暗夜里的光 近20场胜率60% KDA 4.1 评分7.4${title}`,
-      );
+      const names = tierNames(rule);
+      const graded = rule.tiers === "grades";
+      // As the core does: the tiers take the seats in order, 1L for the best, each with a title of
+      // its own leaning and, in the rich style, its emoji.
+      const lines = names.map((name, index) => {
+        const lean = leanOf(index, names.length, graded);
+        const title = general.titles ? `「${DEMO_TITLES[lean]}」` : "";
+        return rule.style === "compact"
+          ? `${index + 1}L ${name}｜胜率60%｜KDA 4.1｜战力7.4｜暗夜里的光`
+          : `${tierEmoji(index, names.length, graded)} ${name}：${index + 1}L 暗夜里的光，近20场胜率60%，KDA 4.1，战力7.4${title}`;
+      });
       // As the core does: the side and winer's name lead the first line, the opening line after.
       const header = rule.header.trim();
-      return [`【蓝色方】winer 战绩鉴定${header ? ` · ${header}` : ""}`, ...lines];
+      const first = `【蓝色方】winer 战绩鉴定${header ? ` · ${header}` : ""}`;
+      return [rule.style === "compact" ? first : `📢${first}`, ...lines];
     },
     bench_swap: () => null,
     reroll: () => null,
@@ -633,9 +1136,13 @@ export function demoBackend(): Backend {
       elevated: true,
       logDir: "C:\\Users\\demo\\AppData\\Local\\app.winer.desktop\\logs",
       settingsPath: "settings.json",
+      notices:
+        "# Third-party notices\n\n## Pengu Loader\n\nMIT License\n\nCopyright (c) 2024 Pengu Loader",
     }),
     relaunch_elevated: () => null,
     reveal_logs: () => null,
+    // Storage: what winer keeps, and the cleanup.
+    ...demoStorageHandlers(),
     get_autostart: () => false,
     set_autostart: ({ enabled }) => enabled,
     get_update_status: () => update,
@@ -647,6 +1154,92 @@ export function demoBackend(): Backend {
     install_update: () => null,
     open_releases: () => null,
     open_docs: () => null,
+    get_skins: () => SKINS,
+    get_profile_background: () => background,
+    // As the server does with a skin the player does not own: the background stays.
+    set_profile_background: ({ skinId }) => {
+      if (SKINS.some((skin) => skin.id === skinId && skin.owned)) background = skinId;
+      return background;
+    },
+    get_challenge_profile: challengeProfile,
+    // As the server does with a banner the player does not own: the banner stays.
+    set_challenge_profile: ({ challengeIds, titleId, bannerId }) => {
+      const banner =
+        bannerId !== null && BANNER_CHOICES.some((choice) => choice.id === bannerId)
+          ? bannerId
+          : shown.banner;
+      shown = { tokens: challengeIds.slice(0, 3), title: titleId ?? shown.title, banner };
+      return challengeProfile();
+    },
+    get_game_settings_backups: () => backups,
+    create_game_settings_backup: () => {
+      const id = Math.max(Date.now(), ...backups.map((backup) => backup.id + 1));
+      return keep({ id, takenAt: Date.now(), size: 8_410, channels: ["general", "hotkeys"] });
+    },
+    restore_game_settings_backup: () => null,
+    delete_game_settings_backup: ({ id }) => {
+      backups = backups.filter((backup) => backup.id !== id);
+      return null;
+    },
+    import_game_settings_backup: ({ text }) => {
+      let file: {
+        format?: unknown;
+        takenAt?: unknown;
+        gameSettings?: unknown;
+        inputSettings?: unknown;
+      };
+      try {
+        file = JSON.parse(text) as typeof file;
+      } catch {
+        throw { code: "invalid", message: "not JSON" };
+      }
+      if (file.format !== "winer-game-settings")
+        throw { code: "invalid", message: "not a winer settings backup" };
+      const id = Math.max(Date.now(), ...backups.map((backup) => backup.id + 1));
+      return keep({
+        id,
+        takenAt: typeof file.takenAt === "number" ? file.takenAt : id,
+        size: text.length,
+        channels: [
+          ...(file.gameSettings ? (["general"] as const) : []),
+          ...(file.inputSettings ? (["hotkeys"] as const) : []),
+        ],
+      });
+    },
+    reveal_game_settings_backup: () => null,
+    get_hotkey_status: () => hotkey,
+    suspend_hotkey: ({ suspended }) => setHotkey(hotkey.shortcut, suspended),
+    ...demoLoadoutHandlers(() => settings),
+    // Callout: as the core does, the best tier to watch and the worst to go after on the red side,
+    // the user in every tier of the team on the blue side, by champion, typed as one press would.
+    preview_game_callout: ({ rule, general }) => {
+      const names = tierNames(rule);
+      const graded = rule.tiers === "grades";
+      const title = (index: number) =>
+        general.titles ? `「${DEMO_TITLES[leanOf(index, names.length, graded)]}」` : "";
+      const enemies = [
+        "【敌方·红色方】winer 战绩鉴定",
+        `小心 阿狸：${names[0]}，近20场胜率60%，KDA 4.1${title(0)}`,
+        `对面 阿狸：${names[names.length - 1]}，近20场胜率60%，可以多抓`,
+      ];
+      // No emoji in the game's chat.
+      const allies = [
+        "【我方·蓝色方】winer 战绩鉴定",
+        ...names.map((name, index) =>
+          rule.style === "compact"
+            ? `${name} 阿狸｜胜率60%｜KDA 4.1｜战力7.4`
+            : `${name}：阿狸，近20场胜率60%，KDA 4.1，战力7.4${title(index)}`,
+        ),
+      ];
+      return typedLines(enemies, allies, rule.gameTeams);
+    },
+    // History.
+    get_player_standing: ({ puuid }) => {
+      const player =
+        SUMMARIES.get(puuid) ?? summary(puuid, "对手", seedOf(puuid), rank("GOLD", "III", 40));
+      const name = player.name?.gameName ?? "对手";
+      return standingOf(player, scopeOf(puuid, name, seedOf(puuid)), settings);
+    },
   };
 
   return {
@@ -663,6 +1256,10 @@ export function demoBackend(): Backend {
     onUpdate: (handler) => {
       updateListeners.add(handler);
       return () => updateListeners.delete(handler);
+    },
+    onHotkey: (handler) => {
+      hotkeyListeners.add(handler);
+      return () => hotkeyListeners.delete(handler);
     },
   };
 }

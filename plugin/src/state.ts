@@ -14,6 +14,10 @@ export function applyPatch(snapshot: Snapshot, patch: Patch): Snapshot {
       return { ...snapshot, champSelect: patch.value };
     case "game":
       return { ...snapshot, game: patch.value };
+    case "friends":
+      return { ...snapshot, friends: patch.value };
+    case "lobby":
+      return { ...snapshot, lobby: patch.value };
   }
 }
 

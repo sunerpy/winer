@@ -1,18 +1,22 @@
 //! Folding LCU documents into the views: ranks, recent form and scoreboard lines.
 
-use std::collections::HashMap;
+use std::{cmp::Reverse, collections::HashMap};
 
 use crate::{
     model::{Game, Participant, RankedEntry, RankedStats, Stats, Summoner},
-    rating::{self, Contribution},
+    rating::{self, Contribution, Roles},
     view::{
-        ChampionForm, Feat, MatchDetail, MatchSummary, PlayerLine, PlayerProfile, PlayerSummary,
-        Position, Rank, Ranked, RecentForm, RecentMatch, RiotId, TeamDetail, Tier,
+        ChampionForm, Feat, FormScope, GameKind, MatchDetail, MatchSummary, PlayerLine,
+        PlayerProfile, PlayerSummary, Position, Rank, Ranked, RecentForm, RecentMatch, RiotId,
+        TeamDetail, Tier,
     },
 };
 
 /// Recent form covers this many games at most, newest first.
 pub const RECENT_GAMES: usize = 20;
+
+/// Each queue's kind of game, by queue id, from the client's catalog (`catalog::queue_kind`).
+pub type QueueKinds = HashMap<i64, GameKind>;
 
 /// Games shorter than this count as remakes even when the surrender flag is missing.
 const REMAKE_SECONDS: i64 = 240;
@@ -57,10 +61,11 @@ pub fn summary(
     summoner: &Summoner,
     ranked_stats: Option<&RankedStats>,
     games: &[Game],
+    kinds: &QueueKinds,
 ) -> PlayerSummary {
     let profile = profile(summoner, ranked_stats);
     PlayerSummary {
-        recent: recent_form(&summoner.puuid, games),
+        recent: recent_form(&summoner.puuid, games, kinds),
         puuid: profile.puuid,
         name: profile.name,
         level: profile.level,
@@ -75,15 +80,48 @@ fn is_remake(game: &Game, participant: &Participant) -> bool {
         || (game.game_duration > 0 && game.game_duration < REMAKE_SECONDS)
 }
 
+/// Who `game` was played against. The game's own type decides first (a custom game, whatever its
+/// queue; the tutorial, which is played against the computer), then the catalog's word on its
+/// queue; a queue the catalog does not list counts as one against players.
+pub fn game_kind(game: &Game, kinds: &QueueKinds) -> GameKind {
+    match game.game_type.to_ascii_uppercase().as_str() {
+        "CUSTOM_GAME" => GameKind::Custom,
+        "TUTORIAL_GAME" => GameKind::Bots,
+        _ => kinds.get(&game.queue_id).copied().unwrap_or_default(),
+    }
+}
+
 /// `puuid`'s recent games, newest first, folded into averages, a streak and a champion pool.
-/// Custom games are left out entirely: practice and lobbies among friends say nothing about form.
-pub fn recent_form(puuid: &str, games: &[Game]) -> RecentForm {
-    let mut games: Vec<&Game> = games
-        .iter()
-        .filter(|game| !game.game_type.eq_ignore_ascii_case("CUSTOM_GAME"))
-        .collect();
-    games.sort_by_key(|game| std::cmp::Reverse(game.game_creation));
-    games.truncate(RECENT_GAMES);
+/// Only games against other players count: custom games (practice, lobbies among friends) and games
+/// against the computer are passed over on the way to the newest [`RECENT_GAMES`], and the
+/// remakes among those are shown but left out of every figure.
+pub fn recent_form(puuid: &str, games: &[Game], kinds: &QueueKinds) -> RecentForm {
+    form(puuid, games, kinds).0
+}
+
+/// What [`recent_form`] reads from `games` and what it leaves out.
+pub fn form_scope(puuid: &str, games: &[Game], kinds: &QueueKinds) -> FormScope {
+    form(puuid, games, kinds).1
+}
+
+fn form(puuid: &str, games: &[Game], kinds: &QueueKinds) -> (RecentForm, FormScope) {
+    let mut newest: Vec<&Game> = games.iter().collect();
+    newest.sort_by_key(|game| Reverse(game.game_creation));
+    let mut scope = FormScope {
+        listed: games.len() as u32,
+        ..FormScope::default()
+    };
+    let mut games = Vec::with_capacity(RECENT_GAMES);
+    for game in newest {
+        if games.len() == RECENT_GAMES {
+            break;
+        }
+        match game_kind(game, kinds) {
+            GameKind::Matched => games.push(game),
+            GameKind::Custom => scope.custom += 1,
+            GameKind::Bots => scope.bots += 1,
+        }
+    }
 
     let matches: Vec<RecentMatch> = games
         .iter()
@@ -145,8 +183,20 @@ pub fn recent_form(puuid: &str, games: &[Game]) -> RecentForm {
             .then(a.champion_id.cmp(&b.champion_id))
     });
     champions.truncate(5);
+    scope.remakes = matches.len() as u32 - total;
 
-    RecentForm {
+    // The counted games against their modes' averages, for the title.
+    let pace = rating::Pace::of(games.iter().filter_map(|game| {
+        let participant = game
+            .participant_of(puuid)
+            .or_else(|| game.participants.first())?;
+        let average = rating::average_line(&game.game_mode)?;
+        let stats = &participant.stats;
+        (!is_remake(game, participant))
+            .then_some(([stats.kills, stats.deaths, stats.assists], average))
+    }));
+
+    let form = RecentForm {
         games: total,
         wins: counted.iter().filter(|game| game.win).count() as u32,
         kills: average(|game| game.kills),
@@ -155,7 +205,9 @@ pub fn recent_form(puuid: &str, games: &[Game]) -> RecentForm {
         streak,
         matches,
         champions,
-    }
+        pace,
+    };
+    (form, scope)
 }
 
 fn line(game: &Game, participant: &Participant) -> PlayerLine {
@@ -253,17 +305,18 @@ fn leads(participants: &[Participant]) -> Vec<(Feat, Vec<usize>)> {
         .collect()
 }
 
-fn contribution(stats: &Stats) -> Contribution {
+fn contribution(stats: &Stats, role: Option<rating::Role>) -> Contribution {
     Contribution {
         kills: stats.kills,
         deaths: stats.deaths,
         assists: stats.assists,
         damage: stats.total_damage_dealt_to_champions,
-        tanked: stats.total_damage_taken + stats.damage_self_mitigated,
+        tanked: stats.total_damage_taken,
         gold: stats.gold_earned,
-        objectives: stats.damage_dealt_to_objectives,
+        minions: stats.total_minions_killed + stats.neutral_minions_killed,
         vision: stats.vision_score,
         crowd_control: stats.time_ccing_others,
+        role,
     }
 }
 
@@ -271,14 +324,19 @@ fn contribution(stats: &Stats) -> Contribution {
 /// carries one player only, whose identity can be masked; that one row is theirs. A game with every
 /// player in it (the shard's server sends those) gives the line what only the whole game knows:
 /// shares, score, grade and award.
-pub fn match_summary(puuid: &str, game: &Game) -> Option<MatchSummary> {
+pub fn match_summary(
+    puuid: &str,
+    game: &Game,
+    roles: &Roles,
+    kinds: &QueueKinds,
+) -> Option<MatchSummary> {
     let only = match game.participants.as_slice() {
         [only] => Some(only),
         _ => None,
     };
     let participant = game.participant_of(puuid).or(only)?;
     let line = if only.is_none() {
-        match_detail(game)
+        match_detail(game, roles)
             .teams
             .into_iter()
             .flat_map(|team| team.players)
@@ -294,10 +352,11 @@ pub fn match_summary(puuid: &str, game: &Game) -> Option<MatchSummary> {
         started_at: game.game_creation,
         duration: game.game_duration,
         line,
+        kind: game_kind(game, kinds),
     })
 }
 
-pub fn match_detail(game: &Game) -> MatchDetail {
+pub fn match_detail(game: &Game, roles: &Roles) -> MatchDetail {
     let mut teams: Vec<TeamDetail> = game
         .teams
         .iter()
@@ -349,7 +408,10 @@ pub fn match_detail(game: &Game) -> MatchDetail {
         placed.push((
             index,
             team.players.len() - 1,
-            contribution(&participant.stats),
+            contribution(
+                &participant.stats,
+                roles.get(&participant.champion_id).copied(),
+            ),
         ));
     }
 
@@ -373,6 +435,7 @@ pub fn match_detail(game: &Game) -> MatchDetail {
                 .iter()
                 .map(|(_, _, contribution)| *contribution)
                 .collect::<Vec<_>>(),
+            rating::Scoring::of(&game.game_mode),
         );
         let won: Vec<bool> = placed.iter().map(|(team, _, _)| teams[*team].win).collect();
         for (((team, slot, _), score), award) in placed
@@ -457,7 +520,7 @@ mod tests {
             .player
             .puuid
             .clone();
-        let form = recent_form(&puuid, &list.games.games);
+        let form = recent_form(&puuid, &list.games.games, &QueueKinds::new());
         assert_eq!(form.matches.len(), 20);
         // Seven of these twenty ended inside the first minutes and must not count.
         let remakes = form.matches.iter().filter(|game| game.remake).count() as u32;
@@ -510,7 +573,7 @@ mod tests {
     fn feats_name_a_lines_own_deeds_and_who_led_the_game() {
         use Feat::*;
         assert_eq!(
-            feats(&match_detail(&duel(1800))),
+            feats(&match_detail(&duel(1800), &Roles::new())),
             vec![
                 (
                     "p1".into(),
@@ -525,7 +588,7 @@ mod tests {
             "a tie leads together"
         );
         assert_eq!(
-            feats(&match_detail(&duel(180))),
+            feats(&match_detail(&duel(180), &Roles::new())),
             vec![
                 ("p1".into(), vec![]),
                 ("p2".into(), vec![]),
@@ -535,7 +598,7 @@ mod tests {
             "a remake names only who was away"
         );
         let game = duel(1800);
-        let summary = match_summary("p3", &game).unwrap();
+        let summary = match_summary("p3", &game, &Roles::new(), &QueueKinds::new()).unwrap();
         assert_eq!(
             summary.line.feats,
             vec![Penta, MostTowers, MostCs],
@@ -546,7 +609,10 @@ mod tests {
             .participants
             .retain(|participant| participant.participant_id == 1);
         assert_eq!(
-            match_summary("p1", &alone).unwrap().line.feats,
+            match_summary("p1", &alone, &Roles::new(), &QueueKinds::new())
+                .unwrap()
+                .line
+                .feats,
             vec![Legendary, Triple, FirstBlood],
             "one player's page leads nobody"
         );
@@ -562,6 +628,31 @@ mod tests {
     }
 
     #[test]
+    fn the_pace_reads_each_game_against_its_modes_average_and_skips_remakes() {
+        let mode = |mut game: Game, mode: &str| {
+            game.game_mode = mode.into();
+            game
+        };
+        let games = [
+            // Eleven deaths: a Rift game's double, an ARAM game's average.
+            mode(game(4, true, 5, 11, 1, false), "KIWI"),
+            mode(game(3, true, 5, 11, 1, false), "ARAM"),
+            mode(game(2, false, 5, 11, 1, false), "CLASSIC"),
+            mode(game(1, false, 0, 0, 1, true), "CLASSIC"),
+            mode(game(0, false, 9, 9, 1, false), "CHERRY"),
+        ];
+        let pace = recent_form("p", &games, &QueueKinds::new()).pace.unwrap();
+        assert_eq!(pace.games, 3, "no remake, no mode without an average");
+        assert!(
+            (pace.deaths - 33.0 / (11.1 + 11.1 + 5.2)).abs() < 1e-9,
+            "{pace:?}"
+        );
+        assert!((pace.assists - 6.0 / (25.6 + 25.6 + 7.5)).abs() < 1e-9);
+        let arena = [mode(game(1, true, 9, 1, 1, false), "CHERRY")];
+        assert_eq!(recent_form("p", &arena, &QueueKinds::new()).pace, None);
+    }
+
+    #[test]
     fn streaks_averages_and_pools_ignore_remakes() {
         let games = [
             game(5, true, 10, 0, 1, false),
@@ -570,7 +661,7 @@ mod tests {
             game(2, false, 1, 5, 1, false),
             game(1, true, 1, 1, 1, false),
         ];
-        let form = recent_form("p", &games);
+        let form = recent_form("p", &games, &QueueKinds::new());
         assert_eq!((form.games, form.wins, form.streak), (4, 3, 2));
         assert_eq!(form.kills, 4.0);
         assert_eq!(form.deaths, 2.0);
@@ -590,27 +681,139 @@ mod tests {
     fn custom_games_do_not_count_toward_form() {
         let mut custom = game(9, false, 0, 10, 1, false);
         custom.game_type = "CUSTOM_GAME".into();
-        let form = recent_form("p", &[custom, game(5, true, 10, 0, 1, false)]);
+        let form = recent_form(
+            "p",
+            &[custom, game(5, true, 10, 0, 1, false)],
+            &QueueKinds::new(),
+        );
         assert_eq!((form.games, form.wins, form.matches.len()), (1, 1, 1));
         let many: Vec<Game> = (0..30).map(|at| game(at, true, 1, 1, 1, false)).collect();
-        let form = recent_form("p", &many);
+        let form = recent_form("p", &many, &QueueKinds::new());
         assert_eq!(form.matches.len(), RECENT_GAMES, "the newest twenty only");
         assert_eq!(form.matches[0].started_at, 29);
     }
 
     #[test]
     fn an_empty_history_is_all_zero() {
-        let form = recent_form("p", &[]);
+        let form = recent_form("p", &[], &QueueKinds::new());
         assert_eq!(
             (form.games, form.wins, form.streak, form.kills),
             (0, 0, 0, 0.0)
         );
+        assert_eq!(
+            form_scope("p", &[], &QueueKinds::new()),
+            FormScope::default()
+        );
+    }
+
+    /// The live catalog's kinds of queue (16.19, `fixtures/live/ranked/queues.json`).
+    fn live_kinds() -> QueueKinds {
+        let queues: Vec<crate::model::Queue> = fixture("live/ranked/queues.json");
+        queues
+            .iter()
+            .map(|queue| (queue.id, crate::catalog::queue_kind(queue)))
+            .collect()
+    }
+
+    /// A Tencent client's own list on GZ100 (16.19, 2026-10-06): thirty games, the newest two of
+    /// them custom (an all-random ARAM lobby and a Hextech ARAM one), the rest Hextech ARAM with
+    /// three remakes.
+    fn client_list() -> Vec<Game> {
+        fixture::<MatchList>("live/history/client-list-gz100.json")
+            .games
+            .games
+    }
+
+    #[test]
+    fn form_reads_the_newest_twenty_games_against_players_on_a_measured_list() {
+        let (games, kinds) = (client_list(), live_kinds());
+        let form = recent_form("PUUID-0001", &games, &kinds);
+        let scope = form_scope("PUUID-0001", &games, &kinds);
+        assert_eq!(
+            (scope.listed, scope.custom, scope.bots, scope.remakes),
+            (30, 2, 0, 2)
+        );
+        assert_eq!(form.matches.len(), RECENT_GAMES);
+        // What the window showed as 10胜8负 · 56%, with nothing to say it was not ranked.
+        assert_eq!((form.games, form.wins), (18, 10));
+        assert!(
+            form.matches.iter().all(|game| games
+                .iter()
+                .any(|listed| listed.game_id == game.game_id
+                    && game_kind(listed, &kinds) == GameKind::Matched)),
+            "custom games are passed over, not shown"
+        );
+        assert_eq!(
+            form.matches.iter().filter(|game| game.remake).count(),
+            2,
+            "remakes are shown and not counted"
+        );
+    }
+
+    #[test]
+    fn games_against_the_computer_are_passed_over_like_custom_games() {
+        let kinds = live_kinds();
+        let mut games = client_list();
+        // Co-op vs AI (VersusAi), Doom Bots (PvP, but NIGHTMARE_BOT) and the tutorial.
+        games[2].queue_id = 870;
+        games[3].queue_id = 4220;
+        games[4].game_type = "TUTORIAL_GAME".into();
+        assert_eq!(
+            [&games[0], &games[2], &games[3], &games[4], &games[5]]
+                .map(|game| game_kind(game, &kinds)),
+            [
+                GameKind::Custom,
+                GameKind::Bots,
+                GameKind::Bots,
+                GameKind::Bots,
+                GameKind::Matched
+            ]
+        );
+        let form = recent_form("PUUID-0001", &games, &kinds);
+        let scope = form_scope("PUUID-0001", &games, &kinds);
+        assert_eq!((scope.custom, scope.bots), (2, 3));
+        assert_eq!(
+            form.matches.len(),
+            RECENT_GAMES,
+            "the window reaches further back"
+        );
+        assert!(form.matches.iter().all(|game| {
+            ![games[2].game_id, games[3].game_id, games[4].game_id].contains(&game.game_id)
+        }));
+        assert_eq!(form.matches[0].game_id, games[5].game_id);
+        assert_eq!(
+            form.matches.last().map(|game| game.game_id),
+            Some(games[24].game_id)
+        );
+    }
+
+    #[test]
+    fn a_games_own_type_decides_before_its_queue() {
+        let kinds = live_kinds();
+        let mut custom = game(1, true, 1, 1, 1, false);
+        custom.game_type = "CUSTOM_GAME".into();
+        custom.queue_id = 450;
+        assert_eq!(
+            game_kind(&custom, &kinds),
+            GameKind::Custom,
+            "a custom ARAM"
+        );
+        let mut unlisted = game(1, true, 1, 1, 1, false);
+        unlisted.queue_id = 987_654;
+        assert_eq!(game_kind(&unlisted, &kinds), GameKind::Matched);
+        assert_eq!(
+            game_kind(&unlisted, &QueueKinds::new()),
+            GameKind::Matched,
+            "without a catalog"
+        );
+        let summary = match_summary("p", &custom, &Roles::new(), &kinds).unwrap();
+        assert_eq!(summary.kind, GameKind::Custom, "a list row says it too");
     }
 
     #[test]
     fn match_detail_groups_ten_players_into_two_teams() {
         let game: Game = fixture("live/ranked/match-game.json");
-        let detail = match_detail(&game);
+        let detail = match_detail(&game, &Roles::new());
         assert_eq!(detail.teams.len(), 2);
         assert_eq!(
             detail
@@ -635,7 +838,7 @@ mod tests {
     #[test]
     fn a_full_scoreboard_scores_every_line_and_names_one_mvp_and_one_svp() {
         let game: Game = fixture("live/ranked/match-game.json");
-        let detail = match_detail(&game);
+        let detail = match_detail(&game, &Roles::new());
         let lines: Vec<&PlayerLine> = detail.teams.iter().flat_map(|team| &team.players).collect();
         assert!(lines.iter().all(|line| {
             line.score
@@ -680,7 +883,7 @@ mod tests {
     fn a_remake_gets_no_scores() {
         let mut game: Game = fixture("live/ranked/match-game.json");
         game.game_duration = 200;
-        let detail = match_detail(&game);
+        let detail = match_detail(&game, &Roles::new());
         assert!(
             detail
                 .teams

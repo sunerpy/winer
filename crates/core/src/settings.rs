@@ -9,7 +9,10 @@ use std::{
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::{callout, view::Position};
+use crate::{
+    callout,
+    view::{Position, Tier},
+};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
@@ -18,6 +21,11 @@ pub struct Settings {
     pub general: General,
     pub automation: Automation,
     pub plugin: PluginSettings,
+    pub profile: ProfileSettings,
+    /// The build panel and where its numbers come from (`builds`).
+    pub builds: BuildSettings,
+    /// History: what the history lists show.
+    pub history: HistorySettings,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
@@ -89,6 +97,10 @@ pub struct General {
     pub augment_details: bool,
     /// The roast titles beside a grade (`rating::FormTitle` and the scoreboard's own).
     pub titles: bool,
+    // Social.
+    /// The global shortcut that shows and hides the window, in [`normalize_hotkey`]'s form; `None`
+    /// turns it off. A file without the field gets the default; `null` keeps it off.
+    pub hotkey: Option<String>,
 }
 
 impl Default for General {
@@ -98,8 +110,127 @@ impl Default for General {
             language: Language::ZhCn,
             augment_details: true,
             titles: true,
+            hotkey: Some(DEFAULT_HOTKEY.to_owned()),
         }
     }
+}
+
+// ---- Social: the hotkey's combinations ----
+
+/// Not bound by the game, the client or Windows by default. The first choice, Ctrl+Shift+W, was
+/// already held by another program on the QA host (2026-10-06), as was Ctrl+Shift+Q; this one was
+/// free there.
+pub const DEFAULT_HOTKEY: &str = "Alt+Backquote";
+
+/// The keys a combination can end in besides letters, digits and F1–F24, by the names
+/// [`normalize_hotkey`] writes. Each is one the shell's shortcut parser accepts.
+pub const HOTKEY_KEYS: &[&str] = &[
+    "Space",
+    "Insert",
+    "Delete",
+    "Home",
+    "End",
+    "PageUp",
+    "PageDown",
+    "Up",
+    "Down",
+    "Left",
+    "Right",
+    "Backquote",
+    "Minus",
+    "Equal",
+    "BracketLeft",
+    "BracketRight",
+    "Backslash",
+    "Semicolon",
+    "Quote",
+    "Comma",
+    "Period",
+    "Slash",
+    "Num0",
+    "Num1",
+    "Num2",
+    "Num3",
+    "Num4",
+    "Num5",
+    "Num6",
+    "Num7",
+    "Num8",
+    "Num9",
+    "NumAdd",
+    "NumSubtract",
+    "NumMultiply",
+    "NumDivide",
+    "NumDecimal",
+    "Pause",
+    "ScrollLock",
+    "PrintScreen",
+];
+
+/// A combination in one spelling, `Ctrl+Alt+Shift+Super+Key` (the modifiers that are there, in that
+/// order), or `None` when it is not one. At least one of Ctrl, Alt and Super is required: a key
+/// alone, or with Shift alone, is typed in chat and in the game. Accepts the browser's key codes
+/// (`KeyW`, `Digit1`, `ArrowUp`, `Numpad1`) and `Win`, `Meta`, `Cmd` for Super.
+pub fn normalize_hotkey(text: &str) -> Option<String> {
+    let (mut ctrl, mut alt, mut shift, mut super_) = (false, false, false, false);
+    let mut key = None;
+    for token in text.split('+').map(str::trim) {
+        if token.is_empty() || key.is_some() {
+            return None;
+        }
+        match token.to_ascii_lowercase().as_str() {
+            "ctrl" | "control" => ctrl = true,
+            "alt" | "option" => alt = true,
+            "shift" => shift = true,
+            "super" | "win" | "meta" | "cmd" | "command" => super_ = true,
+            _ => key = Some(hotkey_key(token)?),
+        }
+    }
+    let key = key?;
+    if !(ctrl || alt || super_) {
+        return None;
+    }
+    let mut parts: Vec<&str> = [
+        (ctrl, "Ctrl"),
+        (alt, "Alt"),
+        (shift, "Shift"),
+        (super_, "Super"),
+    ]
+    .into_iter()
+    .filter_map(|(on, name)| on.then_some(name))
+    .collect();
+    parts.push(&key);
+    Some(parts.join("+"))
+}
+
+/// One key's canonical name, from ours or the browser's (`KeyW`, `Digit1`, `ArrowUp`, `Numpad1`).
+fn hotkey_key(token: &str) -> Option<String> {
+    let upper = token.to_ascii_uppercase();
+    let bare = upper
+        .strip_prefix("KEY")
+        .or_else(|| upper.strip_prefix("DIGIT"))
+        .filter(|rest| rest.len() == 1)
+        .unwrap_or(&upper);
+    if bare.len() == 1 && bare.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Some(bare.to_owned());
+    }
+    if let Some(number) = bare.strip_prefix('F').and_then(|n| n.parse::<u8>().ok())
+        && (1..=24).contains(&number)
+        && !bare.starts_with("F0")
+    {
+        return Some(format!("F{number}"));
+    }
+    let named = if let Some(rest) = bare.strip_prefix("ARROW") {
+        rest.to_owned()
+    } else if let Some(rest) = bare.strip_prefix("NUMPAD") {
+        format!("NUM{rest}")
+    } else {
+        bare.to_owned()
+    };
+    HOTKEY_KEYS
+        .iter()
+        .find(|name| name.eq_ignore_ascii_case(&named))
+        .map(|name| (*name).to_owned())
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
@@ -123,12 +254,26 @@ pub struct Automation {
     pub bench: BenchRule,
     /// The kinds of game each rule acts in; a switched-on rule does nothing elsewhere.
     pub scopes: Scopes,
+    /// Runes and summoner spells, remembered per champion and mode and set up again (`loadout`).
+    pub loadout: LoadoutRule,
+    /// Experimental: write winer's item set for a champion once it is locked in (`loadout`).
+    pub item_sets: bool,
 }
 
 impl Automation {
     /// Whether to go back to the lobby after a game of `mode`.
     pub fn plays_again(&self, mode: Option<Mode>) -> bool {
         self.play_again && self.scopes.covers(Scoped::PlayAgain, mode)
+    }
+
+    /// Whether runes and spells are remembered and set up again in a game of `mode`.
+    pub fn restores_loadout(&self, mode: Option<Mode>) -> bool {
+        self.loadout.enabled && self.scopes.covers(Scoped::Loadout, mode)
+    }
+
+    /// Whether winer's item set is written by itself in a game of `mode`.
+    pub fn writes_item_sets(&self, mode: Option<Mode>) -> bool {
+        self.item_sets && self.scopes.covers(Scoped::ItemSets, mode)
     }
 }
 
@@ -182,17 +327,36 @@ pub enum Scoped {
     Callout,
     Bench,
     PlayAgain,
+    Loadout,
+    ItemSets,
 }
 
 impl Scoped {
     /// The kinds of game the rule can act in at all: nobody picks or bans in ARAM, and only ARAM
-    /// has a bench.
+    /// has a bench. Arena has no rune page and hands everyone the same two spells (the client's
+    /// spell list offers `CHERRY` two, both fixed), so there is no loadout to set up there.
     pub fn applicable(self) -> &'static [Mode] {
         const PICKED: [Mode; 4] = [Mode::Ranked, Mode::Normal, Mode::Arena, Mode::Other];
+        const LOADOUT: [Mode; 5] = [
+            Mode::Ranked,
+            Mode::Normal,
+            Mode::Aram,
+            Mode::Hextech,
+            Mode::Other,
+        ];
+        const ITEM_SETS: [Mode; 5] = [
+            Mode::Ranked,
+            Mode::Normal,
+            Mode::Aram,
+            Mode::Hextech,
+            Mode::Arena,
+        ];
         match self {
             Self::Pick | Self::Ban => &PICKED,
             Self::Bench => &[Mode::Aram, Mode::Hextech],
             Self::Accept | Self::Callout | Self::PlayAgain => &Mode::ALL,
+            Self::Loadout => &LOADOUT,
+            Self::ItemSets => &ITEM_SETS,
         }
     }
 }
@@ -208,6 +372,8 @@ pub struct Scopes {
     pub callout: Vec<Mode>,
     pub bench: Vec<Mode>,
     pub play_again: Vec<Mode>,
+    pub loadout: Vec<Mode>,
+    pub item_sets: Vec<Mode>,
 }
 
 impl Default for Scopes {
@@ -220,6 +386,8 @@ impl Default for Scopes {
             callout: all(Scoped::Callout),
             bench: all(Scoped::Bench),
             play_again: all(Scoped::PlayAgain),
+            loadout: all(Scoped::Loadout),
+            item_sets: all(Scoped::ItemSets),
         }
     }
 }
@@ -233,6 +401,8 @@ impl Scopes {
             Scoped::Callout => &self.callout,
             Scoped::Bench => &self.bench,
             Scoped::PlayAgain => &self.play_again,
+            Scoped::Loadout => &self.loadout,
+            Scoped::ItemSets => &self.item_sets,
         }
     }
 
@@ -255,6 +425,8 @@ impl Scopes {
             (Scoped::Callout, &mut self.callout),
             (Scoped::Bench, &mut self.bench),
             (Scoped::PlayAgain, &mut self.play_again),
+            (Scoped::Loadout, &mut self.loadout),
+            (Scoped::ItemSets, &mut self.item_sets),
         ] {
             let chosen = std::mem::take(modes);
             *modes = rule
@@ -285,6 +457,31 @@ pub struct CalloutRule {
     pub tiers: TierSet,
     /// The user's own tier names, best first, for `TierSet::Custom`: two to five, blanks skipped.
     pub custom_tiers: Vec<String>,
+    // ---- The callout's shortcut, and the game's own chat (`callout::press`) ----
+    /// The global shortcut that sends the callout, in [`normalize_hotkey`]'s form: in champ select
+    /// the team's lines go to its chat, as 发送到队伍 sends them; while the game runs, with
+    /// [`Self::in_game`] on, the lines [`Self::game_teams`] chooses are typed into the game's chat.
+    /// `None`, the default, holds no combination, and the window's own combination is never taken.
+    pub hotkey: Option<String>,
+    /// While the game runs, the shortcut types the in-game lines into the game's team chat with
+    /// synthesized key presses: the game's chat has no API. Off by default, since third-party input
+    /// into the game may break its terms.
+    pub in_game: bool,
+    /// The line about the enemy to watch, with the placeholders of `template`; empty means the
+    /// language's default (`callout::watch_template`).
+    pub watch_template: String,
+    /// The line about the enemy to go after; empty means `callout::target_template`.
+    pub target_template: String,
+    // ---- The callout in the game: the team's own lines, and whose lines are typed ----
+    /// The line about each teammate in the game, with the placeholders of `template`; empty means
+    /// the language's default (`callout::ally_template`), which names the champion.
+    pub ally_template: String,
+    /// Whose lines a press of the shortcut types in the game.
+    pub game_teams: GameTeams,
+    // ---- How each player's line reads ----
+    /// The default line of each player (`callout::template`) and of each teammate in the game
+    /// (`callout::ally_template`): one short line to compare, or emoji, title and quip as well.
+    pub style: CalloutStyle,
 }
 
 impl Default for CalloutRule {
@@ -297,6 +494,13 @@ impl Default for CalloutRule {
             template: String::new(),
             tiers: TierSet::default(),
             custom_tiers: Vec::new(),
+            hotkey: None,
+            in_game: false,
+            watch_template: String::new(),
+            target_template: String::new(),
+            ally_template: String::new(),
+            game_teams: GameTeams::default(),
+            style: CalloutStyle::default(),
         }
     }
 }
@@ -342,6 +546,33 @@ pub enum Audience {
     Team,
     /// Shown in this client only.
     Me,
+}
+
+/// How the callout writes each player when the user has not written their own line.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum CalloutStyle {
+    /// One short line a player, the same fields in the same order: seat, tier, win rate, KDA,
+    /// form and name, so the lines compare at a glance.
+    Compact,
+    /// The tier's emoji in champ select, then the tier, the player, their numbers, the title and
+    /// the tier's quip.
+    #[default]
+    Rich,
+}
+
+/// Whose lines the callout's shortcut types into the game's chat (`callout::typed`), at most
+/// `callout::GAME_LINE_LIMIT` a press.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum GameTeams {
+    /// The enemy to watch and the one to go after: what one speaks up in a game for.
+    #[default]
+    Enemies,
+    /// Every rated teammate, as in champ select, by champion.
+    Allies,
+    /// The enemy lines, then the team's.
+    Both,
 }
 
 /// ARAM: take a champion off the shared bench as soon as one higher on the wishlist appears.
@@ -470,13 +701,25 @@ pub struct PluginSettings {
     pub auto: bool,
     /// The teammate panel in champ select.
     pub team_panel: bool,
-    /// Hide the activity centre and esports pop-ups on the client home page.
+    /// Hide the esports pop-ups, and put a short note in place of the home page's news and events
+    /// hub; the note brings the hub back until the client restarts.
     pub hide_promotions: bool,
     /// In the client's own champ select, a click on an ARAM bench champion swaps at once: the
     /// plugin lifts the cooldown and winer carries the swap out.
     pub bench_no_cooldown: bool,
     /// Pengu Loader's directory, when it cannot be found from the client.
     pub loader_dir: Option<String>,
+    // Social.
+    /// In the client's friends list: the mode and running time of a friend's game, and one colour
+    /// for the friends playing together.
+    pub friend_status: bool,
+    /// In the client's lobby: each member's recent form above their banner, and a click that opens
+    /// their history in winer.
+    pub lobby_panel: bool,
+    // The history panel in the client.
+    /// A click on a player in the client's lobby or champ select shows their latest games in a
+    /// panel over the client page; off, the click opens their history in winer's window.
+    pub history_in_client: bool,
 }
 
 impl Default for PluginSettings {
@@ -487,8 +730,197 @@ impl Default for PluginSettings {
             hide_promotions: false,
             bench_no_cooldown: true,
             loader_dir: None,
+            friend_status: true,
+            lobby_panel: true,
+            // The history panel in the client.
+            history_in_client: true,
         }
     }
+}
+
+/// What friends see of the player that winer keeps for them: the rank in the friends list and the
+/// status put back after the client resets it. Both act on the client by themselves, so both start
+/// off. Neither is scoped by mode: the chat presence is the same in and out of every game.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ProfileSettings {
+    pub rank_disguise: RankDisguise,
+    pub presence: PresenceRule,
+}
+
+/// The rank friends see in the friends list and on the hover card instead of the real one. Only the
+/// chat presence changes: the real rank, matchmaking and the client's own profile do not.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RankDisguise {
+    pub enabled: bool,
+    pub queue: DisguiseQueue,
+    pub tier: Tier,
+    /// Not shown from Master up, which have no divisions.
+    pub division: Division,
+}
+
+impl Default for RankDisguise {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            queue: DisguiseQueue::Solo,
+            tier: Tier::Diamond,
+            division: Division::One,
+        }
+    }
+}
+
+// Runes, spells, builds and item sets (`loadout`, `builds`).
+
+/// In champ select, set up the runes and summoner spells last played on the champion in this kind
+/// of game, once the champion is locked in.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LoadoutRule {
+    pub enabled: bool,
+    /// With nothing remembered for the champion, use the client's own recommended page.
+    pub recommended: bool,
+}
+
+impl Default for LoadoutRule {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            recommended: true,
+        }
+    }
+}
+
+/// The queue a disguised rank claims to be from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum DisguiseQueue {
+    /// Ranked solo/duo, `RANKED_SOLO_5x5`.
+    #[default]
+    Solo,
+    /// Ranked flex, `RANKED_FLEX_SR`.
+    Flex,
+}
+
+/// A division within a tier, as the client writes it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub enum Division {
+    #[default]
+    #[serde(rename = "I")]
+    One,
+    #[serde(rename = "II")]
+    Two,
+    #[serde(rename = "III")]
+    Three,
+    #[serde(rename = "IV")]
+    Four,
+}
+
+/// The chat status winer puts back when the client resets it: on connecting to a client and after
+/// each game (`profile::Keeper`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PresenceRule {
+    pub remember: bool,
+    /// `chat`, `away`, `mobile` or `offline`: the states the client takes from winer.
+    pub availability: String,
+    /// Put back as well when set; `None` leaves the client's own.
+    pub status_message: Option<String>,
+    /// While the mobile state is chosen and no message of the user's own is set, the status
+    /// message says 手机在线: the Tencent client names that state 在线分组, while friends read a
+    /// status message as written, in quotation marks (`docs/platform-notes.md`). Another state
+    /// takes it away again. Off by default.
+    pub mobile_message: bool,
+}
+
+impl Default for PresenceRule {
+    fn default() -> Self {
+        Self {
+            remember: false,
+            availability: "chat".into(),
+            status_message: None,
+            mobile_message: false,
+        }
+    }
+}
+
+/// The build panel: what players take on a champion, from public statistics.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BuildSettings {
+    /// Off, the panel is hidden and nothing is fetched.
+    pub enabled: bool,
+    /// Where Summoner's Rift numbers come from.
+    pub rift_source: RiftSource,
+}
+
+impl Default for BuildSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            rift_source: RiftSource::Tencent,
+        }
+    }
+}
+
+impl PresenceRule {
+    /// The availabilities winer sets. `dnd` is the client's own during a game and a request for it
+    /// is ignored (`docs/platform-notes.md`).
+    pub const AVAILABILITIES: [&str; 4] = ["chat", "away", "mobile", "offline"];
+    /// The client's own limit on a status message is longer; the window's field stops here.
+    pub const MESSAGE_LIMIT: usize = 120;
+    /// What the status message says for the mobile state under [`Self::mobile_message`], in the
+    /// Tencent client's language whatever the window's: it is there for that client's friends.
+    pub const MOBILE_MESSAGE: &str = "手机在线";
+
+    /// The status message this rule puts back over `current`, the client's: the user's own when one
+    /// is kept; for the mobile state with its message on and no own message, the mobile message,
+    /// though only where the client shows none while nothing is kept (`None` leaves the client's
+    /// own); otherwise as kept.
+    pub fn kept_message(&self, current: &str) -> Option<String> {
+        let own = self
+            .status_message
+            .as_deref()
+            .is_some_and(|message| !message.trim().is_empty());
+        if !own && self.mobile_message && self.availability == "mobile" {
+            let mobile = Self::MOBILE_MESSAGE.to_owned();
+            return match self.status_message {
+                Some(_) => Some(mobile),
+                None => current.trim().is_empty().then_some(mobile),
+            };
+        }
+        self.status_message.clone()
+    }
+}
+
+// ---- History: the history lists ----
+
+/// What the history lists show. Form leaves custom games out whatever these say.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct HistorySettings {
+    /// Custom games stay out of the lists. On by default: practice and lobbies among friends are
+    /// not the games a history is opened for, and they push those down the first page.
+    pub hide_custom_games: bool,
+}
+
+impl Default for HistorySettings {
+    fn default() -> Self {
+        Self {
+            hide_custom_games: true,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum RiftSource {
+    /// The Tencent shards' own statistics (腾讯 101), the user's own server.
+    #[default]
+    Tencent,
+    /// OP.GG's global statistics.
+    OpGg,
 }
 
 impl Settings {
@@ -519,23 +951,81 @@ impl Settings {
             let dir = dir.trim();
             self.plugin.loader_dir = (!dir.is_empty()).then(|| dir.to_owned());
         }
+        let presence = &mut self.profile.presence;
+        if !PresenceRule::AVAILABILITIES.contains(&presence.availability.as_str()) {
+            presence.availability = PresenceRule::default().availability;
+        }
+        if let Some(message) = &presence.status_message {
+            presence.status_message = Some(clip(message, PresenceRule::MESSAGE_LIMIT));
+        }
+        // While the mobile message is on, that message is winer's to put up and take down, never one
+        // the user keeps: kept, it would come back after the state had moved on.
+        if presence.mobile_message
+            && presence.status_message.as_deref() == Some(PresenceRule::MOBILE_MESSAGE)
+        {
+            presence.status_message = None;
+        }
+        // A combination that is not one turns the shortcut off rather than registering nonsense.
+        self.general.hotkey = self.general.hotkey.as_deref().and_then(normalize_hotkey);
+        // The callout's shortcut is spelled the same way, and never takes the window's combination:
+        // the system holds one combination for one shortcut, and the window's was there first.
+        let callout = &mut self.automation.callout;
+        callout.hotkey = callout
+            .hotkey
+            .as_deref()
+            .and_then(normalize_hotkey)
+            .filter(|combination| self.general.hotkey.as_ref() != Some(combination));
+        callout.watch_template = clip(&callout.watch_template, 200);
+        callout.target_template = clip(&callout.target_template, 200);
+        callout.ally_template = clip(&callout.ally_template, 200);
         self
     }
 
     /// Brings a file an older winer wrote up to date. Up to 0.0.2 the default callout line named
-    /// the champion, and a template saved as exactly that text would have kept it for good: it
-    /// becomes the default, which names the seat (the same language's, when the text was in the
-    /// other one). A template the user changed stays as written.
+    /// the champion, up to 0.0.3 it called the form score 评分 and ran the name into the numbers,
+    /// and the in-game lines first named the champion and the player; a template saved as exactly
+    /// one of those texts would have kept it for good: it becomes the default (the same language's,
+    /// when the text was in the other one). A template the user changed stays as written.
     fn migrated(mut self) -> Self {
+        let language = self.general.language;
         let callout = &mut self.automation.callout;
-        if let Some(language) = callout::former_default(&callout.template) {
-            callout.template = if language == self.general.language {
-                String::new()
-            } else {
-                callout::template(language).to_owned()
-            };
-        }
+        // A former default was the rich style's line before it had emoji and styles.
+        migrate(
+            &mut callout.template,
+            callout::former_default,
+            |language| callout::template(CalloutStyle::Rich, language),
+            language,
+        );
+        migrate(
+            &mut callout.watch_template,
+            callout::former_watch_default,
+            callout::watch_template,
+            language,
+        );
+        migrate(
+            &mut callout.target_template,
+            callout::former_target_default,
+            callout::target_template,
+            language,
+        );
         self
+    }
+}
+
+/// `template` replaced, when `former` finds it a former default line, by the current one: blank
+/// (the default itself) in the window's `language`, the other language's default written out.
+fn migrate(
+    template: &mut String,
+    former: fn(&str) -> Option<Language>,
+    current: fn(Language) -> &'static str,
+    language: Language,
+) {
+    if let Some(written) = former(template) {
+        *template = if written == language {
+            String::new()
+        } else {
+            current(written).to_owned()
+        };
     }
 }
 
@@ -644,6 +1134,10 @@ mod tests {
     const ZH_0_0_2: &str =
         "{standing}：{champion} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}";
     const EN_0_0_2: &str = "{standing}: {champion} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}";
+    /// 0.0.3's: the seat, but the form score called 评分 and the name run into the numbers.
+    const ZH_0_0_3: &str =
+        "{standing}：{seat} {name} 近{games}场胜率{winRate} KDA {kda} 评分{score}{title}{quip}";
+    const EN_0_0_3: &str = "{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, score {score} {title}{quip}";
 
     #[test]
     fn a_template_saved_as_the_former_default_becomes_the_new_one_when_loaded() {
@@ -665,8 +1159,14 @@ mod tests {
         assert_eq!(loaded("zh-CN", &format!("  {ZH_0_0_2} ")).template, "");
         assert_eq!(
             loaded("zh-CN", EN_0_0_2).template,
-            callout::template(Language::En),
+            callout::template(CalloutStyle::Rich, Language::En),
             "an English line under the Chinese window stays English"
+        );
+        assert_eq!(loaded("zh-CN", ZH_0_0_3).template, "", "0.0.3's line too");
+        assert_eq!(loaded("en", EN_0_0_3).template, "");
+        assert_eq!(
+            loaded("en", ZH_0_0_3).template,
+            callout::template(CalloutStyle::Rich, Language::ZhCn)
         );
 
         for own in [
@@ -676,6 +1176,108 @@ mod tests {
         ] {
             assert_eq!(loaded("zh-CN", own).template, own, "changed by the user");
         }
+    }
+
+    /// The in-game lines' first defaults, as a window could have saved them: the champion and the
+    /// player's name.
+    const ZH_WATCH: &str =
+        "小心 {champion} {name}：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}";
+    const EN_WATCH: &str =
+        "Watch {champion} ({name}): {standing}, {winRate} in {games} games, KDA {kda}{title}";
+    const ZH_TARGET: &str =
+        "对面 {champion} {name}：{standing}，近{games}场胜率{winRate}，可以多抓";
+    const EN_TARGET: &str = "Go after {champion} ({name}): {standing}, {winRate} in {games} games";
+
+    #[test]
+    fn an_in_game_line_saved_as_its_former_default_becomes_the_new_one_when_loaded() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let loaded = |language: &str, watch: &str, target: &str| {
+            let file = serde_json::json!({
+                "general": { "language": language },
+                "automation": { "callout": {
+                    "watchTemplate": watch, "targetTemplate": target, "allyTemplate": "{champion}", "inGame": true
+                } },
+            });
+            fs::write(&path, file.to_string()).unwrap();
+            SettingsStore::open(&path).get().automation.callout
+        };
+
+        let callout = loaded("zh-CN", ZH_WATCH, &format!(" {ZH_TARGET}  "));
+        assert_eq!(
+            (
+                callout.watch_template.as_str(),
+                callout.target_template.as_str()
+            ),
+            ("", ""),
+            "the defaults, which name the champion alone"
+        );
+        assert!(
+            callout.in_game && callout.ally_template == "{champion}",
+            "nothing else moves"
+        );
+        let callout = loaded("en", EN_WATCH, EN_TARGET);
+        assert_eq!(
+            (
+                callout.watch_template.as_str(),
+                callout.target_template.as_str()
+            ),
+            ("", "")
+        );
+        let callout = loaded("zh-CN", EN_WATCH, EN_TARGET);
+        assert_eq!(
+            (
+                callout.watch_template.as_str(),
+                callout.target_template.as_str()
+            ),
+            (
+                callout::watch_template(Language::En),
+                callout::target_template(Language::En)
+            ),
+            "English lines under the Chinese window stay English"
+        );
+        let callout = loaded("zh-CN", ZH_TARGET, ZH_WATCH);
+        assert_eq!(
+            (
+                callout.watch_template.as_str(),
+                callout.target_template.as_str()
+            ),
+            (ZH_TARGET, ZH_WATCH),
+            "a line moved to the other's place was the user's doing"
+        );
+        let own = "小心 {champion} {name}";
+        assert_eq!(loaded("zh-CN", own, "").watch_template, own);
+    }
+
+    #[test]
+    fn a_file_from_before_the_teams_own_lines_in_game_types_the_enemy_lines() {
+        let old: Settings = serde_json::from_str(
+            r#"{"automation":{"callout":{"inGame":true,"watchTemplate":"注意 {champion}"}}}"#,
+        )
+        .unwrap();
+        let callout = old.normalized().automation.callout;
+        assert_eq!(callout.game_teams, GameTeams::Enemies);
+        assert_eq!(callout.ally_template, "", "the default, by champion");
+        assert!(callout.in_game && callout.watch_template == "注意 {champion}");
+
+        let both: Settings =
+            serde_json::from_str(r#"{"automation":{"callout":{"gameTeams":"both"}}}"#).unwrap();
+        assert_eq!(both.automation.callout.game_teams, GameTeams::Both);
+        assert_eq!(
+            serde_json::to_value(GameTeams::Allies).unwrap(),
+            serde_json::json!("allies")
+        );
+        let mut long = Settings::default();
+        long.automation.callout.ally_template = format!(" {} ", "队".repeat(300));
+        assert_eq!(
+            long.normalized()
+                .automation
+                .callout
+                .ally_template
+                .chars()
+                .count(),
+            200
+        );
     }
 
     #[test]
@@ -778,6 +1380,253 @@ mod tests {
     }
 
     #[test]
+    fn what_winer_keeps_in_the_presence_starts_off_and_stays_in_range() {
+        let settings = Settings::default();
+        assert!(!settings.profile.rank_disguise.enabled);
+        assert!(!settings.profile.presence.remember);
+        // A file from before the profile tools has them off.
+        let old: Settings = serde_json::from_str(r#"{"general":{"titles":false}}"#).unwrap();
+        assert_eq!(old.profile, ProfileSettings::default());
+
+        let mut settings = Settings::default();
+        settings.profile.presence = PresenceRule {
+            remember: true,
+            availability: "dnd".into(),
+            status_message: Some(format!("  {}  ", "签".repeat(200))),
+            mobile_message: false,
+        };
+        let presence = settings.normalized().profile.presence;
+        assert_eq!(presence.availability, "chat", "the client sets dnd itself");
+        assert_eq!(
+            presence
+                .status_message
+                .map(|message| message.chars().count()),
+            Some(PresenceRule::MESSAGE_LIMIT)
+        );
+        let mut mobile = Settings::default();
+        mobile.profile.presence.availability = "mobile".into();
+        assert_eq!(mobile.normalized().profile.presence.availability, "mobile");
+    }
+
+    #[test]
+    fn the_mobile_message_starts_off_and_is_never_kept_as_the_users_own() {
+        assert!(!Settings::default().profile.presence.mobile_message);
+        // A file from before the switch has it off.
+        let old: Settings = serde_json::from_str(
+            r#"{"profile":{"presence":{"remember":true,"availability":"mobile","statusMessage":null}}}"#,
+        )
+        .unwrap();
+        assert!(!old.profile.presence.mobile_message);
+
+        let mut settings = Settings::default();
+        settings.profile.presence = PresenceRule {
+            remember: true,
+            availability: "mobile".into(),
+            status_message: Some(PresenceRule::MOBILE_MESSAGE.into()),
+            mobile_message: true,
+        };
+        assert_eq!(
+            settings
+                .clone()
+                .normalized()
+                .profile
+                .presence
+                .status_message,
+            None,
+            "the message on screen when remembering was winer's"
+        );
+        settings.profile.presence.mobile_message = false;
+        assert_eq!(
+            settings
+                .normalized()
+                .profile
+                .presence
+                .status_message
+                .as_deref(),
+            Some(PresenceRule::MOBILE_MESSAGE),
+            "with the switch off it is the user's"
+        );
+    }
+
+    #[test]
+    fn the_kept_message_is_the_users_own_before_the_mobile_states() {
+        let rule = |status_message: Option<&str>, mobile_message: bool| PresenceRule {
+            remember: true,
+            availability: "mobile".into(),
+            status_message: status_message.map(str::to_owned),
+            mobile_message,
+        };
+        let mobile = Some(PresenceRule::MOBILE_MESSAGE.to_owned());
+        assert_eq!(
+            rule(Some("下班了"), true).kept_message(""),
+            Some("下班了".into())
+        );
+        assert_eq!(rule(None, true).kept_message(""), mobile);
+        assert_eq!(
+            rule(None, true).kept_message("今晚上分"),
+            None,
+            "nothing kept: the client's own stays"
+        );
+        assert_eq!(rule(Some(""), true).kept_message("今晚上分"), mobile);
+        assert_eq!(
+            rule(Some(""), false).kept_message("今晚上分"),
+            Some(String::new())
+        );
+        assert_eq!(rule(None, false).kept_message(""), None);
+        let away = PresenceRule {
+            availability: "away".into(),
+            ..rule(None, true)
+        };
+        assert_eq!(away.kept_message(""), None);
+    }
+
+    #[test]
+    fn a_disguise_is_written_as_the_window_reads_it() {
+        let disguise = RankDisguise {
+            enabled: true,
+            queue: DisguiseQueue::Flex,
+            tier: Tier::Master,
+            division: Division::Two,
+        };
+        let json = serde_json::to_value(&disguise).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "enabled": true, "queue": "flex", "tier": "MASTER", "division": "II"
+            })
+        );
+        assert_eq!(
+            serde_json::from_value::<RankDisguise>(json).unwrap(),
+            disguise
+        );
+    }
+
+    #[test]
+    fn hotkeys_are_written_one_way_and_need_a_real_modifier() {
+        let cases = [
+            ("Ctrl+Shift+W", Some("Ctrl+Shift+W")),
+            (" shift + ctrl + w ", Some("Ctrl+Shift+W")),
+            ("Control+KeyQ", Some("Ctrl+Q")),
+            ("Alt+Digit1", Some("Alt+1")),
+            ("Win+Alt+ArrowUp", Some("Alt+Super+Up")),
+            ("Meta+F5", Some("Super+F5")),
+            ("Ctrl+Numpad7", Some("Ctrl+Num7")),
+            ("Ctrl+NumpadAdd", Some("Ctrl+NumAdd")),
+            ("ctrl+backquote", Some("Ctrl+Backquote")),
+            ("Ctrl+F24", Some("Ctrl+F24")),
+            ("Ctrl+F", Some("Ctrl+F")),
+            ("Shift+W", None),
+            ("W", None),
+            ("Ctrl+Shift", None),
+            ("Ctrl+W+Q", None),
+            ("Ctrl++W", None),
+            ("Ctrl+F25", None),
+            ("Ctrl+F0", None),
+            ("Ctrl+Enter", None),
+            ("Ctrl+NumpadEnter", None),
+            ("", None),
+        ];
+        for (text, expected) in cases {
+            assert_eq!(normalize_hotkey(text).as_deref(), expected, "{text:?}");
+        }
+        for key in HOTKEY_KEYS {
+            assert_eq!(
+                normalize_hotkey(&format!("Ctrl+{key}")),
+                Some(format!("Ctrl+{key}")),
+                "a listed key is its own spelling"
+            );
+        }
+    }
+
+    #[test]
+    fn the_hotkey_starts_on_can_be_switched_off_and_a_bad_one_is_dropped() {
+        assert_eq!(
+            Settings::default().general.hotkey.as_deref(),
+            Some(DEFAULT_HOTKEY)
+        );
+        let old: Settings = serde_json::from_str(r#"{"general":{"titles":false}}"#).unwrap();
+        assert_eq!(
+            old.general.hotkey.as_deref(),
+            Some(DEFAULT_HOTKEY),
+            "a file from before the hotkey gets the default"
+        );
+        let off: Settings = serde_json::from_str(r#"{"general":{"hotkey":null}}"#).unwrap();
+        assert_eq!(off.normalized().general.hotkey, None);
+        let mut settings = Settings::default();
+        settings.general.hotkey = Some("alt + q".into());
+        assert_eq!(
+            settings.clone().normalized().general.hotkey.as_deref(),
+            Some("Alt+Q")
+        );
+        settings.general.hotkey = Some("Q".into());
+        assert_eq!(settings.normalized().general.hotkey, None);
+        let plugin = PluginSettings::default();
+        assert!(
+            plugin.friend_status && plugin.lobby_panel,
+            "both in-client additions start on"
+        );
+        let old: Settings = serde_json::from_str(r#"{"plugin":{"teamPanel":false}}"#).unwrap();
+        assert!(
+            old.plugin.friend_status && old.plugin.lobby_panel && !old.plugin.team_panel,
+            "a file from before them gets them on and keeps its own switches"
+        );
+    }
+
+    // The history panel in the client.
+    #[test]
+    fn the_history_panel_in_the_client_starts_on_and_can_be_switched_off() {
+        assert!(PluginSettings::default().history_in_client);
+        let old: Settings =
+            serde_json::from_str(r#"{"plugin":{"lobbyPanel":false,"teamPanel":true}}"#).unwrap();
+        assert!(
+            old.plugin.history_in_client && !old.plugin.lobby_panel,
+            "a file from before it gets it on and keeps its own switches"
+        );
+        let off: Settings =
+            serde_json::from_str(r#"{"plugin":{"historyInClient":false}}"#).unwrap();
+        assert!(!off.normalized().plugin.history_in_client);
+    }
+
+    #[test]
+    fn loadouts_and_item_sets_start_off_and_act_only_where_they_can() {
+        let settings = Settings::default();
+        let automation = &settings.automation;
+        assert!(!automation.loadout.enabled && automation.loadout.recommended);
+        assert!(!automation.item_sets);
+        assert!(
+            settings.builds.enabled,
+            "the panel only reads public numbers"
+        );
+        assert_eq!(settings.builds.rift_source, RiftSource::Tencent);
+        assert!(
+            !Scoped::Loadout.applicable().contains(&Mode::Arena),
+            "Arena has no rune page and fixed spells"
+        );
+        assert!(!Scoped::ItemSets.applicable().contains(&Mode::Other));
+
+        let mut on = Settings::default();
+        on.automation.loadout.enabled = true;
+        on.automation.item_sets = true;
+        on.automation.scopes.loadout = vec![Mode::Arena, Mode::Aram, Mode::Ranked];
+        let on = on.normalized();
+        assert_eq!(on.automation.scopes.loadout, vec![Mode::Ranked, Mode::Aram]);
+        assert!(on.automation.restores_loadout(Some(Mode::Aram)));
+        assert!(!on.automation.restores_loadout(Some(Mode::Normal)));
+        assert!(
+            !on.automation.restores_loadout(None),
+            "narrowed, so not where unknown"
+        );
+        assert!(on.automation.writes_item_sets(Some(Mode::Arena)));
+        assert!(!on.automation.writes_item_sets(Some(Mode::Other)));
+
+        // A file from before these existed keeps them off and scoped everywhere they can act.
+        let old: Settings =
+            serde_json::from_str(r#"{"automation":{"scopes":{"accept":["ranked"]}}}"#).unwrap();
+        assert_eq!(old.automation.scopes.loadout, Scoped::Loadout.applicable());
+        assert_eq!(old.builds, BuildSettings::default());
+    }
+
+    #[test]
     fn candidates_put_the_position_first_then_any() {
         let pool = ChampionPool {
             any: vec![1, 2, 3],
@@ -786,5 +1635,85 @@ mod tests {
         };
         assert_eq!(pool.candidates(Some(Position::Middle)), vec![3, 4, 1, 2]);
         assert_eq!(pool.candidates(None), vec![1, 2, 3]);
+    }
+
+    // ---- The callout's shortcut and the game's chat ----
+
+    #[test]
+    fn a_file_from_before_the_callouts_shortcut_has_none_and_types_nothing_in_game() {
+        let old: Settings = serde_json::from_str(
+            r#"{"automation":{"callout":{"auto":true,"template":"{name}","tiers":"horses"}}}"#,
+        )
+        .unwrap();
+        let callout = old.normalized().automation.callout;
+        assert_eq!(callout.hotkey, None, "no combination is taken by itself");
+        assert!(!callout.in_game, "nothing is typed into the game unasked");
+        assert_eq!(
+            (
+                callout.watch_template.as_str(),
+                callout.target_template.as_str()
+            ),
+            ("", ""),
+            "the enemy lines start as the defaults"
+        );
+        assert!(callout.auto && callout.template == "{name}" && callout.tiers == TierSet::Horses);
+        let defaults = CalloutRule::default();
+        assert!(defaults.hotkey.is_none() && !defaults.in_game);
+    }
+
+    #[test]
+    fn the_callouts_shortcut_is_spelled_one_way_and_never_takes_the_windows() {
+        let with = |window: Option<&str>, callout: Option<&str>| {
+            let mut settings = Settings::default();
+            settings.general.hotkey = window.map(str::to_owned);
+            settings.automation.callout.hotkey = callout.map(str::to_owned);
+            let settings = settings.normalized();
+            (settings.general.hotkey, settings.automation.callout.hotkey)
+        };
+        assert_eq!(
+            with(Some("Alt+Backquote"), Some(" shift + ctrl + x ")),
+            (Some("Alt+Backquote".into()), Some("Ctrl+Shift+X".into()))
+        );
+        assert_eq!(
+            with(Some("Alt+Backquote"), Some("alt+backquote")),
+            (Some("Alt+Backquote".into()), None),
+            "the window keeps its combination"
+        );
+        assert_eq!(
+            with(Some("alt + q"), Some("Alt+Q")),
+            (Some("Alt+Q".into()), None),
+            "compared once both are spelled the same way"
+        );
+        assert_eq!(
+            with(None, Some("Alt+Backquote")).1.as_deref(),
+            Some("Alt+Backquote")
+        );
+        assert_eq!(
+            with(None, Some("X")).1,
+            None,
+            "a key alone is typed in chat"
+        );
+
+        let mut settings = Settings::default();
+        settings.automation.callout.watch_template = format!("  {}  ", "小".repeat(300));
+        settings.automation.callout.target_template = " {name} ".into();
+        let callout = settings.normalized().automation.callout;
+        assert_eq!(callout.watch_template.chars().count(), 200);
+        assert_eq!(callout.target_template, "{name}");
+    }
+
+    // History.
+
+    #[test]
+    fn custom_games_start_hidden_and_a_file_keeps_them_shown_once_chosen() {
+        assert!(Settings::default().history.hide_custom_games);
+        let older: Settings = serde_json::from_str(r#"{"general":{"titles":false}}"#).unwrap();
+        assert!(
+            older.history.hide_custom_games,
+            "a file from before the switch"
+        );
+        let shown: Settings =
+            serde_json::from_str(r#"{"history":{"hideCustomGames":false}}"#).unwrap();
+        assert!(!shown.normalized().history.hide_custom_games);
     }
 }

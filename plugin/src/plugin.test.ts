@@ -87,6 +87,8 @@ describe("state", () => {
     phase: "None",
     champSelect: null,
     game: null,
+    friends: null,
+    lobby: null,
   };
 
   it("applies newer patches only", () => {
@@ -203,6 +205,36 @@ describe("team", () => {
 
   it("finds the party rows by the client's own classes", () => {
     expect(ROW_SELECTOR).toBe(".party.visible .summoner-wrapper.visible.left");
+  });
+
+  it("puts the line in the row's details column, outside the name's one-line box", () => {
+    // The row as the 16.19 client draws it: the details column holds three clipped lines, the
+    // name's box only one, 16px high.
+    document.body.innerHTML = `
+      <div class="party visible"><div class="summoner-wrapper visible left">
+        <div class="summoner-object left is-self"><div class="summoner-container-wrapper">
+          <div class="summoner-container expanded"><div class="player-details">
+            <div class="summoner-secondary-text"><div class="summoner-secondary-text-inner">正在选用……</div></div>
+            <div class="summoner-primary-text"><div class="summoner-primary-text-glow">上路</div></div>
+            <div class="summoner-name"><span class="name-text"><div class="player-name-wrapper">P0</div></span></div>
+          </div></div>
+        </div></div>
+      </div></div>`;
+    const team = view([seat({ state: "ready", ...summary(12, 20, 3) })]);
+    expect(decorateRows(document, team, "zh-CN")).toBe(1);
+    const details = document.querySelector(".player-details");
+    const line = document.querySelector(".winer-inline");
+    expect(line?.parentElement).toBe(details);
+    expect(document.querySelector(".summoner-name .winer-inline")).toBeNull();
+
+    decorateRows(document, team, "zh-CN");
+    expect(document.querySelectorAll(".winer-inline")).toHaveLength(1);
+    expect(document.querySelector(".winer-inline")).toBe(line);
+
+    // The client redrew the column without it: it is put back.
+    line?.remove();
+    decorateRows(document, team, "zh-CN");
+    expect(document.querySelector(".winer-inline")?.parentElement).toBe(details);
   });
 });
 

@@ -1,11 +1,14 @@
 //! The connection to the client and everything that follows from it: one loop that finds the
 //! client, mirrors its state into a [`Snapshot`] and acts on it for the user.
 
+mod caches;
+mod loadout;
+
 use std::{
     collections::HashMap,
-    io,
-    path::PathBuf,
-    sync::{Arc, Mutex, MutexGuard, RwLock},
+    fs, io,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock},
     time::{Duration, Instant},
 };
 
@@ -22,17 +25,29 @@ use tracing::{debug, info, warn};
 use crate::{
     analysis, augments,
     automation::{self, Availability, ChampAction, Step},
-    callout, catalog, live,
+    backup::{self, BackupChannel, BackupFile, BackupInfo},
+    cache::Lru,
+    callout, catalog,
+    friends::{self, FRIENDS, Friend},
+    history::{HistoryCache, NEWEST_TTL, Page as HistoryPage, rate_alone},
+    live,
     model::{
-        ChampSelectSession, ChatMe, Conversation, Entitlements, GameQueue, GameflowSession,
-        MatchList, RankedStats, ReadyCheck, Summoner,
+        ChampSelectSession, ChatMe, Conversation, Entitlements, Game, GameQueue, GameflowSession,
+        Lobby, MatchList, RankedStats, ReadyCheck, Summoner,
     },
-    settings::{Audience, CalloutRule, General, Language, Mode, Scoped, Settings, SettingsStore},
+    profile::{
+        self, Admit, ChallengeProfile, ChallengeSummary, ClientBanner, ClientChallenge,
+        ClientTitle, Fix, Regalia, SkinChoice, SummonerProfile,
+    },
+    settings::{
+        self, Audience, CalloutRule, General, Language, Mode, PresenceRule, ProfileSettings,
+        Scoped, Settings, SettingsStore,
+    },
     sgp,
     view::{
         AugmentDetail, Connection, ErrorCode, Event, GameData, HistorySource, IpcError,
-        MatchDetail, MatchPage, Me, Notice, NoticeKind, Patch, Phase, PlayerProfile, PlayerStats,
-        PlayerSummary, Presence, QueueInfo, Snapshot, Update,
+        MatchDetail, MatchPage, Me, Notice, NoticeKind, Patch, Phase, PlayerProfile,
+        PlayerStanding, PlayerStats, PlayerSummary, Presence, QueueInfo, Snapshot, Update,
     },
 };
 
@@ -42,7 +57,31 @@ const READY_CHECK: &str = "/lol-matchmaking/v1/ready-check";
 const CHAMP_SELECT: &str = "/lol-champ-select/v1/session";
 const SUMMONER: &str = "/lol-summoner/v1/current-summoner";
 const RANKED: &str = "/lol-ranked/v1/current-ranked-stats";
-const SUBSCRIPTIONS: &[&str] = &[PHASE, GAMEFLOW, READY_CHECK, CHAMP_SELECT, SUMMONER, RANKED];
+/// The chat presence friends see: the status, the message and the rank (`profile`).
+const CHAT_ME: &str = "/lol-chat/v1/me";
+const LOBBY: &str = "/lol-lobby/v2/lobby";
+/// A change to the members alone may come as an event of its own: the lobby is read again then.
+const LOBBY_MEMBERS: &str = "/lol-lobby/v2/lobby/members";
+const SUBSCRIPTIONS: &[&str] = &[
+    PHASE,
+    GAMEFLOW,
+    READY_CHECK,
+    CHAMP_SELECT,
+    SUMMONER,
+    RANKED,
+    CHAT_ME,
+    // Social.
+    FRIENDS,
+    LOBBY,
+];
+
+/// Friends' events come in bursts (a client signing in lists them one by one): the view is
+/// rebuilt once they settle.
+const FRIENDS_SETTLE: Duration = Duration::from_millis(300);
+/// The whole friends list is read again this often, in case an event went missing.
+const FRIENDS_REFRESH: Duration = Duration::from_secs(60);
+/// Sooner until it has been read once: chat can still be signing in when the client connects.
+const FRIENDS_RETRY: Duration = Duration::from_secs(5);
 
 /// Between two callout lines: the chat service throttles a burst from one client.
 const MESSAGE_GAP: Duration = Duration::from_millis(350);
@@ -61,6 +100,9 @@ pub enum CoreError {
     PlayerNotFound(String),
     #[error("{0}")]
     Invalid(String),
+    /// Not now: the client is in a state the request must wait out, such as a game.
+    #[error("{0}")]
+    Busy(String),
     #[error(transparent)]
     Lcu(#[from] lcu::Error),
     #[error(transparent)]
@@ -76,6 +118,7 @@ impl From<CoreError> for IpcError {
             CoreError::NotConnected => ErrorCode::NotConnected,
             CoreError::PlayerNotFound(_) => ErrorCode::NotFound,
             CoreError::Invalid(_) => ErrorCode::Invalid,
+            CoreError::Busy(_) => ErrorCode::Busy,
             CoreError::Lcu(error) if error.is_not_found() => ErrorCode::NotFound,
             CoreError::Lcu(error) if error.is_unreachable() => ErrorCode::NotConnected,
             CoreError::Lcu(_) | CoreError::Remote(_) => ErrorCode::Client,
@@ -109,10 +152,20 @@ struct Inner {
     players: Mutex<HashMap<String, PlayerEntry>>,
     /// Each player costs three requests; four players at a time keeps the client responsive.
     player_slots: Semaphore,
-    assets: Mutex<HashMap<String, Arc<Asset>>>,
-    /// Augment descriptions, per language, fetched at most once per run.
-    augment_details: tokio::sync::Mutex<HashMap<Language, Arc<Vec<AugmentDetail>>>>,
+    /// Pictures the window has drawn, within `caches::ASSETS`.
+    assets: Mutex<Lru<String, Arc<Asset>>>,
+    /// Augment descriptions, per language, with when they were fetched (`caches`).
+    augment_details: tokio::sync::Mutex<AugmentDetails>,
+    /// Where snapshots of the game's settings are kept; the shell names it (`set_backup_dir`).
+    backups: OnceLock<PathBuf>,
+    /// Remembered runes and spells, and the build panel's numbers (`loadout`).
+    loadout: loadout::LoadoutState,
+    /// History: pages, whole games and Riot ID lookups, for the signed-in account (`history`).
+    history: Mutex<HistoryCache>,
 }
+
+/// Augment descriptions per language, with when they were fetched.
+type AugmentDetails = HashMap<Language, (Instant, Arc<Vec<AugmentDetail>>)>;
 
 /// One live connection to one client process.
 #[derive(Clone)]
@@ -142,6 +195,19 @@ struct Live {
     /// Bench swaps tried per champion, and one in flight.
     swaps: HashMap<i64, u8>,
     swapping: bool,
+    /// What winer keeps in the chat presence: the disguised rank and the remembered status.
+    presence: profile::Keeper,
+    // Social.
+    /// The friends as the client last listed them; `None` until it has once.
+    friends: Option<Vec<Friend>>,
+    /// A rebuild of the friends view is due once the events settle.
+    friends_due: bool,
+    /// The lobby while there is one.
+    lobby: Option<Lobby>,
+    /// The local player's party as the last lobby had it, for champ select's premade marks.
+    party: Vec<String>,
+    /// What was set up for the champion in hand, and the champ select to remember (`loadout`).
+    loadout: loadout::LoadoutLive,
 }
 
 impl Live {
@@ -156,8 +222,28 @@ impl Live {
 
 enum PlayerEntry {
     Loading,
-    Ready(Arc<PlayerSummary>, Instant),
+    /// When it was fetched; `None` once the player has finished a game since.
+    Ready(Arc<PlayerRecord>, Option<Instant>),
     Failed(String, Instant),
+}
+
+/// What a player's summary is worked out from, as the client sent it. The summary is read from it
+/// each time it is shown, so it follows the catalog: which queues are played against the computer
+/// is known only once the catalog has arrived, which can be after the record.
+struct PlayerRecord {
+    summoner: Summoner,
+    ranked: Option<RankedStats>,
+    games: Vec<Game>,
+}
+
+impl PlayerEntry {
+    /// A record fetched within `max_age`, and no game of the player's has ended since.
+    fn fresh(&self, max_age: Duration) -> Option<&Arc<PlayerRecord>> {
+        match self {
+            Self::Ready(record, Some(at)) if at.elapsed() < max_age => Some(record),
+            _ => None,
+        }
+    }
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -186,6 +272,9 @@ impl Service {
     /// A service whose background work runs on `runtime`. Nothing happens until [`Self::start`].
     pub fn new(settings_path: impl Into<PathBuf>, runtime: Handle) -> Self {
         let (events, _) = broadcast::channel(256);
+        let settings_path = settings_path.into();
+        // Remembered setups live in a file of their own beside the settings.
+        let loadouts = settings_path.with_file_name("loadouts.json");
         Self {
             inner: Arc::new(Inner {
                 settings: SettingsStore::open(settings_path),
@@ -195,8 +284,11 @@ impl Service {
                 client: RwLock::new(None),
                 players: Mutex::new(HashMap::new()),
                 player_slots: Semaphore::new(4),
-                assets: Mutex::new(HashMap::new()),
+                assets: Mutex::new(Lru::new(caches::ASSETS)),
                 augment_details: tokio::sync::Mutex::new(HashMap::new()),
+                backups: OnceLock::new(),
+                loadout: loadout::LoadoutState::new(loadouts),
+                history: Mutex::new(HistoryCache::default()),
             }),
         }
     }
@@ -204,6 +296,8 @@ impl Service {
     pub fn start(&self) {
         let service = self.clone();
         self.inner.runtime.spawn(async move { service.run().await });
+        // Storage: the caches let go of what has expired.
+        self.start_sweeping();
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -219,6 +313,7 @@ impl Service {
     }
 
     pub fn set_settings(&self, settings: Settings) -> Result<Settings, CoreError> {
+        let before = self.settings().profile;
         let saved = self.inner.settings.set(settings)?;
         let _ = self
             .inner
@@ -227,6 +322,7 @@ impl Service {
         // Tier names and the callout's lines come from the settings.
         if let Ok(client) = self.client() {
             self.render(&client);
+            self.on_profile_settings(&client, &before, &saved.profile);
         }
         Ok(saved)
     }
@@ -242,7 +338,9 @@ impl Service {
 
     /// `count` of `puuid`'s games from the `begin`-th newest. On a Tencent shard they come from its
     /// match-history server; the client's own history only stands in for the first page, because
-    /// it answers every page with the same newest twenty (`sgp`).
+    /// it answers every page with the same newest twenty (`sgp`). Pages are kept for a while
+    /// (`history`), so going back to a player, paging back and the overview's short list ask for
+    /// nothing again.
     pub async fn match_history(
         &self,
         puuid: &str,
@@ -252,59 +350,72 @@ impl Service {
         segment(puuid)?;
         let count = count.clamp(1, 50);
         let client = self.client()?;
-        let summaries = |games: &[crate::model::Game]| -> Vec<_> {
-            games
-                .iter()
-                .filter_map(|game| analysis::match_summary(puuid, game))
-                .collect()
-        };
-        match server_history(&client, puuid, begin, count).await {
-            Some(Ok(page)) => {
-                return Ok(MatchPage {
-                    puuid: puuid.to_owned(),
-                    begin,
-                    games: summaries(&page.games),
-                    has_more: page.returned as u32 >= count,
-                    source: HistorySource::Server,
-                });
-            }
-            Some(Err(error)) if begin > 0 => return Err(error),
-            Some(Err(error)) => warn!(%error, "no match-history server, showing the client's own"),
-            None => {}
-        }
         let me = lock(&client.live).me.clone();
-        let tencent = sgp::base(&client.platform_id).is_some() || client.platform_id.is_empty();
-        if tencent && begin > 0 {
-            // The client's window is the first page, whatever range is asked.
-            return Ok(MatchPage {
-                puuid: puuid.to_owned(),
-                begin,
-                games: Vec::new(),
-                has_more: false,
-                source: HistorySource::Client,
-            });
-        }
-        let list = history(&client.lcu, puuid, &me, begin, count).await?;
-        let games = summaries(&list.games.games);
+        self.scope_account(&me);
+        let kept = lock(&self.inner.history).page(&me, puuid, begin, count, Instant::now());
+        let page = match kept {
+            Some(page) => page,
+            None => {
+                let (page, keep) = fetch_history(&client, puuid, &me, begin, count).await?;
+                if keep {
+                    lock(&self.inner.history).put_page(
+                        &me,
+                        puuid,
+                        begin,
+                        page.clone(),
+                        Instant::now(),
+                    );
+                }
+                page
+            }
+        };
+        self.same_account(&client, &me)?;
+        let data = lock(&client.data).clone().unwrap_or_default();
         Ok(MatchPage {
             puuid: puuid.to_owned(),
             begin,
-            has_more: !tencent && games.len() as u32 >= count,
-            games,
-            source: HistorySource::Client,
+            games: page
+                .entries
+                .iter()
+                .flatten()
+                .filter_map(|game| analysis::match_summary(puuid, game, &data.roles, &data.kinds))
+                .collect(),
+            has_more: page.more,
+            source: page.source,
         })
     }
 
+    /// One game's scoreboard. A game that came with a page of the shard's server is drawn from that
+    /// page; any other is asked of the client once (`history`).
     pub async fn match_detail(&self, game_id: i64) -> Result<MatchDetail, CoreError> {
-        let game = self
-            .client()?
-            .lcu
-            .get(&format!("/lol-match-history/v1/games/{game_id}"))
-            .await?;
-        Ok(analysis::match_detail(&game))
+        let client = self.client()?;
+        let me = lock(&client.live).me.clone();
+        self.scope_account(&me);
+        let kept = lock(&self.inner.history).game(&me, game_id);
+        let game = match kept {
+            Some(game) => game,
+            None => {
+                let game: Arc<Game> = Arc::new(
+                    client
+                        .lcu
+                        .get(&format!("/lol-match-history/v1/games/{game_id}"))
+                        .await?,
+                );
+                lock(&self.inner.history).put_game(&me, game.clone(), Instant::now());
+                game
+            }
+        };
+        self.same_account(&client, &me)?;
+        let data = lock(&client.data).clone();
+        let no_roles = crate::rating::Roles::new();
+        Ok(analysis::match_detail(
+            &game,
+            data.as_deref().map_or(&no_roles, |data| &data.roles),
+        ))
     }
 
-    /// Looks a player up by Riot ID, `name#tag`.
+    /// Looks a player up by Riot ID, `name#tag`; the same ID again within a few minutes is not
+    /// asked for again (`history::FOUND_TTL`).
     pub async fn find_player(&self, riot_id: &str) -> Result<PlayerProfile, CoreError> {
         let riot_id = riot_id.trim();
         let (name, tag) = riot_id.rsplit_once('#').unwrap_or((riot_id, ""));
@@ -313,7 +424,13 @@ impl Service {
                 "enter a Riot ID such as name#tag".into(),
             ));
         }
-        let lcu = self.client()?.lcu;
+        let client = self.client()?;
+        let me = lock(&client.live).me.clone();
+        self.scope_account(&me);
+        if let Some(found) = lock(&self.inner.history).found(&me, riot_id, Instant::now()) {
+            return Ok(found);
+        }
+        let lcu = client.lcu.clone();
         let query = query_value(&format!("{}#{}", name.trim(), tag.trim()));
         let summoner: Summoner = match lcu
             .get(&format!("/lol-summoner/v1/summoners?name={query}"))
@@ -333,24 +450,15 @@ impl Service {
             .await
             .ok()
             .flatten();
-        Ok(analysis::profile(&summoner, ranked.as_ref()))
+        let profile = analysis::profile(&summoner, ranked.as_ref());
+        self.same_account(&client, &me)?;
+        lock(&self.inner.history).put_found(&me, riot_id, profile.clone(), Instant::now());
+        Ok(profile)
     }
 
     pub async fn player_summary(&self, puuid: &str) -> Result<PlayerSummary, CoreError> {
-        segment(puuid)?;
-        if let Some(PlayerEntry::Ready(summary, at)) = lock(&self.inner.players).get(puuid)
-            && at.elapsed() < PLAYER_TTL
-        {
-            return Ok((**summary).clone());
-        }
-        let client = self.client()?;
-        let me = lock(&client.live).me.clone();
-        let summary = load_summary(&client.lcu, puuid, &me).await?;
-        lock(&self.inner.players).insert(
-            puuid.to_owned(),
-            PlayerEntry::Ready(Arc::new(summary.clone()), Instant::now()),
-        );
-        Ok(summary)
+        let record = self.player_record(puuid).await?;
+        Ok(self.summarize(&record))
     }
 
     /// A game-data asset such as a champion icon. Only `/lol-game-data/assets/` is served: the
@@ -359,7 +467,7 @@ impl Service {
         if !path.starts_with("/lol-game-data/assets/") || path.contains("..") {
             return Err(CoreError::Invalid(format!("not a game-data asset: {path}")));
         }
-        if let Some(asset) = lock(&self.inner.assets).get(path) {
+        if let Some(asset) = lock(&self.inner.assets).get(path, Instant::now()) {
             return Ok(asset.clone());
         }
         let (content_type, bytes) = self.client()?.lcu.bytes(path).await?;
@@ -367,51 +475,60 @@ impl Service {
             content_type: content_type.unwrap_or_else(|| "application/octet-stream".into()),
             bytes,
         });
-        let mut assets = lock(&self.inner.assets);
-        if assets.len() >= 1024 {
-            assets.clear();
-        }
-        assets.insert(path.to_owned(), asset.clone());
+        let size = asset.bytes.len();
+        lock(&self.inner.assets).insert(path.to_owned(), asset.clone(), size, Instant::now());
         Ok(asset)
     }
 
-    /// `chat`, `away` or `offline`: the states the client offers itself. A request for `dnd` is
-    /// ignored (the client marks games on its own), and `mobile` is the phone app's, which the
-    /// desktop client shows as 在线分组 (measured on 16.19, `docs/platform-notes.md`).
-    pub async fn set_availability(&self, availability: &str) -> Result<(), CoreError> {
-        if !matches!(availability, "chat" | "away" | "offline") {
+    /// `chat`, `away` or `offline`, the states the client offers itself, or `mobile`, the phone
+    /// app's, which the desktop client keeps and shows as 在线分组. A request for `dnd` is ignored:
+    /// the client marks games on its own (measured on 16.19, `docs/platform-notes.md`). With the
+    /// mobile message on, the status message follows the state (`profile::mobile_message_for`).
+    /// Returns the presence afterwards.
+    pub async fn set_availability(&self, availability: &str) -> Result<Presence, CoreError> {
+        if !PresenceRule::AVAILABILITIES.contains(&availability) {
             return Err(CoreError::Invalid(format!(
                 "unknown availability {availability}"
             )));
         }
         let lcu = self.client()?.lcu;
-        lcu.put("/lol-chat/v1/me", &json!({ "availability": availability }))
+        lcu.put(CHAT_ME, &json!({ "availability": availability }))
             .await?;
         // The client answers 201 to a state it then declines; only reading back tells.
-        let me: ChatMe = lcu.get("/lol-chat/v1/me").await?;
+        let me: ChatMe = lcu.get(CHAT_ME).await?;
         if me.availability != availability {
             return Err(CoreError::Invalid(format!(
                 "the client kept {} instead of {availability}",
                 me.availability
             )));
         }
-        Ok(())
+        if !self.settings().profile.presence.mobile_message {
+            return Ok(presence_of(me));
+        }
+        follow_mobile_message(&lcu, me, true).await
+    }
+
+    /// Brings the status message in line with the mobile-message switch as it is now: the message
+    /// for the mobile state where the client shows that state with none, nothing where winer's no
+    /// longer belongs. Returns the presence afterwards.
+    pub async fn apply_mobile_message(&self) -> Result<Presence, CoreError> {
+        let on = self.settings().profile.presence.mobile_message;
+        let lcu = self.client()?.lcu;
+        let me: ChatMe = lcu.get(CHAT_ME).await?;
+        follow_mobile_message(&lcu, me, on).await
     }
 
     pub async fn set_status_message(&self, message: &str) -> Result<(), CoreError> {
         self.client()?
             .lcu
-            .put("/lol-chat/v1/me", &json!({ "statusMessage": message }))
+            .put(CHAT_ME, &json!({ "statusMessage": message }))
             .await?;
         Ok(())
     }
 
     pub async fn presence(&self) -> Result<Presence, CoreError> {
-        let me: ChatMe = self.client()?.lcu.get("/lol-chat/v1/me").await?;
-        Ok(Presence {
-            availability: me.availability,
-            status_message: me.status_message,
-        })
+        let me: ChatMe = self.client()?.lcu.get(CHAT_ME).await?;
+        Ok(presence_of(me))
     }
 
     /// Sends the champ-select callout now, to `audience` or the configured one. Returns the number
@@ -436,8 +553,9 @@ impl Service {
         Ok(lines.len() as u32)
     }
 
-    /// What each Hextech ARAM augment does, from ARAM.GG, once per run and language; nothing while
-    /// the user has switched it off. A failure is not cached, so the next view tries again.
+    /// What each Hextech ARAM augment does, from ARAM.GG, once per language and half a day
+    /// (`caches::AUGMENT_DETAILS_TTL`); nothing while the user has switched it off. A failure is
+    /// not cached, so the next view tries again.
     pub async fn augment_details(&self) -> Result<Arc<Vec<AugmentDetail>>, CoreError> {
         let general = self.settings().general;
         if !general.augment_details {
@@ -445,7 +563,9 @@ impl Service {
         }
         // Held across the fetch: two views asking at once make one request.
         let mut cache = self.inner.augment_details.lock().await;
-        if let Some(details) = cache.get(&general.language) {
+        if let Some((at, details)) = cache.get(&general.language)
+            && at.elapsed() < caches::AUGMENT_DETAILS_TTL
+        {
             return Ok(details.clone());
         }
         let details = Arc::new(
@@ -454,7 +574,7 @@ impl Service {
                 .map_err(CoreError::Remote)?,
         );
         info!(count = details.len(), "augment descriptions loaded");
-        cache.insert(general.language, details.clone());
+        cache.insert(general.language, (Instant::now(), details.clone()));
         Ok(details)
     }
 
@@ -591,6 +711,8 @@ impl Service {
             Patch::Phase(value) => replace(&mut state.phase, value),
             Patch::ChampSelect(value) => replace(&mut state.champ_select, value),
             Patch::Game(value) => replace(&mut state.game, value),
+            Patch::Friends(value) => replace(&mut state.friends, value),
+            Patch::Lobby(value) => replace(&mut state.lobby, value),
         };
         if changed {
             state.rev += 1;
@@ -623,6 +745,8 @@ impl Service {
                 Patch::Phase(Phase::None),
                 Patch::ChampSelect(None),
                 Patch::Game(None),
+                Patch::Friends(None),
+                Patch::Lobby(None),
             ] {
                 self.patch(patch);
             }
@@ -664,7 +788,7 @@ impl Service {
         let summoner = wait_until_ready(&lcu).await?;
         let mut events = lcu::subscribe(&credentials, SUBSCRIPTIONS).await?;
         let platform_id = lcu
-            .get::<ChatMe>("/lol-chat/v1/me")
+            .get::<ChatMe>(CHAT_ME)
             .await
             .map(|me| me.platform_id)
             .unwrap_or_default();
@@ -694,6 +818,9 @@ impl Service {
         if let Ok(phase) = client.lcu.get::<String>(PHASE).await {
             self.on_phase(&client, Phase::parse(&phase)).await;
         }
+        // A client starting up resets the status; winer's disguise is not there yet either.
+        self.open_presence_window(&client);
+        self.follow_friends(&client);
 
         while let Some(event) = events.next().await {
             let event = event?;
@@ -703,6 +830,10 @@ impl Service {
                 event.data
             };
             match event.uri.as_str() {
+                // Social: a friend's presence, or the list itself.
+                uri if uri.starts_with(FRIENDS) => self.on_friends_event(&client, uri, data),
+                LOBBY => self.on_lobby(&client, decode(data)),
+                uri if uri.starts_with(LOBBY_MEMBERS) => self.reload_lobby(&client),
                 PHASE => {
                     self.on_phase(&client, data.as_str().map_or(Phase::None, Phase::parse))
                         .await
@@ -720,6 +851,7 @@ impl Service {
                         self.set_me(&client, summoner).await;
                     }
                 }
+                CHAT_ME => self.on_chat_me(&client, decode(data)),
                 _ => {}
             }
         }
@@ -734,6 +866,7 @@ impl Service {
             .ok()
             .flatten();
         lock(&client.live).me = summoner.puuid.clone();
+        self.scope_account(&summoner.puuid);
         self.patch(Patch::Me(Some(Me {
             name: analysis::riot_id(&summoner),
             puuid: summoner.puuid,
@@ -753,6 +886,10 @@ impl Service {
                 let complete = !data.champions.is_empty() && !data.queues.is_empty();
                 *lock(&client.data) = Some(Arc::new(data));
                 let _ = service.inner.events.send(Event::GameData);
+                // Friends' modes are named from the catalog's queues.
+                service.render_friends(&client);
+                // History: so are the games form leaves out, which ratings shown before need.
+                service.render(&client);
                 if complete {
                     return;
                 }
@@ -762,8 +899,15 @@ impl Service {
     }
 
     async fn on_phase(&self, client: &Client, phase: Phase) {
-        lock(&client.live).phase = phase;
+        let previous = std::mem::replace(&mut lock(&client.live).phase, phase);
+        if game_over(previous, phase) {
+            self.forget_newest(client);
+        }
         self.patch(Patch::Phase(phase));
+        if profile::after_a_game(previous, phase) {
+            self.open_presence_window(client);
+        }
+        self.loadout_phase(client, phase);
         if phase != Phase::ChampSelect {
             self.on_champ_select(client, None);
         }
@@ -789,6 +933,14 @@ impl Service {
                 self.patch(Patch::Game(None));
             }
             _ => {}
+        }
+        // The lobby shows only in some phases; it may also have formed before the subscription.
+        if live::shows_lobby(phase) {
+            if let Ok(lobby) = client.lcu.get_optional::<Lobby>(LOBBY).await {
+                self.on_lobby(client, lobby);
+            }
+        } else {
+            self.render_lobby(client);
         }
     }
 
@@ -866,6 +1018,7 @@ impl Service {
         }
         self.render(client);
         self.automate(client);
+        self.loadout_champ_select(client, &session);
     }
 
     fn on_gameflow(&self, client: &Client, session: Option<GameflowSession>) {
@@ -895,12 +1048,13 @@ impl Service {
     /// Rebuilds the champ select and game views from the last sessions and the stats known now,
     /// and sends the automatic callout once its lines are final.
     fn render(&self, client: &Client) {
-        let (champ_select, gameflow, me) = {
+        let (champ_select, gameflow, me, party) = {
             let live = lock(&client.live);
             (
                 live.champ_select.clone(),
                 live.gameflow.clone(),
                 live.me.clone(),
+                live.party.clone(),
             )
         };
         let settings = self.settings();
@@ -915,6 +1069,7 @@ impl Service {
             mode = queue.map(QueueInfo::mode);
             let game_mode = queue.map_or("", |queue| queue.game_mode.as_str());
             let mut view = live::champ_select_view(&session, stats, &ranking, game_mode);
+            live::mark_party(&mut view.my_team, &party);
             let champion = |id: i64| {
                 data.as_ref()?
                     .champions
@@ -938,8 +1093,25 @@ impl Service {
             self.call_out(client, lines, rule.audience);
         }
         if let Some(session) = gameflow {
-            self.patch(Patch::Game(live::game_view(&session, &me, stats, &ranking)));
+            let mut view = live::game_view(&session, &me, stats, &ranking);
+            // Callout: the lines the shortcut types into the game's chat, both teams by champion.
+            if let Some(view) = view.as_mut() {
+                let data = lock(&client.data).clone();
+                let champion = |id: i64| {
+                    data.as_ref()?
+                        .champions
+                        .iter()
+                        .find(|champion| champion.id == id)
+                        .map(|champion| champion.short_name.clone())
+                };
+                view.callout = callout::game_lines(view, rule, language, champion);
+                // The team's own lines, by champion.
+                view.ally_callout = callout::ally_lines(view, rule, language, champion);
+            }
+            self.patch(Patch::Game(view));
         }
+        // The lobby's members wait for the same stats.
+        self.render_lobby(client);
     }
 
     fn call_out(&self, client: &Client, lines: Vec<String>, audience: Audience) {
@@ -976,48 +1148,60 @@ impl Service {
     }
 
     fn player_stats(&self, puuid: &str) -> PlayerStats {
-        match lock(&self.inner.players).get(puuid) {
-            Some(PlayerEntry::Ready(summary, _)) => {
-                PlayerStats::Ready(Box::new((**summary).clone()))
+        let record = match lock(&self.inner.players).get(puuid) {
+            Some(PlayerEntry::Ready(record, _)) => record.clone(),
+            Some(PlayerEntry::Failed(message, _)) => {
+                return PlayerStats::Failed {
+                    message: message.clone(),
+                };
             }
-            Some(PlayerEntry::Failed(message, _)) => PlayerStats::Failed {
-                message: message.clone(),
-            },
-            Some(PlayerEntry::Loading) | None => PlayerStats::Loading,
-        }
+            Some(PlayerEntry::Loading) | None => return PlayerStats::Loading,
+        };
+        PlayerStats::Ready(Box::new(self.summarize(&record)))
     }
 
     fn ensure_player(&self, client: &Client, puuid: String) {
+        let me = lock(&client.live).me.clone();
+        self.scope_account(&me);
+        let shown = caches::players_shown(client);
         {
             let mut players = lock(&self.inner.players);
             let fresh = match players.get(&puuid) {
                 Some(PlayerEntry::Loading) => true,
-                Some(PlayerEntry::Ready(_, at)) => at.elapsed() < PLAYER_TTL,
+                Some(entry @ PlayerEntry::Ready(..)) => entry.fresh(PLAYER_TTL).is_some(),
                 Some(PlayerEntry::Failed(_, at)) => at.elapsed() < FAILED_PLAYER_TTL,
                 None => false,
             };
             if fresh {
                 return;
             }
-            if players.len() > 500 {
-                players.retain(|_, entry| matches!(entry, PlayerEntry::Ready(_, at) if at.elapsed() < PLAYER_TTL));
-            }
             players.insert(puuid.clone(), PlayerEntry::Loading);
+            caches::trim_players(&mut players, &shown, Instant::now());
         }
         let (service, client) = (self.clone(), client.clone());
         self.spawn(async move {
             let entry = {
                 let _slot = service.inner.player_slots.acquire().await;
-                let me = lock(&client.live).me.clone();
-                match load_summary(&client.lcu, &puuid, &me).await {
-                    Ok(summary) => PlayerEntry::Ready(Arc::new(summary), Instant::now()),
+                match load_record(&client.lcu, &puuid, &me).await {
+                    Ok(record) => PlayerEntry::Ready(Arc::new(record), Some(Instant::now())),
                     Err(error) => {
                         debug!(%error, "player stats unavailable");
                         PlayerEntry::Failed(error.to_string(), Instant::now())
                     }
                 }
             };
-            lock(&service.inner.players).insert(puuid, entry);
+            let current = service.same_account(&client, &me).is_ok();
+            let shown = caches::players_shown(&client);
+            {
+                let mut players = lock(&service.inner.players);
+                if current {
+                    players.insert(puuid, entry);
+                    caches::trim_players(&mut players, &shown, Instant::now());
+                } else if matches!(players.get(&puuid), Some(PlayerEntry::Loading)) {
+                    // Fetched for an account that has signed out since: the next one asks again.
+                    players.remove(&puuid);
+                }
+            }
             service.render(&client);
         });
     }
@@ -1230,6 +1414,786 @@ impl Service {
     }
 }
 
+// ---- Profile: background, challenges, the presence winer keeps, game-settings backups --------
+
+const PROFILE: &str = "/lol-summoner/v1/current-summoner/summoner-profile";
+const CHALLENGES: &str = "/lol-challenges/v1/challenges/local-player";
+const CHALLENGE_SUMMARY: &str = "/lol-challenges/v1/summary-player-data/local-player";
+const TITLES: &str = "/lol-challenges/v2/titles/local-player";
+/// The tokens, the title and the banner (`bannerAccent`) the profile shows.
+const PREFERENCES: &str = "/lol-challenges/v1/update-player-preferences";
+/// Every banner there is, owned or not.
+const BANNERS: &str = "/lol-regalia/v3/inventory/REGALIA_BANNER";
+/// How the banner is drawn: plain, or in the tier of last season's rank.
+const REGALIA: &str = "/lol-regalia/v2/current-summoner/regalia";
+/// A change to the profile is the server's to accept: winer reads it back this many times, this
+/// far apart, before taking the answer as final.
+const READ_BACK_ATTEMPTS: u32 = 4;
+const READ_BACK_GAP: Duration = Duration::from_millis(400);
+/// The client sends a burst of presence changes when it resets one; a correction waits it out.
+const PRESENCE_SETTLE: Duration = Duration::from_millis(1500);
+
+impl Service {
+    /// Every skin of every champion, owned or not, for the background picker.
+    pub async fn skins(&self) -> Result<Vec<SkinChoice>, CoreError> {
+        let lcu = self.client()?.lcu;
+        let summoner: Summoner = lcu.get(SUMMONER).await?;
+        let listed = lcu
+            .get(&format!(
+                "/lol-champions/v1/inventories/{}/skins-minimal",
+                summoner.summoner_id
+            ))
+            .await?;
+        Ok(profile::skins(listed))
+    }
+
+    /// The skin behind the profile; `None` while the player has chosen none.
+    pub async fn profile_background(&self) -> Result<Option<i64>, CoreError> {
+        let profile: SummonerProfile = self.client()?.lcu.get(PROFILE).await?;
+        Ok(profile.background())
+    }
+
+    /// Sets the profile background and returns what the client reports afterwards, which is still
+    /// the old one when the server refused the skin (one the player does not own, say).
+    pub async fn set_profile_background(&self, skin_id: i64) -> Result<Option<i64>, CoreError> {
+        if skin_id <= 0 {
+            return Err(CoreError::Invalid(format!("{skin_id} is not a skin")));
+        }
+        let lcu = self.client()?.lcu;
+        lcu.post(PROFILE, &profile::background_request(skin_id))
+            .await?;
+        let mut shown = None;
+        for attempt in 0..READ_BACK_ATTEMPTS {
+            if attempt > 0 {
+                sleep(READ_BACK_GAP).await;
+            }
+            shown = lcu.get::<SummonerProfile>(PROFILE).await?.background();
+            if shown == Some(skin_id) {
+                break;
+            }
+        }
+        Ok(shown)
+    }
+
+    /// The tokens, title and banner the profile shows, and every one it could.
+    pub async fn challenge_profile(&self) -> Result<ChallengeProfile, CoreError> {
+        let lcu = self.client()?.lcu;
+        let choices = challenge_choices(&lcu).await?;
+        let (summary, regalia) = tokio::join!(
+            lcu.get::<ChallengeSummary>(CHALLENGE_SUMMARY),
+            regalia(&lcu)
+        );
+        Ok(choices.profile(&summary?, &regalia))
+    }
+
+    /// Shows `tokens` in the profile's slots, left to right, `title` when given and `banner` when
+    /// given (empty for the default), then returns what the client reports, which is the request
+    /// only where the server took it. The banner goes out as the client's own customizer sends it:
+    /// in the preferences, and in the regalia where it changes how the banner is drawn.
+    pub async fn set_challenge_profile(
+        &self,
+        tokens: Vec<i64>,
+        title: Option<i64>,
+        banner: Option<String>,
+    ) -> Result<ChallengeProfile, CoreError> {
+        profile::check_tokens(&tokens).map_err(CoreError::Invalid)?;
+        if title.is_some_and(|id| id <= 0) {
+            return Err(CoreError::Invalid("not a title".into()));
+        }
+        if let Some(banner) = &banner {
+            profile::check_banner(banner).map_err(CoreError::Invalid)?;
+        }
+        let lcu = self.client()?.lcu;
+        lcu.post(
+            PREFERENCES,
+            &profile::preferences_request(&tokens, title, banner.as_deref()),
+        )
+        .await?;
+        if let Some(banner) = &banner
+            && let Some(body) = profile::regalia_request(&regalia(&lcu).await, banner)
+        {
+            lcu.put(REGALIA, &body).await?;
+        }
+        let choices = challenge_choices(&lcu).await?;
+        let mut shown = None;
+        for attempt in 0..READ_BACK_ATTEMPTS {
+            if attempt > 0 {
+                sleep(READ_BACK_GAP).await;
+            }
+            let (summary, regalia) = tokio::join!(
+                lcu.get::<ChallengeSummary>(CHALLENGE_SUMMARY),
+                regalia(&lcu)
+            );
+            let profile = choices.profile(&summary?, &regalia);
+            let done = profile::shows(&profile, &tokens, title, banner.as_deref());
+            shown = Some(profile);
+            if done {
+                break;
+            }
+        }
+        Ok(shown.expect("read at least once"))
+    }
+
+    /// Acts on a change to what winer keeps in the chat presence. A disguise switched off comes
+    /// off at once, anything still on is checked again, and the client's refusals are counted
+    /// afresh.
+    fn on_profile_settings(
+        &self,
+        client: &Client,
+        before: &ProfileSettings,
+        after: &ProfileSettings,
+    ) {
+        if before == after {
+            return;
+        }
+        lock(&client.live).presence.reset();
+        let (was, now) = (&before.rank_disguise, &after.rank_disguise);
+        if was.enabled && !now.enabled {
+            let (service, client, was) = (self.clone(), client.clone(), was.clone());
+            self.spawn(async move {
+                if let Err(error) = service.undisguise(&client, &was).await {
+                    service.notice(NoticeKind::Failed {
+                        action: "rankDisguise".into(),
+                        message: error.to_string(),
+                    });
+                }
+            });
+        } else if now.enabled || after.presence.remember {
+            // A changed rule is tried afresh, also after winer gave up on the old one.
+            self.keep_presence(client);
+        }
+    }
+
+    /// Takes the disguise `was` off the presence: the client's own rank back where winer saw it,
+    /// the keys taken out where it never did. A client that merges `lol` keeps a key taken out,
+    /// so where the disguise is still there afterwards the keys are emptied instead.
+    async fn undisguise(
+        &self,
+        client: &Client,
+        was: &settings::RankDisguise,
+    ) -> Result<(), CoreError> {
+        let me: ChatMe = client.lcu.get(CHAT_ME).await?;
+        let (ours, real) = {
+            let live = lock(&client.live);
+            (live.presence.ours(was), live.presence.real().cloned())
+        };
+        let Some(body) = profile::undisguise(&me.lol, &ours, real.as_ref()) else {
+            return Ok(());
+        };
+        client.lcu.put(CHAT_ME, &body).await?;
+        let after: ChatMe = client.lcu.get(CHAT_ME).await?;
+        if profile::undisguise(&after.lol, &ours, None).is_some() {
+            debug!("the client kept the disguised rank keys; emptying them");
+            client
+                .lcu
+                .put(CHAT_ME, &profile::blank_rank(&after.lol))
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// The client starts up and comes out of a game with its own status: for a while, put the
+    /// remembered one back, and the disguise whenever it is missing.
+    fn open_presence_window(&self, client: &Client) {
+        lock(&client.live).presence.open_window(Instant::now());
+        let profile = self.settings().profile;
+        if profile.presence.remember || profile.rank_disguise.enabled {
+            self.keep_presence(client);
+        }
+    }
+
+    /// The chat presence changed: learns the client's own rank from it, and corrects it if the
+    /// client reset what winer keeps there.
+    fn on_chat_me(&self, client: &Client, me: Option<ChatMe>) {
+        let Some(me) = me else {
+            return;
+        };
+        let settings = self.settings().profile;
+        let disguise = settings
+            .rank_disguise
+            .enabled
+            .then_some(&settings.rank_disguise);
+        let needed = {
+            let mut live = lock(&client.live);
+            let phase = live.phase;
+            live.presence.observe(&me.lol, disguise);
+            live.presence
+                .plan(&me, &settings, phase, Instant::now())
+                .is_some()
+        };
+        if needed {
+            self.keep_presence(client);
+        }
+    }
+
+    /// Corrects the presence once the client has settled, from a fresh reading, one correction
+    /// at a time.
+    fn keep_presence(&self, client: &Client) {
+        if std::mem::replace(&mut lock(&client.live).presence.scheduled, true) {
+            return;
+        }
+        let (service, client) = (self.clone(), client.clone());
+        self.spawn(async move {
+            sleep(PRESENCE_SETTLE).await;
+            lock(&client.live).presence.scheduled = false;
+            if let Err(error) = service.correct_presence(&client).await {
+                debug!(%error, "chat presence not corrected");
+            }
+        });
+    }
+
+    async fn correct_presence(&self, client: &Client) -> Result<(), CoreError> {
+        let me: ChatMe = client.lcu.get(CHAT_ME).await?;
+        let settings = self.settings().profile;
+        let disguise = settings
+            .rank_disguise
+            .enabled
+            .then_some(&settings.rank_disguise);
+        let outcome: Option<(Admit, Fix)> = {
+            let mut live = lock(&client.live);
+            let phase = live.phase;
+            let keeper = &mut live.presence;
+            keeper.observe(&me.lol, disguise);
+            keeper
+                .plan(&me, &settings, phase, Instant::now())
+                .map(|fix| {
+                    let admit = keeper.admit(Instant::now());
+                    if admit == Admit::Send {
+                        keeper.sent(&fix);
+                    }
+                    (admit, fix)
+                })
+        };
+        match outcome {
+            Some((Admit::Send, fix)) => {
+                client.lcu.put(CHAT_ME, &fix.body).await?;
+                if let Some(availability) = fix.availability {
+                    self.notice(NoticeKind::PresenceRestored { availability });
+                }
+            }
+            Some((Admit::GiveUp, _)) => {
+                warn!("the client keeps undoing the chat presence winer keeps; stopped");
+                self.notice(NoticeKind::PresenceRefused);
+            }
+            Some((Admit::Stopped, _)) | None => {}
+        }
+        Ok(())
+    }
+
+    /// Names the folder snapshots of the game's settings are kept in. Once; later calls are ignored.
+    pub fn set_backup_dir(&self, dir: impl Into<PathBuf>) {
+        let _ = self.inner.backups.set(dir.into());
+    }
+
+    fn backup_dir(&self) -> Result<&Path, CoreError> {
+        self.inner
+            .backups
+            .get()
+            .map(PathBuf::as_path)
+            .ok_or_else(|| CoreError::Invalid("there is no folder for settings backups".into()))
+    }
+
+    /// The snapshots kept, the newest first. Reads files: call it off the async runtime.
+    pub fn game_settings_backups(&self) -> Result<Vec<BackupInfo>, CoreError> {
+        list_backups(self.backup_dir()?)
+    }
+
+    /// Reads both halves of the game's settings into a new snapshot; the oldest beyond
+    /// [`backup::KEEP`] go.
+    pub async fn back_up_game_settings(&self) -> Result<BackupInfo, CoreError> {
+        let dir = self.backup_dir()?.to_owned();
+        let lcu = self.client()?.lcu;
+        game_settings_ready(&lcu).await?;
+        let (general, hotkeys) = tokio::join!(
+            lcu.get::<serde_json::Value>(backup::GAME_SETTINGS),
+            lcu.get::<serde_json::Value>(backup::INPUT_SETTINGS),
+        );
+        let (general, hotkeys) = (general?, hotkeys?);
+        let read =
+            |document: &serde_json::Value| document.as_object().is_some_and(|map| !map.is_empty());
+        if !read(&general) || !read(&hotkeys) {
+            return Err(CoreError::Invalid(
+                "the client has not loaded the game's settings yet".into(),
+            ));
+        }
+        let file = BackupFile::new(now_ms(), general, hotkeys);
+        off_runtime(move || store_backup(&dir, now_ms(), &file)).await
+    }
+
+    /// Puts `channels` of snapshot `id` back and has the client write them to the game's files.
+    /// Only outside a game, from the lobby or the home screen: the game reads its settings as it
+    /// starts, and its own settings screen would write over these.
+    pub async fn restore_game_settings(
+        &self,
+        id: i64,
+        channels: Vec<BackupChannel>,
+    ) -> Result<(), CoreError> {
+        let path = self.backup_dir()?.join(backup::file_name(id));
+        let lcu = self.client()?.lcu;
+        let phase: String = lcu.get(PHASE).await?;
+        if !matches!(Phase::parse(&phase), Phase::None | Phase::Lobby) {
+            return Err(CoreError::Busy(
+                "game settings are restored only outside a game: from the lobby or the home screen"
+                    .into(),
+            ));
+        }
+        let text = off_runtime(move || match fs::read_to_string(&path) {
+            Ok(text) => Ok(text),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                Err(CoreError::Invalid(format!("there is no backup {id}")))
+            }
+            Err(error) => Err(error.into()),
+        })
+        .await?;
+        let file = backup::parse(&text).map_err(CoreError::Invalid)?;
+        game_settings_ready(&lcu).await?;
+        for (path, document) in file.patches(&channels).map_err(CoreError::Invalid)? {
+            lcu.patch(path, document).await?;
+        }
+        lcu.post(backup::SAVE, &json!({})).await?;
+        Ok(())
+    }
+
+    /// Removes snapshot `id`; one already gone is no error. Writes files: call it off the runtime.
+    pub fn delete_game_settings_backup(&self, id: i64) -> Result<(), CoreError> {
+        let path = self.backup_dir()?.join(backup::file_name(id));
+        match fs::remove_file(path) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error.into()),
+            _ => Ok(()),
+        }
+    }
+
+    /// Keeps a snapshot brought in from a file as the newest one. Writes files: call it off the
+    /// runtime.
+    pub fn import_game_settings_backup(&self, text: &str) -> Result<BackupInfo, CoreError> {
+        let dir = self.backup_dir()?;
+        let file = backup::parse(text).map_err(CoreError::Invalid)?;
+        store_backup(dir, now_ms(), &file)
+    }
+
+    /// The file snapshot `id` is kept in, for the shell to show in the file manager.
+    pub fn game_settings_backup_path(&self, id: i64) -> Result<PathBuf, CoreError> {
+        let path = self.backup_dir()?.join(backup::file_name(id));
+        if path.is_file() {
+            Ok(path)
+        } else {
+            Err(CoreError::Invalid(format!("there is no backup {id}")))
+        }
+    }
+}
+
+fn presence_of(me: ChatMe) -> Presence {
+    Presence {
+        availability: me.availability,
+        status_message: me.status_message,
+    }
+}
+
+/// Puts up or takes down the mobile state's message on `me`, the presence just read, as
+/// `profile::mobile_message_for` says under `on`; returns the presence the client reports.
+async fn follow_mobile_message(lcu: &Lcu, me: ChatMe, on: bool) -> Result<Presence, CoreError> {
+    let Some(message) = profile::mobile_message_for(&me.availability, &me.status_message, on)
+    else {
+        return Ok(presence_of(me));
+    };
+    lcu.put(CHAT_ME, &json!({ "statusMessage": message }))
+        .await?;
+    Ok(presence_of(lcu.get(CHAT_ME).await?))
+}
+
+/// What the profile can show of challenges: the challenges with their levels, the titles and the
+/// banners. Titles and banners are left out where the client does not list them.
+async fn challenge_choices(lcu: &Lcu) -> Result<ChallengeChoices, CoreError> {
+    let (challenges, titles, banners) = tokio::join!(
+        lcu.get::<HashMap<String, ClientChallenge>>(CHALLENGES),
+        lcu.get::<Vec<ClientTitle>>(TITLES),
+        lcu.get::<HashMap<String, ClientBanner>>(BANNERS),
+    );
+    let titles = titles.unwrap_or_else(|error| {
+        debug!(%error, "titles unavailable");
+        Vec::new()
+    });
+    let banners = banners.unwrap_or_else(|error| {
+        debug!(%error, "banners unavailable");
+        HashMap::new()
+    });
+    Ok(ChallengeChoices {
+        challenges: challenges?,
+        titles,
+        banners,
+    })
+}
+
+struct ChallengeChoices {
+    challenges: HashMap<String, ClientChallenge>,
+    titles: Vec<ClientTitle>,
+    banners: HashMap<String, ClientBanner>,
+}
+
+impl ChallengeChoices {
+    fn profile(&self, summary: &ChallengeSummary, regalia: &Regalia) -> ChallengeProfile {
+        profile::challenge_profile(
+            &self.challenges,
+            summary,
+            &self.titles,
+            &self.banners,
+            regalia,
+        )
+    }
+}
+
+/// The regalia, or nothing known of it where the client does not say: the banner is then read
+/// from the challenge summary alone.
+async fn regalia(lcu: &Lcu) -> Regalia {
+    lcu.get(REGALIA).await.unwrap_or_else(|error| {
+        debug!(%error, "regalia unavailable");
+        Regalia::default()
+    })
+}
+
+/// Refuses while the client has not read the game's settings yet, as it may not have just after it
+/// started. A client without the endpoint is taken as ready. Not `Busy`: the window words that one
+/// as "not during a game".
+async fn game_settings_ready(lcu: &Lcu) -> Result<(), CoreError> {
+    match lcu.get::<bool>(backup::READY).await {
+        Ok(false) => Err(CoreError::Invalid(
+            "the client has not loaded the game's settings yet; try again in a moment".into(),
+        )),
+        Ok(true) => Ok(()),
+        Err(error) => {
+            debug!(%error, "no game-settings readiness; going ahead");
+            Ok(())
+        }
+    }
+}
+
+/// File work, on the blocking pool.
+async fn off_runtime<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, CoreError> + Send + 'static,
+) -> Result<T, CoreError> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|error| CoreError::Io(io::Error::other(error)))?
+}
+
+/// The snapshots in `dir`, by file name alone.
+fn backup_ids(dir: &Path) -> Result<Vec<i64>, CoreError> {
+    match fs::read_dir(dir) {
+        Ok(entries) => Ok(entries
+            .flatten()
+            .filter_map(|entry| entry.file_name().to_str().and_then(backup::id_of))
+            .collect()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+/// The snapshots in `dir`, the newest first. A file that is not one is passed over.
+fn list_backups(dir: &Path) -> Result<Vec<BackupInfo>, CoreError> {
+    let mut found = Vec::new();
+    for id in backup_ids(dir)? {
+        let path = dir.join(backup::file_name(id));
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        match backup::parse(&text) {
+            Ok(file) => found.push(file.info(id, text.len() as u64)),
+            Err(error) => debug!(%error, path = %path.display(), "not a settings backup"),
+        }
+    }
+    found.sort_by_key(|info| std::cmp::Reverse(info.id));
+    Ok(found)
+}
+
+/// Writes `file` as the newest snapshot in `dir` and removes the oldest beyond [`backup::KEEP`].
+fn store_backup(dir: &Path, now: i64, file: &BackupFile) -> Result<BackupInfo, CoreError> {
+    let mut ids = backup_ids(dir)?;
+    let id = backup::fresh_id(now, &ids);
+    let text = serde_json::to_string_pretty(file).expect("a backup serializes");
+    settings::write_atomic(&dir.join(backup::file_name(id)), text.as_bytes())?;
+    ids.push(id);
+    for old in backup::surplus(ids) {
+        if let Err(error) = fs::remove_file(dir.join(backup::file_name(old)))
+            && error.kind() != io::ErrorKind::NotFound
+        {
+            warn!(%error, old, "an old settings backup was not removed");
+        }
+    }
+    Ok(file.info(id, text.len() as u64))
+}
+
+// ---- Social: friends' games, the lobby, history asked for from the client ----
+
+impl Service {
+    /// The client's phase now, without copying the whole snapshot (the shell's hotkey asks it).
+    pub fn phase(&self) -> Phase {
+        lock(&self.inner.state).phase
+    }
+
+    /// Asks the shell to bring the window up on `puuid`'s history, for a click in the client.
+    pub fn open_history(&self, puuid: &str) -> Result<(), CoreError> {
+        segment(puuid)?;
+        let _ = self.inner.events.send(Event::OpenHistory {
+            puuid: puuid.to_owned(),
+        });
+        Ok(())
+    }
+
+    /// Whether `client` is still the connected one: background loops end with their connection.
+    fn is_current(&self, client: &Client) -> bool {
+        self.client()
+            .is_ok_and(|current| Arc::ptr_eq(&current.live, &client.live))
+    }
+
+    /// Reads the friends list now and again every [`FRIENDS_REFRESH`] while `client` stays
+    /// connected, every [`FRIENDS_RETRY`] until a read has succeeded; events keep it current in
+    /// between.
+    fn follow_friends(&self, client: &Client) {
+        let (service, client) = (self.clone(), client.clone());
+        self.spawn(async move {
+            loop {
+                match client.lcu.get::<Vec<Friend>>(FRIENDS).await {
+                    Ok(list) => {
+                        lock(&client.live).friends = Some(list);
+                        service.render_friends(&client);
+                    }
+                    Err(error) => debug!(%error, "friends list unavailable"),
+                }
+                let pause = match lock(&client.live).friends {
+                    Some(_) => FRIENDS_REFRESH,
+                    None => FRIENDS_RETRY,
+                };
+                sleep(pause).await;
+                if !service.is_current(&client) {
+                    return;
+                }
+            }
+        });
+    }
+
+    fn on_friends_event(&self, client: &Client, uri: &str, data: serde_json::Value) {
+        let due = {
+            let mut live = lock(&client.live);
+            let Some(list) = live.friends.as_mut() else {
+                // Before the first list: it is on its way and will hold this change too.
+                return;
+            };
+            if !friends::apply(list, uri, data) {
+                return;
+            }
+            !std::mem::replace(&mut live.friends_due, true)
+        };
+        if due {
+            let (service, client) = (self.clone(), client.clone());
+            self.spawn(async move {
+                sleep(FRIENDS_SETTLE).await;
+                lock(&client.live).friends_due = false;
+                service.render_friends(&client);
+            });
+        }
+    }
+
+    fn render_friends(&self, client: &Client) {
+        let Some(list) = lock(&client.live).friends.clone() else {
+            return;
+        };
+        let data = lock(&client.data).clone();
+        let queues = data
+            .as_deref()
+            .map_or(&[][..], |data| data.queues.as_slice());
+        self.patch(Patch::Friends(Some(friends::view(&list, queues))));
+    }
+
+    fn on_lobby(&self, client: &Client, lobby: Option<Lobby>) {
+        {
+            let mut live = lock(&client.live);
+            // A lobby gone keeps its party: champ select, which follows it, still needs it.
+            if let Some(lobby) = &lobby {
+                live.party = live::party_of(lobby);
+            }
+            live.lobby = lobby.clone();
+        }
+        for puuid in lobby.iter().flat_map(live::lobby_puuids) {
+            self.ensure_player(client, puuid);
+        }
+        self.render_lobby(client);
+    }
+
+    fn reload_lobby(&self, client: &Client) {
+        let (service, client) = (self.clone(), client.clone());
+        self.spawn(async move {
+            if let Ok(lobby) = client.lcu.get_optional::<Lobby>(LOBBY).await {
+                service.on_lobby(&client, lobby);
+            }
+        });
+    }
+
+    /// The lobby view, while the phase shows the lobby; the members' stats as known now.
+    fn render_lobby(&self, client: &Client) {
+        let (lobby, phase, me) = {
+            let live = lock(&client.live);
+            (live.lobby.clone(), live.phase, live.me.clone())
+        };
+        let view = lobby
+            .filter(|_| live::shows_lobby(phase))
+            .map(|lobby| live::lobby_view(&lobby, &me, |puuid| self.player_stats(puuid)));
+        self.patch(Patch::Lobby(view));
+    }
+}
+
+// ---- The callout's shortcut: what a press does, and what the shell made of it ----
+
+impl Service {
+    /// What the callout's shortcut does now (`callout::press`), from the views as drawn and the
+    /// settings as saved. The shell acts on it: champ select's lines go out through
+    /// [`Self::send_callout`], the game's are typed into the game's chat by the shell itself.
+    pub fn callout_press(&self) -> callout::Press {
+        let rule = self.settings().automation.callout;
+        let state = lock(&self.inner.state);
+        callout::press(
+            state.phase,
+            state.champ_select.as_ref(),
+            state.game.as_ref(),
+            &rule,
+        )
+    }
+
+    /// Puts what the shell did for the user, or could not do, in the activity feed: the shortcut
+    /// acts while the window may be hidden behind the game.
+    pub fn report(&self, kind: NoticeKind) {
+        self.notice(kind);
+    }
+
+    /// What one press of the callout's shortcut would type in the game under `rule` and `general`,
+    /// with the user's own form in every line (`callout::game_preview`); for the settings page.
+    pub async fn preview_game_callout(
+        &self,
+        rule: &CalloutRule,
+        general: &General,
+    ) -> Result<Vec<String>, CoreError> {
+        let client = self.client()?;
+        let me = lock(&client.live).me.clone();
+        let summary = self.player_summary(&me).await?;
+        let data = lock(&client.data).clone();
+        let champion = |id: i64| {
+            data.as_ref()?
+                .champions
+                .iter()
+                .find(|champion| champion.id == id)
+                .map(|champion| champion.short_name.clone())
+        };
+        Ok(callout::game_preview(&summary, rule, general, champion))
+    }
+}
+
+// ---- History: a player's record and standing, and the caches behind the history pages ----
+
+impl Service {
+    /// What `puuid`'s form counts, and the tier, title and quip it earns on its own under the
+    /// rating settings (`history::rate_alone`).
+    pub async fn player_standing(&self, puuid: &str) -> Result<PlayerStanding, CoreError> {
+        let record = self.player_record(puuid).await?;
+        let summary = self.summarize(&record);
+        let data = self.game_data().unwrap_or_default();
+        let settings = self.settings();
+        let rated = rate_alone(
+            &summary,
+            &callout::ranking(&settings.automation.callout, &settings.general),
+        );
+        Ok(PlayerStanding {
+            scope: analysis::form_scope(&record.summoner.puuid, &record.games, &data.kinds),
+            band: rated.as_ref().map(|(_, band)| *band),
+            rating: rated.map(|(rating, _)| rating),
+        })
+    }
+
+    /// `puuid`'s record, the one champ select and the window share. The window takes it while it
+    /// is as fresh as the newest page of games beside it (`history::NEWEST_TTL`), else fetches it,
+    /// so the form above a list never lags the list.
+    async fn player_record(&self, puuid: &str) -> Result<Arc<PlayerRecord>, CoreError> {
+        segment(puuid)?;
+        let client = self.client()?;
+        let me = lock(&client.live).me.clone();
+        self.scope_account(&me);
+        if let Some(record) = lock(&self.inner.players)
+            .get(puuid)
+            .and_then(|entry| entry.fresh(NEWEST_TTL))
+        {
+            return Ok(record.clone());
+        }
+        let record = Arc::new(load_record(&client.lcu, puuid, &me).await?);
+        self.same_account(&client, &me)?;
+        let shown = caches::players_shown(&client);
+        let mut players = lock(&self.inner.players);
+        players.insert(
+            puuid.to_owned(),
+            PlayerEntry::Ready(record.clone(), Some(Instant::now())),
+        );
+        caches::trim_players(&mut players, &shown, Instant::now());
+        Ok(record)
+    }
+
+    /// A record's summary under the catalog as it is now.
+    fn summarize(&self, record: &PlayerRecord) -> PlayerSummary {
+        let data = self.game_data().unwrap_or_default();
+        analysis::summary(
+            &record.summoner,
+            record.ranked.as_ref(),
+            &record.games,
+            &data.kinds,
+        )
+    }
+
+    /// Makes every cache the signed-in account's: another account's pages, games, lookups and
+    /// players' records go, so nothing fetched for one is shown to the next.
+    fn scope_account(&self, me: &str) {
+        if lock(&self.inner.history).scope(me) {
+            lock(&self.inner.players).clear();
+        }
+    }
+
+    /// Refuses an answer fetched for an account that has signed out since.
+    fn same_account(&self, client: &Client, me: &str) -> Result<(), CoreError> {
+        if self.is_current(client) && lock(&client.live).me == me {
+            Ok(())
+        } else {
+            Err(CoreError::Busy("the signed-in account changed".into()))
+        }
+    }
+
+    /// A game just ended: the local player and everyone in it have a new game in their history, so
+    /// their newest pages and records are asked for again. A view showing them keeps the record it
+    /// has until the new one arrives.
+    fn forget_newest(&self, client: &Client) {
+        let played: Vec<String> = {
+            let live = lock(&client.live);
+            std::iter::once(live.me.clone())
+                .chain(live.gameflow.iter().flat_map(live::game_puuids))
+                .collect()
+        };
+        lock(&self.inner.history).expire_newest(played.iter().map(String::as_str));
+        let mut players = lock(&self.inner.players);
+        for puuid in &played {
+            if let Some(PlayerEntry::Ready(_, at)) = players.get_mut(puuid) {
+                *at = None;
+            }
+        }
+    }
+}
+
+/// A step out of a game that was played, its stats and its end screen included: somewhere along
+/// it the game lands in its players' histories.
+fn game_over(previous: Phase, phase: Phase) -> bool {
+    let played = |phase: Phase| {
+        phase.in_game()
+            || matches!(
+                phase,
+                Phase::WaitingForStats | Phase::PreEndOfGame | Phase::EndOfGame
+            )
+    };
+    previous != phase && played(previous) && !phase.in_game()
+}
+
 /// The id of champ select's chat room, once it is open.
 async fn champ_select_chat(lcu: &Lcu) -> Result<Option<String>, CoreError> {
     let conversations: Vec<Conversation> = lcu.get("/lol-chat/v1/conversations").await?;
@@ -1298,6 +2262,57 @@ fn queue_mode(client: &Client, queue_id: i64) -> Option<Mode> {
 /// The kind of game a gameflow session's queue is; `None` while it names none.
 fn gameflow_mode(queue: &GameQueue) -> Option<Mode> {
     (!queue.game_mode.is_empty()).then(|| Mode::of(&queue.game_mode, queue.is_ranked))
+}
+
+/// One page of `puuid`'s history from wherever the shard keeps it, and whether it is worth keeping:
+/// a Tencent client standing in for its shard's server is asked again next time, in case the
+/// server is back.
+async fn fetch_history(
+    client: &Client,
+    puuid: &str,
+    me: &str,
+    begin: u32,
+    count: u32,
+) -> Result<(HistoryPage, bool), CoreError> {
+    match server_history(client, puuid, begin, count).await {
+        Some(Ok(page)) => {
+            let more = page.entries.len() as u32 >= count;
+            let entries = page
+                .entries
+                .into_iter()
+                .map(|entry| entry.map(Arc::new))
+                .collect();
+            let page = HistoryPage {
+                entries,
+                more,
+                source: HistorySource::Server,
+            };
+            return Ok((page, true));
+        }
+        Some(Err(error)) if begin > 0 => return Err(error),
+        Some(Err(error)) => warn!(%error, "no match-history server, showing the client's own"),
+        None => {}
+    }
+    let tencent = sgp::base(&client.platform_id).is_some() || client.platform_id.is_empty();
+    if tencent && begin > 0 {
+        // The client's window is the first page, whatever range is asked.
+        let page = HistoryPage {
+            entries: Vec::new(),
+            more: false,
+            source: HistorySource::Client,
+        };
+        return Ok((page, false));
+    }
+    let games = history(&client.lcu, puuid, me, begin, count)
+        .await?
+        .games
+        .games;
+    let page = HistoryPage {
+        more: !tencent && games.len() as u32 >= count,
+        entries: games.into_iter().map(|game| Some(Arc::new(game))).collect(),
+        source: HistorySource::Client,
+    };
+    Ok((page, !tencent))
 }
 
 /// One page from the shard's match-history server, with the client's own access token for it;
@@ -1379,13 +2394,14 @@ fn history_paths(
     Ok((page(segment(puuid)?), fallback))
 }
 
-async fn load_summary(lcu: &Lcu, puuid: &str, me: &str) -> Result<PlayerSummary, CoreError> {
+async fn load_record(lcu: &Lcu, puuid: &str, me: &str) -> Result<PlayerRecord, CoreError> {
     let summoner_path = format!("/lol-summoner/v2/summoners/puuid/{}", segment(puuid)?);
     let ranked_path = format!("/lol-ranked/v1/ranked-stats/{puuid}");
     let (summoner, ranked, history) = tokio::join!(
         lcu.get::<Summoner>(&summoner_path),
         lcu.get_optional::<RankedStats>(&ranked_path),
-        // Wider than the form's twenty, so custom games (left out of form) do not shrink it.
+        // Wider than the form's twenty, so games form leaves out do not shrink it where the client
+        // has more (a Tencent client answers with what it holds whatever the range).
         history(lcu, puuid, me, 0, 30),
     );
     let summoner = summoner?;
@@ -1393,12 +2409,11 @@ async fn load_summary(lcu: &Lcu, puuid: &str, me: &str) -> Result<PlayerSummary,
         debug!(%error, "match history unavailable");
     }
     // A private profile refuses history and rank; the identity alone is still worth showing.
-    let games = history.map(|list| list.games.games).unwrap_or_default();
-    Ok(analysis::summary(
-        &summoner,
-        ranked.ok().flatten().as_ref(),
-        &games,
-    ))
+    Ok(PlayerRecord {
+        summoner,
+        ranked: ranked.ok().flatten(),
+        games: history.map(|list| list.games.games).unwrap_or_default(),
+    })
 }
 
 /// Rejects anything that could change the meaning of the URL it is placed in.
@@ -1580,6 +2595,111 @@ mod tests {
         );
     }
 
+    /// A connection whose client never answers (port 1): enough for what the views do with the
+    /// state they are handed.
+    fn quiet_client(phase: Phase) -> Client {
+        let credentials = Credentials::new(1, "t");
+        Client {
+            lcu: Lcu::new(&credentials).unwrap(),
+            credentials,
+            platform_id: String::new(),
+            data: Arc::default(),
+            live: Arc::new(Mutex::new(Live {
+                phase,
+                me: "me".into(),
+                ..Live::default()
+            })),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_burst_of_friend_events_becomes_one_view_once_they_settle() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        let client = quiet_client(Phase::None);
+        let playing = |puuid: &str| {
+            json!({"id": format!("{puuid}@h"), "puuid": puuid, "gameName": puuid, "availability": "dnd",
+                   "lol": {"gameStatus": "inProgress", "gameId": "42", "queueId": "450", "timeStamp": "1"}})
+        };
+        service.on_friends_event(&client, "/lol-chat/v1/friends/a@h", playing("a"));
+        assert_eq!(
+            service.snapshot().friends,
+            None,
+            "nothing is drawn before the first list"
+        );
+
+        lock(&client.live).friends = Some(Vec::new());
+        let mut events = service.subscribe();
+        service.on_friends_event(&client, "/lol-chat/v1/friends/a@h", playing("a"));
+        service.on_friends_event(&client, "/lol-chat/v1/friends/b%40h", playing("b"));
+        let Event::Update(update) = events.recv().await.unwrap() else {
+            panic!("an update")
+        };
+        let Patch::Friends(Some(view)) = update.patch else {
+            panic!("the friends view")
+        };
+        let groups: Vec<(String, Option<u8>)> = view
+            .friends
+            .iter()
+            .map(|friend| (friend.puuid.clone(), friend.group))
+            .collect();
+        assert_eq!(
+            groups,
+            [("a".to_owned(), Some(1)), ("b".to_owned(), Some(1))]
+        );
+        assert!(
+            events.try_recv().is_err(),
+            "two events, one view: the second came in while the first settled"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_lobby_shows_while_the_client_shows_it_and_leaves_its_party_for_champ_select() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        let client = quiet_client(Phase::Lobby);
+        let lobby: Lobby = serde_json::from_value(json!({
+            "gameConfig": {"queueId": 430},
+            "members": [
+                {"puuid": "me", "gameName": "Me", "isLeader": true, "firstPositionPreference": "TOP"},
+                {"puuid": "mate", "gameName": "Mate"}
+            ]
+        }))
+        .unwrap();
+        service.on_lobby(&client, Some(lobby));
+        let view = service.snapshot().lobby.expect("a lobby view in the lobby");
+        assert_eq!(view.members.len(), 2);
+        assert!(view.members[0].is_self && view.members[0].leader);
+
+        lock(&client.live).phase = Phase::ChampSelect;
+        service.on_lobby(&client, None);
+        assert_eq!(service.snapshot().lobby, None);
+        let session: ChampSelectSession = serde_json::from_value(json!({
+            "localPlayerCellId": 0,
+            "myTeam": [
+                {"cellId": 0, "puuid": "me", "gameName": "Me"},
+                {"cellId": 1, "puuid": "mate", "gameName": "Mate"},
+                {"cellId": 2, "puuid": "stranger", "gameName": "S"}
+            ]
+        }))
+        .unwrap();
+        lock(&client.live).champ_select = Some(session);
+        service.render(&client);
+        let marks: Vec<Option<u8>> = service
+            .snapshot()
+            .champ_select
+            .expect("champ select")
+            .my_team
+            .iter()
+            .map(|seat| seat.premade)
+            .collect();
+        assert_eq!(
+            marks,
+            [Some(1), Some(1), None],
+            "the lobby's party, gone with the lobby, still marks champ select"
+        );
+    }
+
     #[tokio::test]
     async fn requests_without_a_client_say_so() {
         let dir = tempfile::tempdir().unwrap();
@@ -1600,5 +2720,369 @@ mod tests {
             service.set_availability("busy").await,
             Err(CoreError::Invalid(_))
         ));
+        assert!(matches!(
+            service.set_availability("mobile").await,
+            Err(CoreError::NotConnected)
+        ));
+    }
+
+    #[tokio::test]
+    async fn the_profile_tools_need_a_client_and_refuse_what_cannot_be_shown() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        assert!(matches!(
+            service.skins().await,
+            Err(CoreError::NotConnected)
+        ));
+        assert!(matches!(
+            service.profile_background().await,
+            Err(CoreError::NotConnected)
+        ));
+        assert!(matches!(
+            service.set_profile_background(103015).await,
+            Err(CoreError::NotConnected)
+        ));
+        assert!(matches!(
+            service.set_profile_background(0).await,
+            Err(CoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            service.challenge_profile().await,
+            Err(CoreError::NotConnected)
+        ));
+        assert!(matches!(
+            service
+                .set_challenge_profile(vec![1, 2, 3, 4], None, None)
+                .await,
+            Err(CoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            service
+                .set_challenge_profile(vec![101304], Some(-1), None)
+                .await,
+            Err(CoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            service
+                .set_challenge_profile(vec![101304], None, Some("24\"}".into()))
+                .await,
+            Err(CoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            service
+                .set_challenge_profile(vec![101304], Some(1436), Some("24".into()))
+                .await,
+            Err(CoreError::NotConnected)
+        ));
+        assert!(matches!(
+            service.apply_mobile_message().await,
+            Err(CoreError::NotConnected)
+        ));
+        // Switching the disguise on and off with no client changes the settings alone.
+        let mut settings = service.settings();
+        settings.profile.rank_disguise.enabled = true;
+        service.set_settings(settings.clone()).unwrap();
+        settings.profile.rank_disguise.enabled = false;
+        assert_eq!(service.set_settings(settings.clone()).unwrap(), settings);
+    }
+
+    fn snapshot_text(taken_at: i64) -> String {
+        serde_json::to_string(&BackupFile::new(
+            taken_at,
+            json!({ "General": { "WindowMode": 0 } }),
+            json!({ "GameEvents": { "evtCastSpell1": "[q]" } }),
+        ))
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn backups_are_kept_newest_first_ten_at_most() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        assert!(
+            matches!(service.game_settings_backups(), Err(CoreError::Invalid(_))),
+            "the shell has not named a folder"
+        );
+        let folder = dir.path().join("game-settings");
+        service.set_backup_dir(&folder);
+        assert_eq!(service.game_settings_backups().unwrap(), Vec::new());
+
+        let first = service
+            .import_game_settings_backup(&snapshot_text(1_000))
+            .unwrap();
+        assert_eq!(
+            first.taken_at, 1_000,
+            "an import keeps the time it was taken"
+        );
+        assert_eq!(
+            first.channels,
+            vec![BackupChannel::General, BackupChannel::Hotkeys]
+        );
+        let mut ids = vec![first.id];
+        for taken_at in 2..=12 {
+            ids.push(
+                service
+                    .import_game_settings_backup(&snapshot_text(taken_at))
+                    .unwrap()
+                    .id,
+            );
+        }
+        fs::write(folder.join("notes.txt"), "not a backup").unwrap();
+        fs::write(folder.join(backup::file_name(1)), "{ broken").unwrap();
+
+        let kept = service.game_settings_backups().unwrap();
+        assert_eq!(
+            kept.iter().map(|info| info.id).collect::<Vec<_>>(),
+            ids.iter()
+                .rev()
+                .take(backup::KEEP)
+                .copied()
+                .collect::<Vec<_>>(),
+            "the two oldest went, and nothing else is listed"
+        );
+        assert!(kept.iter().all(|info| info.size > 0));
+
+        let newest = kept[0].id;
+        assert!(service.game_settings_backup_path(newest).unwrap().is_file());
+        service.delete_game_settings_backup(newest).unwrap();
+        service.delete_game_settings_backup(newest).unwrap();
+        assert!(matches!(
+            service.game_settings_backup_path(newest),
+            Err(CoreError::Invalid(_))
+        ));
+        assert_eq!(
+            service.game_settings_backups().unwrap().len(),
+            backup::KEEP - 1
+        );
+
+        assert!(matches!(
+            service.import_game_settings_backup(r#"{"General": {}}"#),
+            Err(CoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            service.back_up_game_settings().await,
+            Err(CoreError::NotConnected)
+        ));
+        assert!(matches!(
+            service
+                .restore_game_settings(kept[1].id, vec![BackupChannel::General])
+                .await,
+            Err(CoreError::NotConnected)
+        ));
+    }
+
+    #[test]
+    fn a_restore_refused_in_a_game_says_busy() {
+        let error = IpcError::from(CoreError::Busy("in a game".into()));
+        assert_eq!(error.code, ErrorCode::Busy);
+    }
+
+    // ---- The callout's shortcut ----
+
+    #[tokio::test]
+    async fn a_running_game_carries_both_teams_lines_which_the_shortcut_types_only_when_asked() {
+        use crate::{settings::GameTeams, view::CalloutSkip};
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        let client = quiet_client(Phase::InProgress);
+        for (puuid, wins) in [("me", 10), ("strong", 16), ("weak", 4)] {
+            // Twenty games of five kills, five deaths and five assists, `wins` of them won: the
+            // cache keeps what the client sent, and the form is worked out from it when shown.
+            let games = (0..20)
+                .map(|index| {
+                    serde_json::from_value(json!({
+                        "gameId": index + 1, "gameCreation": index + 1, "gameDuration": 1800,
+                        "participantIdentities": [{"participantId": 1, "player": {"puuid": puuid}}],
+                        "participants": [{"participantId": 1, "championId": 1, "stats": {
+                            "win": index < wins, "kills": 5, "deaths": 5, "assists": 5
+                        }}]
+                    }))
+                    .unwrap()
+                })
+                .collect();
+            lock(&service.inner.players).insert(
+                puuid.into(),
+                PlayerEntry::Ready(
+                    Arc::new(PlayerRecord {
+                        summoner: Summoner {
+                            puuid: puuid.into(),
+                            summoner_level: 30,
+                            ..Summoner::default()
+                        },
+                        ranked: None,
+                        games,
+                    }),
+                    Some(Instant::now()),
+                ),
+            );
+        }
+        lock(&client.live).gameflow = Some(
+            serde_json::from_value(json!({
+                "phase": "InProgress",
+                "gameData": {
+                    "gameId": 9, "queue": {"id": 420, "gameMode": "CLASSIC", "isRanked": true},
+                    "teamOne": [{"puuid": "me", "championId": 1, "gameName": "Me", "tagLine": "1"}],
+                    "teamTwo": [
+                        {"puuid": "strong", "championId": 157, "gameName": "Strong", "tagLine": "2"},
+                        {"puuid": "weak", "championId": 86, "gameName": "Weak", "tagLine": "3"},
+                        {"puuid": "", "championId": 22, "gameName": "Bot"}
+                    ]
+                }
+            }))
+            .unwrap(),
+        );
+        service.patch(Patch::Phase(Phase::InProgress));
+        service.render(&client);
+        let game = service.snapshot().game.expect("the game's view");
+        let lines = game.callout;
+        assert_eq!(
+            lines,
+            [
+                "【敌方·红色方】winer 战绩鉴定",
+                "小心 Strong：人形防御塔，近20场胜率80%，KDA 2.0「常胜将军」",
+                "对面 Weak：移动眼位，近20场胜率20%，可以多抓",
+            ],
+            "two rated of three, second and fourth of five tiers; no catalog, so the name stands \
+             in for the champion; the title is the one Strong's twenty games earn"
+        );
+        // Callout: the team's own lines, by champion (here the name, for want of a catalog).
+        let allies = game.ally_callout;
+        assert_eq!(allies.len(), 2, "{allies:?}");
+        assert_eq!(allies[0], "【我方·蓝色方】winer 战绩鉴定");
+        assert!(
+            allies[1].starts_with("峡谷公务员：Me，近20场胜率50%，KDA 2.0，战力"),
+            "rated alone, the middle of five: {allies:?}"
+        );
+        assert_eq!(
+            service.callout_press(),
+            callout::Press::Skip(CalloutSkip::InGameOff),
+            "nothing is typed into the game by default"
+        );
+        let mut settings = service.settings();
+        settings.automation.callout.in_game = true;
+        service.set_settings(settings).unwrap();
+        assert_eq!(
+            service.callout_press(),
+            callout::Press::Game(lines.clone()),
+            "the enemy lines by default"
+        );
+        let mut settings = service.settings();
+        settings.automation.callout.game_teams = GameTeams::Allies;
+        service.set_settings(settings).unwrap();
+        assert_eq!(
+            service.callout_press(),
+            callout::Press::Game(allies.clone())
+        );
+        let mut settings = service.settings();
+        settings.automation.callout.game_teams = GameTeams::Both;
+        service.set_settings(settings).unwrap();
+        assert_eq!(
+            service.callout_press(),
+            callout::Press::Game([lines, allies].concat()),
+            "five lines, within the limit"
+        );
+
+        service.patch(Patch::Phase(Phase::EndOfGame));
+        assert_eq!(
+            service.callout_press(),
+            callout::Press::Skip(CalloutSkip::NotNow)
+        );
+        let mut events = service.subscribe();
+        service.report(NoticeKind::TypedInGame { lines: 3 });
+        assert!(matches!(
+            events.recv().await.unwrap(),
+            Event::Notice(Notice {
+                kind: NoticeKind::TypedInGame { lines: 3 },
+                ..
+            })
+        ));
+        assert!(matches!(
+            service
+                .preview_game_callout(&CalloutRule::default(), &General::default())
+                .await,
+            Err(CoreError::NotConnected)
+        ));
+    }
+
+    // History.
+
+    fn record(puuid: &str) -> PlayerEntry {
+        PlayerEntry::Ready(
+            Arc::new(PlayerRecord {
+                summoner: Summoner {
+                    puuid: puuid.into(),
+                    ..Summoner::default()
+                },
+                ranked: None,
+                games: Vec::new(),
+            }),
+            Some(Instant::now()),
+        )
+    }
+
+    #[test]
+    fn every_step_out_of_a_played_game_counts_and_nothing_before_it() {
+        use Phase::*;
+        for (previous, phase) in [
+            (InProgress, WaitingForStats),
+            (WaitingForStats, PreEndOfGame),
+            (PreEndOfGame, EndOfGame),
+            (EndOfGame, Lobby),
+            (Reconnect, None),
+        ] {
+            assert!(game_over(previous, phase), "{previous:?} → {phase:?}");
+        }
+        for (previous, phase) in [
+            (ChampSelect, Lobby),
+            (GameStart, InProgress),
+            (InProgress, Reconnect),
+            (Lobby, Matchmaking),
+            (EndOfGame, EndOfGame),
+        ] {
+            assert!(!game_over(previous, phase), "{previous:?} → {phase:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_game_that_ended_makes_its_players_due_and_another_account_sees_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        let client = quiet_client(Phase::EndOfGame);
+        let player = |puuid: &str| crate::model::GamePlayer {
+            puuid: puuid.into(),
+            ..crate::model::GamePlayer::default()
+        };
+        lock(&client.live).gameflow = Some(GameflowSession {
+            phase: "EndOfGame".into(),
+            game_data: crate::model::GameData {
+                team_one: vec![player("me"), player("mate")],
+                team_two: vec![player("foe")],
+                ..crate::model::GameData::default()
+            },
+        });
+        service.scope_account("me");
+        for puuid in ["me", "mate", "foe", "stranger"] {
+            lock(&service.inner.players).insert(puuid.into(), record(puuid));
+        }
+        service.forget_newest(&client);
+        let fresh = |puuid: &str| {
+            lock(&service.inner.players)
+                .get(puuid)
+                .and_then(|entry| entry.fresh(PLAYER_TTL))
+                .is_some()
+        };
+        assert!(!fresh("me") && !fresh("mate") && !fresh("foe"));
+        assert!(fresh("stranger"), "not in the game");
+        assert!(
+            matches!(service.player_stats("mate"), PlayerStats::Ready(_)),
+            "a view keeps what it has until the new record arrives"
+        );
+
+        service.scope_account("someone-else");
+        assert!(matches!(
+            service.player_stats("stranger"),
+            PlayerStats::Loading
+        ));
+        assert_eq!(lock(&service.inner.history).viewer(), "someone-else");
     }
 }

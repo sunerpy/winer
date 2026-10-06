@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::settings::Settings;
+use crate::{loadout::PageOutcome, settings::Settings};
 
 /// Everything live, in one document. Changes after it arrive as [`Update`]s.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
@@ -17,6 +17,11 @@ pub struct Snapshot {
     pub phase: Phase,
     pub champ_select: Option<ChampSelectView>,
     pub game: Option<GameView>,
+    // Social: friends' games and the lobby.
+    /// `None` until the client has listed the friends once.
+    pub friends: Option<FriendsView>,
+    /// The party, while the client shows the lobby (in it, in queue, match found).
+    pub lobby: Option<LobbyView>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
@@ -35,6 +40,9 @@ pub enum Patch {
     Phase(Phase),
     ChampSelect(Option<ChampSelectView>),
     Game(Option<GameView>),
+    // Social.
+    Friends(Option<FriendsView>),
+    Lobby(Option<LobbyView>),
 }
 
 /// Everything the core pushes, to the window and to the plugin alike.
@@ -46,6 +54,11 @@ pub enum Event {
     Settings(Box<Settings>),
     /// The game-data catalog changed (a client connected); fetch it again.
     GameData,
+    /// Someone asked from inside the client to see a player's games: the shell brings the window
+    /// up and the window opens that player's history.
+    OpenHistory {
+        puuid: String,
+    },
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, TS)]
@@ -120,7 +133,7 @@ pub struct Me {
     pub ranked: Ranked,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Tier {
     Iron,
@@ -249,6 +262,13 @@ pub struct GameView {
     pub teams: Vec<Vec<Seat>>,
     /// The teams are the blue and the red side; Arena's and Swarm's are not.
     pub sides: bool,
+    // Callout: what the shortcut types into the game's chat (`callout::typed` chooses).
+    /// The in-game callout's enemy lines as they would be typed now: the enemy to watch and the one
+    /// to go after (`callout::game_lines`); empty where there is nobody to talk about.
+    pub callout: Vec<String>,
+    /// The team's own lines, every rated teammate by champion (`callout::ally_lines`); empty
+    /// likewise.
+    pub ally_callout: Vec<String>,
 }
 
 /// One player slot in champ select or in a running game.
@@ -328,6 +348,11 @@ pub struct RecentForm {
     pub matches: Vec<RecentMatch>,
     /// Most played first.
     pub champions: Vec<ChampionForm>,
+    /// The counted games' kills, deaths and assists against their modes' averages, which the title
+    /// is read from (`rating::form_title`); the core's alone.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub pace: Option<crate::rating::Pace>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
@@ -385,6 +410,8 @@ pub struct MatchSummary {
     /// Seconds.
     pub duration: i64,
     pub line: PlayerLine,
+    /// Against players, against the computer, or a custom game (`analysis::game_kind`).
+    pub kind: GameKind,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
@@ -499,6 +526,15 @@ pub struct GameData {
     /// Arena and Hextech ARAM augments.
     pub augments: Vec<AugmentInfo>,
     pub queues: Vec<QueueInfo>,
+    /// Each champion's first role, for the game score (`rating::Scoring`); the window has no use
+    /// for it.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub roles: crate::rating::Roles,
+    /// History: each queue's kind of game (`catalog::queue_kind`), for what form leaves out.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub kinds: crate::analysis::QueueKinds,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
@@ -610,10 +646,70 @@ pub enum NoticeKind {
     CalledOut {
         lines: u32,
     },
+    /// Put the remembered chat status back after the client reset it.
+    PresenceRestored {
+        availability: String,
+    },
+    /// The client kept undoing the remembered status or the disguised rank; winer stopped trying
+    /// until the rule changes or the client reconnects.
+    PresenceRefused,
     Failed {
         action: String,
         message: String,
     },
+    // Runes, spells and item sets (`loadout`).
+    /// Set up the runes and summoner spells for the champion just taken.
+    LoadoutApplied {
+        champion_id: i64,
+        /// The client's own recommendation: nothing was remembered for the champion.
+        recommended: bool,
+        /// What became of the rune page; absent where there were no runes to set up.
+        runes: Option<PageOutcome>,
+        /// The two summoner spells are the ones set up.
+        spells: bool,
+    },
+    /// Wrote winer's item set for the champion just taken.
+    ItemSetWritten {
+        champion_id: i64,
+    },
+    // The callout's shortcut (`callout::press`), which may act while the window is hidden.
+    /// Typed the callout into the game's team chat: `lines` messages.
+    TypedInGame {
+        lines: u32,
+    },
+    /// Typing the callout into the game stopped part of the way, for `reason` (the game's window
+    /// left the foreground, or the system refused a key press); `lines` messages had gone out.
+    TypingStopped {
+        lines: u32,
+        reason: CalloutSkip,
+    },
+    /// The callout's shortcut sent nothing.
+    CalloutSkipped {
+        reason: CalloutSkip,
+    },
+}
+
+/// Why the callout's shortcut sent nothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum CalloutSkip {
+    /// Neither champ select nor a running game.
+    NotNow,
+    /// Nobody to talk about: no rated teammate in champ select; in game, nobody in the lines chosen
+    /// to be typed there (no enemy who stands out, no rated teammate).
+    NothingToSay,
+    /// The game runs and in-game sending is off.
+    InGameOff,
+    /// The game's window was not the foreground window; winer never brings it there itself.
+    NotInFront,
+    /// A key, the shortcut's own most likely, was still held after the wait: typing would have
+    /// pressed it along.
+    KeysHeld,
+    /// The system refused the key presses; a game that runs with more rights than winer is one
+    /// reason it does.
+    Blocked,
+    /// Typing into the game is a Windows feature.
+    Unsupported,
 }
 
 /// A player found by Riot ID.
@@ -646,6 +742,8 @@ pub struct AppInfo {
     pub elevated: bool,
     pub log_dir: String,
     pub settings_path: String,
+    /// The licences of the third-party components shipped inside winer (`THIRD_PARTY_NOTICES.md`).
+    pub notices: String,
 }
 
 /// The updater's progress, owned by the shell and broadcast to the window.
@@ -701,6 +799,263 @@ pub enum ErrorCode {
     Internal,
 }
 
+// ---- Storage: what winer keeps on disk and in memory, and the cleanup (`service/caches.rs`, the
+// shell's `storage.rs`) ----
+
+/// Files on disk: how many, and how large together.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskUse {
+    pub files: u32,
+    pub bytes: u64,
+}
+
+/// What winer holds in memory: the entries of all its caches, and the bytes of the pictures among
+/// them, the one cache whose entries differ much in size.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryUse {
+    pub entries: u32,
+    pub image_bytes: u64,
+}
+
+/// The limits winer keeps what it stores to.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageLimits {
+    /// Log files are kept this many days, today included.
+    pub log_days: u32,
+    pub log_bytes: u64,
+    /// One log file grows to this size; the day then goes on in another.
+    pub log_file_bytes: u64,
+    /// The WebView's page cache.
+    pub webview_cache_bytes: u64,
+    /// Game settings backups.
+    pub backups: u32,
+    /// Pictures held in memory.
+    pub image_bytes: u64,
+}
+
+/// What winer keeps, for 设置 › 关于.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageReport {
+    pub logs: DiskUse,
+    /// The WebView's whole folder: its caches, and what WebView2 downloads and manages itself.
+    pub webview: DiskUse,
+    /// The caches within it (pages, scripts, shaders), which a cleanup clears.
+    pub webview_cache: DiskUse,
+    /// A cleanup asked for the WebView's caches to go; they go at the next start.
+    pub webview_clear_pending: bool,
+    pub backups: DiskUse,
+    /// Pengu Loader and the in-client plugin.
+    pub pengu: DiskUse,
+    /// The settings and the remembered runes and spells.
+    pub settings: DiskUse,
+    /// Update installers left in the system's temporary folder.
+    pub updates: DiskUse,
+    pub memory: MemoryUse,
+    pub limits: StorageLimits,
+}
+
+/// What a cleanup removed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct CleanupReport {
+    /// Every log file but the one being written.
+    pub logs: DiskUse,
+    pub updates: DiskUse,
+    /// The WebView's caches as they are now: in use while the window is open, they go at the next
+    /// start.
+    pub webview_cache: DiskUse,
+    pub memory: MemoryUse,
+}
+
+// ---- Social: friends' games, the lobby, the hotkey (`friends.rs`, `live.rs`, the shell) ----
+
+/// The friends signed in to chat and what each is playing.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FriendsView {
+    /// In game first (the longest-running game first), then champ select, in queue, the rest.
+    /// Offline friends are left out: nothing shows them, and a long list would ride along with
+    /// every patch.
+    pub friends: Vec<FriendView>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FriendView {
+    pub puuid: String,
+    pub name: Option<RiotId>,
+    pub icon_id: i64,
+    /// `chat`, `away`, `dnd` or `mobile`, as the client shows it beside the name.
+    pub availability: String,
+    pub status: FriendStatus,
+    /// Friends in one game, or one party, share a number from 1, which picks the colour they are
+    /// drawn in; a friend playing without other friends has none.
+    pub group: Option<u8>,
+}
+
+/// What a friend is doing, from the presence their client publishes.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(
+    tag = "state",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum FriendStatus {
+    /// Signed in, not queued or playing: the home screen, a lobby, the collection.
+    OutOfGame,
+    /// `mode` is the queue's name in the client's catalog, else the presence's own words for it;
+    /// `since` is epoch milliseconds, zero when the presence does not say.
+    InQueue {
+        mode: String,
+        queue_id: i64,
+        since: i64,
+    },
+    ChampSelect {
+        mode: String,
+        queue_id: i64,
+        since: i64,
+    },
+    InGame {
+        mode: String,
+        queue_id: i64,
+        /// When the game started, epoch milliseconds; zero when the presence does not say.
+        started_at: i64,
+        /// The game can be spectated.
+        observable: bool,
+    },
+}
+
+/// The party in the lobby.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct LobbyView {
+    pub queue_id: i64,
+    /// A custom game's lobby, where everyone in it plays, on both teams.
+    pub custom: bool,
+    /// In the lobby's order, the local player among them; bots are left out.
+    pub members: Vec<LobbyMember>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct LobbyMember {
+    pub puuid: String,
+    pub name: Option<RiotId>,
+    pub icon_id: i64,
+    pub is_self: bool,
+    pub leader: bool,
+    /// The lanes asked for, first choice first; empty in queues without positions.
+    pub positions: Vec<LanePreference>,
+    pub stats: PlayerStats,
+    /// Recent form, 0–10 (`rating::form_score`), once the stats are in.
+    pub score: Option<f64>,
+}
+
+/// A lane a lobby member asked for: one of the five, or any (补位).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum LanePreference {
+    Top,
+    Jungle,
+    Middle,
+    Bottom,
+    Utility,
+    Fill,
+}
+
+impl LanePreference {
+    /// The lobby's `firstPositionPreference` words: `TOP` … `UTILITY`, `FILL`; `UNSELECTED` and
+    /// anything else is no preference.
+    pub fn parse(value: &str) -> Option<Self> {
+        if value.eq_ignore_ascii_case("FILL") {
+            return Some(Self::Fill);
+        }
+        Position::parse(value).map(|position| match position {
+            Position::Top => Self::Top,
+            Position::Jungle => Self::Jungle,
+            Position::Middle => Self::Middle,
+            Position::Bottom => Self::Bottom,
+            Position::Utility => Self::Utility,
+        })
+    }
+}
+
+/// The global shortcut that summons the window, owned by the shell and broadcast to the window.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct HotkeyStatus {
+    /// The combination the settings name (`Alt+Backquote`); `None` while the shortcut is off.
+    pub shortcut: Option<String>,
+    /// The system has it registered for winer right now.
+    pub active: bool,
+    /// Let go while the settings record a new combination.
+    pub suspended: bool,
+    /// Why the system refused it, in its own words; usually another program holds the combination.
+    pub error: Option<String>,
+    // Callout.
+    /// The second shortcut, which sends the callout; let go and taken back together with this one.
+    pub callout: CalloutHotkeyStatus,
+}
+
+/// The shortcut that sends the callout (`automation.callout.hotkey`), as the shell holds it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct CalloutHotkeyStatus {
+    /// The combination the settings name; `None` while there is none.
+    pub shortcut: Option<String>,
+    /// The system has it registered for winer right now.
+    pub active: bool,
+    /// Why the system refused it, in its own words.
+    pub error: Option<String>,
+}
+
+// ---- History: what the numbers count, and a player rated alone (`analysis.rs`, `history.rs`) ----
+
+/// Who a game was played against, as far as form goes: only games against other players through
+/// matchmaking say how someone plays.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum GameKind {
+    /// Against other players, through matchmaking.
+    #[default]
+    Matched,
+    /// Against the computer: co-op vs AI, Doom Bots, the tutorial.
+    Bots,
+    /// A lobby set up by hand, the practice tool included.
+    Custom,
+}
+
+/// What a recent form was read from and what it leaves out (`analysis::form_scope`). The games it
+/// looks at are `RecentForm::matches`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FormScope {
+    /// Games in the client's list the form was read from.
+    pub listed: u32,
+    /// Custom games passed over on the way to the newest twenty.
+    pub custom: u32,
+    /// Games against the computer passed over likewise.
+    pub bots: u32,
+    /// Remakes among the games looked at: shown, never counted.
+    pub remakes: u32,
+}
+
+/// A player's standing on the History page: what their form counts, and the tier, title and quip
+/// it earns on its own (`history::standing`).
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerStanding {
+    pub scope: FormScope,
+    /// Absent without a counted game.
+    pub rating: Option<SeatRating>,
+    /// The fixed band of 峡谷八档 (`rating::FORM_GRADES`), 0 (S+) to 7 (F), the tier was read from.
+    pub band: Option<u8>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -719,6 +1074,58 @@ mod tests {
         assert_eq!(Position::parse("MID"), Some(Position::Middle));
         assert_eq!(Position::parse(""), None);
         assert_eq!(Position::parse("NONE"), None);
+    }
+
+    #[test]
+    fn lobby_lanes_parse_from_the_lobby_and_fill_is_one_of_them() {
+        assert_eq!(
+            LanePreference::parse("MIDDLE"),
+            Some(LanePreference::Middle)
+        );
+        assert_eq!(
+            LanePreference::parse("UTILITY"),
+            Some(LanePreference::Utility)
+        );
+        assert_eq!(LanePreference::parse("FILL"), Some(LanePreference::Fill));
+        assert_eq!(LanePreference::parse("UNSELECTED"), None);
+        assert_eq!(LanePreference::parse(""), None);
+    }
+
+    #[test]
+    fn a_history_request_names_the_player_in_its_data() {
+        assert_eq!(
+            serde_json::to_value(Event::OpenHistory { puuid: "p".into() }).unwrap(),
+            serde_json::json!({"type": "openHistory", "data": {"puuid": "p"}})
+        );
+        let status = FriendStatus::InGame {
+            mode: "极地大乱斗".into(),
+            queue_id: 450,
+            started_at: 5,
+            observable: true,
+        };
+        assert_eq!(
+            serde_json::to_value(status).unwrap(),
+            serde_json::json!({"state": "inGame", "mode": "极地大乱斗", "queueId": 450, "startedAt": 5, "observable": true})
+        );
+    }
+
+    #[test]
+    fn the_callouts_shortcut_reports_what_it_did_in_the_windows_words() {
+        let skipped = NoticeKind::CalloutSkipped {
+            reason: CalloutSkip::NotInFront,
+        };
+        assert_eq!(
+            serde_json::to_value(skipped).unwrap(),
+            serde_json::json!({"kind": "calloutSkipped", "reason": "notInFront"})
+        );
+        assert_eq!(
+            serde_json::to_value(NoticeKind::TypedInGame { lines: 3 }).unwrap(),
+            serde_json::json!({"kind": "typedInGame", "lines": 3})
+        );
+        assert_eq!(
+            serde_json::to_value(HotkeyStatus::default()).unwrap()["callout"],
+            serde_json::json!({"shortcut": null, "active": false, "error": null})
+        );
     }
 
     #[test]
