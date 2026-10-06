@@ -75,6 +75,10 @@ pub enum PluginMessage {
     BenchSwap {
         champion_id: i64,
     },
+    /// The user clicked a lobby member in the client: the window comes up on their history.
+    OpenHistory {
+        puuid: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, TS)]
@@ -183,6 +187,11 @@ impl Bridge {
                         }
                         Ok(PluginMessage::Log { level, message }) => log(&context, level, &message),
                         Ok(PluginMessage::BenchSwap { champion_id }) => swap(&service, champion_id),
+                        Ok(PluginMessage::OpenHistory { puuid }) => {
+                            if let Err(error) = service.open_history(&puuid) {
+                                warn!(%error, "history asked for from the client not opened");
+                            }
+                        }
                         Err(error) => debug!(%error, "unreadable plugin message"),
                     },
                     Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
@@ -273,6 +282,39 @@ mod tests {
             }
         );
         assert!(serde_json::from_str::<PluginMessage>(r#"{"type":"benchSwap"}"#).is_err());
+        let open: PluginMessage =
+            serde_json::from_str(r#"{"type":"openHistory","puuid":"p-1"}"#).unwrap();
+        assert_eq!(
+            open,
+            PluginMessage::OpenHistory {
+                puuid: "p-1".into()
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn a_click_in_the_client_asks_for_a_history_and_a_bad_id_is_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(
+            dir.path().join("settings.json"),
+            tokio::runtime::Handle::current(),
+        );
+        let bridge = Bridge::start(service.clone(), "9.9.9").await.unwrap();
+        let mut events = service.subscribe();
+        let url = format!("ws://127.0.0.1:{}/?token={}", bridge.port(), bridge.token());
+        let (mut socket, _) = connect_async(url).await.unwrap();
+        socket.next().await.unwrap().unwrap(); // hello
+        for puuid in ["../lol-login", "abc-123"] {
+            let message = serde_json::json!({"type": "openHistory", "puuid": puuid}).to_string();
+            socket.send(Message::text(message)).await.unwrap();
+        }
+        assert_eq!(
+            events.recv().await.unwrap(),
+            Event::OpenHistory {
+                puuid: "abc-123".into()
+            },
+            "only the well-formed id comes through"
+        );
     }
 
     #[tokio::test]

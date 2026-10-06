@@ -87,6 +87,8 @@ describe("state", () => {
     phase: "None",
     champSelect: null,
     game: null,
+    friends: null,
+    lobby: null,
   };
 
   it("applies newer patches only", () => {

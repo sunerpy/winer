@@ -7,7 +7,10 @@ import type {
   ChampSelectView,
   Event,
   Feat,
+  FriendsView,
   GameData,
+  HotkeyStatus,
+  LobbyView,
   MatchDetail,
   MatchPage,
   MatchSummary,
@@ -508,6 +511,113 @@ const TITLE_CHOICES: TitleChoice[] = [
   { id: 1436, name: "日光浴恶魔" },
 ];
 
+// Social: friends at play and a party in the lobby, as the core draws them.
+
+/** Friends in game and in champ select: two in one ARAM game (group 1), one in a ranked game that
+ *  can be spectated, one picking; and one at the home screen, whom the panel leaves out. */
+function friends(): FriendsView {
+  const now = Date.now();
+  const friend = (
+    puuid: string,
+    gameName: string,
+    status: FriendsView["friends"][number]["status"],
+    group: number | null = null,
+  ): FriendsView["friends"][number] => ({
+    puuid,
+    name: { gameName, tagLine: String(20_000 + puuid.length) },
+    iconId: 29,
+    availability: status.state === "outOfGame" ? "chat" : "dnd",
+    status,
+    group,
+  });
+  return {
+    friends: [
+      friend("friend-1", "上分小能手", {
+        state: "inGame",
+        mode: "排位赛 单排/双排",
+        queueId: 420,
+        startedAt: now - 25 * 60_000 - 12_000,
+        observable: true,
+      }),
+      friend(
+        "friend-2",
+        "峡谷夜行者",
+        {
+          state: "inGame",
+          mode: "极地大乱斗",
+          queueId: 450,
+          startedAt: now - 12 * 60_000 - 34_000,
+          observable: false,
+        },
+        1,
+      ),
+      friend(
+        "friend-3",
+        "补兵机器",
+        {
+          state: "inGame",
+          mode: "极地大乱斗",
+          queueId: 450,
+          startedAt: now - 12 * 60_000 - 33_000,
+          observable: false,
+        },
+        1,
+      ),
+      friend("friend-4", "辅助永不死", {
+        state: "champSelect",
+        mode: "海克斯大乱斗",
+        queueId: 2400,
+        since: now - 40_000,
+      }),
+      friend("friend-5", "周末玩家", { state: "outOfGame" }),
+    ],
+  };
+}
+
+/** A party of three in a ranked lobby, the local player leading it; one member still loading. */
+export function demoLobby(): LobbyView {
+  const ready = (puuid: string): LobbyView["members"][number]["stats"] => {
+    const stats = SUMMARIES.get(puuid);
+    return stats ? { state: "ready", ...stats } : { state: "loading" };
+  };
+  return {
+    queueId: 420,
+    custom: false,
+    members: [
+      {
+        puuid: "demo-me",
+        name: { gameName: "暗夜里的光", tagLine: "10003" },
+        iconId: 29,
+        isSelf: true,
+        leader: true,
+        positions: ["middle", "fill"],
+        stats: ready("demo-me"),
+        score: 7.4,
+      },
+      {
+        puuid: "demo-2",
+        name: { gameName: "峡谷清道夫", tagLine: "10004" },
+        iconId: 29,
+        isSelf: false,
+        leader: false,
+        positions: ["top", "jungle"],
+        stats: ready("demo-2"),
+        score: 5.2,
+      },
+      {
+        puuid: "demo-6",
+        name: { gameName: "新来的队友", tagLine: "10009" },
+        iconId: 29,
+        isSelf: false,
+        leader: false,
+        positions: ["utility"],
+        stats: { state: "loading" },
+        score: null,
+      },
+    ],
+  };
+}
+
 const DEFAULT_SETTINGS: Settings = {
   appearance: {
     theme: "hextech",
@@ -516,7 +626,13 @@ const DEFAULT_SETTINGS: Settings = {
     fontSize: 13,
     reduceMotion: false,
   },
-  general: { closeToTray: true, language: "zh-CN", augmentDetails: true, titles: true },
+  general: {
+    closeToTray: true,
+    language: "zh-CN",
+    augmentDetails: true,
+    titles: true,
+    hotkey: "Ctrl+Shift+W",
+  },
   automation: {
     accept: { enabled: true, delayMs: 1500 },
     pick: {
@@ -555,6 +671,8 @@ const DEFAULT_SETTINGS: Settings = {
     hidePromotions: false,
     benchNoCooldown: true,
     loaderDir: null,
+    friendStatus: true,
+    lobbyPanel: true,
   },
   profile: {
     rankDisguise: { enabled: false, queue: "solo", tier: "DIAMOND", division: "I" },
@@ -566,8 +684,21 @@ export function demoBackend(): Backend {
   let settings = DEFAULT_SETTINGS;
   const listeners = new Set<(event: Event) => void>();
   const updateListeners = new Set<(status: UpdateStatus) => void>();
+  const hotkeyListeners = new Set<(status: HotkeyStatus) => void>();
   const emit = (event: Event) => listeners.forEach((listener) => listener(event));
   let update: UpdateStatus = { state: "upToDate", version: "0.2.0", checkedAt: NOW };
+  // The shell's shortcut: registered whenever it is named and not let go for the recorder.
+  let hotkey: HotkeyStatus = {
+    shortcut: settings.general.hotkey,
+    active: settings.general.hotkey !== null,
+    suspended: false,
+    error: null,
+  };
+  const setHotkey = (shortcut: string | null, suspended: boolean) => {
+    hotkey = { shortcut, active: shortcut !== null && !suspended, suspended, error: null };
+    hotkeyListeners.forEach((listener) => listener(hotkey));
+    return hotkey;
+  };
   let plugin: PluginStatus = {
     loaderDir: "C:\\Users\\Player\\AppData\\Local\\app.winer.desktop\\pengu",
     active: true,
@@ -594,6 +725,9 @@ export function demoBackend(): Backend {
     phase: "ChampSelect",
     champSelect: champSelect(),
     game: null,
+    friends: friends(),
+    // The client shows no lobby during champ select.
+    lobby: null,
   };
 
   // The profile the demo player shows, and what they backed up before.
@@ -634,10 +768,12 @@ export function demoBackend(): Backend {
   );
 
   const handlers: { [K in CommandName]: (args: Commands[K]["args"]) => Commands[K]["result"] } = {
-    get_snapshot: () => ({ ...snapshot, champSelect: champSelect() }),
+    get_snapshot: () => ({ ...snapshot, champSelect: champSelect(), friends: friends() }),
     get_settings: () => settings,
     set_settings: ({ settings: next }) => {
       settings = next;
+      if (settings.general.hotkey !== hotkey.shortcut)
+        setHotkey(settings.general.hotkey, hotkey.suspended);
       return settings;
     },
     get_game_data: () => GAME_DATA,
@@ -793,6 +929,8 @@ export function demoBackend(): Backend {
       });
     },
     reveal_game_settings_backup: () => null,
+    get_hotkey_status: () => hotkey,
+    suspend_hotkey: ({ suspended }) => setHotkey(hotkey.shortcut, suspended),
   };
 
   return {
@@ -809,6 +947,10 @@ export function demoBackend(): Backend {
     onUpdate: (handler) => {
       updateListeners.add(handler);
       return () => updateListeners.delete(handler);
+    },
+    onHotkey: (handler) => {
+      hotkeyListeners.add(handler);
+      return () => hotkeyListeners.delete(handler);
     },
   };
 }

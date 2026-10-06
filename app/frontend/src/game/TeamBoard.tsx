@@ -20,6 +20,7 @@ import { MODE_SHORT, modeOf } from "../lib/modes";
 import { useCatalog } from "../lib/store";
 import { useNow } from "../lib/useNow";
 import { Badge, Skeleton, type Tone } from "../ui";
+import { GroupBadge } from "./groups";
 import { ChampionIcon } from "./icons";
 import { KdaValue, RankBadge, StreakBadge, TitleChip, WinRate, bestRank } from "./stats";
 
@@ -98,7 +99,7 @@ function Summary({ seat, summary }: { seat: Seat; summary: PlayerSummary | null 
           </span>
         )}
         {seat.premade !== null && (
-          <Badge tone="accent">{t("live.premade", { n: seat.premade })}</Badge>
+          <GroupBadge group={seat.premade} label={t("live.premade", { n: seat.premade })} />
         )}
       </span>
       {/* The tier and its title get a line of their own: beside the name they squeezed it away. */}
@@ -153,10 +154,35 @@ function Summary({ seat, summary }: { seat: Seat; summary: PlayerSummary | null 
   );
 }
 
+/** A row's right half: the latest games as tiles, skeletons while the stats load. */
+export function RecentTiles({ stats }: { stats: Seat["stats"] }) {
+  const t = useT();
+  const summary = stats.state === "ready" ? stats : null;
+  const games = summary?.recent.matches.slice(0, TILE_ROOM.length) ?? [];
+  return (
+    <div className="@container min-w-0">
+      {games.length > 0 ? (
+        <ol aria-label={t("live.recentGames")} className="flex gap-1 overflow-hidden">
+          {games.map((game, index) => (
+            <GameTile key={game.gameId} game={game} index={index} />
+          ))}
+        </ol>
+      ) : stats.state === "loading" ? (
+        <span className="flex gap-1">
+          {[0, 1, 2, 3, 4, 5].map((key) => (
+            <Skeleton key={key} className="h-[58px] w-16" />
+          ))}
+        </span>
+      ) : summary ? (
+        <span className="text-[11.5px] text-fg-subtle">{t("live.noGames")}</span>
+      ) : null}
+    </div>
+  );
+}
+
 function PlayerRow({ seat, onPlayer }: { seat: Seat; onPlayer: (puuid: string) => void }) {
   const t = useT();
   const summary = seat.stats.state === "ready" ? seat.stats : null;
-  const games = summary?.recent.matches.slice(0, TILE_ROOM.length) ?? [];
   const name = riotId(seat.name ?? summary?.name ?? null);
   const who = (
     <>
@@ -190,23 +216,7 @@ function PlayerRow({ seat, onPlayer }: { seat: Seat; onPlayer: (puuid: string) =
       ) : (
         <span className="flex min-w-0 items-center gap-3 p-1">{who}</span>
       )}
-      <div className="@container min-w-0">
-        {games.length > 0 ? (
-          <ol aria-label={t("live.recentGames")} className="flex gap-1 overflow-hidden">
-            {games.map((game, index) => (
-              <GameTile key={game.gameId} game={game} index={index} />
-            ))}
-          </ol>
-        ) : seat.stats.state === "loading" ? (
-          <span className="flex gap-1">
-            {[0, 1, 2, 3, 4, 5].map((key) => (
-              <Skeleton key={key} className="h-[58px] w-16" />
-            ))}
-          </span>
-        ) : summary ? (
-          <span className="text-[11.5px] text-fg-subtle">{t("live.noGames")}</span>
-        ) : null}
-      </div>
+      <RecentTiles stats={seat.stats} />
     </li>
   );
 }

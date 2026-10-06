@@ -47,6 +47,8 @@ pub(crate) fn on_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
             .is_none_or(|service| service.settings().general.close_to_tray);
         if close_to_tray {
             api.prevent_close();
+            // Hidden, it is no longer above the game the hotkey pinned it over.
+            crate::hotkey::unpin(window.app_handle());
             let _ = window.hide();
         } else {
             window.app_handle().exit(0);

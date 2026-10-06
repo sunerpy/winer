@@ -23,9 +23,11 @@ use crate::{
     analysis, augments,
     automation::{self, Availability, ChampAction, Step},
     backup::{self, BackupChannel, BackupFile, BackupInfo},
-    callout, catalog, live,
+    callout, catalog,
+    friends::{self, FRIENDS, Friend},
+    live,
     model::{
-        ChampSelectSession, ChatMe, Conversation, Entitlements, GameQueue, GameflowSession,
+        ChampSelectSession, ChatMe, Conversation, Entitlements, GameQueue, GameflowSession, Lobby,
         MatchList, RankedStats, ReadyCheck, Summoner,
     },
     profile::{
@@ -52,6 +54,9 @@ const SUMMONER: &str = "/lol-summoner/v1/current-summoner";
 const RANKED: &str = "/lol-ranked/v1/current-ranked-stats";
 /// The chat presence friends see: the status, the message and the rank (`profile`).
 const CHAT_ME: &str = "/lol-chat/v1/me";
+const LOBBY: &str = "/lol-lobby/v2/lobby";
+/// A change to the members alone may come as an event of its own: the lobby is read again then.
+const LOBBY_MEMBERS: &str = "/lol-lobby/v2/lobby/members";
 const SUBSCRIPTIONS: &[&str] = &[
     PHASE,
     GAMEFLOW,
@@ -60,7 +65,18 @@ const SUBSCRIPTIONS: &[&str] = &[
     SUMMONER,
     RANKED,
     CHAT_ME,
+    // Social.
+    FRIENDS,
+    LOBBY,
 ];
+
+/// Friends' events come in bursts (a client signing in lists them one by one): the view is
+/// rebuilt once they settle.
+const FRIENDS_SETTLE: Duration = Duration::from_millis(300);
+/// The whole friends list is read again this often, in case an event went missing.
+const FRIENDS_REFRESH: Duration = Duration::from_secs(60);
+/// Sooner until it has been read once: chat can still be signing in when the client connects.
+const FRIENDS_RETRY: Duration = Duration::from_secs(5);
 
 /// Between two callout lines: the chat service throttles a burst from one client.
 const MESSAGE_GAP: Duration = Duration::from_millis(350);
@@ -168,6 +184,15 @@ struct Live {
     swapping: bool,
     /// What winer keeps in the chat presence: the disguised rank and the remembered status.
     presence: profile::Keeper,
+    // Social.
+    /// The friends as the client last listed them; `None` until it has once.
+    friends: Option<Vec<Friend>>,
+    /// A rebuild of the friends view is due once the events settle.
+    friends_due: bool,
+    /// The lobby while there is one.
+    lobby: Option<Lobby>,
+    /// The local player's party as the last lobby had it, for champ select's premade marks.
+    party: Vec<String>,
 }
 
 impl Live {
@@ -620,6 +645,8 @@ impl Service {
             Patch::Phase(value) => replace(&mut state.phase, value),
             Patch::ChampSelect(value) => replace(&mut state.champ_select, value),
             Patch::Game(value) => replace(&mut state.game, value),
+            Patch::Friends(value) => replace(&mut state.friends, value),
+            Patch::Lobby(value) => replace(&mut state.lobby, value),
         };
         if changed {
             state.rev += 1;
@@ -652,6 +679,8 @@ impl Service {
                 Patch::Phase(Phase::None),
                 Patch::ChampSelect(None),
                 Patch::Game(None),
+                Patch::Friends(None),
+                Patch::Lobby(None),
             ] {
                 self.patch(patch);
             }
@@ -725,6 +754,7 @@ impl Service {
         }
         // A client starting up resets the status; winer's disguise is not there yet either.
         self.open_presence_window(&client);
+        self.follow_friends(&client);
 
         while let Some(event) = events.next().await {
             let event = event?;
@@ -734,6 +764,10 @@ impl Service {
                 event.data
             };
             match event.uri.as_str() {
+                // Social: a friend's presence, or the list itself.
+                uri if uri.starts_with(FRIENDS) => self.on_friends_event(&client, uri, data),
+                LOBBY => self.on_lobby(&client, decode(data)),
+                uri if uri.starts_with(LOBBY_MEMBERS) => self.reload_lobby(&client),
                 PHASE => {
                     self.on_phase(&client, data.as_str().map_or(Phase::None, Phase::parse))
                         .await
@@ -785,6 +819,8 @@ impl Service {
                 let complete = !data.champions.is_empty() && !data.queues.is_empty();
                 *lock(&client.data) = Some(Arc::new(data));
                 let _ = service.inner.events.send(Event::GameData);
+                // Friends' modes are named from the catalog's queues.
+                service.render_friends(&client);
                 if complete {
                     return;
                 }
@@ -824,6 +860,14 @@ impl Service {
                 self.patch(Patch::Game(None));
             }
             _ => {}
+        }
+        // The lobby shows only in some phases; it may also have formed before the subscription.
+        if live::shows_lobby(phase) {
+            if let Ok(lobby) = client.lcu.get_optional::<Lobby>(LOBBY).await {
+                self.on_lobby(client, lobby);
+            }
+        } else {
+            self.render_lobby(client);
         }
     }
 
@@ -930,12 +974,13 @@ impl Service {
     /// Rebuilds the champ select and game views from the last sessions and the stats known now,
     /// and sends the automatic callout once its lines are final.
     fn render(&self, client: &Client) {
-        let (champ_select, gameflow, me) = {
+        let (champ_select, gameflow, me, party) = {
             let live = lock(&client.live);
             (
                 live.champ_select.clone(),
                 live.gameflow.clone(),
                 live.me.clone(),
+                live.party.clone(),
             )
         };
         let settings = self.settings();
@@ -950,6 +995,7 @@ impl Service {
             mode = queue.map(QueueInfo::mode);
             let game_mode = queue.map_or("", |queue| queue.game_mode.as_str());
             let mut view = live::champ_select_view(&session, stats, &ranking, game_mode);
+            live::mark_party(&mut view.my_team, &party);
             let champion = |id: i64| {
                 data.as_ref()?
                     .champions
@@ -975,6 +1021,8 @@ impl Service {
         if let Some(session) = gameflow {
             self.patch(Patch::Game(live::game_view(&session, &me, stats, &ranking)));
         }
+        // The lobby's members wait for the same stats.
+        self.render_lobby(client);
     }
 
     fn call_out(&self, client: &Client, lines: Vec<String>, audience: Audience) {
@@ -1694,6 +1742,125 @@ fn store_backup(dir: &Path, now: i64, file: &BackupFile) -> Result<BackupInfo, C
     Ok(file.info(id, text.len() as u64))
 }
 
+// ---- Social: friends' games, the lobby, history asked for from the client ----
+
+impl Service {
+    /// The client's phase now, without copying the whole snapshot (the shell's hotkey asks it).
+    pub fn phase(&self) -> Phase {
+        lock(&self.inner.state).phase
+    }
+
+    /// Asks the shell to bring the window up on `puuid`'s history, for a click in the client.
+    pub fn open_history(&self, puuid: &str) -> Result<(), CoreError> {
+        segment(puuid)?;
+        let _ = self.inner.events.send(Event::OpenHistory {
+            puuid: puuid.to_owned(),
+        });
+        Ok(())
+    }
+
+    /// Whether `client` is still the connected one: background loops end with their connection.
+    fn is_current(&self, client: &Client) -> bool {
+        self.client()
+            .is_ok_and(|current| Arc::ptr_eq(&current.live, &client.live))
+    }
+
+    /// Reads the friends list now and again every [`FRIENDS_REFRESH`] while `client` stays
+    /// connected, every [`FRIENDS_RETRY`] until a read has succeeded; events keep it current in
+    /// between.
+    fn follow_friends(&self, client: &Client) {
+        let (service, client) = (self.clone(), client.clone());
+        self.spawn(async move {
+            loop {
+                match client.lcu.get::<Vec<Friend>>(FRIENDS).await {
+                    Ok(list) => {
+                        lock(&client.live).friends = Some(list);
+                        service.render_friends(&client);
+                    }
+                    Err(error) => debug!(%error, "friends list unavailable"),
+                }
+                let pause = match lock(&client.live).friends {
+                    Some(_) => FRIENDS_REFRESH,
+                    None => FRIENDS_RETRY,
+                };
+                sleep(pause).await;
+                if !service.is_current(&client) {
+                    return;
+                }
+            }
+        });
+    }
+
+    fn on_friends_event(&self, client: &Client, uri: &str, data: serde_json::Value) {
+        let due = {
+            let mut live = lock(&client.live);
+            let Some(list) = live.friends.as_mut() else {
+                // Before the first list: it is on its way and will hold this change too.
+                return;
+            };
+            if !friends::apply(list, uri, data) {
+                return;
+            }
+            !std::mem::replace(&mut live.friends_due, true)
+        };
+        if due {
+            let (service, client) = (self.clone(), client.clone());
+            self.spawn(async move {
+                sleep(FRIENDS_SETTLE).await;
+                lock(&client.live).friends_due = false;
+                service.render_friends(&client);
+            });
+        }
+    }
+
+    fn render_friends(&self, client: &Client) {
+        let Some(list) = lock(&client.live).friends.clone() else {
+            return;
+        };
+        let data = lock(&client.data).clone();
+        let queues = data
+            .as_deref()
+            .map_or(&[][..], |data| data.queues.as_slice());
+        self.patch(Patch::Friends(Some(friends::view(&list, queues))));
+    }
+
+    fn on_lobby(&self, client: &Client, lobby: Option<Lobby>) {
+        {
+            let mut live = lock(&client.live);
+            // A lobby gone keeps its party: champ select, which follows it, still needs it.
+            if let Some(lobby) = &lobby {
+                live.party = live::party_of(lobby);
+            }
+            live.lobby = lobby.clone();
+        }
+        for puuid in lobby.iter().flat_map(live::lobby_puuids) {
+            self.ensure_player(client, puuid);
+        }
+        self.render_lobby(client);
+    }
+
+    fn reload_lobby(&self, client: &Client) {
+        let (service, client) = (self.clone(), client.clone());
+        self.spawn(async move {
+            if let Ok(lobby) = client.lcu.get_optional::<Lobby>(LOBBY).await {
+                service.on_lobby(&client, lobby);
+            }
+        });
+    }
+
+    /// The lobby view, while the phase shows the lobby; the members' stats as known now.
+    fn render_lobby(&self, client: &Client) {
+        let (lobby, phase, me) = {
+            let live = lock(&client.live);
+            (live.lobby.clone(), live.phase, live.me.clone())
+        };
+        let view = lobby
+            .filter(|_| live::shows_lobby(phase))
+            .map(|lobby| live::lobby_view(&lobby, &me, |puuid| self.player_stats(puuid)));
+        self.patch(Patch::Lobby(view));
+    }
+}
+
 /// The id of champ select's chat room, once it is open.
 async fn champ_select_chat(lcu: &Lcu) -> Result<Option<String>, CoreError> {
     let conversations: Vec<Conversation> = lcu.get("/lol-chat/v1/conversations").await?;
@@ -2041,6 +2208,111 @@ mod tests {
         assert!(
             !service.wants_play_again(&client),
             "the user went back first"
+        );
+    }
+
+    /// A connection whose client never answers (port 1): enough for what the views do with the
+    /// state they are handed.
+    fn quiet_client(phase: Phase) -> Client {
+        let credentials = Credentials::new(1, "t");
+        Client {
+            lcu: Lcu::new(&credentials).unwrap(),
+            credentials,
+            platform_id: String::new(),
+            data: Arc::default(),
+            live: Arc::new(Mutex::new(Live {
+                phase,
+                me: "me".into(),
+                ..Live::default()
+            })),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_burst_of_friend_events_becomes_one_view_once_they_settle() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        let client = quiet_client(Phase::None);
+        let playing = |puuid: &str| {
+            json!({"id": format!("{puuid}@h"), "puuid": puuid, "gameName": puuid, "availability": "dnd",
+                   "lol": {"gameStatus": "inProgress", "gameId": "42", "queueId": "450", "timeStamp": "1"}})
+        };
+        service.on_friends_event(&client, "/lol-chat/v1/friends/a@h", playing("a"));
+        assert_eq!(
+            service.snapshot().friends,
+            None,
+            "nothing is drawn before the first list"
+        );
+
+        lock(&client.live).friends = Some(Vec::new());
+        let mut events = service.subscribe();
+        service.on_friends_event(&client, "/lol-chat/v1/friends/a@h", playing("a"));
+        service.on_friends_event(&client, "/lol-chat/v1/friends/b%40h", playing("b"));
+        let Event::Update(update) = events.recv().await.unwrap() else {
+            panic!("an update")
+        };
+        let Patch::Friends(Some(view)) = update.patch else {
+            panic!("the friends view")
+        };
+        let groups: Vec<(String, Option<u8>)> = view
+            .friends
+            .iter()
+            .map(|friend| (friend.puuid.clone(), friend.group))
+            .collect();
+        assert_eq!(
+            groups,
+            [("a".to_owned(), Some(1)), ("b".to_owned(), Some(1))]
+        );
+        assert!(
+            events.try_recv().is_err(),
+            "two events, one view: the second came in while the first settled"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_lobby_shows_while_the_client_shows_it_and_leaves_its_party_for_champ_select() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        let client = quiet_client(Phase::Lobby);
+        let lobby: Lobby = serde_json::from_value(json!({
+            "gameConfig": {"queueId": 430},
+            "members": [
+                {"puuid": "me", "gameName": "Me", "isLeader": true, "firstPositionPreference": "TOP"},
+                {"puuid": "mate", "gameName": "Mate"}
+            ]
+        }))
+        .unwrap();
+        service.on_lobby(&client, Some(lobby));
+        let view = service.snapshot().lobby.expect("a lobby view in the lobby");
+        assert_eq!(view.members.len(), 2);
+        assert!(view.members[0].is_self && view.members[0].leader);
+
+        lock(&client.live).phase = Phase::ChampSelect;
+        service.on_lobby(&client, None);
+        assert_eq!(service.snapshot().lobby, None);
+        let session: ChampSelectSession = serde_json::from_value(json!({
+            "localPlayerCellId": 0,
+            "myTeam": [
+                {"cellId": 0, "puuid": "me", "gameName": "Me"},
+                {"cellId": 1, "puuid": "mate", "gameName": "Mate"},
+                {"cellId": 2, "puuid": "stranger", "gameName": "S"}
+            ]
+        }))
+        .unwrap();
+        lock(&client.live).champ_select = Some(session);
+        service.render(&client);
+        let marks: Vec<Option<u8>> = service
+            .snapshot()
+            .champ_select
+            .expect("champ select")
+            .my_team
+            .iter()
+            .map(|seat| seat.premade)
+            .collect();
+        assert_eq!(
+            marks,
+            [Some(1), Some(1), None],
+            "the lobby's party, gone with the lobby, still marks champ select"
         );
     }
 

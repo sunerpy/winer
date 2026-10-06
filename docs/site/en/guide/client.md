@@ -27,6 +27,13 @@ different `version.dll`, winer leaves it alone and the **In-client** page says s
   Where the client's team list cannot be found, a compact panel shows the same.
 - **Instant bench swaps in the client**: in ARAM, a click on a bench champion in the client swaps it
   in without the client's cooldown.
+- **Friends' games in the friends list**: in the client's friends list on the right, a friend in a
+  game gets a line under their name with the mode and how long the game has run, counted by the
+  second; friends in one game or one party carry a stripe of the same colour on the left.
+- **Lobby members' form**: in a lobby, recent win rate, KDA and form score above each member's
+  banner. A click on that line or on the member's picture brings up winer's window on their
+  history. Where the client's member cards cannot be found, a compact panel shows the same, and its
+  members open their history too.
 - **Hide home-page promotions**: hides the event hub and esports pop-ups on the client's home page.
 
 Each has its own switch under **In-client › In-client features** and takes effect at once.

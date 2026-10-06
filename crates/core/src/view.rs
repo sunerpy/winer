@@ -17,6 +17,11 @@ pub struct Snapshot {
     pub phase: Phase,
     pub champ_select: Option<ChampSelectView>,
     pub game: Option<GameView>,
+    // Social: friends' games and the lobby.
+    /// `None` until the client has listed the friends once.
+    pub friends: Option<FriendsView>,
+    /// The party, while the client shows the lobby (in it, in queue, match found).
+    pub lobby: Option<LobbyView>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
@@ -35,6 +40,9 @@ pub enum Patch {
     Phase(Phase),
     ChampSelect(Option<ChampSelectView>),
     Game(Option<GameView>),
+    // Social.
+    Friends(Option<FriendsView>),
+    Lobby(Option<LobbyView>),
 }
 
 /// Everything the core pushes, to the window and to the plugin alike.
@@ -46,6 +54,11 @@ pub enum Event {
     Settings(Box<Settings>),
     /// The game-data catalog changed (a client connected); fetch it again.
     GameData,
+    /// Someone asked from inside the client to see a player's games: the shell brings the window
+    /// up and the window opens that player's history.
+    OpenHistory {
+        puuid: String,
+    },
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, TS)]
@@ -710,6 +723,133 @@ pub enum ErrorCode {
     Internal,
 }
 
+// ---- Social: friends' games, the lobby, the hotkey (`friends.rs`, `live.rs`, the shell) ----
+
+/// The friends signed in to chat and what each is playing.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FriendsView {
+    /// In game first (the longest-running game first), then champ select, in queue, the rest.
+    /// Offline friends are left out: nothing shows them, and a long list would ride along with
+    /// every patch.
+    pub friends: Vec<FriendView>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FriendView {
+    pub puuid: String,
+    pub name: Option<RiotId>,
+    pub icon_id: i64,
+    /// `chat`, `away`, `dnd` or `mobile`, as the client shows it beside the name.
+    pub availability: String,
+    pub status: FriendStatus,
+    /// Friends in one game, or one party, share a number from 1, which picks the colour they are
+    /// drawn in; a friend playing without other friends has none.
+    pub group: Option<u8>,
+}
+
+/// What a friend is doing, from the presence their client publishes.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(
+    tag = "state",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum FriendStatus {
+    /// Signed in, not queued or playing: the home screen, a lobby, the collection.
+    OutOfGame,
+    /// `mode` is the queue's name in the client's catalog, else the presence's own words for it;
+    /// `since` is epoch milliseconds, zero when the presence does not say.
+    InQueue {
+        mode: String,
+        queue_id: i64,
+        since: i64,
+    },
+    ChampSelect {
+        mode: String,
+        queue_id: i64,
+        since: i64,
+    },
+    InGame {
+        mode: String,
+        queue_id: i64,
+        /// When the game started, epoch milliseconds; zero when the presence does not say.
+        started_at: i64,
+        /// The game can be spectated.
+        observable: bool,
+    },
+}
+
+/// The party in the lobby.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct LobbyView {
+    pub queue_id: i64,
+    /// A custom game's lobby, where everyone in it plays, on both teams.
+    pub custom: bool,
+    /// In the lobby's order, the local player among them; bots are left out.
+    pub members: Vec<LobbyMember>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct LobbyMember {
+    pub puuid: String,
+    pub name: Option<RiotId>,
+    pub icon_id: i64,
+    pub is_self: bool,
+    pub leader: bool,
+    /// The lanes asked for, first choice first; empty in queues without positions.
+    pub positions: Vec<LanePreference>,
+    pub stats: PlayerStats,
+    /// Recent form, 0–10 (`rating::form_score`), once the stats are in.
+    pub score: Option<f64>,
+}
+
+/// A lane a lobby member asked for: one of the five, or any (补位).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum LanePreference {
+    Top,
+    Jungle,
+    Middle,
+    Bottom,
+    Utility,
+    Fill,
+}
+
+impl LanePreference {
+    /// The lobby's `firstPositionPreference` words: `TOP` … `UTILITY`, `FILL`; `UNSELECTED` and
+    /// anything else is no preference.
+    pub fn parse(value: &str) -> Option<Self> {
+        if value.eq_ignore_ascii_case("FILL") {
+            return Some(Self::Fill);
+        }
+        Position::parse(value).map(|position| match position {
+            Position::Top => Self::Top,
+            Position::Jungle => Self::Jungle,
+            Position::Middle => Self::Middle,
+            Position::Bottom => Self::Bottom,
+            Position::Utility => Self::Utility,
+        })
+    }
+}
+
+/// The global shortcut that summons the window, owned by the shell and broadcast to the window.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct HotkeyStatus {
+    /// The combination the settings name (`Ctrl+Shift+W`); `None` while the shortcut is off.
+    pub shortcut: Option<String>,
+    /// The system has it registered for winer right now.
+    pub active: bool,
+    /// Let go while the settings record a new combination.
+    pub suspended: bool,
+    /// Why the system refused it, in its own words; usually another program holds the combination.
+    pub error: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -728,6 +868,39 @@ mod tests {
         assert_eq!(Position::parse("MID"), Some(Position::Middle));
         assert_eq!(Position::parse(""), None);
         assert_eq!(Position::parse("NONE"), None);
+    }
+
+    #[test]
+    fn lobby_lanes_parse_from_the_lobby_and_fill_is_one_of_them() {
+        assert_eq!(
+            LanePreference::parse("MIDDLE"),
+            Some(LanePreference::Middle)
+        );
+        assert_eq!(
+            LanePreference::parse("UTILITY"),
+            Some(LanePreference::Utility)
+        );
+        assert_eq!(LanePreference::parse("FILL"), Some(LanePreference::Fill));
+        assert_eq!(LanePreference::parse("UNSELECTED"), None);
+        assert_eq!(LanePreference::parse(""), None);
+    }
+
+    #[test]
+    fn a_history_request_names_the_player_in_its_data() {
+        assert_eq!(
+            serde_json::to_value(Event::OpenHistory { puuid: "p".into() }).unwrap(),
+            serde_json::json!({"type": "openHistory", "data": {"puuid": "p"}})
+        );
+        let status = FriendStatus::InGame {
+            mode: "极地大乱斗".into(),
+            queue_id: 450,
+            started_at: 5,
+            observable: true,
+        };
+        assert_eq!(
+            serde_json::to_value(status).unwrap(),
+            serde_json::json!({"state": "inGame", "mode": "极地大乱斗", "queueId": 450, "startedAt": 5, "observable": true})
+        );
     }
 
     #[test]

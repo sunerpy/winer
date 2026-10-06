@@ -1,7 +1,8 @@
-import type { Audience, ChampSelectView, GameView, Seat, Side } from "@winer/shared";
-import { Ban, Dices, Eye, Hourglass, Megaphone, Star, Swords } from "lucide-react";
+import type { Audience, ChampSelectView, GameView, LobbyView, Seat, Side } from "@winer/shared";
+import { Ban, Dices, Eye, Hourglass, Megaphone, Star, Swords, Users } from "lucide-react";
 import { useState } from "react";
 
+import { LobbyBoard } from "../game/LobbyBoard";
 import { queueName } from "../game/MatchRow";
 import { TeamBoard } from "../game/TeamBoard";
 import { ChampionIcon } from "../game/icons";
@@ -298,13 +299,41 @@ function Game({ view }: { view: GameView }) {
   );
 }
 
+/** The party before the game: who is in it and how they have been playing. */
+function Lobby({ view }: { view: LobbyView }) {
+  const t = useT();
+  const catalog = useCatalog();
+  const { navigate } = useShell();
+  const phase = useLive((snapshot) => snapshot.phase);
+  return (
+    <div className="flex flex-col gap-4">
+      <Card className="flex flex-wrap items-center gap-2.5">
+        <Users size={16} strokeWidth={2} className="text-accent-text" aria-hidden />
+        <span className="text-[15px] font-semibold text-fg">
+          {queueName(view.queueId, "", catalog, t("phase.Lobby"))}
+        </span>
+        <Badge tone="accent">{t(`phase.${phase}`)}</Badge>
+        {view.custom && <Badge>{t("social.lobbyCustom")}</Badge>}
+      </Card>
+      <Panel eyebrow={t("social.lobby")} title={t("social.lobbyHint")}>
+        <LobbyBoard
+          members={view.members}
+          onPlayer={(puuid) => navigate({ page: "history", puuid })}
+        />
+      </Panel>
+    </div>
+  );
+}
+
 function LiveContent() {
   const t = useT();
   const champSelect = useLive((snapshot) => snapshot.champSelect);
   const game = useLive((snapshot) => snapshot.game);
+  const lobby = useLive((snapshot) => snapshot.lobby);
   const phase = useLive((snapshot) => snapshot.phase);
   if (champSelect) return <ChampSelect view={champSelect} />;
   if (game) return <Game view={game} />;
+  if (lobby) return <Lobby view={lobby} />;
   return (
     <EmptyState icon={Swords} title={t("live.idleTitle")}>
       <p>{t("live.idle")}</p>

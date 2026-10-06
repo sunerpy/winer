@@ -570,6 +570,43 @@ export const zhCN = {
   "status.shortcuts": "Ctrl 1–6 切换页面 · Ctrl , 设置 · Ctrl B 侧栏",
   "error.title": "这一页出错了",
   "error.hint": "其他页面不受影响。可以重试，或打开日志目录把最新的日志发给开发者。",
+
+  // Social: friends' games, the lobby, the global shortcut.
+  "social.friends": "好友动态",
+  "social.friendsPlaying": "{n} 位在选人或游戏中",
+  "social.friendsEmpty": "现在没有好友在选英雄或游戏中。",
+  "social.friendsLoading": "正在读取好友列表",
+  "social.inGame": "游戏中",
+  "social.champSelect": "选英雄中",
+  "social.elapsed": "已进行 {time}",
+  "social.observable": "可观战",
+  "social.together": "一起玩 {n}",
+  "social.togetherHint": "带同一种颜色和编号的好友在同一局游戏或同一个队伍里。",
+  "social.lobby": "房间成员",
+  "social.lobbyHint": "开局前先看看队友的近期状态；点玩家看完整战绩。",
+  "social.lobbyCustom": "自定义房间",
+  "social.leader": "房主",
+  "social.you": "你",
+  "social.score": "战力 {score}",
+  "social.fill": "补位",
+  "social.pluginFriends": "好友列表里的游戏状态",
+  "social.pluginFriendsHint":
+    "在客户端右侧的好友列表里，给游戏中的好友加上模式和已进行的时间；一起玩的好友带同一种颜色。",
+  "social.pluginLobby": "房间里的队友战绩",
+  "social.pluginLobbyHint":
+    "在客户端的组队房间里，每位成员的横幅上方显示近期胜率、KDA 和战力分；点成员会在 winer 里打开他的战绩。",
+  "social.hotkey": "唤起 winer 的快捷键",
+  "social.hotkeyHint":
+    "在任何地方按下都能显示或隐藏 winer；游戏中唤出时，窗口会保持在游戏上方。游戏需要使用无边框或窗口模式。",
+  "social.hotkeyOff": "未设置",
+  "social.hotkeyRecord": "设置快捷键",
+  "social.hotkeyChange": "更改快捷键",
+  "social.hotkeyListening": "请按下组合键…",
+  "social.hotkeyListeningHint": "按 Esc 取消。",
+  "social.hotkeyInvalid": "需要 Ctrl、Alt 或 Win 中至少一个，再加一个字母、数字、F 键或方向键。",
+  "social.hotkeyClear": "清除快捷键",
+  "social.hotkeyActive": "已生效",
+  "social.hotkeyFailed": "注册失败：这个组合键可能已被其他程序占用，请换一个。",
 } as const;
 
 export type MessageKey = keyof typeof zhCN;

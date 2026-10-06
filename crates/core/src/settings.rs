@@ -90,6 +90,10 @@ pub struct General {
     pub augment_details: bool,
     /// The roast titles beside a grade (`rating::FormTitle` and the scoreboard's own).
     pub titles: bool,
+    // Social.
+    /// The global shortcut that shows and hides the window, in [`normalize_hotkey`]'s form; `None`
+    /// turns it off. A file without the field gets the default; `null` keeps it off.
+    pub hotkey: Option<String>,
 }
 
 impl Default for General {
@@ -99,8 +103,125 @@ impl Default for General {
             language: Language::ZhCn,
             augment_details: true,
             titles: true,
+            hotkey: Some(DEFAULT_HOTKEY.to_owned()),
         }
     }
+}
+
+// ---- Social: the hotkey's combinations ----
+
+/// Not bound by the game, the client or Windows by default.
+pub const DEFAULT_HOTKEY: &str = "Ctrl+Shift+W";
+
+/// The keys a combination can end in besides letters, digits and F1–F24, by the names
+/// [`normalize_hotkey`] writes. Each is one the shell's shortcut parser accepts.
+pub const HOTKEY_KEYS: &[&str] = &[
+    "Space",
+    "Insert",
+    "Delete",
+    "Home",
+    "End",
+    "PageUp",
+    "PageDown",
+    "Up",
+    "Down",
+    "Left",
+    "Right",
+    "Backquote",
+    "Minus",
+    "Equal",
+    "BracketLeft",
+    "BracketRight",
+    "Backslash",
+    "Semicolon",
+    "Quote",
+    "Comma",
+    "Period",
+    "Slash",
+    "Num0",
+    "Num1",
+    "Num2",
+    "Num3",
+    "Num4",
+    "Num5",
+    "Num6",
+    "Num7",
+    "Num8",
+    "Num9",
+    "NumAdd",
+    "NumSubtract",
+    "NumMultiply",
+    "NumDivide",
+    "NumDecimal",
+    "Pause",
+    "ScrollLock",
+    "PrintScreen",
+];
+
+/// A combination in one spelling, `Ctrl+Alt+Shift+Super+Key` (the modifiers that are there, in that
+/// order), or `None` when it is not one. At least one of Ctrl, Alt and Super is required: a key
+/// alone, or with Shift alone, is typed in chat and in the game. Accepts the browser's key codes
+/// (`KeyW`, `Digit1`, `ArrowUp`, `Numpad1`) and `Win`, `Meta`, `Cmd` for Super.
+pub fn normalize_hotkey(text: &str) -> Option<String> {
+    let (mut ctrl, mut alt, mut shift, mut super_) = (false, false, false, false);
+    let mut key = None;
+    for token in text.split('+').map(str::trim) {
+        if token.is_empty() || key.is_some() {
+            return None;
+        }
+        match token.to_ascii_lowercase().as_str() {
+            "ctrl" | "control" => ctrl = true,
+            "alt" | "option" => alt = true,
+            "shift" => shift = true,
+            "super" | "win" | "meta" | "cmd" | "command" => super_ = true,
+            _ => key = Some(hotkey_key(token)?),
+        }
+    }
+    let key = key?;
+    if !(ctrl || alt || super_) {
+        return None;
+    }
+    let mut parts: Vec<&str> = [
+        (ctrl, "Ctrl"),
+        (alt, "Alt"),
+        (shift, "Shift"),
+        (super_, "Super"),
+    ]
+    .into_iter()
+    .filter_map(|(on, name)| on.then_some(name))
+    .collect();
+    parts.push(&key);
+    Some(parts.join("+"))
+}
+
+/// One key's canonical name, from ours or the browser's (`KeyW`, `Digit1`, `ArrowUp`, `Numpad1`).
+fn hotkey_key(token: &str) -> Option<String> {
+    let upper = token.to_ascii_uppercase();
+    let bare = upper
+        .strip_prefix("KEY")
+        .or_else(|| upper.strip_prefix("DIGIT"))
+        .filter(|rest| rest.len() == 1)
+        .unwrap_or(&upper);
+    if bare.len() == 1 && bare.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Some(bare.to_owned());
+    }
+    if let Some(number) = bare.strip_prefix('F').and_then(|n| n.parse::<u8>().ok())
+        && (1..=24).contains(&number)
+        && !bare.starts_with("F0")
+    {
+        return Some(format!("F{number}"));
+    }
+    let named = if let Some(rest) = bare.strip_prefix("ARROW") {
+        rest.to_owned()
+    } else if let Some(rest) = bare.strip_prefix("NUMPAD") {
+        format!("NUM{rest}")
+    } else {
+        bare.to_owned()
+    };
+    HOTKEY_KEYS
+        .iter()
+        .find(|name| name.eq_ignore_ascii_case(&named))
+        .map(|name| (*name).to_owned())
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
@@ -477,6 +598,13 @@ pub struct PluginSettings {
     pub bench_no_cooldown: bool,
     /// Pengu Loader's directory, when it cannot be found from the client.
     pub loader_dir: Option<String>,
+    // Social.
+    /// In the client's friends list: the mode and running time of a friend's game, and one colour
+    /// for the friends playing together.
+    pub friend_status: bool,
+    /// In the client's lobby: each member's recent form above their banner, and a click that opens
+    /// their history in winer.
+    pub lobby_panel: bool,
 }
 
 impl Default for PluginSettings {
@@ -487,6 +615,8 @@ impl Default for PluginSettings {
             hide_promotions: false,
             bench_no_cooldown: true,
             loader_dir: None,
+            friend_status: true,
+            lobby_panel: true,
         }
     }
 }
@@ -614,6 +744,8 @@ impl Settings {
         if let Some(message) = &presence.status_message {
             presence.status_message = Some(clip(message, PresenceRule::MESSAGE_LIMIT));
         }
+        // A combination that is not one turns the shortcut off rather than registering nonsense.
+        self.general.hotkey = self.general.hotkey.as_deref().and_then(normalize_hotkey);
         self
     }
 }
@@ -864,6 +996,77 @@ mod tests {
         assert_eq!(
             serde_json::from_value::<RankDisguise>(json).unwrap(),
             disguise
+        );
+    }
+
+    #[test]
+    fn hotkeys_are_written_one_way_and_need_a_real_modifier() {
+        let cases = [
+            ("Ctrl+Shift+W", Some("Ctrl+Shift+W")),
+            (" shift + ctrl + w ", Some("Ctrl+Shift+W")),
+            ("Control+KeyQ", Some("Ctrl+Q")),
+            ("Alt+Digit1", Some("Alt+1")),
+            ("Win+Alt+ArrowUp", Some("Alt+Super+Up")),
+            ("Meta+F5", Some("Super+F5")),
+            ("Ctrl+Numpad7", Some("Ctrl+Num7")),
+            ("Ctrl+NumpadAdd", Some("Ctrl+NumAdd")),
+            ("ctrl+backquote", Some("Ctrl+Backquote")),
+            ("Ctrl+F24", Some("Ctrl+F24")),
+            ("Ctrl+F", Some("Ctrl+F")),
+            ("Shift+W", None),
+            ("W", None),
+            ("Ctrl+Shift", None),
+            ("Ctrl+W+Q", None),
+            ("Ctrl++W", None),
+            ("Ctrl+F25", None),
+            ("Ctrl+F0", None),
+            ("Ctrl+Enter", None),
+            ("Ctrl+NumpadEnter", None),
+            ("", None),
+        ];
+        for (text, expected) in cases {
+            assert_eq!(normalize_hotkey(text).as_deref(), expected, "{text:?}");
+        }
+        for key in HOTKEY_KEYS {
+            assert_eq!(
+                normalize_hotkey(&format!("Ctrl+{key}")),
+                Some(format!("Ctrl+{key}")),
+                "a listed key is its own spelling"
+            );
+        }
+    }
+
+    #[test]
+    fn the_hotkey_starts_on_can_be_switched_off_and_a_bad_one_is_dropped() {
+        assert_eq!(
+            Settings::default().general.hotkey.as_deref(),
+            Some(DEFAULT_HOTKEY)
+        );
+        let old: Settings = serde_json::from_str(r#"{"general":{"titles":false}}"#).unwrap();
+        assert_eq!(
+            old.general.hotkey.as_deref(),
+            Some(DEFAULT_HOTKEY),
+            "a file from before the hotkey gets the default"
+        );
+        let off: Settings = serde_json::from_str(r#"{"general":{"hotkey":null}}"#).unwrap();
+        assert_eq!(off.normalized().general.hotkey, None);
+        let mut settings = Settings::default();
+        settings.general.hotkey = Some("alt + q".into());
+        assert_eq!(
+            settings.clone().normalized().general.hotkey.as_deref(),
+            Some("Alt+Q")
+        );
+        settings.general.hotkey = Some("Q".into());
+        assert_eq!(settings.normalized().general.hotkey, None);
+        let plugin = PluginSettings::default();
+        assert!(
+            plugin.friend_status && plugin.lobby_panel,
+            "both in-client additions start on"
+        );
+        let old: Settings = serde_json::from_str(r#"{"plugin":{"teamPanel":false}}"#).unwrap();
+        assert!(
+            old.plugin.friend_status && old.plugin.lobby_panel && !old.plugin.team_panel,
+            "a file from before them gets them on and keeps its own switches"
         );
     }
 

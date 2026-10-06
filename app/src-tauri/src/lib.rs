@@ -1,10 +1,11 @@
-//! The desktop shell: one window, a tray icon, the `lcu` asset protocol and the commands the
-//! frontend calls. Everything about the League client itself lives in `winer-core`.
+//! The desktop shell: one window, a tray icon, a global shortcut, the `lcu` asset protocol and the
+//! commands the frontend calls. Everything about the League client itself lives in `winer-core`.
 
 mod assets;
 mod commands;
 mod elevation;
 mod events;
+mod hotkey;
 mod logging;
 mod plugin_host;
 mod tray;
@@ -49,6 +50,11 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(hotkey::on_shortcut)
+                .build(),
+        )
         .register_asynchronous_uri_scheme_protocol("lcu", assets::protocol)
         .invoke_handler(commands::handler())
         .on_window_event(window::on_event)
@@ -82,6 +88,9 @@ fn setup(app: &mut App, start_hidden: bool) -> Result<(), Box<dyn Error>> {
     app.manage(plugin_host::Host::new(
         app.path().app_local_data_dir()?.join("pengu"),
     ));
+    app.manage(hotkey::Hotkey::default());
+    // On the main thread here, so it is registered before the window shows.
+    hotkey::apply(app.handle(), service.settings().general.hotkey);
 
     // Subscribed before the service starts: the core's events are not replayed, and the first
     // `Connected` is what sets up the loader and points the plugin at this session's bridge.

@@ -54,7 +54,10 @@ the surface.
 Semantic colours, per mode: `ok`, `danger`, `warning`, `info`, and the two game results —
 `win` / `loss` (green and red, whatever the accent: blue is a side, never a result) with `-soft`
 tints for row backgrounds. The map's two sides have their own pair, `side-blue` / `side-red`, used
-only as a dot or chip beside the side's name. `best` (amber, with `best-soft`) marks a game's best
+only as a dot or chip beside the side's name. Groups (friends in one game or party, a premade party)
+take `group-1` … `group-6` in turn: colour-blind-safe hues after Okabe and Ito, set per theme and
+each ≥ 3:1 on canvas, surface and both insets, drawn as a dot or a 3px stripe and always beside the
+group's number, never as text. `best` (amber, with `best-soft`) marks a game's best
 value. The game's line-art icons (augments, runes) sit on `glyph-plate`, the game's own dark ground,
 in every theme: drawn for it, they vanish on a light surface. Rank tiers have fixed colours (`TIER_COLORS` in `@winer/shared`) used only as a dot or
 an emblem stroke next to the tier's name, never as text.
@@ -111,7 +114,10 @@ Groups and entries (glyph + label; the rail keeps the label as name and tooltip)
 Footer entries: the theme switch (opens a menu) and 设置 Settings (opens a dialog; carries
 `aria-haspopup="dialog"`, never `aria-current`). Collapse lives in the brand row, not the footer.
 
-The settings dialog's sections are 外观, 通用, 评级 and 关于, a vertical tab rail on the left. 评级
+The settings dialog's sections are 外观, 通用, 评级 and 关于, a vertical tab rail on the left. 通用
+holds the global shortcut that summons the window: its keys as `Kbd` caps, 更改快捷键 (a recorder
+that takes the next combination, Esc cancelling, while the shell lets the old one go) and a ✕ that
+turns it off; a lamp says 已生效, or the row says in `danger` that the system refused it. 评级
 holds the rating scheme as radio cards (name, one-line hint, the tiers best to worst; two columns
 from 520px), the custom names as five inputs while 自定义 is chosen, the titles switch, and 评价依据
 in an inset block whose 完整说明 opens the site's rating page (`docs/site/rating.md`). 自动化 › 喊话 shows the scheme by
@@ -167,10 +173,20 @@ while the client is not connected), `ProfileIcon` (circle), `AssetIcon` (items, 
 - **Team board.** Champ select and the running game show one team at a time in a Panel (对局分析),
   the local player's team first; a Segmented switches to the other where both are known. One row
   per player: champion, name, tier and party badges, rank, recent win rate, KDA and streak on the
-  left (a button that opens the player's history), the latest games on the right as 64px tiles:
+  left (a button that opens the player's history; a premade party's badge is led by its group's
+  colour), the latest games on the right as 64px tiles:
   champion, K/D/A in mono, the mode's short name, tinted and underlined `win` / `loss` (a remake
   neutral), the queue, result and age as the tooltip. Six tiles show, eight to twelve where the row
   is wider (container queries). The local player's row carries the accent's inset edge.
+- **Lobby.** While the client shows the lobby, the live page lists the party as the team board's
+  rows: profile icon, name, 你 / 房主 badges and the lanes asked for, rank and recent form, the
+  form score in mono, and the latest games as tiles on the right. A row opens the member's history.
+- **Friends.** The overview's 好友动态 lists the friends in champ select or in a game, an inset row
+  each: profile icon, name, mode · state, an eye where the game can be spectated and the elapsed
+  time in mono, ticking by the second. Friends in one game or party carry their group's stripe and
+  a neutral badge led by its colour, with the number. A row opens the friend's history. In the
+  client, a friend in a game gets the same `mode · time` line under their name in Hextech gold,
+  and a group the same stripe; the lobby's members get one line of form above their banner.
 - **Sides.** On a map of two sides a team carries its side: the board's switch says 我方 · 红色方,
   a lone team a `side-blue` or `side-red` dot and its name. The callout's first line names the side
   (【蓝色方】) before the opening line. In the client the local player's line starts with the same
