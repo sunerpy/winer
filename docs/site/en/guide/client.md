@@ -49,7 +49,9 @@ has already asked for those rights to connect to it, so the activation asks noth
   banner. A click on that line or on the member's picture brings up winer's window on their
   history. Where the client's member cards cannot be found, a compact panel shows the same, and its
   members open their history too.
-- **Hide home-page promotions**: hides the event hub and esports pop-ups on the client's home page.
+- **Hide home-page promotions**: hides the esports pop-up and puts a short note in place of the
+  news and events on the client's home page. **Show for now** on the note brings them back until the
+  client restarts; with the option off, the home page shows as usual.
 
 Each has its own switch under **In-client › In-client features** and takes effect at once.
 

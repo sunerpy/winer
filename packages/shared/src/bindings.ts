@@ -480,7 +480,8 @@ auto: boolean,
  */
 teamPanel: boolean, 
 /**
- * Hide the activity centre and esports pop-ups on the client home page.
+ * Hide the esports pop-ups, and put a short note in place of the home page's news and events
+ * hub; the note brings the hub back until the client restarts.
  */
 hidePromotions: boolean, 
 /**

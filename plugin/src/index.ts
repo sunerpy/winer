@@ -7,6 +7,7 @@ import { BENCH_STYLE, interceptBenchClicks, liftBenchCooldown } from "./bench";
 import { Bridge } from "./bridge";
 import { h } from "./dom";
 import { decorateFriends } from "./friends";
+import { type HomeState, PROMOTIONS, decorateHome, forgetHub } from "./home";
 import { text } from "./i18n";
 import {
   type FloatingPanel,
@@ -26,7 +27,12 @@ declare const WINER_PLUGIN_VERSION: string;
 const STYLE_ID = "winer-style";
 const TWEAKS_ID = "winer-tweaks";
 const BENCH_ID = "winer-bench";
-const PROMOTIONS = `iframe#tv-official-pop, section#activity-center, div.screen-root[data-screen-name="rcp-fe-lol-activity-center"] { display: none !important; }`;
+/** What the desktop log says of the home page while the option is on, each change once. */
+const HOME_REPORTS: Record<Exclude<HomeState, "off">, string> = {
+  noted: "home: the hub is hidden, winer's note in its place",
+  missing: "home: no hub found in the activity centre",
+  shown: "home: the hub is shown again for this session",
+};
 /** A context whose heartbeat is older than this has died; another one takes over. */
 const OWNER_TIMEOUT_MS = 5000;
 
@@ -98,7 +104,7 @@ export class Controller {
   render(): void {
     if (!this.owns()) return;
     const { snapshot, settings } = this.state;
-    this.#style(TWEAKS_ID, PROMOTIONS, Boolean(settings?.plugin.hidePromotions));
+    this.#home(settings);
     this.#bench(Boolean(settings?.plugin.benchNoCooldown) && snapshot?.phase === "ChampSelect");
     this.#social(snapshot, settings);
 
@@ -192,6 +198,19 @@ export class Controller {
   #hideLobbyPanel(): void {
     this.#lobbyPanel?.host.remove();
     this.#lobbyPanel = null;
+  }
+
+  /** 隐藏首页推广: the pop-ups' and the hub's rules, and winer's note in the hub's place. */
+  #home(settings: Settings | null): void {
+    const hide = settings?.plugin.hidePromotions;
+    this.#style(TWEAKS_ID, PROMOTIONS, hide === true);
+    // Only a known "off" forgets a hub asked back: settings are unknown until the bridge's hello,
+    // and the page's session outlives that wait.
+    if (hide === false) forgetHub(this.doc);
+    const language = settings?.general.language ?? "zh-CN";
+    const home = decorateHome(this.doc, hide === true, language, this.context);
+    if (home === "off") this.#reports.delete("home");
+    else this.#log(HOME_REPORTS[home], "home");
   }
 
   #style(id: string, css: string, on: boolean): void {

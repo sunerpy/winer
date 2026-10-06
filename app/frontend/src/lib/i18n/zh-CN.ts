@@ -432,7 +432,8 @@ export const zhCN = {
   "plugin.benchNoCooldown": "在客户端里秒换备选席英雄",
   "plugin.benchNoCooldownHint":
     "只在极地大乱斗和海克斯大乱斗（有备选席的模式）里起作用：在客户端里点备选席的英雄会立刻换上，不用等冷却。需要 winer 在运行。",
-  "plugin.hidePromotionsHint": "隐藏客户端首页的活动中心和赛事弹窗。",
+  "plugin.hidePromotionsHint":
+    "隐藏赛事弹窗，并把客户端首页的资讯和活动换成一张说明卡片；点卡片上的“暂时显示”可以恢复显示，客户端重启后再次隐藏。",
   "plugin.dir": "Pengu Loader 目录",
   "plugin.dirHint":
     "使用你自己安装的 Pengu Loader 时填写，例如 C:\\Pengu Loader；留空时用 winer 自带的。",

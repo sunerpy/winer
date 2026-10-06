@@ -201,6 +201,17 @@ Linux build host the same day; each answers a plain GET with no key, cookie or u
 - **Pengu's `#pengu-root` covers the bench** in champ select: `elementFromPoint` at a bench
   item's centre returns that empty div, so a click's target is `#pengu-root`, not the item. The
   item is still in `elementsFromPoint` at the same point; that is how the plugin finds it.
+- **The Home tab is the activity centre** (16.19, 2026-10-06):
+  `div.screen-root[data-screen-name="rcp-fe-lol-activity-center"]` › `section#activity-center` ›
+  `main.activity-center__contents` (1055×718), filled by one iframe of Tencent's news and events hub
+  (`lol.qq.com/client/v3/index.html`) in `lol-uikit-section-controller` › `div.managed-iframe` ›
+  `div.managed-iframe-wrapper`, the iframe its only child; `div.persistent-control-panel` beside
+  `main` holds a mute button. Hiding the screen root or the section leaves the whole tab black. A
+  hidden iframe under `<body>`, `lol.qq.com/client/client_lcu_bg.html`, shares the hub's host and
+  the start of its path, so the hub is found by where it sits. The esports pop-up is
+  `iframe#contestPop` (`lol.qq.com/plugin/esports/pop.html`), a child of `<body>` at an inline
+  `display: none` until it pops (not seen popping); there is no `iframe#tv-official-pop`. The page's
+  `sessionStorage` is usable.
 - The page is `visibilityState: hidden` while the client window is minimized or hidden, and then
   `requestAnimationFrame` never fires: anything the plugin draws waits until the window is shown.
 - `POST /lol-champ-select/v1/session/bench/swap/{id}` answered OK for a champion that was on the
