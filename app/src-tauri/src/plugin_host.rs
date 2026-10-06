@@ -210,16 +210,15 @@ pub(crate) fn start_loader(service: &Service) {
     let service = service.clone();
     tauri::async_runtime::spawn(async move {
         match service.restart_client_ui_when_idle().await {
-            Ok(UiRestart::Restarted { plugin_back, shown }) => info!(
+            Ok(UiRestart { plugin_back, shown }) => info!(
                 plugin_back = plugin_back,
                 shown = shown,
                 "client interface restarted to load the new loader"
             ),
-            Ok(UiRestart::NotSettled(last)) => info!(
-                signed_in = last.signed_in,
-                phase = ?last.phase,
-                "the client did not settle in time; the loader starts with its next launch"
-            ),
+            // The client went away first: its next launch loads the loader.
+            Err(CoreError::NotConnected) => {
+                info!("the client closed before it settled; the loader starts with its next launch")
+            }
             Err(error) => warn!(%error, "client interface not restarted"),
         }
     });

@@ -1681,7 +1681,7 @@ describe("history", () => {
 
     await user.click(screen.getByRole("button", { name: zhCN["history.formHint"] }));
     const rule = screen.getByRole("dialog", { name: zhCN["history.formHint"] });
-    expect(rule).toHaveTextContent("取客户端列出的最近 30 场对局里最新的 20 场");
+    expect(rule).toHaveTextContent("取读到的最近 30 场对局里最新的 20 场");
     expect(rule).toHaveTextContent("不只是排位");
     expect(rule).toHaveTextContent("自定义对局（这次跳过 0 场）");
     await user.keyboard("{Escape}");

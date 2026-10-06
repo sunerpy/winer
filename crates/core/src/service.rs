@@ -93,10 +93,10 @@ const CHAT_WAIT_ATTEMPTS: u32 = 10;
 
 /// How long a player's stats are reused before they are fetched again.
 const PLAYER_TTL: Duration = Duration::from_secs(600);
-/// Games of a player's record asked of the shard's server: the form's twenty, about 2.2 MB and
-/// 0.7 s (41 players measured, 2026-10-06). Custom games and games against the computer among them
-/// leave the form fewer.
-const RECORD_GAMES: u32 = 20;
+/// The pages of the shard server's history a player's record reads, newest first, until they hold
+/// the form's window (`analysis::window_filled`): twenty games, then forty at a time, a hundred at
+/// most. Twenty games are about 2.2 MB and 0.7 s (41 players measured, 2026-10-06).
+const RECORD_PAGES: [(u32, u32); 3] = [(0, 20), (20, 40), (60, 40)];
 const FAILED_PLAYER_TTL: Duration = Duration::from_secs(30);
 
 #[derive(Debug, thiserror::Error)]
@@ -244,6 +244,18 @@ struct PlayerRecord {
     summoner: Summoner,
     ranked: Option<RankedStats>,
     games: Vec<Game>,
+    /// The kind of game the games were fetched to fill a form of (`None`: every kind).
+    focus: Option<ModeFamily>,
+    /// The games are all there are: the history ended, or the client's own list stood in.
+    complete: bool,
+}
+
+impl PlayerRecord {
+    /// Whether the record holds what a form read within `focus` needs: fetched for it, holding its
+    /// whole window anyway, or all the history there is.
+    fn serves(&self, focus: Option<ModeFamily>, kinds: &analysis::QueueKinds) -> bool {
+        self.complete || self.focus == focus || analysis::window_filled(&self.games, kinds, focus)
+    }
 }
 
 impl PlayerEntry {
@@ -1012,8 +1024,9 @@ impl Service {
             }
             live.champ_select = Some(session.clone());
         }
+        let focus = queue_family(lock(&client.data).as_deref(), session.queue_id, "");
         for puuid in live::champ_select_puuids(&session) {
-            self.ensure_player(client, puuid);
+            self.ensure_player(client, puuid, focus);
         }
         self.render(client);
         self.automate(client);
@@ -1038,8 +1051,12 @@ impl Service {
         }
         live.gameflow = session.clone();
         drop(live);
+        let focus = session.as_ref().and_then(|session| {
+            let queue = &session.game_data.queue;
+            queue_family(lock(&client.data).as_deref(), queue.id, &queue.game_mode)
+        });
         for puuid in session.iter().flat_map(live::game_puuids) {
-            self.ensure_player(client, puuid);
+            self.ensure_player(client, puuid, focus);
         }
         self.render(client);
     }
@@ -1068,7 +1085,7 @@ impl Service {
             let queue = queue_info(data.as_deref(), session.queue_id);
             mode = queue.map(QueueInfo::mode);
             let game_mode = queue.map_or("", |queue| queue.game_mode.as_str());
-            let focus = (!game_mode.is_empty()).then(|| ModeFamily::of(game_mode));
+            let focus = queue_family(data.as_deref(), session.queue_id, "");
             let mut view = live::champ_select_view(&session, stats(focus), &ranking, game_mode);
             live::mark_party(&mut view.my_team, &party);
             let champion = |id: i64| {
@@ -1094,8 +1111,8 @@ impl Service {
             self.call_out(client, lines, rule.audience);
         }
         if let Some(session) = gameflow {
-            let game_mode = &session.game_data.queue.game_mode;
-            let focus = (!game_mode.is_empty()).then(|| ModeFamily::of(game_mode));
+            let queue = &session.game_data.queue;
+            let focus = queue_family(lock(&client.data).as_deref(), queue.id, &queue.game_mode);
             let mut view = live::game_view(&session, &me, stats(focus), &ranking);
             // Callout: the lines the shortcut types into the game's chat, both teams by champion.
             if let Some(view) = view.as_mut() {
@@ -1164,15 +1181,19 @@ impl Service {
         PlayerStats::Ready(Box::new(self.summarize(&record, focus)))
     }
 
-    fn ensure_player(&self, client: &Client, puuid: String) {
+    /// Fetches `puuid`'s record unless a fresh one holds what a form read within `focus` needs.
+    fn ensure_player(&self, client: &Client, puuid: String, focus: Option<ModeFamily>) {
         let me = lock(&client.live).me.clone();
         self.scope_account(&me);
         let shown = caches::players_shown(client);
+        let kinds = catalog_kinds(client);
         {
             let mut players = lock(&self.inner.players);
             let fresh = match players.get(&puuid) {
                 Some(PlayerEntry::Loading) => true,
-                Some(entry @ PlayerEntry::Ready(..)) => entry.fresh(PLAYER_TTL).is_some(),
+                Some(entry @ PlayerEntry::Ready(record, _)) => {
+                    entry.fresh(PLAYER_TTL).is_some() && record.serves(focus, &kinds)
+                }
                 Some(PlayerEntry::Failed(_, at)) => at.elapsed() < FAILED_PLAYER_TTL,
                 None => false,
             };
@@ -1186,7 +1207,7 @@ impl Service {
         self.spawn(async move {
             let entry = {
                 let _slot = service.inner.player_slots.acquire().await;
-                match load_record(&client, &puuid, &me).await {
+                match load_record(&client, &puuid, &me, focus).await {
                     Ok(record) => PlayerEntry::Ready(Arc::new(record), Some(Instant::now())),
                     Err(error) => {
                         debug!(%error, "player stats unavailable");
@@ -2017,8 +2038,16 @@ impl Service {
             }
             live.lobby = lobby.clone();
         }
+        let focus = lobby.as_ref().and_then(|lobby| {
+            let config = &lobby.game_config;
+            queue_family(
+                lock(&client.data).as_deref(),
+                config.queue_id,
+                &config.game_mode,
+            )
+        });
         for puuid in lobby.iter().flat_map(live::lobby_puuids) {
-            self.ensure_player(client, puuid);
+            self.ensure_player(client, puuid, focus);
         }
         self.render_lobby(client);
     }
@@ -2040,12 +2069,12 @@ impl Service {
         };
         let view = lobby.filter(|_| live::shows_lobby(phase)).map(|lobby| {
             // The queue the lobby is set up for decides the kind of game its members are read in.
-            let data = lock(&client.data).clone();
-            let game_mode = queue_info(data.as_deref(), lobby.game_config.queue_id)
-                .map_or(lobby.game_config.game_mode.as_str(), |queue| {
-                    queue.game_mode.as_str()
-                });
-            let focus = (!game_mode.is_empty()).then(|| ModeFamily::of(game_mode));
+            let config = &lobby.game_config;
+            let focus = queue_family(
+                lock(&client.data).as_deref(),
+                config.queue_id,
+                &config.game_mode,
+            );
             live::lobby_view(&lobby, &me, |puuid| self.player_stats(puuid, focus))
         });
         self.patch(Patch::Lobby(view));
@@ -2130,13 +2159,15 @@ impl Service {
         let client = self.client()?;
         let me = lock(&client.live).me.clone();
         self.scope_account(&me);
+        let kinds = catalog_kinds(&client);
         if let Some(record) = lock(&self.inner.players)
             .get(puuid)
             .and_then(|entry| entry.fresh(NEWEST_TTL))
+            .filter(|record| record.serves(None, &kinds))
         {
             return Ok(record.clone());
         }
-        let record = Arc::new(load_record(&client, puuid, &me).await?);
+        let record = Arc::new(load_record(&client, puuid, &me, None).await?);
         self.same_account(&client, &me)?;
         let shown = caches::players_shown(&client);
         let mut players = lock(&self.inner.players);
@@ -2413,46 +2444,118 @@ fn history_paths(
     Ok((page(segment(puuid)?), fallback))
 }
 
-/// `puuid`'s identity, rank and newest games. The games come from the shard's match-history server
-/// where it has one: all ten players of each, so the form scores every game against its own
-/// players, and a Tencent client's own list holds as few as five at first. Elsewhere, or when the
-/// server fails, they come from the client's list, the player's own row only.
-async fn load_record(client: &Client, puuid: &str, me: &str) -> Result<PlayerRecord, CoreError> {
+/// `puuid`'s identity, rank and newest games, as many as a form read within `focus` needs. The games
+/// come from the shard's match-history server where it has one: all ten players of each, so the form
+/// scores every game against its own players, and a Tencent client's own list holds as few as five
+/// at first. Elsewhere, or when the server fails, they come from the client's list, the player's
+/// own row only.
+async fn load_record(
+    client: &Client,
+    puuid: &str,
+    me: &str,
+    focus: Option<ModeFamily>,
+) -> Result<PlayerRecord, CoreError> {
     let lcu = &client.lcu;
     let summoner_path = format!("/lol-summoner/v2/summoners/puuid/{}", segment(puuid)?);
     let ranked_path = format!("/lol-ranked/v1/ranked-stats/{puuid}");
-    let (summoner, ranked, games) = tokio::join!(
+    let (summoner, ranked, (games, complete)) = tokio::join!(
         lcu.get::<Summoner>(&summoner_path),
         lcu.get_optional::<RankedStats>(&ranked_path),
-        record_games(client, puuid, me),
+        record_games(client, puuid, me, focus),
     );
     // A private profile refuses history and rank; the identity alone is still worth showing.
     Ok(PlayerRecord {
         summoner: summoner?,
         ranked: ranked.ok().flatten(),
         games,
+        focus,
+        complete,
     })
 }
 
-/// The games of a player's record: [`RECORD_GAMES`] from the shard's server, else the client's own
-/// list; none when neither answers.
-async fn record_games(client: &Client, puuid: &str, me: &str) -> Vec<Game> {
-    match server_history(client, puuid, 0, RECORD_GAMES).await {
-        Some(Ok(page)) => return page.entries.into_iter().flatten().collect(),
-        Some(Err(error)) => {
-            debug!(%error, "no match-history server, reading the client's own list")
-        }
-        None => {}
+/// The games of a player's record, and whether they are all there are: the shard server's pages
+/// until they hold the form's window ([`RECORD_PAGES`]), else the client's own list; none when
+/// neither answers.
+async fn record_games(
+    client: &Client,
+    puuid: &str,
+    me: &str,
+    focus: Option<ModeFamily>,
+) -> (Vec<Game>, bool) {
+    let kinds = catalog_kinds(client);
+    let paged = page_through(
+        |begin, count| server_history(client, puuid, begin, count),
+        |games| analysis::window_filled(games, &kinds, focus),
+    )
+    .await;
+    if let Paged::Games(games, ended) = paged {
+        return (games, ended);
     }
     // Wider than the form's twenty, so games form leaves out do not shrink it where the client has
-    // more (a Tencent client answers with what it holds whatever the range).
+    // more (a Tencent client answers with what it holds whatever the range). It is all there is.
     match history(&client.lcu, puuid, me, 0, 30).await {
-        Ok(list) => list.games.games,
+        Ok(list) => (list.games.games, true),
         Err(error) => {
             debug!(%error, "match history unavailable");
-            Vec::new()
+            (Vec::new(), true)
         }
     }
+}
+
+/// What paging the server's history for a record came to.
+#[derive(Debug, PartialEq)]
+enum Paged {
+    /// The server answered: the games, and whether the history ended among them.
+    Games(Vec<Game>, bool),
+    /// The shard has no server, or its first page failed: the client's own list stands in.
+    NoServer,
+}
+
+/// Reads `fetch`'s pages ([`RECORD_PAGES`]) until `filled` says the games hold the form's window,
+/// the history ends (a short page) or the pages run out. A page failing after the first keeps what
+/// came before it.
+async fn page_through<F, Fut>(mut fetch: F, filled: impl Fn(&[Game]) -> bool) -> Paged
+where
+    F: FnMut(u32, u32) -> Fut,
+    Fut: Future<Output = Option<Result<sgp::Page, CoreError>>>,
+{
+    let mut games = Vec::new();
+    for (begin, count) in RECORD_PAGES {
+        match fetch(begin, count).await {
+            Some(Ok(page)) => {
+                let ended = (page.entries.len() as u32) < count;
+                games.extend(page.entries.into_iter().flatten());
+                if ended || filled(&games) {
+                    return Paged::Games(games, ended);
+                }
+            }
+            Some(Err(error)) if begin > 0 => {
+                debug!(%error, "a further page of history failed; keeping the games before it");
+                return Paged::Games(games, false);
+            }
+            Some(Err(error)) => {
+                debug!(%error, "no match-history server, reading the client's own list");
+                return Paged::NoServer;
+            }
+            None => return Paged::NoServer,
+        }
+    }
+    Paged::Games(games, false)
+}
+
+/// The kind of game a queue is played as, for the form of the players in it: the catalog's word on
+/// `queue_id`, else the mode the session names; `None` while neither says.
+fn queue_family(data: Option<&GameData>, queue_id: i64, game_mode: &str) -> Option<ModeFamily> {
+    let mode = queue_info(data, queue_id).map_or(game_mode, |queue| queue.game_mode.as_str());
+    (!mode.is_empty()).then(|| ModeFamily::of(mode))
+}
+
+/// Each queue's kind of game in the connected client's catalog; empty before it arrives.
+fn catalog_kinds(client: &Client) -> analysis::QueueKinds {
+    lock(&client.data)
+        .as_ref()
+        .map(|data| data.kinds.clone())
+        .unwrap_or_default()
 }
 
 /// Rejects anything that could change the meaning of the URL it is placed in.
@@ -2925,12 +3028,13 @@ mod tests {
         let service = Service::new(dir.path().join("settings.json"), Handle::current());
         let client = quiet_client(Phase::InProgress);
         for (puuid, wins) in [("me", 10), ("strong", 16), ("weak", 4)] {
-            // Twenty games of five kills, five deaths and five assists, `wins` of them won: the
+            // Twenty Rift games of five kills, five deaths and five assists, `wins` of them won: the
             // cache keeps what the client sent, and the form is worked out from it when shown.
             let games = (0..20)
                 .map(|index| {
                     serde_json::from_value(json!({
                         "gameId": index + 1, "gameCreation": index + 1, "gameDuration": 1800,
+                        "gameMode": "CLASSIC",
                         "participantIdentities": [{"participantId": 1, "player": {"puuid": puuid}}],
                         "participants": [{"participantId": 1, "championId": 1, "stats": {
                             "win": index < wins, "kills": 5, "deaths": 5, "assists": 5
@@ -2950,6 +3054,8 @@ mod tests {
                         },
                         ranked: None,
                         games,
+                        focus: None,
+                        complete: true,
                     }),
                     Some(Instant::now()),
                 ),
@@ -3054,9 +3160,134 @@ mod tests {
                 },
                 ranked: None,
                 games: Vec::new(),
+                focus: None,
+                complete: true,
             }),
             Some(Instant::now()),
         )
+    }
+
+    /// A page of `count` games of `game_mode` from the `begin`-th newest, the history `total` long.
+    fn server_page(begin: u32, count: u32, total: u32, game_mode: &str) -> sgp::Page {
+        sgp::Page {
+            entries: (begin..(begin + count).min(total))
+                .map(|index| {
+                    Some(Game {
+                        game_id: i64::from(index) + 1,
+                        game_mode: game_mode.into(),
+                        ..Game::default()
+                    })
+                })
+                .collect(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_record_pages_back_until_it_holds_the_forms_window() {
+        let kinds = analysis::QueueKinds::new();
+        // The newest twenty are Rift games, ARAM ones after them.
+        let mode = |index: u32| if index < 20 { "CLASSIC" } else { "KIWI" };
+        let asked = std::sync::Mutex::new(Vec::new());
+        let fetch = |begin: u32, count: u32| {
+            asked.lock().unwrap().push((begin, count));
+            let mut page = server_page(begin, count, 500, "");
+            for (offset, entry) in page.entries.iter_mut().enumerate() {
+                entry.as_mut().unwrap().game_mode = mode(begin + offset as u32).into();
+            }
+            async move { Some(Ok(page)) }
+        };
+        let rift = page_through(&fetch, |games| {
+            analysis::window_filled(games, &kinds, Some(ModeFamily::Rift))
+        })
+        .await;
+        assert!(matches!(&rift, Paged::Games(games, false) if games.len() == 20));
+        assert_eq!(*asked.lock().unwrap(), [(0, 20)], "the first page holds it");
+
+        asked.lock().unwrap().clear();
+        let aram = page_through(&fetch, |games| {
+            analysis::window_filled(games, &kinds, Some(ModeFamily::Aram))
+        })
+        .await;
+        assert!(matches!(&aram, Paged::Games(games, false) if games.len() == 60));
+        assert_eq!(*asked.lock().unwrap(), [(0, 20), (20, 40)]);
+
+        // Never more than a hundred games.
+        asked.lock().unwrap().clear();
+        let never = page_through(&fetch, |_| false).await;
+        assert!(matches!(&never, Paged::Games(games, false) if games.len() == 100));
+        assert_eq!(*asked.lock().unwrap(), [(0, 20), (20, 40), (60, 40)]);
+    }
+
+    #[tokio::test]
+    async fn a_short_history_ends_the_paging_and_a_failed_first_page_hands_over_to_the_client() {
+        let short = page_through(
+            |begin, count| async move { Some(Ok(server_page(begin, count, 30, "KIWI"))) },
+            |_| false,
+        )
+        .await;
+        assert!(
+            matches!(&short, Paged::Games(games, true) if games.len() == 30),
+            "the history ended: the record holds all there is"
+        );
+        let failed = page_through(
+            |_, _| async { Some(Err(CoreError::Remote("401".into()))) },
+            |_| false,
+        )
+        .await;
+        assert_eq!(failed, Paged::NoServer);
+        let elsewhere = page_through(|_, _| async { None }, |_| false).await;
+        assert_eq!(elsewhere, Paged::NoServer, "no server for the shard");
+        let later = page_through(
+            |begin, count| async move {
+                if begin == 0 {
+                    Some(Ok(server_page(begin, count, 500, "KIWI")))
+                } else {
+                    Some(Err(CoreError::Remote("timeout".into())))
+                }
+            },
+            |_| false,
+        )
+        .await;
+        assert!(
+            matches!(&later, Paged::Games(games, false) if games.len() == 20),
+            "a later page failing keeps the first"
+        );
+    }
+
+    #[test]
+    fn a_record_serves_the_form_it_was_fetched_for_or_one_it_holds_anyway() {
+        let kinds = analysis::QueueKinds::new();
+        let record = |focus, complete, games: Vec<Game>| PlayerRecord {
+            summoner: Summoner::default(),
+            ranked: None,
+            games,
+            focus,
+            complete,
+        };
+        let aram = |count: u32| {
+            server_page(0, count, count, "KIWI")
+                .entries
+                .into_iter()
+                .flatten()
+                .collect()
+        };
+        let fetched = record(Some(ModeFamily::Aram), false, aram(20));
+        assert!(fetched.serves(Some(ModeFamily::Aram), &kinds));
+        assert!(
+            fetched.serves(None, &kinds),
+            "twenty games against players fill every-kind's window"
+        );
+        assert!(
+            !fetched.serves(Some(ModeFamily::Rift), &kinds),
+            "a Rift form pages again"
+        );
+        let few = record(None, false, aram(8));
+        assert!(!few.serves(Some(ModeFamily::Aram), &kinds));
+        let all = record(None, true, aram(8));
+        assert!(
+            all.serves(Some(ModeFamily::Rift), &kinds),
+            "there is no more to fetch"
+        );
     }
 
     #[test]

@@ -14,9 +14,6 @@ use crate::{
 
 /// Recent form covers this many games at most, newest first.
 pub const RECENT_GAMES: usize = 20;
-/// A recent form narrowed to the kind of game being played needs this many counted games of it;
-/// with fewer it reads every kind.
-pub const FAMILY_GAMES: usize = 5;
 
 /// Each queue's kind of game, by queue id, from the client's catalog (`catalog::queue_kind`).
 pub type QueueKinds = HashMap<i64, GameKind>;
@@ -120,9 +117,9 @@ fn row_of<'a>(game: &'a Game, puuid: &str) -> Option<&'a Participant> {
 /// and games against the computer are passed over on the way to the newest [`RECENT_GAMES`], and
 /// the remakes among those are shown but left out of every figure.
 ///
-/// With a `focus`, the form reads the newest twenty of that kind of game instead, where the games
-/// listed hold [`FAMILY_GAMES`] counted ones of it; with fewer it reads every kind, and says so
-/// (`RecentForm::family`).
+/// With a `focus`, the form reads that kind of game only, the newest twenty of it, and never mixes
+/// in another: a player with fewer has fewer, which pulls the strength toward the average harder,
+/// and one with none of it has no strength there.
 ///
 /// Each counted game is scored for the strength ([`rating::strength`]): against its other players
 /// where the game has them all, as a game from the shard's server does, else against the average
@@ -134,6 +131,18 @@ pub fn recent_form(
     focus: Option<ModeFamily>,
 ) -> RecentForm {
     form(puuid, games, catalog, focus).0
+}
+
+/// Whether `games` already hold the window [`recent_form`] reads with `focus`: [`RECENT_GAMES`]
+/// games against other players, of the focused kind of game where there is one. Fetching a record
+/// stops here.
+pub fn window_filled(games: &[Game], kinds: &QueueKinds, focus: Option<ModeFamily>) -> bool {
+    games
+        .iter()
+        .filter(|game| game_kind(game, kinds) == GameKind::Matched)
+        .filter(|game| focus.is_none_or(|family| ModeFamily::of(&game.game_mode) == family))
+        .count()
+        >= RECENT_GAMES
 }
 
 /// What [`recent_form`] reads from `games`, over every kind of game, and what it leaves out.
@@ -248,25 +257,13 @@ fn form(
             .filter_map(|game| Some(read(game, row_of(game, puuid)?, catalog.roles)))
             .collect()
     };
-    let narrowed = focus.and_then(|family| {
-        let of_family: Vec<&Game> = matched
-            .iter()
-            .filter(|game| ModeFamily::of(&game.game_mode) == family)
-            .take(RECENT_GAMES)
-            .copied()
-            .collect();
-        let read = reads(&of_family);
-        let counted = read.iter().filter(|game| !game.game.remake).count();
-        (counted >= FAMILY_GAMES).then_some((of_family, read, family))
-    });
-    let (games, reads, family) = match narrowed {
-        Some((games, read, family)) => (games, read, Some(family)),
-        None => {
-            let games: Vec<&Game> = matched.into_iter().take(RECENT_GAMES).collect();
-            let read = reads(&games);
-            (games, read, None)
-        }
-    };
+    let games: Vec<&Game> = matched
+        .into_iter()
+        .filter(|game| focus.is_none_or(|family| ModeFamily::of(&game.game_mode) == family))
+        .take(RECENT_GAMES)
+        .collect();
+    let reads = reads(&games);
+    let family = focus;
 
     let counted: Vec<&Read> = reads.iter().filter(|read| !read.game.remake).collect();
     let total = counted.len() as u32;
@@ -860,7 +857,7 @@ mod tests {
     }
 
     #[test]
-    fn a_focus_reads_the_kind_of_game_being_played_where_there_are_enough() {
+    fn a_focus_reads_the_kind_of_game_being_played_and_never_mixes_in_another() {
         let mode = |mut game: Game, mode: &str| {
             game.game_mode = mode.into();
             game
@@ -883,10 +880,46 @@ mod tests {
         assert!(rift.score > aram.score);
         let every = recent_form("p", &games, &catalog, None);
         assert_eq!((every.family, every.games), (None, 15));
-        // Four Arena games are too few to say anything of the player there: every kind it is.
+        // Four Arena games are few, and still only Arena's.
         games.extend((0..4).map(|at| mode(game(50 + at, true, 1, 1, 3, false), "CHERRY")));
         let arena = recent_form("p", &games, &catalog, Some(ModeFamily::Arena));
-        assert_eq!((arena.family, arena.games), (None, 19));
+        assert_eq!((arena.family, arena.games), (Some(ModeFamily::Arena), 4));
+        let none = recent_form("p", &games, &catalog, Some(ModeFamily::Other));
+        assert_eq!(
+            (none.family, none.games, none.score),
+            (Some(ModeFamily::Other), 0, None),
+            "no game of the mode, no strength in it"
+        );
+    }
+
+    #[test]
+    fn a_window_is_filled_by_twenty_games_against_players_of_the_focused_kind() {
+        let mode = |mut game: Game, mode: &str| {
+            game.game_mode = mode.into();
+            game
+        };
+        let kinds = QueueKinds::new();
+        let mut games: Vec<Game> = (0..19)
+            .map(|at| mode(game(at, true, 1, 1, 1, false), "KIWI"))
+            .collect();
+        let mut custom = mode(game(50, true, 1, 1, 1, false), "KIWI");
+        custom.game_type = "CUSTOM_GAME".into();
+        games.push(custom);
+        games.push(mode(game(60, true, 1, 1, 1, false), "CLASSIC"));
+        assert!(
+            !window_filled(&games, &kinds, Some(ModeFamily::Aram)),
+            "a custom game takes no place"
+        );
+        assert!(
+            window_filled(&games, &kinds, None),
+            "twenty against players"
+        );
+        assert!(!window_filled(&games, &kinds, Some(ModeFamily::Rift)));
+        games.push(mode(game(70, false, 1, 1, 1, true), "ARAM"));
+        assert!(
+            window_filled(&games, &kinds, Some(ModeFamily::Aram)),
+            "a remake is in the window, shown and not counted"
+        );
     }
 
     #[test]

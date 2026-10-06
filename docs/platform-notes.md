@@ -99,9 +99,9 @@ for one client build or one privilege level, it says so.
   click on it reached its handler until 19:47:50, and the interface's working set dropped as if
   its page were in the background. Every restart in QA, the ones above included, had been followed
   by `POST /riotclient/ux-show`, and the client always worked. A restart for a new loader now
-  waits, two minutes at most, until chat has signed in (`/lol-chat/v1/me` carries `lol`) and the
-  phase is `None`, and `ux-show` follows once the plugin is back on the bridge, or after half a
-  minute without it.
+  waits, for as long as the client stays open, until chat has signed in (`/lol-chat/v1/me` carries
+  `lol`) and the phase is `None`, and `ux-show` follows once the plugin is back on the bridge, or
+  after half a minute without it.
 
 ## Profile and chat presence
 
@@ -190,7 +190,9 @@ Measured on NJ100, 16.19, 2026-10-05.
 - The newest entry can be a game left before it was recorded: `gameId` 0, no players. Custom and
   tutorial games are marked `private: true` but complete.
 - Twenty games (`count=20`) are about 2.2 MB and took 0.07–3.0 s, 0.7 s on average (41 players on
-  one Tencent shard, 2026-10-06); a player record now asks for that page first (`load_record`).
+  one Tencent shard, 2026-10-06). A player record reads that page first and then 40 at a time, 100
+  games at most, until it holds 20 games against players of the kind being played
+  (`record_games`).
   The client renews its entitlements token: one read minutes earlier answered 401 where the one it
   held then worked, so the token is read again for every request.
 - Each participant carries `teamPosition`: `TOP`, `JUNGLE`, `MIDDLE`, `BOTTOM` or `UTILITY` on the
