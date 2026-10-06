@@ -107,14 +107,21 @@ export class Controller {
     });
   }
 
-  /** Takes or keeps the drawing role; a live owner elsewhere keeps it. */
+  /** Takes or keeps the drawing role; a live owner elsewhere keeps it, unless winer is connected to
+   *  this context and not to the owner. A context that never reached the bridge still beats, but
+   *  draws nothing: kept by it, the role left the page without winer's drawing for minutes after
+   *  the client's interface restarted (measured on a fresh install, 2026-10-06). */
   owns(now = Date.now()): boolean {
     const root = this.doc.documentElement;
     const owner = root.dataset.winerOwner;
     const beat = Number(root.dataset.winerBeat ?? 0);
-    if (owner && owner !== this.context && now - beat < OWNER_TIMEOUT_MS) return false;
+    const connected = this.state.connected;
+    const ownerConnected = root.dataset.winerConnected === "true";
+    const live = owner && owner !== this.context && now - beat < OWNER_TIMEOUT_MS;
+    if (live && (ownerConnected || !connected)) return false;
     root.dataset.winerOwner = this.context;
     root.dataset.winerBeat = String(now);
+    root.dataset.winerConnected = String(connected);
     return true;
   }
 

@@ -319,6 +319,24 @@ describe("controller", () => {
     expect(second.owns(9000)).toBe(true);
     expect(first.owns(9500)).toBe(false);
   });
+
+  it("never lets a context winer is not connected to keep the role from one it is", () => {
+    delete document.documentElement.dataset.winerOwner;
+    const stray = new Controller(document);
+    const live = new Controller(document);
+    expect(stray.owns(1000)).toBe(true);
+    live.state.connection(true);
+    expect(live.owns(2000), "the connected context takes over at once").toBe(true);
+    expect(stray.owns(3000)).toBe(false);
+    // The connected one drops: the stray still does not take a role it was not handed, but the
+    // first context to be connected again does.
+    live.state.connection(false);
+    expect(live.owns(3500)).toBe(true);
+    expect(stray.owns(4000)).toBe(false);
+    stray.state.connection(true);
+    expect(stray.owns(4500)).toBe(true);
+    expect(live.owns(5000)).toBe(false);
+  });
 });
 
 describe("pengu", () => {
