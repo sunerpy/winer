@@ -318,14 +318,21 @@ export const en: Record<MessageKey, string> = {
     "Left out, without taking a place among the 20: custom games ({custom} passed over this time) and games against the computer, the tutorial included ({bots} passed over).",
   "history.formLeftOutShort":
     "Left out, without taking a place among the 20: custom games and games against the computer, the tutorial included.",
-  "history.formSame": "Champ select's ratings, titles and callout read the same numbers.",
+  "history.formSame":
+    "In champ select and in game the numbers read the mode being played only (the Rift apart from ARAM; every mode while it has fewer than 5 games), and ratings, titles and callout use those.",
   "history.formRuleShort":
     "Last {n}: every mode; custom games, games against the computer and remakes left out",
   "history.rankedRecord": "{queue}: wins and losses from the client's rank data, not recent form.",
   "history.standing": "Recent form",
   "history.standingHint": "How the tier is set",
   "history.standingScore":
-    "Form {score} (0–10): half win rate, half KDA over the games counted; few games pull it toward 5.0.",
+    "Form {score} (0–10): every counted game's score, set against its position or champion role, the newest weighed most and few games pulled toward the average, with the win rate a twentieth; then read as a share of players: 5.0 is the average, 9.0 better than nine in ten.",
+  "history.standingFull":
+    "Every game is scored against its other players, from the shard's match-history server.",
+  "history.standingLite":
+    "Only the player's own rows are known here, so each game is set against its mode's average player: less exact than against the game's own players, and pulled toward the average harder.",
+  "history.standingAway":
+    "{n} of them had someone else leave or idle, and count 0.4 of a game each.",
   "history.standingAlone":
     "In champ select, {scheme} ranks the team's five by form. Alone there is nobody to rank against, so the player takes Rift grades' fixed band first ({grade}), and the eight grades are spread in order over {scheme}'s {tiers} tiers: “{label}”. In champ select the tier also depends on the teammates and can differ.",
   "history.standingGraded":
@@ -525,16 +532,16 @@ export const en: Record<MessageKey, string> = {
   "rating.tierSlot": "Tier {n}",
   "rating.titles": "Roast titles",
   "rating.titlesHint":
-    "Titles from the numbers, leaning the way the tier does: above the middle only praise, such as “Patch Champion” for three wins in a row; only below it a “Grey-screen Regular”. Kills, deaths and assists are set against the same mode's average player.",
+    "Titles from the numbers, leaning the way the tier does: above the middle only praise, such as “Patch Champion” for three wins in a row; only below it a “Grey-screen Regular”. Kills, deaths and assists are set against the same mode's average player; from 8 games, how steady the games were too (“Rock Solid”, “Slot Machine”).",
   "rating.basis": "How it is rated",
   "rating.basis.form":
-    "Recent form (0–10): the last 20 games, custom games, games against the computer and remakes left out, half win rate and half KDA; few games pull it toward 5.0, so a lucky game or two cannot rank first.",
+    "Recent form (0–10): the score of each of the last 20 games (custom games, games against the computer and remakes left out; in champ select the mode being played only), set against its position or champion role and averaged, the newest weighed most; few games pull it toward the average and the win rate counts a twentieth; then it is read as a share of players, 5.0 the average.",
   "rating.basis.tiers":
-    "Rift five, the horses, the food chain and custom names rank the team by recent form and split it evenly over the tiers, so five players in five tiers get one each; Rift grades use fixed bands and no comparison: S+ from 7.6, S 6.8, A 5.9, B 5.3, C 4.8, D 4.3, E 3.8, lower is F.",
+    "Rift five, the horses, the food chain and custom names rank the team by recent form and split it evenly over the tiers, so five players in five tiers get one each; Rift grades use fixed bands and no comparison: S+ from 9.5, S 8.5, A 7.0, B 5.0, C 3.0, D 1.5, E 0.5, lower is F.",
   "rating.basis.game":
     "One game's score (scoreboard): gold, survival, kills, assists, damage and damage taken, on the Rift also farming and vision, each against the game's average, which scores 6.0, with one set of weights for the Rift and one for ARAM, both calibrated on WeGame; its grade is S+ from 9.0, S 8.0, A 7.0, B 6.0, C 5.0, D 4.0, E 3.0.",
   "rating.basis.titles":
-    "Titles: recent streaks, KDA, deaths and assists per game; on the scoreboard the game's damage share, kill participation, damage taken and gold share.",
+    "Titles: recent streaks, kills, deaths and assists per game and how much the game scores swing; on the scoreboard the game's damage share, kill participation, damage taken and gold share.",
   "rating.docs": "Full explanation",
   "rating.grade": "This game's grade {grade} · {name}",
   "auto.scheme": "Rating scheme",

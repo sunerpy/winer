@@ -84,6 +84,26 @@ impl Service {
         restart_when_settled(&ux, &mut hellos).await
     }
 
+    /// Brings the client's interface up in the background once it is back from a restart: as soon
+    /// as `hellos` changes (its plugin is back on the bridge), else after [`BACK_WAIT`].
+    pub(crate) fn show_client_ui_when_back(&self, mut hellos: watch::Receiver<u64>) {
+        let service = self.clone();
+        self.spawn(async move {
+            let _ = timeout(BACK_WAIT, hellos.changed()).await;
+            let shown = match service.client() {
+                Ok(client) => client
+                    .lcu
+                    .post(SHOW_UX, &json!({}))
+                    .await
+                    .map_err(CoreError::from),
+                Err(error) => Err(error),
+            };
+            if let Err(error) = shown {
+                warn!(%error, "the restarted client interface was not brought up");
+            }
+        });
+    }
+
     /// A plugin in the client's page said hello on the bridge: the page is up, a loader in it.
     pub(crate) fn plugin_connected(&self) {
         self.inner.plugin_hellos.send_modify(|hellos| *hellos += 1);

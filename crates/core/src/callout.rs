@@ -407,9 +407,11 @@ pub fn title_name(title: FormTitle, language: Language) -> &'static str {
         Reaper => ["人头收割机", "Kill Collector"],
         Playmaker => ["团战发动机", "Teamfight Engine"],
         Winner => ["常胜将军", "Serial Winner"],
+        RockSolid => ["定海神针", "Rock Solid"],
         Reliable => ["靠谱队友", "Reliable Teammate"],
         Trader => ["一换一专业户", "One-for-one Trader"],
         Helper => ["峡谷慈善家", "Rift Philanthropist"],
+        SlotMachine => ["峡谷老虎机", "Slot Machine"],
         Steady => ["正常发挥", "Business as Usual"],
         GivingAway => ["排位慈善家", "Ranked Philanthropist"],
         Bodhisattva => ["电竞菩萨", "Esports Bodhisattva"],
@@ -1809,6 +1811,7 @@ mod tests {
                     kills: 5.0,
                     deaths: 5.0,
                     assists: 5.0,
+                    score: Some(f64::from(wins) / 2.0),
                     ..RecentForm::default()
                 },
             }))
@@ -1895,6 +1898,7 @@ mod tests {
                     kills: 5.0,
                     deaths: 5.0,
                     assists: 5.0,
+                    score: Some(f64::from(wins(puuid)) / 2.0),
                     ..RecentForm::default()
                 },
             }))

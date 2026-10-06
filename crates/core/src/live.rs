@@ -498,6 +498,7 @@ mod tests {
                 kills: 5.0,
                 deaths: 5.0,
                 assists: 5.0,
+                score: Some(f64::from(wins) / 2.0),
                 ..RecentForm::default()
             };
             PlayerStats::Ready(Box::new(PlayerSummary {
@@ -585,6 +586,7 @@ mod tests {
                     deaths: 3.0,
                     assists: 10.0,
                     streak: 4,
+                    score: Some(9.0),
                     ..RecentForm::default()
                 },
             }))
@@ -632,6 +634,7 @@ mod tests {
                 kills: 5.0,
                 deaths: 5.0,
                 assists: 5.0,
+                score: Some(f64::from(wins) / 2.0),
                 ..RecentForm::default()
             },
         }))

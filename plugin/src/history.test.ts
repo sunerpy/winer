@@ -38,7 +38,20 @@ function summary(puuid: string, wins: number, games: number): PlayerSummary {
     iconId: 7,
     private: false,
     ranked: { solo: { tier: "GOLD", division: "II", lp: 20, wins: 5, losses: 5 }, flex: null },
-    recent: { games, wins, kills: 6, deaths: 3, assists: 9, streak: 3, matches: [], champions: [] },
+    recent: {
+      games,
+      wins,
+      kills: 6,
+      deaths: 3,
+      assists: 9,
+      streak: 3,
+      matches: [],
+      champions: [],
+      score: null,
+      source: null,
+      family: null,
+      away: 0,
+    },
   };
 }
 

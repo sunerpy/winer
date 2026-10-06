@@ -308,7 +308,42 @@ function formGames(games: MatchSummary[]): { counted: MatchSummary[]; scope: For
 }
 
 /** The core's form bands (`rating::FORM_GRADES`), S+ to E; below them F. */
-const FORM_GRADES = [7.6, 6.8, 5.9, 5.3, 4.8, 4.3, 3.8];
+const FORM_GRADES = [9.5, 8.5, 7, 5, 3, 1.5, 0.5];
+
+/** The standard normal distribution's cumulative probability (Abramowitz and Stegun 7.1.26). */
+function normalCdf(z: number): number {
+  const x = Math.abs(z) / Math.SQRT2;
+  const t = 1 / (1 + 0.3275911 * x);
+  const poly =
+    t *
+    (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+  const erf = 1 - poly * Math.exp(-x * x);
+  return z >= 0 ? 0.5 * (1 + erf) : 0.5 * (1 - erf);
+}
+
+/** Stand-in for the core's recent strength (`rating::strength`): the games' scores, the newest
+ *  weighed most, pulled toward an average line, a twentieth of the win rate, then read as a share
+ *  of players. */
+function strengthOf(matches: RecentMatch[]): number | null {
+  if (matches.length === 0) return null;
+  let [total, sum, squares] = [0, 0, 0];
+  matches
+    .filter((game) => game.score !== null)
+    .forEach((game, index) => {
+      const weight = 0.93 ** index;
+      total += weight;
+      sum += weight * (game.score ?? 0);
+      squares += weight * weight;
+    });
+  const average = 6;
+  const games = total > 0 ? (total * total) / squares : 0;
+  const confidence = games / (games + 10);
+  const performance = total > 0 ? confidence * (sum / total) + (1 - confidence) * average : average;
+  const wins = matches.filter((game) => game.win).length;
+  const raw = 0.95 * performance + (0.05 * 10 * (wins + 5)) / (matches.length + 10);
+  const share = 10 * normalCdf((raw - (0.95 * average + 0.25)) / 0.3);
+  return Math.round(share * 10) / 10;
+}
 /** One quip per tier of the default five, from the core's own (`callout.rs`). */
 const RIFT_FIVE_QUIPS = [
   "对面五个人准备举报代练",
@@ -345,11 +380,8 @@ function tierEmoji(tier: number, tiers: number, graded: boolean): string {
  *  score, spread over the scheme's tiers the way a team is. */
 function standingOf(summary: PlayerSummary, scope: FormScope, settings: Settings): PlayerStanding {
   const form = summary.recent;
-  if (form.games === 0) return { scope, rating: null, band: null };
-  const kda = (form.kills + form.assists) / Math.max(1, form.deaths);
-  const raw = 10 * (0.5 * (form.wins / form.games) + 0.5 * (1 - Math.exp(-kda / 3)));
-  const confidence = form.games / (form.games + 5);
-  const score = Math.round((confidence * raw + (1 - confidence) * 5) * 10) / 10;
+  if (form.games === 0 || form.score === null) return { scope, rating: null, band: null };
+  const score = form.score;
   const found = FORM_GRADES.findIndex((floor) => score >= floor);
   const band = found === -1 ? FORM_GRADES.length : found;
   const rule = settings.automation.callout;
@@ -450,6 +482,8 @@ function summary(puuid: string, name: string, seed: number, rank: Rank | null): 
     deaths: game.line.deaths,
     assists: game.line.assists,
     startedAt: game.startedAt,
+    score: game.line.score,
+    away: false,
   }));
   const wins = matches.filter((game) => game.win).length;
   const first = matches[0];
@@ -483,6 +517,10 @@ function summary(puuid: string, name: string, seed: number, rank: Rank | null): 
       streak: first?.win ? streak : -streak,
       matches,
       champions: [...pool.values()].sort((a, b) => b.games - a.games).slice(0, 5),
+      score: strengthOf(matches),
+      source: "full",
+      family: null,
+      away: 0,
     },
   };
 }

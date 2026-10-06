@@ -381,6 +381,10 @@ function rated(puuid: string, matches: RecentMatch[], isSelf = false): Seat {
         streak: 0,
         matches,
         champions: [],
+        score: null,
+        source: null,
+        family: null,
+        away: 0,
       },
     },
   };
@@ -397,6 +401,8 @@ function played(gameId: number, queueId: number, win: boolean, remake = false): 
     deaths: 2,
     assists: 10,
     startedAt: Date.now() - gameId * 3_600_000,
+    score: null,
+    away: false,
   };
 }
 

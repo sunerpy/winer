@@ -49,7 +49,7 @@ use crate::{
     sgp,
     view::{
         AugmentDetail, Connection, ErrorCode, Event, GameData, HistorySource, IpcError,
-        MatchDetail, MatchPage, Me, Notice, NoticeKind, Patch, Phase, PlayerProfile,
+        MatchDetail, MatchPage, Me, ModeFamily, Notice, NoticeKind, Patch, Phase, PlayerProfile,
         PlayerStanding, PlayerStats, PlayerSummary, Presence, QueueInfo, Snapshot, Update,
     },
 };
@@ -93,6 +93,10 @@ const CHAT_WAIT_ATTEMPTS: u32 = 10;
 
 /// How long a player's stats are reused before they are fetched again.
 const PLAYER_TTL: Duration = Duration::from_secs(600);
+/// Games of a player's record asked of the shard's server: the form's twenty, about 2.2 MB and
+/// 0.7 s (41 players measured, 2026-10-06). Custom games and games against the computer among them
+/// leave the form fewer.
+const RECORD_GAMES: u32 = 20;
 const FAILED_PLAYER_TTL: Duration = Duration::from_secs(30);
 
 #[derive(Debug, thiserror::Error)]
@@ -465,7 +469,7 @@ impl Service {
 
     pub async fn player_summary(&self, puuid: &str) -> Result<PlayerSummary, CoreError> {
         let record = self.player_record(puuid).await?;
-        Ok(self.summarize(&record))
+        Ok(self.summarize(&record, None))
     }
 
     /// A game-data asset such as a champion icon. Only `/lol-game-data/assets/` is served: the
@@ -655,13 +659,17 @@ impl Service {
     }
 
     /// Restarts the client's UI process, which reloads injected plugins; the game and the login
-    /// session are untouched. For a loader linked just now, see
-    /// [`Self::restart_client_ui_when_idle`].
+    /// session are untouched. The new interface is brought up once it is back, as after the restart
+    /// for a new loader ([`Self::restart_client_ui_when_idle`]).
     pub async fn restart_client_ui(&self) -> Result<(), CoreError> {
+        let mut hellos = self.plugin_hellos();
+        // Only a hello from the new interface counts.
+        hellos.mark_unchanged();
         self.client()?
             .lcu
             .post("/riotclient/kill-and-restart-ux", &json!({}))
             .await?;
+        self.show_client_ui_when_back(hellos);
         Ok(())
     }
 
@@ -1051,7 +1059,8 @@ impl Service {
         let settings = self.settings();
         let (rule, language) = (&settings.automation.callout, settings.general.language);
         let ranking = callout::ranking(rule, &settings.general);
-        let stats = |puuid: &str| self.player_stats(puuid);
+        // Each player's form is read within the kind of game being played.
+        let stats = |focus: Option<ModeFamily>| move |puuid: &str| self.player_stats(puuid, focus);
         let mut mode = None;
         let view = champ_select.map(|session| {
             let data = lock(&client.data).clone();
@@ -1059,7 +1068,8 @@ impl Service {
             let queue = queue_info(data.as_deref(), session.queue_id);
             mode = queue.map(QueueInfo::mode);
             let game_mode = queue.map_or("", |queue| queue.game_mode.as_str());
-            let mut view = live::champ_select_view(&session, stats, &ranking, game_mode);
+            let focus = (!game_mode.is_empty()).then(|| ModeFamily::of(game_mode));
+            let mut view = live::champ_select_view(&session, stats(focus), &ranking, game_mode);
             live::mark_party(&mut view.my_team, &party);
             let champion = |id: i64| {
                 data.as_ref()?
@@ -1084,7 +1094,9 @@ impl Service {
             self.call_out(client, lines, rule.audience);
         }
         if let Some(session) = gameflow {
-            let mut view = live::game_view(&session, &me, stats, &ranking);
+            let game_mode = &session.game_data.queue.game_mode;
+            let focus = (!game_mode.is_empty()).then(|| ModeFamily::of(game_mode));
+            let mut view = live::game_view(&session, &me, stats(focus), &ranking);
             // Callout: the lines the shortcut types into the game's chat, both teams by champion.
             if let Some(view) = view.as_mut() {
                 let data = lock(&client.data).clone();
@@ -1138,7 +1150,8 @@ impl Service {
         });
     }
 
-    fn player_stats(&self, puuid: &str) -> PlayerStats {
+    /// A player's stats as known now, the form read within `focus` ([`analysis::recent_form`]).
+    fn player_stats(&self, puuid: &str, focus: Option<ModeFamily>) -> PlayerStats {
         let record = match lock(&self.inner.players).get(puuid) {
             Some(PlayerEntry::Ready(record, _)) => record.clone(),
             Some(PlayerEntry::Failed(message, _)) => {
@@ -1148,7 +1161,7 @@ impl Service {
             }
             Some(PlayerEntry::Loading) | None => return PlayerStats::Loading,
         };
-        PlayerStats::Ready(Box::new(self.summarize(&record)))
+        PlayerStats::Ready(Box::new(self.summarize(&record, focus)))
     }
 
     fn ensure_player(&self, client: &Client, puuid: String) {
@@ -1173,7 +1186,7 @@ impl Service {
         self.spawn(async move {
             let entry = {
                 let _slot = service.inner.player_slots.acquire().await;
-                match load_record(&client.lcu, &puuid, &me).await {
+                match load_record(&client, &puuid, &me).await {
                     Ok(record) => PlayerEntry::Ready(Arc::new(record), Some(Instant::now())),
                     Err(error) => {
                         debug!(%error, "player stats unavailable");
@@ -2025,9 +2038,16 @@ impl Service {
             let live = lock(&client.live);
             (live.lobby.clone(), live.phase, live.me.clone())
         };
-        let view = lobby
-            .filter(|_| live::shows_lobby(phase))
-            .map(|lobby| live::lobby_view(&lobby, &me, |puuid| self.player_stats(puuid)));
+        let view = lobby.filter(|_| live::shows_lobby(phase)).map(|lobby| {
+            // The queue the lobby is set up for decides the kind of game its members are read in.
+            let data = lock(&client.data).clone();
+            let game_mode = queue_info(data.as_deref(), lobby.game_config.queue_id)
+                .map_or(lobby.game_config.game_mode.as_str(), |queue| {
+                    queue.game_mode.as_str()
+                });
+            let focus = (!game_mode.is_empty()).then(|| ModeFamily::of(game_mode));
+            live::lobby_view(&lobby, &me, |puuid| self.player_stats(puuid, focus))
+        });
         self.patch(Patch::Lobby(view));
     }
 }
@@ -2084,15 +2104,19 @@ impl Service {
     /// rating settings (`history::rate_alone`).
     pub async fn player_standing(&self, puuid: &str) -> Result<PlayerStanding, CoreError> {
         let record = self.player_record(puuid).await?;
-        let summary = self.summarize(&record);
+        let summary = self.summarize(&record, None);
         let data = self.game_data().unwrap_or_default();
         let settings = self.settings();
         let rated = rate_alone(
             &summary,
             &callout::ranking(&settings.automation.callout, &settings.general),
         );
+        let catalog = analysis::Catalog {
+            kinds: &data.kinds,
+            roles: &data.roles,
+        };
         Ok(PlayerStanding {
-            scope: analysis::form_scope(&record.summoner.puuid, &record.games, &data.kinds),
+            scope: analysis::form_scope(&record.summoner.puuid, &record.games, &catalog),
             band: rated.as_ref().map(|(_, band)| *band),
             rating: rated.map(|(rating, _)| rating),
         })
@@ -2112,7 +2136,7 @@ impl Service {
         {
             return Ok(record.clone());
         }
-        let record = Arc::new(load_record(&client.lcu, puuid, &me).await?);
+        let record = Arc::new(load_record(&client, puuid, &me).await?);
         self.same_account(&client, &me)?;
         let shown = caches::players_shown(&client);
         let mut players = lock(&self.inner.players);
@@ -2124,14 +2148,18 @@ impl Service {
         Ok(record)
     }
 
-    /// A record's summary under the catalog as it is now.
-    fn summarize(&self, record: &PlayerRecord) -> PlayerSummary {
+    /// A record's summary under the catalog as it is now, the form read within `focus`.
+    fn summarize(&self, record: &PlayerRecord, focus: Option<ModeFamily>) -> PlayerSummary {
         let data = self.game_data().unwrap_or_default();
         analysis::summary(
             &record.summoner,
             record.ranked.as_ref(),
             &record.games,
-            &data.kinds,
+            &analysis::Catalog {
+                kinds: &data.kinds,
+                roles: &data.roles,
+            },
+            focus,
         )
     }
 
@@ -2385,26 +2413,46 @@ fn history_paths(
     Ok((page(segment(puuid)?), fallback))
 }
 
-async fn load_record(lcu: &Lcu, puuid: &str, me: &str) -> Result<PlayerRecord, CoreError> {
+/// `puuid`'s identity, rank and newest games. The games come from the shard's match-history server
+/// where it has one: all ten players of each, so the form scores every game against its own
+/// players, and a Tencent client's own list holds as few as five at first. Elsewhere, or when the
+/// server fails, they come from the client's list, the player's own row only.
+async fn load_record(client: &Client, puuid: &str, me: &str) -> Result<PlayerRecord, CoreError> {
+    let lcu = &client.lcu;
     let summoner_path = format!("/lol-summoner/v2/summoners/puuid/{}", segment(puuid)?);
     let ranked_path = format!("/lol-ranked/v1/ranked-stats/{puuid}");
-    let (summoner, ranked, history) = tokio::join!(
+    let (summoner, ranked, games) = tokio::join!(
         lcu.get::<Summoner>(&summoner_path),
         lcu.get_optional::<RankedStats>(&ranked_path),
-        // Wider than the form's twenty, so games form leaves out do not shrink it where the client
-        // has more (a Tencent client answers with what it holds whatever the range).
-        history(lcu, puuid, me, 0, 30),
+        record_games(client, puuid, me),
     );
-    let summoner = summoner?;
-    if let Err(error) = &history {
-        debug!(%error, "match history unavailable");
-    }
     // A private profile refuses history and rank; the identity alone is still worth showing.
     Ok(PlayerRecord {
-        summoner,
+        summoner: summoner?,
         ranked: ranked.ok().flatten(),
-        games: history.map(|list| list.games.games).unwrap_or_default(),
+        games,
     })
+}
+
+/// The games of a player's record: [`RECORD_GAMES`] from the shard's server, else the client's own
+/// list; none when neither answers.
+async fn record_games(client: &Client, puuid: &str, me: &str) -> Vec<Game> {
+    match server_history(client, puuid, 0, RECORD_GAMES).await {
+        Some(Ok(page)) => return page.entries.into_iter().flatten().collect(),
+        Some(Err(error)) => {
+            debug!(%error, "no match-history server, reading the client's own list")
+        }
+        None => {}
+    }
+    // Wider than the form's twenty, so games form leaves out do not shrink it where the client has
+    // more (a Tencent client answers with what it holds whatever the range).
+    match history(&client.lcu, puuid, me, 0, 30).await {
+        Ok(list) => list.games.games,
+        Err(error) => {
+            debug!(%error, "match history unavailable");
+            Vec::new()
+        }
+    }
 }
 
 /// Rejects anything that could change the meaning of the URL it is placed in.
@@ -3065,13 +3113,13 @@ mod tests {
         assert!(!fresh("me") && !fresh("mate") && !fresh("foe"));
         assert!(fresh("stranger"), "not in the game");
         assert!(
-            matches!(service.player_stats("mate"), PlayerStats::Ready(_)),
+            matches!(service.player_stats("mate", None), PlayerStats::Ready(_)),
             "a view keeps what it has until the new record arrives"
         );
 
         service.scope_account("someone-else");
         assert!(matches!(
-            service.player_stats("stranger"),
+            service.player_stats("stranger", None),
             PlayerStats::Loading
         ));
         assert_eq!(lock(&service.inner.history).viewer(), "someone-else");

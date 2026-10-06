@@ -16,7 +16,20 @@ function summary(wins: number, games: number, streak: number): PlayerSummary {
     iconId: 1,
     private: false,
     ranked: { solo: { tier: "DIAMOND", division: "II", lp: 50, wins: 10, losses: 9 }, flex: null },
-    recent: { games, wins, kills: 5, deaths: 2, assists: 7, streak, matches: [], champions: [] },
+    recent: {
+      games,
+      wins,
+      kills: 5,
+      deaths: 2,
+      assists: 7,
+      streak,
+      matches: [],
+      champions: [],
+      score: null,
+      source: null,
+      family: null,
+      away: 0,
+    },
   };
 }
 

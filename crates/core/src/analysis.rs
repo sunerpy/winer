@@ -4,16 +4,19 @@ use std::{cmp::Reverse, collections::HashMap};
 
 use crate::{
     model::{Game, Participant, RankedEntry, RankedStats, Stats, Summoner},
-    rating::{self, Contribution, Roles},
+    rating::{self, Contribution, Played, Roles},
     view::{
-        ChampionForm, Feat, FormScope, GameKind, MatchDetail, MatchSummary, PlayerLine,
-        PlayerProfile, PlayerSummary, Position, Rank, Ranked, RecentForm, RecentMatch, RiotId,
-        TeamDetail, Tier,
+        ChampionForm, Feat, FormScope, FormSource, GameKind, MatchDetail, MatchSummary, ModeFamily,
+        PlayerLine, PlayerProfile, PlayerSummary, Position, Rank, Ranked, RecentForm, RecentMatch,
+        RiotId, TeamDetail, Tier,
     },
 };
 
 /// Recent form covers this many games at most, newest first.
 pub const RECENT_GAMES: usize = 20;
+/// A recent form narrowed to the kind of game being played needs this many counted games of it;
+/// with fewer it reads every kind.
+pub const FAMILY_GAMES: usize = 5;
 
 /// Each queue's kind of game, by queue id, from the client's catalog (`catalog::queue_kind`).
 pub type QueueKinds = HashMap<i64, GameKind>;
@@ -57,15 +60,18 @@ pub fn profile(summoner: &Summoner, ranked_stats: Option<&RankedStats>) -> Playe
     }
 }
 
+/// A player at a glance. `focus` narrows the recent form to the kind of game being played
+/// ([`recent_form`]).
 pub fn summary(
     summoner: &Summoner,
     ranked_stats: Option<&RankedStats>,
     games: &[Game],
-    kinds: &QueueKinds,
+    catalog: &Catalog,
+    focus: Option<ModeFamily>,
 ) -> PlayerSummary {
     let profile = profile(summoner, ranked_stats);
     PlayerSummary {
-        recent: recent_form(&summoner.puuid, games, kinds),
+        recent: recent_form(&summoner.puuid, games, catalog, focus),
         puuid: profile.puuid,
         name: profile.name,
         level: profile.level,
@@ -91,66 +97,184 @@ pub fn game_kind(game: &Game, kinds: &QueueKinds) -> GameKind {
     }
 }
 
-/// `puuid`'s recent games, newest first, folded into averages, a streak and a champion pool.
-/// Only games against other players count: custom games (practice, lobbies among friends) and games
-/// against the computer are passed over on the way to the newest [`RECENT_GAMES`], and the
-/// remakes among those are shown but left out of every figure.
-pub fn recent_form(puuid: &str, games: &[Game], kinds: &QueueKinds) -> RecentForm {
-    form(puuid, games, kinds).0
+/// What the recent form reads from the client's catalog: each queue's kind of game, and each
+/// champion's role for the game score.
+#[derive(Clone, Copy, Debug)]
+pub struct Catalog<'a> {
+    pub kinds: &'a QueueKinds,
+    pub roles: &'a Roles,
 }
 
-/// What [`recent_form`] reads from `games` and what it leaves out.
-pub fn form_scope(puuid: &str, games: &[Game], kinds: &QueueKinds) -> FormScope {
-    form(puuid, games, kinds).1
+/// `puuid`'s row of `game`: theirs by identity, or the only one a client's list page carries,
+/// whose identity can be masked.
+fn row_of<'a>(game: &'a Game, puuid: &str) -> Option<&'a Participant> {
+    game.participant_of(puuid)
+        .or(match game.participants.as_slice() {
+            [only] => Some(only),
+            _ => None,
+        })
 }
 
-fn form(puuid: &str, games: &[Game], kinds: &QueueKinds) -> (RecentForm, FormScope) {
+/// `puuid`'s recent games, newest first, folded into averages, a streak, a champion pool and a
+/// strength. Only games against other players count: custom games (practice, lobbies among friends)
+/// and games against the computer are passed over on the way to the newest [`RECENT_GAMES`], and
+/// the remakes among those are shown but left out of every figure.
+///
+/// With a `focus`, the form reads the newest twenty of that kind of game instead, where the games
+/// listed hold [`FAMILY_GAMES`] counted ones of it; with fewer it reads every kind, and says so
+/// (`RecentForm::family`).
+///
+/// Each counted game is scored for the strength ([`rating::strength`]): against its other players
+/// where the game has them all, as a game from the shard's server does, else against the average
+/// player of its mode ([`rating::lite_score`]).
+pub fn recent_form(
+    puuid: &str,
+    games: &[Game],
+    catalog: &Catalog,
+    focus: Option<ModeFamily>,
+) -> RecentForm {
+    form(puuid, games, catalog, focus).0
+}
+
+/// What [`recent_form`] reads from `games`, over every kind of game, and what it leaves out.
+pub fn form_scope(puuid: &str, games: &[Game], catalog: &Catalog) -> FormScope {
+    form(puuid, games, catalog, None).1
+}
+
+/// One game of a form, scored for the strength.
+struct Read {
+    game: RecentMatch,
+    played: Played,
+}
+
+fn read(game: &Game, participant: &Participant, roles: &Roles) -> Read {
+    let remake = is_remake(game, participant);
+    let full = game.participants.len() > 1;
+    let contribution_of =
+        |row: &Participant| contribution(&row.stats, roles.get(&row.champion_id).copied());
+    let score = if remake {
+        None
+    } else if full {
+        let lines: Vec<Contribution> = game.participants.iter().map(contribution_of).collect();
+        game.participants
+            .iter()
+            .position(|row| std::ptr::eq(row, participant))
+            .and_then(|index| {
+                rating::game_scores(&lines, rating::Scoring::of(&game.game_mode))
+                    .get(index)
+                    .copied()
+            })
+    } else {
+        rating::lite_score(
+            &contribution_of(participant),
+            &game.game_mode,
+            game.game_duration,
+        )
+    };
+    let away = game
+        .participants
+        .iter()
+        .any(|row| !std::ptr::eq(row, participant) && row.stats.was_afk);
+    let family = ModeFamily::of(&game.game_mode);
+    let par = rating::par(
+        family,
+        position_of(participant),
+        roles.get(&participant.champion_id).copied(),
+    );
+    let stats = &participant.stats;
+    Read {
+        game: RecentMatch {
+            game_id: game.game_id,
+            queue_id: game.queue_id,
+            champion_id: participant.champion_id,
+            win: stats.win,
+            remake,
+            kills: stats.kills,
+            deaths: stats.deaths,
+            assists: stats.assists,
+            started_at: game.game_creation,
+            score,
+            away,
+        },
+        played: Played {
+            score: score.map(|score| (score + par).clamp(0.0, 10.0)),
+            lite: !full,
+            win: stats.win,
+            away,
+            family: Some(family),
+        },
+    }
+}
+
+/// Where `participant` played on the Rift: the position the game settled on, which the shard's
+/// server sends, else the client's guess from lane and role where it names one.
+fn position_of(participant: &Participant) -> Option<Position> {
+    Position::parse(&participant.team_position).or_else(|| {
+        let role = participant.timeline.role.to_ascii_uppercase();
+        match Position::parse(&participant.timeline.lane)? {
+            Position::Bottom if role.contains("SUPPORT") => Some(Position::Utility),
+            Position::Bottom if role.contains("CARRY") => Some(Position::Bottom),
+            Position::Bottom => None,
+            position => Some(position),
+        }
+    })
+}
+
+fn form(
+    puuid: &str,
+    games: &[Game],
+    catalog: &Catalog,
+    focus: Option<ModeFamily>,
+) -> (RecentForm, FormScope) {
     let mut newest: Vec<&Game> = games.iter().collect();
     newest.sort_by_key(|game| Reverse(game.game_creation));
     let mut scope = FormScope {
         listed: games.len() as u32,
         ..FormScope::default()
     };
-    let mut games = Vec::with_capacity(RECENT_GAMES);
+    let mut matched = Vec::with_capacity(newest.len());
     for game in newest {
-        if games.len() == RECENT_GAMES {
-            break;
-        }
-        match game_kind(game, kinds) {
-            GameKind::Matched => games.push(game),
-            GameKind::Custom => scope.custom += 1,
-            GameKind::Bots => scope.bots += 1,
+        match game_kind(game, catalog.kinds) {
+            GameKind::Matched => matched.push(game),
+            // Counted on the way to the newest twenty, as the window over every kind goes.
+            GameKind::Custom if matched.len() < RECENT_GAMES => scope.custom += 1,
+            GameKind::Bots if matched.len() < RECENT_GAMES => scope.bots += 1,
+            GameKind::Custom | GameKind::Bots => {}
         }
     }
+    let reads = |games: &[&Game]| -> Vec<Read> {
+        games
+            .iter()
+            .filter_map(|game| Some(read(game, row_of(game, puuid)?, catalog.roles)))
+            .collect()
+    };
+    let narrowed = focus.and_then(|family| {
+        let of_family: Vec<&Game> = matched
+            .iter()
+            .filter(|game| ModeFamily::of(&game.game_mode) == family)
+            .take(RECENT_GAMES)
+            .copied()
+            .collect();
+        let read = reads(&of_family);
+        let counted = read.iter().filter(|game| !game.game.remake).count();
+        (counted >= FAMILY_GAMES).then_some((of_family, read, family))
+    });
+    let (games, reads, family) = match narrowed {
+        Some((games, read, family)) => (games, read, Some(family)),
+        None => {
+            let games: Vec<&Game> = matched.into_iter().take(RECENT_GAMES).collect();
+            let read = reads(&games);
+            (games, read, None)
+        }
+    };
 
-    let matches: Vec<RecentMatch> = games
-        .iter()
-        .filter_map(|game| {
-            // List pages carry only this player's participant row; detail pages carry ten.
-            let participant = game
-                .participant_of(puuid)
-                .or_else(|| game.participants.first())?;
-            Some(RecentMatch {
-                game_id: game.game_id,
-                queue_id: game.queue_id,
-                champion_id: participant.champion_id,
-                win: participant.stats.win,
-                remake: is_remake(game, participant),
-                kills: participant.stats.kills,
-                deaths: participant.stats.deaths,
-                assists: participant.stats.assists,
-                started_at: game.game_creation,
-            })
-        })
-        .collect();
-
-    let counted: Vec<&RecentMatch> = matches.iter().filter(|game| !game.remake).collect();
+    let counted: Vec<&Read> = reads.iter().filter(|read| !read.game.remake).collect();
     let total = counted.len() as u32;
     let average = |value: fn(&RecentMatch) -> i64| {
         if total == 0 {
             0.0
         } else {
-            counted.iter().map(|game| value(game)).sum::<i64>() as f64 / f64::from(total)
+            counted.iter().map(|read| value(&read.game)).sum::<i64>() as f64 / f64::from(total)
         }
     };
 
@@ -158,22 +282,22 @@ fn form(puuid: &str, games: &[Game], kinds: &QueueKinds) -> (RecentForm, FormSco
         Some(first) => {
             let run = counted
                 .iter()
-                .take_while(|game| game.win == first.win)
+                .take_while(|read| read.game.win == first.game.win)
                 .count() as i32;
-            if first.win { run } else { -run }
+            if first.game.win { run } else { -run }
         }
         None => 0,
     };
 
     let mut pool: HashMap<i64, ChampionForm> = HashMap::new();
-    for game in &counted {
-        let form = pool.entry(game.champion_id).or_insert(ChampionForm {
-            champion_id: game.champion_id,
+    for read in &counted {
+        let form = pool.entry(read.game.champion_id).or_insert(ChampionForm {
+            champion_id: read.game.champion_id,
             games: 0,
             wins: 0,
         });
         form.games += 1;
-        form.wins += u32::from(game.win);
+        form.wins += u32::from(read.game.win);
     }
     let mut champions: Vec<ChampionForm> = pool.into_values().collect();
     champions.sort_by(|a, b| {
@@ -183,29 +307,42 @@ fn form(puuid: &str, games: &[Game], kinds: &QueueKinds) -> (RecentForm, FormSco
             .then(a.champion_id.cmp(&b.champion_id))
     });
     champions.truncate(5);
-    scope.remakes = matches.len() as u32 - total;
+    scope.remakes = reads.len() as u32 - total;
 
     // The counted games against their modes' averages, for the title.
     let pace = rating::Pace::of(games.iter().filter_map(|game| {
-        let participant = game
-            .participant_of(puuid)
-            .or_else(|| game.participants.first())?;
+        let participant = row_of(game, puuid)?;
         let average = rating::average_line(&game.game_mode)?;
         let stats = &participant.stats;
         (!is_remake(game, participant))
             .then_some(([stats.kills, stats.deaths, stats.assists], average))
     }));
 
+    let played: Vec<Played> = counted.iter().map(|read| read.played).collect();
+    let strength = rating::strength(&played);
+    let scored = played.iter().filter(|game| game.score.is_some());
+    let source = scored.clone().next().map(|_| {
+        if scored.clone().any(|game| game.lite) {
+            FormSource::Lite
+        } else {
+            FormSource::Full
+        }
+    });
     let form = RecentForm {
         games: total,
-        wins: counted.iter().filter(|game| game.win).count() as u32,
+        wins: counted.iter().filter(|read| read.game.win).count() as u32,
         kills: average(|game| game.kills),
         deaths: average(|game| game.deaths),
         assists: average(|game| game.assists),
         streak,
-        matches,
         champions,
+        score: strength.map(|strength| strength.score),
+        source,
+        family,
+        away: counted.iter().filter(|read| read.game.away).count() as u32,
         pace,
+        spread: strength.and_then(|strength| strength.spread),
+        matches: reads.into_iter().map(|read| read.game).collect(),
     };
     (form, scope)
 }
@@ -480,6 +617,32 @@ pub fn match_detail(game: &Game, roles: &Roles) -> MatchDetail {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The form over every kind of game, champions' roles unknown.
+    fn form_of(puuid: &str, games: &[Game], kinds: &QueueKinds) -> RecentForm {
+        let roles = Roles::new();
+        recent_form(
+            puuid,
+            games,
+            &Catalog {
+                kinds,
+                roles: &roles,
+            },
+            None,
+        )
+    }
+
+    fn scope_of(puuid: &str, games: &[Game], kinds: &QueueKinds) -> FormScope {
+        let roles = Roles::new();
+        form_scope(
+            puuid,
+            games,
+            &Catalog {
+                kinds,
+                roles: &roles,
+            },
+        )
+    }
     use crate::{model::MatchList, test_support::fixture, view::Award};
 
     #[test]
@@ -520,7 +683,7 @@ mod tests {
             .player
             .puuid
             .clone();
-        let form = recent_form(&puuid, &list.games.games, &QueueKinds::new());
+        let form = form_of(&puuid, &list.games.games, &QueueKinds::new());
         assert_eq!(form.matches.len(), 20);
         // Seven of these twenty ended inside the first minutes and must not count.
         let remakes = form.matches.iter().filter(|game| game.remake).count() as u32;
@@ -641,7 +804,7 @@ mod tests {
             mode(game(1, false, 0, 0, 1, true), "CLASSIC"),
             mode(game(0, false, 9, 9, 1, false), "CHERRY"),
         ];
-        let pace = recent_form("p", &games, &QueueKinds::new()).pace.unwrap();
+        let pace = form_of("p", &games, &QueueKinds::new()).pace.unwrap();
         assert_eq!(pace.games, 3, "no remake, no mode without an average");
         assert!(
             (pace.deaths - 33.0 / (11.1 + 11.1 + 5.2)).abs() < 1e-9,
@@ -649,7 +812,97 @@ mod tests {
         );
         assert!((pace.assists - 6.0 / (25.6 + 25.6 + 7.5)).abs() < 1e-9);
         let arena = [mode(game(1, true, 9, 1, 1, false), "CHERRY")];
-        assert_eq!(recent_form("p", &arena, &QueueKinds::new()).pace, None);
+        assert_eq!(form_of("p", &arena, &QueueKinds::new()).pace, None);
+    }
+
+    #[test]
+    fn a_game_with_every_player_is_scored_against_them_and_a_lone_row_against_its_mode() {
+        let mut game = duel(1800);
+        game.game_mode = "CLASSIC".into();
+        let detail = match_detail(&game, &Roles::new());
+        let scoreboard = detail.teams[0].players[0].score;
+        let form = form_of("p1", std::slice::from_ref(&game), &QueueKinds::new());
+        assert_eq!(form.matches[0].score, scoreboard, "the scoreboard's score");
+        assert_eq!(form.source, Some(FormSource::Full));
+        assert!(form.score.is_some());
+
+        let mut alone = game.clone();
+        alone.participants.retain(|row| row.participant_id == 1);
+        let form = form_of("p1", &[alone.clone()], &QueueKinds::new());
+        let stats = &alone.participants[0].stats;
+        assert_eq!(
+            form.matches[0].score,
+            rating::lite_score(&contribution(stats, None), "CLASSIC", 1800)
+        );
+        assert_eq!(form.source, Some(FormSource::Lite));
+        // Arena has no average: the game counts, unscored.
+        alone.game_mode = "CHERRY".into();
+        let form = form_of("p1", &[alone], &QueueKinds::new());
+        assert_eq!(
+            (form.games, form.matches[0].score, form.source),
+            (1, None, None)
+        );
+        assert!(form.score.is_some(), "a strength from the result alone");
+    }
+
+    #[test]
+    fn a_game_someone_else_left_is_marked_and_ones_own_is_not() {
+        let game = duel(1800);
+        let mate = form_of("p3", std::slice::from_ref(&game), &QueueKinds::new());
+        assert!(mate.matches[0].away && mate.away == 1, "p4 left p3's side");
+        let foe = form_of("p1", std::slice::from_ref(&game), &QueueKinds::new());
+        assert!(foe.matches[0].away, "an enemy who left says as little");
+        let gone = form_of("p4", &[game], &QueueKinds::new());
+        assert!(
+            !gone.matches[0].away && gone.away == 0,
+            "leaving is the player's own"
+        );
+    }
+
+    #[test]
+    fn a_focus_reads_the_kind_of_game_being_played_where_there_are_enough() {
+        let mode = |mut game: Game, mode: &str| {
+            game.game_mode = mode.into();
+            game
+        };
+        let mut games: Vec<Game> = (0..10)
+            .map(|at| mode(game(100 + at, true, 9, 1, 1, false), "CLASSIC"))
+            .collect();
+        games.extend((0..5).map(|at| mode(game(at, false, 1, 9, 2, false), "KIWI")));
+        let catalog = Catalog {
+            kinds: &QueueKinds::new(),
+            roles: &Roles::new(),
+        };
+        let aram = recent_form("p", &games, &catalog, Some(ModeFamily::Aram));
+        assert_eq!(
+            (aram.family, aram.games, aram.wins),
+            (Some(ModeFamily::Aram), 5, 0)
+        );
+        let rift = recent_form("p", &games, &catalog, Some(ModeFamily::Rift));
+        assert_eq!((rift.family, rift.games), (Some(ModeFamily::Rift), 10));
+        assert!(rift.score > aram.score);
+        let every = recent_form("p", &games, &catalog, None);
+        assert_eq!((every.family, every.games), (None, 15));
+        // Four Arena games are too few to say anything of the player there: every kind it is.
+        games.extend((0..4).map(|at| mode(game(50 + at, true, 1, 1, 3, false), "CHERRY")));
+        let arena = recent_form("p", &games, &catalog, Some(ModeFamily::Arena));
+        assert_eq!((arena.family, arena.games), (None, 19));
+    }
+
+    #[test]
+    fn games_from_the_server_are_scored_against_their_whole_lobby() {
+        let page: crate::sgp::History = fixture("live/responses/sgp-match-history-summary.json");
+        let games: Vec<Game> = page.into_page().entries.into_iter().flatten().collect();
+        let puuid = games[0].participant_identities[0].player.puuid.clone();
+        let form = form_of(&puuid, &games, &QueueKinds::new());
+        assert_eq!(form.source, Some(FormSource::Full));
+        assert!(
+            form.matches
+                .iter()
+                .all(|game| game.remake || game.score.is_some()),
+            "{:?}",
+            form.matches
+        );
     }
 
     #[test]
@@ -661,7 +914,7 @@ mod tests {
             game(2, false, 1, 5, 1, false),
             game(1, true, 1, 1, 1, false),
         ];
-        let form = recent_form("p", &games, &QueueKinds::new());
+        let form = form_of("p", &games, &QueueKinds::new());
         assert_eq!((form.games, form.wins, form.streak), (4, 3, 2));
         assert_eq!(form.kills, 4.0);
         assert_eq!(form.deaths, 2.0);
@@ -681,29 +934,26 @@ mod tests {
     fn custom_games_do_not_count_toward_form() {
         let mut custom = game(9, false, 0, 10, 1, false);
         custom.game_type = "CUSTOM_GAME".into();
-        let form = recent_form(
+        let form = form_of(
             "p",
             &[custom, game(5, true, 10, 0, 1, false)],
             &QueueKinds::new(),
         );
         assert_eq!((form.games, form.wins, form.matches.len()), (1, 1, 1));
         let many: Vec<Game> = (0..30).map(|at| game(at, true, 1, 1, 1, false)).collect();
-        let form = recent_form("p", &many, &QueueKinds::new());
+        let form = form_of("p", &many, &QueueKinds::new());
         assert_eq!(form.matches.len(), RECENT_GAMES, "the newest twenty only");
         assert_eq!(form.matches[0].started_at, 29);
     }
 
     #[test]
     fn an_empty_history_is_all_zero() {
-        let form = recent_form("p", &[], &QueueKinds::new());
+        let form = form_of("p", &[], &QueueKinds::new());
         assert_eq!(
             (form.games, form.wins, form.streak, form.kills),
             (0, 0, 0, 0.0)
         );
-        assert_eq!(
-            form_scope("p", &[], &QueueKinds::new()),
-            FormScope::default()
-        );
+        assert_eq!(scope_of("p", &[], &QueueKinds::new()), FormScope::default());
     }
 
     /// The live catalog's kinds of queue (16.19, `fixtures/live/ranked/queues.json`).
@@ -727,8 +977,8 @@ mod tests {
     #[test]
     fn form_reads_the_newest_twenty_games_against_players_on_a_measured_list() {
         let (games, kinds) = (client_list(), live_kinds());
-        let form = recent_form("PUUID-0001", &games, &kinds);
-        let scope = form_scope("PUUID-0001", &games, &kinds);
+        let form = form_of("PUUID-0001", &games, &kinds);
+        let scope = scope_of("PUUID-0001", &games, &kinds);
         assert_eq!(
             (scope.listed, scope.custom, scope.bots, scope.remakes),
             (30, 2, 0, 2)
@@ -769,8 +1019,8 @@ mod tests {
                 GameKind::Matched
             ]
         );
-        let form = recent_form("PUUID-0001", &games, &kinds);
-        let scope = form_scope("PUUID-0001", &games, &kinds);
+        let form = form_of("PUUID-0001", &games, &kinds);
+        let scope = scope_of("PUUID-0001", &games, &kinds);
         assert_eq!((scope.custom, scope.bots), (2, 3));
         assert_eq!(
             form.matches.len(),

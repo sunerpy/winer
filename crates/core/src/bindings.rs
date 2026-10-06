@@ -40,6 +40,8 @@ pub fn typescript() -> String {
         view::PlayerSummary,
         view::RecentForm,
         view::RecentMatch,
+        view::FormSource,
+        view::ModeFamily,
         view::ChampionForm,
         view::MatchPage,
         view::HistorySource,

@@ -91,7 +91,8 @@ for one client build or one privilege level, it says so.
   within seconds, and the window returns **un-minimized** even if it was minimized before.
 - **A restart while the client is still signing in leaves the new interface hidden** (the owner's
   PC, a fresh install, 2026-10-06). winer, just restarted elevated, linked the loader and called
-  `kill-and-restart-ux` at 19:42:34, 16 s after the client launched. The restarted interface logged
+  `kill-and-restart-ux` at 19:42:34, 25 s after the client's process started (17 s after its log
+  began). The restarted interface logged
   `chat error: Invalid issuer` and Tencent web content `您还没有登录`; the client's backend logged
   `Ux state set to HideAll.` and `Ux state set to Quit.` at the restart and no
   `Ux state set to ShowMain.` in the ten minutes after. PLAY was marked enabled within 4 s, yet no
@@ -188,6 +189,13 @@ Measured on NJ100, 16.19, 2026-10-05.
   also tagged `normal`, `custom` or `tutorial`.
 - The newest entry can be a game left before it was recorded: `gameId` 0, no players. Custom and
   tutorial games are marked `private: true` but complete.
+- Twenty games (`count=20`) are about 2.2 MB and took 0.07–3.0 s, 0.7 s on average (41 players on
+  one Tencent shard, 2026-10-06); a player record now asks for that page first (`load_record`).
+  The client renews its entitlements token: one read minutes earlier answered 401 where the one it
+  held then worked, so the token is read again for every request.
+- Each participant carries `teamPosition`: `TOP`, `JUNGLE`, `MIDDLE`, `BOTTOM` or `UTILITY` on the
+  Rift, empty in ARAM. `lane` and `role` are the older guess and often wrong (ARAM games read `TOP`
+  and `SUPPORT`); the client's own documents have only those.
 - Turned into the LCU's shape (`crates/core/src/sgp.rs`), a game reads exactly as
   `/lol-match-history/v1/games/{id}` does for the analysis (the test
   `a_page_from_the_server_describes_its_game_as_the_client_does`, on both captures of one game).

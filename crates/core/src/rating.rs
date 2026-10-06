@@ -6,7 +6,7 @@
 
 use std::{cmp::Ordering, collections::HashMap};
 
-use crate::view::{Award, RecentForm};
+use crate::view::{Award, ModeFamily, Position, RecentForm};
 
 /// What a champion is for, as the client's champion list names it first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -223,41 +223,80 @@ pub fn game_scores(players: &[Contribution], scoring: &Scoring) -> Vec<f64> {
         return Vec::new();
     }
     let count = players.len() as f64;
-    let mut averages = [0.0; 8];
+    let mut average = Average::default();
     for player in players {
-        for (sum, value) in averages.iter_mut().zip(parts(player)) {
+        for (sum, value) in average.parts.iter_mut().zip(parts(player)) {
             *sum += value / count;
         }
+        average.deaths += player.deaths as f64 / count;
     }
-    let average_deaths = players
-        .iter()
-        .map(|player| player.deaths as f64)
-        .sum::<f64>()
-        / count;
-    let base = &scoring.base;
-
     players
         .iter()
-        .map(|player| {
-            let own = scoring.weights(player.role);
-            let (mut total, mut weight) = (0.0, 0.0);
-            for (((value, average), part_weight), base_weight) in parts(player)
-                .into_iter()
-                .zip(averages)
-                .zip(own.parts())
-                .zip(base.parts())
-            {
-                if base_weight > 0.0 && average >= MEANINGFUL {
-                    total += part_weight * (value / average).min(CAP);
-                    weight += base_weight;
-                }
-            }
-            total +=
-                own.survival * ((average_deaths + 1.0) / (player.deaths as f64 + 1.0)).min(CAP);
-            weight += base.survival;
-            round1(10.0 / (1.0 + (-STEEPNESS * (total / weight - CENTRE)).exp()))
-        })
+        .map(|player| round1(line_score(player, &average, scoring)))
         .collect()
+}
+
+/// The average player a line is set against: the eight parts of [`Weights`] and deaths.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct Average {
+    parts: [f64; 8],
+    deaths: f64,
+}
+
+/// One line's score against `average` under `scoring`, unrounded (see [`game_scores`]).
+fn line_score(player: &Contribution, average: &Average, scoring: &Scoring) -> f64 {
+    let (own, base) = (scoring.weights(player.role), &scoring.base);
+    let (mut total, mut weight) = (0.0, 0.0);
+    for (((value, usual), part_weight), base_weight) in parts(player)
+        .into_iter()
+        .zip(average.parts)
+        .zip(own.parts())
+        .zip(base.parts())
+    {
+        if base_weight > 0.0 && usual >= MEANINGFUL {
+            total += part_weight * (value / usual).min(CAP);
+            weight += base_weight;
+        }
+    }
+    total += own.survival * ((average.deaths + 1.0) / (player.deaths as f64 + 1.0)).min(CAP);
+    weight += base.survival;
+    10.0 / (1.0 + (-STEEPNESS * (total / weight - CENTRE)).exp())
+}
+
+/// What the average player of a kind of game does a minute: kills, assists, damage to champions,
+/// damage taken, gold, minions and monsters, vision score and crowd control seconds, then deaths.
+/// Measured on real players' games from the shard's server (`fixtures/sgp/`, October 2026): 4,590
+/// Rift lines and 8,370 of the two ARAMs. Arena and the rotating modes have none.
+fn per_minute(family: ModeFamily) -> Option<Average> {
+    match family {
+        ModeFamily::Rift => Some(Average {
+            parts: [0.240, 0.289, 779.3, 960.7, 419.3, 5.51, 0.975, 0.999],
+            deaths: 0.241,
+        }),
+        ModeFamily::Aram => Some(Average {
+            parts: [0.658, 1.513, 2204.8, 2426.5, 956.8, 2.24, 0.005, 1.880],
+            deaths: 0.660,
+        }),
+        ModeFamily::Arena | ModeFamily::Other => None,
+    }
+}
+
+/// One line's score where only the player's own row is known, as in the client's own list: set
+/// against the average player of its kind of game over the same `seconds` ([`per_minute`]) instead
+/// of the game's other players, with the same weights. It cannot tell a bloody game from a quiet
+/// one, so it agrees less with WeGame than [`game_scores`] does. `None` for a kind of game with no
+/// average, or a game with no length.
+pub fn lite_score(player: &Contribution, game_mode: &str, seconds: i64) -> Option<f64> {
+    let per_minute = per_minute(ModeFamily::of(game_mode))?;
+    if seconds <= 0 {
+        return None;
+    }
+    let minutes = seconds as f64 / 60.0;
+    let average = Average {
+        parts: per_minute.parts.map(|value| value * minutes),
+        deaths: per_minute.deaths * minutes,
+    };
+    Some(round1(line_score(player, &average, Scoring::of(game_mode))))
 }
 
 /// The best score of the winning side is the MVP and the best of the losing side the SVP. Needs
@@ -279,9 +318,11 @@ pub fn awards(scores: &[f64], won: &[bool]) -> Vec<Option<Award>> {
     awards
 }
 
-/// 峡谷评级's lower bounds on a form score, S+ to E; anything lower is F. A middling player (half
-/// the games won, KDA 3, twenty games) scores about 5.5, a B; half won at KDA 4.3 is 6.0, an A.
-pub const FORM_GRADES: [f64; 7] = [7.6, 6.8, 5.9, 5.3, 4.8, 4.3, 3.8];
+/// 峡谷评级's lower bounds on a recent strength, S+ to E; anything lower is F. A strength is the
+/// share of players below it, in tenths ([`strength`]), so each band holds a fixed share of them:
+/// S+ the best 5%, S the next 10%, A 15%, B and C 20% each either side of the middle, D 15%, E 10%
+/// and F the last 5%.
+pub const FORM_GRADES: [f64; 7] = [9.5, 8.5, 7.0, 5.0, 3.0, 1.5, 0.5];
 /// The same for one game's score, where the game's average player stands at 6.0, a B.
 pub const GAME_GRADES: [f64; 7] = [9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0];
 /// The grades' letters, best first.
@@ -381,6 +422,9 @@ pub enum FormTitle {
     Playmaker,
     /// Two games in three won, over eight games or more: 常胜将军.
     Winner,
+    /// The games' scores scatter at most 0.8 times as far as an ordinary player's, over eight scored
+    /// games, above the middle: 定海神针.
+    RockSolid,
     /// Above the middle with nothing else standing out: 靠谱队友.
     Reliable,
     // ---- Any tier ----
@@ -388,6 +432,9 @@ pub enum FormTitle {
     Trader,
     /// Assists at least 1.2 times the average, kills at most 0.85: 峡谷慈善家.
     Helper,
+    /// The games' scores scatter at least 1.15 times as far as an ordinary player's, over eight
+    /// scored games, at or below the middle: 峡谷老虎机.
+    SlotMachine,
     /// At the middle with nothing standing out: 正常发挥.
     Steady,
     // ---- Below the middle ----
@@ -406,10 +453,11 @@ pub enum FormTitle {
 }
 
 /// The title recent form earns beside a tier that leans `lean`: the first that fits of the
-/// leaning's own, then of those any tier may have, else the leaning's plain one. Kills, deaths and
-/// assists are read against each game's mode ([`Pace`]), so an ARAM player's ten deaths are an
-/// ordinary game, and a tier above the middle never gets a title below it, nor the other way
-/// round. Needs five games, and five with a mode's average for what the counts say.
+/// leaning's own, then of those any tier may have, then of how steady the games were, else the
+/// leaning's plain one. Kills, deaths and assists are read against each game's mode ([`Pace`]), so
+/// an ARAM player's ten deaths are an ordinary game, and a tier above the middle never gets a title
+/// below it, nor the other way round. Needs five games, five with a mode's average for what the
+/// counts say, and eight scored ones for how steady they were (`RecentForm::spread`).
 pub fn form_title(form: &RecentForm, lean: Lean) -> Option<FormTitle> {
     use FormTitle::*;
     if form.games < 5 {
@@ -455,6 +503,17 @@ pub fn form_title(form: &RecentForm, lean: Lean) -> Option<FormTitle> {
             Helper,
         ),
     ];
+    let spread = form.spread;
+    let steadiness = match lean {
+        Lean::Above => (
+            spread.is_some_and(|spread| spread <= STEADY_SPREAD),
+            RockSolid,
+        ),
+        Lean::Middle | Lean::Below => (
+            spread.is_some_and(|spread| spread >= WILD_SPREAD),
+            SlotMachine,
+        ),
+    };
     let plain = match lean {
         Lean::Above => Reliable,
         Lean::Middle => Steady,
@@ -463,27 +522,285 @@ pub fn form_title(form: &RecentForm, lean: Lean) -> Option<FormTitle> {
     Some(
         own.into_iter()
             .chain(any)
+            .chain([steadiness])
             .find_map(|(fits, title)| fits.then_some(title))
             .unwrap_or(plain),
     )
 }
 
-/// How many games of evidence weigh as much as the neutral prior in [`form_score`].
-const FORM_PRIOR_GAMES: f64 = 5.0;
+/// A spread ([`Strength::spread`]) at or below this is steady enough for 定海神针, at or above
+/// [`WILD_SPREAD`] wild enough for 峡谷老虎机: about the steadiest and the wildest sixth of the
+/// sampled players.
+pub const STEADY_SPREAD: f64 = 0.8;
+pub const WILD_SPREAD: f64 = 1.15;
 
-/// Recent form, 0–10: half win rate, half KDA on `1 − e^(−kda/3)` (3.0 → 0.63, 6.0 → 0.86), then
-/// pulled toward a neutral 5.0 by `games / (games + 5)`, so one lucky game cannot outrank twenty
-/// good ones. `None` without games.
-pub fn form_score(form: &RecentForm) -> Option<f64> {
-    if form.games == 0 {
+// ---- Recent strength: the games' scores, weighed and read against the players winer measured ----
+
+/// Each game one older counts this much less, so about ten games halve a game's weight.
+pub const RECENCY: f64 = 0.93;
+/// A game in which someone else left or idled counts this much: four played against five, or five
+/// against four, say little about the player.
+pub const AWAY_WEIGHT: f64 = 0.4;
+/// The win rate's share. A game's score already holds most of what wins games, so the result
+/// itself counts little, and only after five wins and five losses are added to it.
+pub const WIN_SHARE: f64 = 0.05;
+const WIN_PRIOR: (f64, f64) = (5.0, 10.0);
+/// A game read against the mode's average instead of its own players says less: its prior weighs
+/// this many times as many games (measured 1.35 on the Rift, 1.45 in ARAM).
+const LITE_PRIOR: f64 = 1.4;
+/// The newest five games against the next fifteen nudge the strength by a tenth of the difference,
+/// never more than 0.2 either way, once ten games have scores.
+const TREND_GAMES: usize = 10;
+const TREND_RECENT: usize = 5;
+const TREND_GAIN: f64 = 0.1;
+const TREND_CAP: f64 = 0.2;
+/// A spread is read from this many scored games.
+const SPREAD_GAMES: usize = 8;
+
+/// What the recent strength knows of a kind of game, measured on real players' newest twenty games
+/// from the shard's server (`fixtures/sgp/`, October 2026): 30 players met on the Rift, 40 in
+/// Hextech ARAM.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Model {
+    /// The average line's score once set against its position or role ([`par`]): where few games
+    /// leave a player, and where a strength of 5.0 stands.
+    baseline: f64,
+    /// How many games the average weighs as before a player's own pull them away from it: a game's
+    /// score scatters around the player's own level (1.81 on the Rift, 1.20 in ARAM) far more than
+    /// the players' levels do around each other (0.34, 0.41), so twenty Rift games say less than
+    /// twenty ARAM games.
+    prior: f64,
+    /// The standard deviation of the sampled players' raw strengths, their games scored against
+    /// each game's players and against the mode's average.
+    spread_of_players: [f64; 2],
+    /// The sampled players' median spread of game scores, both ways.
+    spread: [f64; 2],
+}
+
+const RIFT_MODEL: Model = Model {
+    baseline: 6.04,
+    prior: 25.0,
+    spread_of_players: [0.232, 0.189],
+    spread: [1.85, 1.815],
+};
+const ARAM_MODEL: Model = Model {
+    baseline: 5.83,
+    prior: 10.0,
+    spread_of_players: [0.300, 0.255],
+    spread: [1.134, 1.298],
+};
+/// Arena and the rotating modes were not measured: between the two.
+const OTHER_MODEL: Model = Model {
+    baseline: 5.93,
+    prior: 15.0,
+    spread_of_players: [0.27, 0.22],
+    spread: [1.5, 1.55],
+};
+
+impl Model {
+    fn of(family: ModeFamily) -> &'static Self {
+        match family {
+            ModeFamily::Rift => &RIFT_MODEL,
+            ModeFamily::Aram => &ARAM_MODEL,
+            ModeFamily::Arena | ModeFamily::Other => &OTHER_MODEL,
+        }
+    }
+}
+
+/// What a game's score is set against for the strength: the average line of the player's position
+/// on the Rift, of the champion's role in ARAM. A support's line on the Rift scores 5.24 on
+/// average, a jungler's 6.49, though neither is the better player for it; in ARAM, where the
+/// champion is drawn, a support's scores 6.44 and an assassin's 5.69. The offset brings each to the
+/// mode's average line (measured on the sampled games); nothing where the position or role is
+/// unknown.
+pub fn par(family: ModeFamily, position: Option<Position>, role: Option<Role>) -> f64 {
+    match family {
+        ModeFamily::Rift => match position {
+            Some(Position::Top) => 0.16,
+            Some(Position::Jungle) => -0.46,
+            Some(Position::Middle) => -0.07,
+            Some(Position::Bottom) => -0.41,
+            Some(Position::Utility) => 0.79,
+            None => 0.0,
+        },
+        ModeFamily::Aram => match role {
+            Some(Role::Assassin) => 0.14,
+            Some(Role::Fighter) => 0.05,
+            Some(Role::Mage) => -0.15,
+            Some(Role::Marksman) => 0.13,
+            Some(Role::Support) => -0.61,
+            Some(Role::Tank) => 0.08,
+            None => 0.0,
+        },
+        ModeFamily::Arena | ModeFamily::Other => 0.0,
+    }
+}
+
+/// One counted game as [`strength`] reads it.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Played {
+    /// The game's score set against its position or role ([`par`]): the score against its other
+    /// players ([`game_scores`]), or against the mode's average player where only this player's row
+    /// is known (`lite`, [`lite_score`]); `None` where neither can be had.
+    pub score: Option<f64>,
+    pub lite: bool,
+    pub win: bool,
+    /// Someone else in the game left or idled.
+    pub away: bool,
+    pub family: Option<ModeFamily>,
+}
+
+/// A player's recent strength.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Strength {
+    /// 0–10, to a tenth: the share of players whose raw strength is lower, in tenths, so 5.0 is a
+    /// player with an average line in every game and 9.0 better than nine in ten; then the trend.
+    pub score: f64,
+    /// How far the games' scores scatter around their weighted mean, against how far an ordinary
+    /// player's do (1.0); from [`SPREAD_GAMES`] scored games.
+    pub spread: Option<f64>,
+}
+
+/// The recent strength of `games`, newest first; `None` without a game. The kind of game most of
+/// them are decides what they are read against ([`Model`]).
+///
+/// - **Performance**: the games' scores, set against the player's position or role ([`par`]), each
+///   weighed `0.93^i` for the `i`-th newest and by [`AWAY_WEIGHT`] where someone else left, then
+///   averaged; then pulled toward the average line by `c = n / (n + prior)`, where `n` is how many
+///   games the weights add up to (`(Σw)² / Σw²`, 17 for twenty games) and the prior is 25 games on
+///   the Rift and 10 in ARAM (1.4 times that for games read against the mode's average).
+/// - **Win score**: `10 × (wins + 5) / (games + 10)` over every counted game.
+/// - **Raw strength**: `0.95 × performance + 0.05 × win score`, read on a normal curve around a
+///   player with an average line in every game and half of them won, as wide as the sampled
+///   players' raw strengths spread: the share of players below, in tenths, so that player is 5.0.
+/// - **Trend**: the newest five scores against the next fifteen, a tenth of the difference, at most
+///   ±0.2, once ten games have scores.
+pub fn strength(games: &[Played]) -> Option<Strength> {
+    let reading = reading(games)?;
+    let model = reading.model;
+    // An average line in every game, half of them won.
+    let middle = (1.0 - WIN_SHARE) * model.baseline + WIN_SHARE * 5.0;
+    let sd = model.spread_of_players[usize::from(reading.lite)];
+    let share = 10.0 * normal_cdf((reading.raw - middle) / sd);
+    Some(Strength {
+        score: round1((share + reading.trend).clamp(0.0, 10.0)),
+        spread: reading.spread,
+    })
+}
+
+/// What [`strength`] reads from `games` before setting it against the sampled players.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Reading {
+    /// `0.95 × performance + 0.05 × win score`.
+    raw: f64,
+    /// Some scored game was read against its mode's average.
+    lite: bool,
+    model: &'static Model,
+    spread: Option<f64>,
+    trend: f64,
+}
+
+fn reading(games: &[Played]) -> Option<Reading> {
+    if games.is_empty() {
         return None;
     }
-    let games = f64::from(form.games);
-    let win_rate = f64::from(form.wins) / games;
-    let kda = (form.kills + form.assists) / form.deaths.max(1.0);
-    let raw = 10.0 * (0.5 * win_rate + 0.5 * (1.0 - (-kda / 3.0).exp()));
-    let confidence = games / (games + FORM_PRIOR_GAMES);
-    Some(round1(confidence * raw + (1.0 - confidence) * 5.0))
+    let scored: Vec<(f64, f64)> = games
+        .iter()
+        .filter_map(|game| game.score.map(|score| (score, game)))
+        .enumerate()
+        .map(|(index, (score, game))| {
+            let away = if game.away { AWAY_WEIGHT } else { 1.0 };
+            (score, RECENCY.powi(index as i32) * away)
+        })
+        .collect();
+    let lite = games.iter().any(|game| game.lite && game.score.is_some());
+    let model = Model::of(main_family(games));
+    let total: f64 = scored.iter().map(|(_, weight)| weight).sum();
+    let mean = (total > 0.0).then(|| {
+        scored
+            .iter()
+            .map(|(score, weight)| score * weight)
+            .sum::<f64>()
+            / total
+    });
+    let performance = mean.map_or(model.baseline, |mean| {
+        let squares: f64 = scored.iter().map(|(_, weight)| weight * weight).sum();
+        let games = total * total / squares;
+        let prior = model.prior * if lite { LITE_PRIOR } else { 1.0 };
+        let confidence = games / (games + prior);
+        confidence * mean + (1.0 - confidence) * model.baseline
+    });
+    let wins = games.iter().filter(|game| game.win).count() as f64;
+    let win_score = 10.0 * (wins + WIN_PRIOR.0) / (games.len() as f64 + WIN_PRIOR.1);
+    let spread = mean.filter(|_| scored.len() >= SPREAD_GAMES).map(|mean| {
+        let variance = scored
+            .iter()
+            .map(|(score, weight)| weight * (score - mean).powi(2))
+            .sum::<f64>()
+            / total;
+        variance.sqrt() / model.spread[usize::from(lite)]
+    });
+    Some(Reading {
+        raw: (1.0 - WIN_SHARE) * performance + WIN_SHARE * win_score,
+        lite,
+        model,
+        spread,
+        trend: trend(&scored),
+    })
+}
+
+/// The kind of game most of `games` are, the newest game's of those tied; the Rift's for none.
+fn main_family(games: &[Played]) -> ModeFamily {
+    let count = |family| {
+        games
+            .iter()
+            .filter(|game| game.family == Some(family))
+            .count()
+    };
+    let mut main: Option<(ModeFamily, usize)> = None;
+    for family in games.iter().filter_map(|game| game.family) {
+        let games = count(family);
+        if main.is_none_or(|(_, most)| games > most) {
+            main = Some((family, games));
+        }
+    }
+    main.map_or(ModeFamily::Rift, |(family, _)| family)
+}
+
+/// The newest [`TREND_RECENT`] scores against the next fifteen: a tenth of the difference, at most
+/// [`TREND_CAP`] either way; nothing before [`TREND_GAMES`] games have scores.
+fn trend(scored: &[(f64, f64)]) -> f64 {
+    if scored.len() < TREND_GAMES {
+        return 0.0;
+    }
+    let mean = |games: &[(f64, f64)]| {
+        games.iter().map(|(score, _)| score).sum::<f64>() / games.len() as f64
+    };
+    let (recent, before) = scored.split_at(TREND_RECENT);
+    let before = &before[..before.len().min(15)];
+    (TREND_GAIN * (mean(recent) - mean(before))).clamp(-TREND_CAP, TREND_CAP)
+}
+
+/// The standard normal distribution's cumulative probability at `z` (Abramowitz and Stegun 7.1.26,
+/// within 1.5e-7).
+fn normal_cdf(z: f64) -> f64 {
+    let x = z.abs() / std::f64::consts::SQRT_2;
+    let t = 1.0 / (1.0 + 0.327_591_1 * x);
+    let poly = t
+        * (0.254_829_592
+            + t * (-0.284_496_736
+                + t * (1.421_413_741 + t * (-1.453_152_027 + t * 1.061_405_429))));
+    let erf = 1.0 - poly * (-x * x).exp();
+    if z >= 0.0 {
+        0.5 * (1.0 + erf)
+    } else {
+        0.5 * (1.0 - erf)
+    }
+}
+
+/// A recent strength, 0–10 ([`strength`]); `None` without a counted game.
+pub fn form_score(form: &RecentForm) -> Option<f64> {
+    form.score
 }
 
 /// The tier of `count`, best first, that the fixed grade `grade` (0 S+ to 7 F, [`FORM_GRADES`])
@@ -544,28 +861,22 @@ mod tests {
 
     #[test]
     fn grades_follow_fixed_bands_from_s_plus_to_f() {
-        assert_eq!(grade(7.6, &FORM_GRADES), 0, "S+ starts at 7.6");
-        assert_eq!(grade(7.59, &FORM_GRADES), 1);
-        assert_eq!(grade(3.79, &FORM_GRADES), 7, "below every band is F");
+        assert_eq!(grade(9.5, &FORM_GRADES), 0, "S+ starts at 9.5");
+        assert_eq!(grade(9.49, &FORM_GRADES), 1);
+        assert_eq!(grade(0.49, &FORM_GRADES), 7, "below every band is F");
         assert_eq!(
             grade(6.0, &GAME_GRADES),
             3,
             "the game's average player is a B"
         );
-        let middling = form_score(&recent(20, 10, 5.0, 5.0, 10.0, 0)).unwrap();
+        let letter = |score| GRADE_LETTERS[usize::from(grade(score, &FORM_GRADES))];
         assert_eq!(
-            (
-                middling,
-                GRADE_LETTERS[usize::from(grade(middling, &FORM_GRADES))]
-            ),
-            (5.5, "B")
+            (letter(5.0), letter(4.9)),
+            ("B", "C"),
+            "the middle player is between B and C"
         );
-        let solid = form_score(&recent(18, 9, 9.3, 9.2, 30.7, 0)).unwrap();
-        assert_eq!(
-            GRADE_LETTERS[usize::from(grade(solid, &FORM_GRADES))],
-            "A",
-            "half won at KDA 4.3 is a civil servant"
-        );
+        let middling = strength(&played(&[ARAM_MODEL.baseline; 20], 10, ModeFamily::Aram));
+        assert_eq!(middling.map(|strength| strength.score), Some(5.0));
     }
 
     /// Twenty games, ten won, at `pace` against the mode's average, `streak` the run at the top.
@@ -632,6 +943,34 @@ mod tests {
         assert_eq!(both.games, 2);
         assert!((both.deaths - 21.0 / (5.2 + 11.1)).abs() < 1e-9);
         assert_eq!(Pace::of([]), None);
+    }
+
+    #[test]
+    fn how_steady_the_games_were_titles_only_where_the_tier_allows() {
+        let with = |spread, pace: RecentForm| RecentForm {
+            spread: Some(spread),
+            ..pace
+        };
+        let steady = with(0.7, paced(1.0, 1.0, 1.0, 0));
+        assert_eq!(form_title(&steady, Lean::Above), Some(FormTitle::RockSolid));
+        assert_eq!(form_title(&steady, Lean::Middle), Some(FormTitle::Steady));
+        let wild = with(1.3, paced(1.0, 1.0, 1.0, 0));
+        assert_eq!(form_title(&wild, Lean::Below), Some(FormTitle::SlotMachine));
+        assert_eq!(
+            form_title(&wild, Lean::Middle),
+            Some(FormTitle::SlotMachine)
+        );
+        assert_eq!(
+            form_title(&wild, Lean::Above),
+            Some(FormTitle::Reliable),
+            "a good tier is never a slot machine"
+        );
+        let dying = with(1.3, paced(1.0, 1.5, 1.0, 0));
+        assert_eq!(
+            form_title(&dying, Lean::Below),
+            Some(FormTitle::GreyScreen),
+            "what the counts say comes first"
+        );
     }
 
     #[test]
@@ -912,25 +1251,206 @@ mod tests {
         );
     }
 
-    fn form(games: u32, wins: u32, kills: f64, deaths: f64, assists: f64) -> RecentForm {
-        RecentForm {
-            games,
-            wins,
-            kills,
-            deaths,
-            assists,
-            ..RecentForm::default()
-        }
+    /// `scores`, newest first, of one kind of game, the newest `wins` of them won.
+    fn played(scores: &[f64], wins: usize, family: ModeFamily) -> Vec<Played> {
+        scores
+            .iter()
+            .enumerate()
+            .map(|(index, &score)| Played {
+                score: Some(score),
+                lite: false,
+                win: index < wins,
+                away: false,
+                family: Some(family),
+            })
+            .collect()
+    }
+
+    fn score_of(games: &[Played]) -> f64 {
+        strength(games).unwrap().score
     }
 
     #[test]
-    fn form_rewards_winning_and_kda_and_needs_games() {
-        assert_eq!(form_score(&form(0, 0, 0.0, 0.0, 0.0)), None);
-        let strong = form_score(&form(20, 14, 9.0, 3.0, 9.0)).unwrap();
-        let weak = form_score(&form(20, 6, 3.0, 8.0, 4.0)).unwrap();
-        assert!(strong > 7.0 && weak < 4.5, "{strong} {weak}");
-        // One lucky game is not a 100% player.
-        assert!(form_score(&form(1, 1, 5.0, 1.0, 5.0)).unwrap() < strong);
+    fn strength_reads_every_games_score_and_needs_games() {
+        assert_eq!(strength(&[]), None);
+        let rift = |score, wins| score_of(&played(&[score; 20], wins, ModeFamily::Rift));
+        assert!(
+            rift(7.0, 10) > 9.0 && rift(5.0, 10) < 1.0,
+            "{} {}",
+            rift(7.0, 10),
+            rift(5.0, 10)
+        );
+        // Winning counts a twentieth: ten more wins of twenty count for less than half a point
+        // more in every game.
+        let (fewer, more) = (rift(6.04, 5), rift(6.04, 15));
+        assert!(more > fewer && more < rift(6.6, 5), "{fewer} {more}");
+        // Two great games are not twenty good ones.
+        let two = score_of(&played(&[9.0, 9.0], 2, ModeFamily::Aram));
+        let twenty = score_of(&played(&[7.0; 20], 10, ModeFamily::Aram));
+        assert!(two < twenty, "{two} {twenty}");
+    }
+
+    #[test]
+    fn newer_games_count_more_and_a_game_someone_left_less() {
+        let mut games = played(&[6.0; 20], 10, ModeFamily::Aram);
+        games[0].score = Some(9.0);
+        let newest = score_of(&games);
+        games.swap(0, 19);
+        let oldest = score_of(&games);
+        assert!(newest > oldest, "{newest} {oldest}");
+        games.swap(0, 19);
+        games[0].away = true;
+        let left = score_of(&games);
+        assert!(left < newest && left > score_of(&played(&[6.0; 20], 10, ModeFamily::Aram)));
+    }
+
+    #[test]
+    fn a_trend_moves_the_strength_at_most_two_tenths() {
+        let rising: Vec<f64> = (0..20)
+            .map(|index| if index < 5 { 9.0 } else { 5.0 })
+            .collect();
+        let reading = reading(&played(&rising, 10, ModeFamily::Aram)).unwrap();
+        assert_eq!(reading.trend, TREND_CAP);
+        let falling: Vec<f64> = (0..20)
+            .map(|index| if index < 5 { 3.0 } else { 7.0 })
+            .collect();
+        assert_eq!(
+            reading_of(&falling).trend,
+            -TREND_CAP,
+            "the newest five are the low ones"
+        );
+        assert_eq!(reading_of(&[6.0; 9]).trend, 0.0, "nine games show no trend");
+        let gentle: Vec<f64> = (0..20)
+            .map(|index| if index < 5 { 6.5 } else { 6.0 })
+            .collect();
+        assert!((reading_of(&gentle).trend - 0.05).abs() < 1e-9);
+    }
+
+    fn reading_of(scores: &[f64]) -> Reading {
+        reading(&played(scores, scores.len() / 2, ModeFamily::Aram)).unwrap()
+    }
+
+    #[test]
+    fn games_read_against_the_mode_pull_toward_the_average_harder() {
+        let full = played(&[7.0; 20], 10, ModeFamily::Aram);
+        let lite: Vec<Played> = full
+            .iter()
+            .map(|game| Played {
+                lite: true,
+                ..*game
+            })
+            .collect();
+        let (full, lite) = (reading(&full).unwrap(), reading(&lite).unwrap());
+        assert!(lite.lite && lite.raw < full.raw, "{lite:?} {full:?}");
+    }
+
+    #[test]
+    fn the_most_played_kind_of_game_decides_the_model_and_a_tie_the_newest() {
+        let mut games = played(&[6.0; 4], 2, ModeFamily::Rift);
+        games.extend(played(&[6.0; 3], 1, ModeFamily::Aram));
+        assert_eq!(main_family(&games), ModeFamily::Rift);
+        games.rotate_left(4);
+        games.extend(played(&[6.0], 0, ModeFamily::Aram));
+        assert_eq!(
+            main_family(&games),
+            ModeFamily::Aram,
+            "four each, ARAM newest"
+        );
+        assert_eq!(main_family(&[]), ModeFamily::Rift);
+    }
+
+    #[test]
+    fn a_spread_reads_against_an_ordinary_players() {
+        let steady = played(
+            &[6.0, 6.2, 5.8, 6.1, 5.9, 6.0, 6.1, 5.9],
+            4,
+            ModeFamily::Aram,
+        );
+        assert!(strength(&steady).unwrap().spread.unwrap() < STEADY_SPREAD);
+        let wild = played(
+            &[9.5, 2.5, 9.0, 3.0, 8.5, 3.5, 9.0, 2.0],
+            4,
+            ModeFamily::Aram,
+        );
+        assert!(strength(&wild).unwrap().spread.unwrap() > WILD_SPREAD);
+        assert_eq!(
+            strength(&steady[..7]).unwrap().spread,
+            None,
+            "seven games say nothing of it"
+        );
+    }
+
+    #[test]
+    fn the_normal_curve_is_the_standard_one() {
+        assert!((normal_cdf(0.0) - 0.5).abs() < 1e-7);
+        assert!((normal_cdf(1.959_964) - 0.975).abs() < 1e-6);
+        assert!((normal_cdf(-1.0) - 0.158_655_25).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_position_or_a_role_sets_what_a_line_is_held_to() {
+        assert_eq!(
+            par(
+                ModeFamily::Rift,
+                Some(Position::Utility),
+                Some(Role::Support)
+            ),
+            0.79
+        );
+        assert_eq!(
+            par(ModeFamily::Rift, None, Some(Role::Support)),
+            0.0,
+            "the Rift reads positions"
+        );
+        assert_eq!(
+            par(
+                ModeFamily::Aram,
+                Some(Position::Utility),
+                Some(Role::Support)
+            ),
+            -0.61
+        );
+        assert_eq!(
+            par(ModeFamily::Arena, Some(Position::Top), Some(Role::Tank)),
+            0.0
+        );
+    }
+
+    #[test]
+    fn a_line_alone_is_read_against_its_modes_average_player() {
+        let average = |minutes: f64| {
+            let per = per_minute(ModeFamily::Aram).unwrap();
+            let part = |index: usize| (per.parts[index] * minutes).round() as i64;
+            Contribution {
+                kills: part(0),
+                assists: part(1),
+                damage: part(2),
+                tanked: part(3),
+                gold: part(4),
+                minions: part(5),
+                vision: part(6),
+                crowd_control: part(7),
+                deaths: (per.deaths * minutes).round() as i64,
+                role: None,
+            }
+        };
+        let ordinary = lite_score(&average(20.0), "KIWI", 1200).unwrap();
+        assert!((ordinary - 6.0).abs() <= 0.3, "{ordinary}");
+        let mut better = average(20.0);
+        better.gold *= 2;
+        assert!(lite_score(&better, "ARAM", 1200).unwrap() > ordinary);
+        let longer = lite_score(&average(40.0), "KIWI", 2400).unwrap();
+        assert!(
+            (longer - ordinary).abs() <= 0.2
+                && lite_score(&average(20.0), "KIWI", 2400).unwrap() < 5.0,
+            "a longer game expects more: {longer}"
+        );
+        assert_eq!(
+            lite_score(&better, "CHERRY", 1200),
+            None,
+            "Arena has no average"
+        );
+        assert_eq!(lite_score(&better, "KIWI", 0), None);
     }
 
     #[test]
@@ -952,11 +1472,10 @@ mod tests {
         );
         assert_eq!(spread(3), [0, 0, 0, 1, 1, 2, 2, 2]);
         assert_eq!(spread(7), [0, 1, 2, 3, 3, 4, 5, 6]);
-        let middling = form_score(&recent(20, 10, 5.0, 5.0, 10.0, 0)).unwrap();
         assert_eq!(
-            tier_of_grade(grade(middling, &FORM_GRADES), 5),
+            tier_of_grade(grade(5.0, &FORM_GRADES), 5),
             2,
-            "a middling player is the middle of five"
+            "the middle player is the middle of five"
         );
         assert_eq!(tier_of_grade(9, 5), 4, "past F is still the last tier");
     }
@@ -1000,5 +1519,394 @@ mod tests {
             vec![Some(0), Some(2)],
             "ties keep seat order"
         );
+    }
+
+    // ---- Calibration: the constants above against the games they were measured on ----
+
+    /// Spearman's rank correlation, ties ranked at their mean.
+    fn spearman(a: &[f64], b: &[f64]) -> f64 {
+        let ranks = |values: &[f64]| {
+            let mut order: Vec<usize> = (0..values.len()).collect();
+            order.sort_by(|&x, &y| values[x].total_cmp(&values[y]));
+            let mut ranks = vec![0.0; values.len()];
+            let mut start = 0;
+            while start < order.len() {
+                let mut end = start;
+                while end + 1 < order.len() && values[order[end + 1]] == values[order[start]] {
+                    end += 1;
+                }
+                for &index in &order[start..=end] {
+                    ranks[index] = (start + end) as f64 / 2.0;
+                }
+                start = end + 1;
+            }
+            ranks
+        };
+        let (a, b) = (ranks(a), ranks(b));
+        let mean = |values: &[f64]| values.iter().sum::<f64>() / values.len() as f64;
+        let (ma, mb) = (mean(&a), mean(&b));
+        let cov: f64 = a.iter().zip(&b).map(|(x, y)| (x - ma) * (y - mb)).sum();
+        let var = |values: &[f64], m: f64| values.iter().map(|x| (x - m).powi(2)).sum::<f64>();
+        cov / (var(&a, ma) * var(&b, mb)).sqrt()
+    }
+
+    /// Each champion's first role, from the client's list (16.19).
+    fn live_roles() -> Roles {
+        let champions: Vec<crate::model::ChampionSummary> =
+            crate::test_support::fixture("live/static/champion-summary.json");
+        champions
+            .iter()
+            .filter_map(|champion| Some((champion.id, Role::parse(champion.roles.first()?)?)))
+            .collect()
+    }
+
+    #[derive(serde::Deserialize)]
+    struct WegameAram {
+        games: Vec<WegameGame>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct WegameGame {
+        secs: i64,
+        /// won, championId, score, kills, deaths, assists, damage, taken, gold, minions, vision,
+        /// cc, healMates, exp, deadSecs, award, afk.
+        players: Vec<[f64; 17]>,
+    }
+
+    fn wegame_line(row: &[f64; 17], roles: &Roles) -> Contribution {
+        Contribution {
+            kills: row[3] as i64,
+            deaths: row[4] as i64,
+            assists: row[5] as i64,
+            damage: row[6] as i64,
+            tanked: row[7] as i64,
+            gold: row[8] as i64,
+            minions: row[9] as i64,
+            vision: row[10] as i64,
+            crowd_control: row[11] as i64,
+            role: roles.get(&(row[1] as i64)).copied(),
+        }
+    }
+
+    #[test]
+    fn game_scores_rank_each_aram_game_much_as_wegame_does() {
+        let fixture: WegameAram = crate::test_support::fixture("wegame/aram-scores.json");
+        assert_eq!(fixture.games.len(), 155);
+        let roles = live_roles();
+        let (mut within, mut mvp, mut svp) = (0.0, 0, 0);
+        let (mut ours, mut lite, mut theirs) = (Vec::new(), Vec::new(), Vec::new());
+        for game in &fixture.games {
+            let lines: Vec<Contribution> = game
+                .players
+                .iter()
+                .map(|row| wegame_line(row, &roles))
+                .collect();
+            let scores = game_scores(&lines, Scoring::of("KIWI"));
+            let wegame: Vec<f64> = game.players.iter().map(|row| row[2]).collect();
+            within += spearman(&scores, &wegame);
+            let won: Vec<bool> = game.players.iter().map(|row| row[0] == 1.0).collect();
+            for (row, award) in game.players.iter().zip(awards(&scores, &won)) {
+                mvp += i32::from(award == Some(Award::Mvp) && row[15] == 1.0);
+                svp += i32::from(award == Some(Award::Svp) && row[15] == 2.0);
+            }
+            ours.extend(&scores);
+            theirs.extend(&wegame);
+            lite.extend(
+                lines
+                    .iter()
+                    .map(|line| lite_score(line, "KIWI", game.secs).unwrap()),
+            );
+        }
+        let games = fixture.games.len() as f64;
+        let within = within / games;
+        let (mvp, svp) = (f64::from(mvp) / games, f64::from(svp) / games);
+        assert!(within >= 0.84, "within a game: {within}");
+        assert!(mvp >= 0.76 && svp >= 0.70, "MVP {mvp}, SVP {svp}");
+        // Across games too, and a line alone against the mode's average agrees less.
+        let (across, alone) = (spearman(&ours, &theirs), spearman(&lite, &theirs));
+        assert!(
+            across >= 0.81 && alone >= 0.65 && alone < across,
+            "{across} {alone}"
+        );
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Sampled {
+        aram: Vec<Vec<SampledGame>>,
+        rift: Vec<Vec<SampledGame>>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct SampledGame {
+        mode: String,
+        kind: String,
+        secs: i64,
+        me: usize,
+        lines: Vec<SampledLine>,
+    }
+
+    /// team, win, championId, kills, deaths, assists, damage, taken, gold, minions, vision, cc,
+    /// afk, earlySurrender, position.
+    type SampledLine = (
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        String,
+    );
+
+    fn sampled_line(line: &SampledLine, roles: &Roles) -> Contribution {
+        Contribution {
+            kills: line.3,
+            deaths: line.4,
+            assists: line.5,
+            damage: line.6,
+            tanked: line.7,
+            gold: line.8,
+            minions: line.9,
+            vision: line.10,
+            crowd_control: line.11,
+            role: roles.get(&line.2).copied(),
+        }
+    }
+
+    impl SampledGame {
+        fn counted(&self, family: ModeFamily) -> bool {
+            self.kind == "matched"
+                && ModeFamily::of(&self.mode) == family
+                && self.lines[self.me].13 == 0
+                && self.secs >= 240
+        }
+
+        /// Every line's score against the game's players and alone against the mode, each set
+        /// against its position or role.
+        fn scores(&self, roles: &Roles) -> Vec<(f64, f64)> {
+            let lines: Vec<Contribution> = self
+                .lines
+                .iter()
+                .map(|line| sampled_line(line, roles))
+                .collect();
+            let family = ModeFamily::of(&self.mode);
+            game_scores(&lines, Scoring::of(&self.mode))
+                .into_iter()
+                .zip(&lines)
+                .zip(&self.lines)
+                .map(|((full, contribution), line)| {
+                    let par = par(family, Position::parse(&line.14), contribution.role);
+                    let lite = lite_score(contribution, &self.mode, self.secs).unwrap();
+                    ((full + par).clamp(0.0, 10.0), (lite + par).clamp(0.0, 10.0))
+                })
+                .collect()
+        }
+
+        fn played(&self, roles: &Roles, lite: bool) -> Played {
+            let (full, alone) = self.scores(roles)[self.me];
+            Played {
+                score: Some(if lite { alone } else { full }),
+                lite,
+                win: self.lines[self.me].1 == 1,
+                away: self
+                    .lines
+                    .iter()
+                    .enumerate()
+                    .any(|(index, line)| index != self.me && line.12 == 1),
+                family: Some(ModeFamily::of(&self.mode)),
+            }
+        }
+    }
+
+    /// Each sampled player's newest twenty counted games of `family`, for those with ten.
+    fn histories(players: &[Vec<SampledGame>], family: ModeFamily) -> Vec<Vec<&SampledGame>> {
+        players
+            .iter()
+            .map(|games| {
+                games
+                    .iter()
+                    .filter(|game| game.counted(family))
+                    .take(20)
+                    .collect::<Vec<_>>()
+            })
+            .filter(|games| games.len() >= 10)
+            .collect()
+    }
+
+    fn mean(values: &[f64]) -> f64 {
+        values.iter().sum::<f64>() / values.len() as f64
+    }
+
+    fn sd(values: &[f64]) -> f64 {
+        let m = mean(values);
+        (values.iter().map(|value| (value - m).powi(2)).sum::<f64>() / values.len() as f64).sqrt()
+    }
+
+    fn median(values: &[f64]) -> f64 {
+        let mut sorted = values.to_vec();
+        sorted.sort_by(f64::total_cmp);
+        let middle = sorted.len() / 2;
+        if sorted.len().is_multiple_of(2) {
+            (sorted[middle - 1] + sorted[middle]) / 2.0
+        } else {
+            sorted[middle]
+        }
+    }
+
+    #[test]
+    fn the_models_are_what_the_sampled_players_measure() {
+        let sampled: Sampled = crate::test_support::fixture("sgp/players.json");
+        assert_eq!((sampled.aram.len(), sampled.rift.len()), (40, 30));
+        let roles = live_roles();
+        for (family, players, model) in [
+            (ModeFamily::Aram, &sampled.aram, &ARAM_MODEL),
+            (ModeFamily::Rift, &sampled.rift, &RIFT_MODEL),
+        ] {
+            let histories = histories(players, family);
+            for lite in [false, true] {
+                let readings: Vec<Reading> = histories
+                    .iter()
+                    .map(|games| {
+                        let played: Vec<Played> =
+                            games.iter().map(|game| game.played(&roles, lite)).collect();
+                        reading(&played).unwrap()
+                    })
+                    .collect();
+                let raw: Vec<f64> = readings.iter().map(|reading| reading.raw).collect();
+                let expected = model.spread_of_players[usize::from(lite)];
+                assert!(
+                    (sd(&raw) / expected - 1.0).abs() < 0.1,
+                    "{family:?} lite={lite}: raw strengths spread {} against {expected}",
+                    sd(&raw)
+                );
+                let spreads: Vec<f64> = readings
+                    .iter()
+                    .filter_map(|reading| reading.spread)
+                    .collect();
+                assert!(
+                    (median(&spreads) - 1.0).abs() < 0.05,
+                    "{family:?} lite={lite}: median spread {}",
+                    median(&spreads)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn set_against_position_or_role_the_average_line_is_the_models() {
+        let sampled: Sampled = crate::test_support::fixture("sgp/players.json");
+        let roles = live_roles();
+        for (family, players, model) in [
+            (ModeFamily::Aram, &sampled.aram, &ARAM_MODEL),
+            (ModeFamily::Rift, &sampled.rift, &RIFT_MODEL),
+        ] {
+            // Each game once, though several sampled players played it.
+            let mut seen = std::collections::HashSet::new();
+            let mut lines: Vec<(f64, f64, String)> = Vec::new();
+            for game in players.iter().flatten().filter(|game| game.counted(family)) {
+                let key: Vec<i64> = game.lines.iter().map(|line| line.6).collect();
+                if !seen.insert((game.secs, key)) {
+                    continue;
+                }
+                for ((full, lite), line) in game.scores(&roles).into_iter().zip(&game.lines) {
+                    lines.push((full, lite, line.14.clone()));
+                }
+            }
+            let full: Vec<f64> = lines.iter().map(|line| line.0).collect();
+            let lite: Vec<f64> = lines.iter().map(|line| line.1).collect();
+            assert!(
+                (mean(&full) - model.baseline).abs() < 0.03,
+                "{family:?}: {}",
+                mean(&full)
+            );
+            assert!(
+                (mean(&lite) - model.baseline).abs() < 0.05,
+                "{family:?}: {}",
+                mean(&lite)
+            );
+            if family == ModeFamily::Rift {
+                for position in ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] {
+                    let at: Vec<f64> = lines
+                        .iter()
+                        .filter(|line| line.2 == position)
+                        .map(|line| line.0)
+                        .collect();
+                    assert!(
+                        (mean(&at) - model.baseline).abs() < 0.1,
+                        "{position}: {}",
+                        mean(&at)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_line_alone_ranks_the_sampled_players_much_as_their_whole_games_do() {
+        let sampled: Sampled = crate::test_support::fixture("sgp/players.json");
+        let roles = live_roles();
+        for (family, players) in [
+            (ModeFamily::Aram, &sampled.aram),
+            (ModeFamily::Rift, &sampled.rift),
+        ] {
+            let both: Vec<(f64, f64)> = histories(players, family)
+                .iter()
+                .map(|games| {
+                    let read = |lite| {
+                        let played: Vec<Played> =
+                            games.iter().map(|game| game.played(&roles, lite)).collect();
+                        reading(&played).unwrap().raw
+                    };
+                    (read(false), read(true))
+                })
+                .collect();
+            let full: Vec<f64> = both.iter().map(|pair| pair.0).collect();
+            let lite: Vec<f64> = both.iter().map(|pair| pair.1).collect();
+            let agreement = spearman(&full, &lite);
+            assert!(agreement >= 0.8, "{family:?}: {agreement}");
+        }
+    }
+
+    #[test]
+    fn the_per_minute_averages_are_the_sampled_lines() {
+        let sampled: Sampled = crate::test_support::fixture("sgp/players.json");
+        for (family, players) in [
+            (ModeFamily::Aram, sampled.aram.iter().chain(&sampled.rift)),
+            (ModeFamily::Rift, sampled.aram.iter().chain(&sampled.rift)),
+        ] {
+            let (mut sums, mut lines) = ([0.0; 9], 0.0);
+            for game in players.flatten() {
+                if game.kind != "matched" || ModeFamily::of(&game.mode) != family || game.secs < 240
+                {
+                    continue;
+                }
+                let minutes = game.secs as f64 / 60.0;
+                for line in &game.lines {
+                    let values = [
+                        line.3, line.5, line.6, line.7, line.8, line.9, line.10, line.11, line.4,
+                    ];
+                    for (sum, value) in sums.iter_mut().zip(values) {
+                        *sum += value as f64 / minutes;
+                    }
+                    lines += 1.0;
+                }
+            }
+            let expected = per_minute(family).unwrap();
+            let measured = sums.map(|sum| sum / lines);
+            for (index, want) in expected.parts.iter().chain([&expected.deaths]).enumerate() {
+                assert!(
+                    (measured[index] / want - 1.0).abs() < 0.05,
+                    "{family:?} part {index}: {} against {want}",
+                    measured[index]
+                );
+            }
+        }
     }
 }

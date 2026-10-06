@@ -137,7 +137,7 @@ function PlayerHeader({
             <span className="flex min-w-0 flex-col gap-1">
               <span className="inline-flex items-center gap-1 text-[11px] text-fg-subtle">
                 {t("history.standing")}
-                <StandingRule standing={standing.data} />
+                <StandingRule standing={standing.data} form={player.recent} />
               </span>
               <span className="flex min-w-0 items-center gap-1.5">
                 <TierBadge rating={rating} />

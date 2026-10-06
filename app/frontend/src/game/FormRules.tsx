@@ -79,7 +79,7 @@ const SCHEME: Record<TierSet, MessageKey> = {
 };
 
 /** How a player alone came to their tier: champ select's rule, and how it is read for one. */
-export function StandingRule({ standing }: { standing: PlayerStanding }) {
+export function StandingRule({ standing, form }: { standing: PlayerStanding; form: RecentForm }) {
   const t = useT();
   const rule = useSettings().automation.callout;
   const rating = standing.rating;
@@ -93,6 +93,10 @@ export function StandingRule({ standing }: { standing: PlayerStanding }) {
   return (
     <Hint label={t("history.standingHint")} title={t("history.standingHint")}>
       <p>{t("history.standingScore", { score: rating.score.toFixed(1) })}</p>
+      {form.source && (
+        <p>{t(form.source === "full" ? "history.standingFull" : "history.standingLite")}</p>
+      )}
+      {form.away > 0 && <p>{t("history.standingAway", { n: form.away })}</p>}
       <p>
         {rating.grade !== null
           ? t("history.standingGraded", { grade, label: rating.label })

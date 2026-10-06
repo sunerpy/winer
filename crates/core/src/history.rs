@@ -789,7 +789,8 @@ mod tests {
         assert_eq!(server.requests, 2, "asked for again");
     }
 
-    fn summary(games: u32, wins: u32, kills: f64, deaths: f64, assists: f64) -> PlayerSummary {
+    /// `games` counted games, `wins` of them won, at a strength of `score`.
+    fn summary(games: u32, wins: u32, score: f64) -> PlayerSummary {
         PlayerSummary {
             puuid: "p".into(),
             name: None,
@@ -800,9 +801,7 @@ mod tests {
             recent: RecentForm {
                 games,
                 wins,
-                kills,
-                deaths,
-                assists,
+                score: (games > 0).then_some(score),
                 matches: (0..games)
                     .map(|index| RecentMatch {
                         game_id: 100 - i64::from(index),
@@ -814,6 +813,8 @@ mod tests {
                         deaths: 0,
                         assists: 0,
                         started_at: 0,
+                        score: Some(6.0),
+                        away: false,
                     })
                     .collect(),
                 ..RecentForm::default()
@@ -835,12 +836,12 @@ mod tests {
 
     #[test]
     fn a_player_alone_is_graded_on_the_fixed_bands_and_placed_in_the_schemes_tiers() {
-        // Half the games won at KDA 3, twenty games: 5.5, a B, the middle of the default five.
-        let middling = summary(20, 10, 5.0, 5.0, 10.0);
+        // The middle player, 5.0: a B, the middle of the default five.
+        let middling = summary(20, 10, 5.0);
         let (rating, band) = rate_alone(&middling, &ranking(TierSet::RiftFive, true)).unwrap();
         assert_eq!(
             (rating.score, band, rating.tier, rating.tiers),
-            (5.5, 3, 2, 5)
+            (5.0, 3, 2, 5)
         );
         assert_eq!(rating.label, "峡谷公务员");
         assert_eq!(rating.grade, None, "峡谷五档 shows no letter");
@@ -869,7 +870,7 @@ mod tests {
     fn a_player_alone_gets_champ_selects_title_while_titles_are_on() {
         // Dies half as often again as the mode's average player and no streak worth naming: below
         // the middle, the grey screen's regular.
-        let mut grey = summary(20, 9, 4.0, 9.0, 8.0);
+        let mut grey = summary(20, 9, 1.0);
         grey.recent.streak = 1;
         grey.recent.pace = Some(rating::Pace {
             games: 20,
@@ -891,11 +892,7 @@ mod tests {
             Some("Grey-screen Regular")
         );
         assert!(
-            rate_alone(
-                &summary(0, 0, 0.0, 0.0, 0.0),
-                &ranking(TierSet::RiftFive, true)
-            )
-            .is_none(),
+            rate_alone(&summary(0, 0, 0.0), &ranking(TierSet::RiftFive, true)).is_none(),
             "no counted game, no rating"
         );
     }

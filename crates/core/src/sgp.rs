@@ -142,6 +142,7 @@ struct SgpParticipant {
     spell2_id: i64,
     lane: String,
     role: String,
+    team_position: String,
     win: bool,
     kills: i64,
     deaths: i64,
@@ -308,6 +309,7 @@ impl SgpParticipant {
                 lane: self.lane,
                 role: self.role,
             },
+            team_position: self.team_position,
             stats: Stats {
                 win: self.win,
                 kills: self.kills,

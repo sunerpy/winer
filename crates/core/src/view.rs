@@ -348,11 +348,25 @@ pub struct RecentForm {
     pub matches: Vec<RecentMatch>,
     /// Most played first.
     pub champions: Vec<ChampionForm>,
+    /// The recent strength, 0–10 (`rating::strength`); absent without a counted game.
+    pub score: Option<f64>,
+    /// How the counted games were scored; absent when none could be.
+    pub source: Option<FormSource>,
+    /// The kind of game the figures were narrowed to, the one being played; absent when they read
+    /// every kind (`analysis::recent_form`).
+    pub family: Option<ModeFamily>,
+    /// Counted games in which someone else left or idled, which weigh less in the strength.
+    pub away: u32,
     /// The counted games' kills, deaths and assists against their modes' averages, which the title
     /// is read from (`rating::form_title`); the core's alone.
     #[serde(skip)]
     #[ts(skip)]
     pub pace: Option<crate::rating::Pace>,
+    /// How much the counted games' scores scatter (`rating::Strength::spread`), for the title; the
+    /// core's alone.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub spread: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
@@ -368,6 +382,50 @@ pub struct RecentMatch {
     pub assists: i64,
     /// Epoch milliseconds.
     pub started_at: i64,
+    /// 0–10, the game's score as the strength reads it: against the game's other players, or
+    /// against the mode's average where only this player's row is known (`RecentForm::source`).
+    /// Absent for a remake and a mode with no average.
+    pub score: Option<f64>,
+    /// Someone else in the game left or idled (the shard's server says so).
+    pub away: bool,
+}
+
+/// How the games of a recent strength were scored (`rating::strength`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum FormSource {
+    /// Each against the other players of its game, as the scoreboard scores it: the shard's
+    /// server sends all ten players of every game.
+    Full,
+    /// Against the average player of its mode over the same minutes: the client's own list has
+    /// only the player's row.
+    Lite,
+}
+
+/// The kinds of game a recent strength is read within: a player's ARAM says little about their
+/// Rift.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum ModeFamily {
+    /// Summoner's Rift, ranked or not.
+    Rift,
+    /// ARAM and Hextech ARAM.
+    Aram,
+    Arena,
+    /// URF, One for All and the other rotating modes.
+    Other,
+}
+
+impl ModeFamily {
+    /// The family of a game or queue of `game_mode` (`CLASSIC`, `KIWI`, …).
+    pub fn of(game_mode: &str) -> Self {
+        match game_mode.to_ascii_uppercase().as_str() {
+            "CLASSIC" | "SWIFTPLAY" => Self::Rift,
+            "ARAM" | "KIWI" => Self::Aram,
+            "CHERRY" => Self::Arena,
+            _ => Self::Other,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
