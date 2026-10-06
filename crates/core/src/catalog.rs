@@ -5,6 +5,7 @@ use serde::de::DeserializeOwned;
 
 use crate::{
     model::{ChampionSummary, ClientAugment, Item, Perk, PerkStyles, Queue, SummonerSpell},
+    rating,
     view::{AssetInfo, AugmentInfo, ChampionInfo, GameData, QueueInfo, Rarity},
 };
 
@@ -52,6 +53,16 @@ pub fn build(
     queues: Vec<Queue>,
 ) -> GameData {
     let asset = |id: i64, name: String, icon: String| AssetInfo { id, name, icon };
+    let roles = champions
+        .iter()
+        .filter_map(|champion| {
+            let role = champion
+                .roles
+                .first()
+                .and_then(|role| rating::Role::parse(role))?;
+            Some((champion.id, role))
+        })
+        .collect();
     let mut champions: Vec<ChampionInfo> = champions
         .into_iter()
         .filter(|champion| champion.id > 0)
@@ -71,6 +82,7 @@ pub fn build(
 
     GameData {
         champions,
+        roles,
         items: items
             .into_iter()
             .filter(|item| item.id > 0)

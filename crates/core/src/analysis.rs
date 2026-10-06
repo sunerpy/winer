@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::{
     model::{Game, Participant, RankedEntry, RankedStats, Stats, Summoner},
-    rating::{self, Contribution},
+    rating::{self, Contribution, Roles},
     view::{
         ChampionForm, Feat, MatchDetail, MatchSummary, PlayerLine, PlayerProfile, PlayerSummary,
         Position, Rank, Ranked, RecentForm, RecentMatch, RiotId, TeamDetail, Tier,
@@ -253,7 +253,7 @@ fn leads(participants: &[Participant]) -> Vec<(Feat, Vec<usize>)> {
         .collect()
 }
 
-fn contribution(stats: &Stats) -> Contribution {
+fn contribution(stats: &Stats, role: Option<rating::Role>) -> Contribution {
     Contribution {
         kills: stats.kills,
         deaths: stats.deaths,
@@ -264,6 +264,7 @@ fn contribution(stats: &Stats) -> Contribution {
         minions: stats.total_minions_killed + stats.neutral_minions_killed,
         vision: stats.vision_score,
         crowd_control: stats.time_ccing_others,
+        role,
     }
 }
 
@@ -271,14 +272,14 @@ fn contribution(stats: &Stats) -> Contribution {
 /// carries one player only, whose identity can be masked; that one row is theirs. A game with every
 /// player in it (the shard's server sends those) gives the line what only the whole game knows:
 /// shares, score, grade and award.
-pub fn match_summary(puuid: &str, game: &Game) -> Option<MatchSummary> {
+pub fn match_summary(puuid: &str, game: &Game, roles: &Roles) -> Option<MatchSummary> {
     let only = match game.participants.as_slice() {
         [only] => Some(only),
         _ => None,
     };
     let participant = game.participant_of(puuid).or(only)?;
     let line = if only.is_none() {
-        match_detail(game)
+        match_detail(game, roles)
             .teams
             .into_iter()
             .flat_map(|team| team.players)
@@ -297,7 +298,7 @@ pub fn match_summary(puuid: &str, game: &Game) -> Option<MatchSummary> {
     })
 }
 
-pub fn match_detail(game: &Game) -> MatchDetail {
+pub fn match_detail(game: &Game, roles: &Roles) -> MatchDetail {
     let mut teams: Vec<TeamDetail> = game
         .teams
         .iter()
@@ -349,7 +350,10 @@ pub fn match_detail(game: &Game) -> MatchDetail {
         placed.push((
             index,
             team.players.len() - 1,
-            contribution(&participant.stats),
+            contribution(
+                &participant.stats,
+                roles.get(&participant.champion_id).copied(),
+            ),
         ));
     }
 
@@ -373,7 +377,7 @@ pub fn match_detail(game: &Game) -> MatchDetail {
                 .iter()
                 .map(|(_, _, contribution)| *contribution)
                 .collect::<Vec<_>>(),
-            rating::Weights::of(&game.game_mode),
+            rating::Scoring::of(&game.game_mode),
         );
         let won: Vec<bool> = placed.iter().map(|(team, _, _)| teams[*team].win).collect();
         for (((team, slot, _), score), award) in placed
@@ -511,7 +515,7 @@ mod tests {
     fn feats_name_a_lines_own_deeds_and_who_led_the_game() {
         use Feat::*;
         assert_eq!(
-            feats(&match_detail(&duel(1800))),
+            feats(&match_detail(&duel(1800), &Roles::new())),
             vec![
                 (
                     "p1".into(),
@@ -526,7 +530,7 @@ mod tests {
             "a tie leads together"
         );
         assert_eq!(
-            feats(&match_detail(&duel(180))),
+            feats(&match_detail(&duel(180), &Roles::new())),
             vec![
                 ("p1".into(), vec![]),
                 ("p2".into(), vec![]),
@@ -536,7 +540,7 @@ mod tests {
             "a remake names only who was away"
         );
         let game = duel(1800);
-        let summary = match_summary("p3", &game).unwrap();
+        let summary = match_summary("p3", &game, &Roles::new()).unwrap();
         assert_eq!(
             summary.line.feats,
             vec![Penta, MostTowers, MostCs],
@@ -547,7 +551,10 @@ mod tests {
             .participants
             .retain(|participant| participant.participant_id == 1);
         assert_eq!(
-            match_summary("p1", &alone).unwrap().line.feats,
+            match_summary("p1", &alone, &Roles::new())
+                .unwrap()
+                .line
+                .feats,
             vec![Legendary, Triple, FirstBlood],
             "one player's page leads nobody"
         );
@@ -611,7 +618,7 @@ mod tests {
     #[test]
     fn match_detail_groups_ten_players_into_two_teams() {
         let game: Game = fixture("live/ranked/match-game.json");
-        let detail = match_detail(&game);
+        let detail = match_detail(&game, &Roles::new());
         assert_eq!(detail.teams.len(), 2);
         assert_eq!(
             detail
@@ -636,7 +643,7 @@ mod tests {
     #[test]
     fn a_full_scoreboard_scores_every_line_and_names_one_mvp_and_one_svp() {
         let game: Game = fixture("live/ranked/match-game.json");
-        let detail = match_detail(&game);
+        let detail = match_detail(&game, &Roles::new());
         let lines: Vec<&PlayerLine> = detail.teams.iter().flat_map(|team| &team.players).collect();
         assert!(lines.iter().all(|line| {
             line.score
@@ -681,7 +688,7 @@ mod tests {
     fn a_remake_gets_no_scores() {
         let mut game: Game = fixture("live/ranked/match-game.json");
         game.game_duration = 200;
-        let detail = match_detail(&game);
+        let detail = match_detail(&game, &Roles::new());
         assert!(
             detail
                 .teams

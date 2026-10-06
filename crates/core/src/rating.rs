@@ -4,7 +4,38 @@
 //! rating; the game score's weights were fitted so that its MVP and SVP fall where WeGame's do as
 //! often as possible (`Weights`).
 
+use std::collections::HashMap;
+
 use crate::view::{Award, RecentForm};
+
+/// What a champion is for, as the client's champion list names it first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Role {
+    Tank,
+    Support,
+    Mage,
+    Assassin,
+    Marksman,
+    Fighter,
+}
+
+impl Role {
+    /// The client's own word (`tank`, `marksman`, …).
+    pub fn parse(role: &str) -> Option<Self> {
+        match role.to_ascii_lowercase().as_str() {
+            "tank" => Some(Self::Tank),
+            "support" => Some(Self::Support),
+            "mage" => Some(Self::Mage),
+            "assassin" => Some(Self::Assassin),
+            "marksman" => Some(Self::Marksman),
+            "fighter" => Some(Self::Fighter),
+            _ => None,
+        }
+    }
+}
+
+/// Each champion's first role, by champion id, from the client's champion list.
+pub type Roles = HashMap<i64, Role>;
 
 /// What one player did in one game, as the score reads it.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -20,18 +51,12 @@ pub struct Contribution {
     pub minions: i64,
     pub vision: i64,
     pub crowd_control: i64,
+    /// The champion's role, where the client's champion list names one.
+    pub role: Option<Role>,
 }
 
-/// How much each part of a line counts in one kind of game. Every part but survival is the line's
-/// value over the game's per-player average; survival is dying less than that average player.
-///
-/// Fitted on games WeGame scored (October 2026, `fixtures/wegame/`), so that the best line of each
-/// side is the one WeGame names MVP or SVP. On those games winer's MVP and SVP are WeGame's in 85%
-/// and 83% of 126 Summoner's Rift games and in 76% and 70% of 139 Hextech ARAM games; the previous
-/// weights, one set for every mode, managed 68%/58% and 68%/56%. WeGame is said to compare each
-/// player with others on the same champion, which no single game shows; that is most of what is
-/// left. The two kinds of game want different weights: farming and vision only exist on a map
-/// with lanes, and gold says more where nobody farms.
+/// How much each part of a line counts. Every part but survival is the line's value over the
+/// game's per-player average; survival is dying less than that average player.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Weights {
     pub kills: f64,
@@ -46,39 +71,6 @@ pub struct Weights {
 }
 
 impl Weights {
-    /// Summoner's Rift and every other mode on a map with lanes.
-    pub const RIFT: Self = Self {
-        kills: 0.12,
-        assists: 0.09,
-        damage: 0.09,
-        tanked: 0.05,
-        gold: 0.36,
-        minions: 0.06,
-        vision: 0.04,
-        crowd_control: 0.0,
-        survival: 0.19,
-    };
-    /// ARAM and Hextech ARAM.
-    pub const ARAM: Self = Self {
-        kills: 0.12,
-        assists: 0.12,
-        damage: 0.12,
-        tanked: 0.09,
-        gold: 0.28,
-        minions: 0.0,
-        vision: 0.0,
-        crowd_control: 0.02,
-        survival: 0.25,
-    };
-
-    /// The weights for a game of `game_mode` (`CLASSIC`, `ARAM`, `KIWI`, …).
-    pub fn of(game_mode: &str) -> &'static Self {
-        match game_mode.to_ascii_uppercase().as_str() {
-            "ARAM" | "KIWI" => &Self::ARAM,
-            _ => &Self::RIFT,
-        }
-    }
-
     fn parts(&self) -> [f64; 8] {
         [
             self.kills,
@@ -90,6 +82,104 @@ impl Weights {
             self.vision,
             self.crowd_control,
         ]
+    }
+}
+
+/// How one kind of game is scored: a set of weights for any line, and where the champion's role
+/// changes what an ordinary line looks like, a set per role.
+///
+/// Fitted on games WeGame scored (October 2026, `fixtures/wegame/`), so that the best line of each
+/// side is the one WeGame names MVP or SVP. On those games winer's MVP and SVP are WeGame's in 85%
+/// and 83% of 126 Summoner's Rift games and in 80% and 73% of 139 Hextech ARAM games; the previous
+/// weights, one set for every mode, managed 68%/58% and 68%/56%. The two kinds of game want
+/// different weights: farming and vision only exist on a map with lanes, and gold says more where
+/// nobody farms. WeGame is said to compare each player with others on the same champion; in ARAM,
+/// where the champion is random, weighing each role against its own ordinary line (a tank's kills
+/// count more, its damage taken less) gained most of what that could be measured to give. On the
+/// Rift the role added nothing that would show.
+#[derive(Debug, PartialEq)]
+pub struct Scoring {
+    /// For a champion without a known role, and the yardstick every line is divided by, so that an
+    /// ordinary line of any role still scores about 6.0.
+    pub base: Weights,
+    pub roles: &'static [(Role, Weights)],
+}
+
+/// One role's ARAM weights, in the order kills, assists, damage, damage taken, gold, crowd control
+/// and survival.
+const fn aram(
+    kills: f64,
+    assists: f64,
+    damage: f64,
+    tanked: f64,
+    gold: f64,
+    crowd_control: f64,
+    survival: f64,
+) -> Weights {
+    Weights {
+        kills,
+        assists,
+        damage,
+        tanked,
+        gold,
+        minions: 0.0,
+        vision: 0.0,
+        crowd_control,
+        survival,
+    }
+}
+
+const ARAM_ROLES: [(Role, Weights); 6] = [
+    (Role::Tank, aram(0.12, 0.09, 0.11, 0.06, 0.35, 0.0, 0.21)),
+    (Role::Support, aram(0.14, 0.09, 0.13, 0.10, 0.35, 0.0, 0.20)),
+    (Role::Mage, aram(0.10, 0.09, 0.09, 0.10, 0.34, 0.0, 0.21)),
+    (
+        Role::Assassin,
+        aram(0.07, 0.08, 0.09, 0.09, 0.34, 0.02, 0.22),
+    ),
+    (
+        Role::Marksman,
+        aram(0.07, 0.08, 0.09, 0.11, 0.33, 0.02, 0.22),
+    ),
+    (
+        Role::Fighter,
+        aram(0.08, 0.08, 0.10, 0.08, 0.34, 0.01, 0.22),
+    ),
+];
+
+impl Scoring {
+    /// Summoner's Rift and every other mode on a map with lanes.
+    pub const RIFT: Self = Self {
+        base: Weights {
+            kills: 0.12,
+            assists: 0.09,
+            damage: 0.09,
+            tanked: 0.05,
+            gold: 0.36,
+            minions: 0.06,
+            vision: 0.04,
+            crowd_control: 0.0,
+            survival: 0.19,
+        },
+        roles: &[],
+    };
+    /// ARAM and Hextech ARAM.
+    pub const ARAM: Self = Self {
+        base: aram(0.09, 0.09, 0.10, 0.09, 0.34, 0.01, 0.22),
+        roles: &ARAM_ROLES,
+    };
+
+    /// How a game of `game_mode` (`CLASSIC`, `ARAM`, `KIWI`, …) is scored.
+    pub fn of(game_mode: &str) -> &'static Self {
+        match game_mode.to_ascii_uppercase().as_str() {
+            "ARAM" | "KIWI" => &Self::ARAM,
+            _ => &Self::RIFT,
+        }
+    }
+
+    fn weights(&self, role: Option<Role>) -> &Weights {
+        role.and_then(|role| self.roles.iter().find(|(known, _)| *known == role))
+            .map_or(&self.base, |(_, weights)| weights)
     }
 }
 
@@ -121,13 +211,14 @@ fn round1(value: f64) -> f64 {
     (value * 10.0).round() / 10.0
 }
 
-/// Each player's score in one game, in the order given, under `weights`.
+/// Each player's score in one game, in the order given, under `scoring`.
 ///
 /// Every part is the player's value over the game's per-player average, capped at [`CAP`]; the
-/// weighted mean of the parts is how many "average players" the line was worth, and the logistic
+/// weighted sum of the parts, with the weights of the player's role, over the sum of the base
+/// weights is how many "average players" the line was worth, and the logistic
 /// `10 / (1 + e^(−k·(x − c)))` maps that onto 0–10: one average at 6.0, 1.25 at 8.0, 1.5 at 9.2,
 /// 0.75 at 3.6 and half of one at 1.7. No line can score past 10.
-pub fn game_scores(players: &[Contribution], weights: &Weights) -> Vec<f64> {
+pub fn game_scores(players: &[Contribution], scoring: &Scoring) -> Vec<f64> {
     if players.is_empty() {
         return Vec::new();
     }
@@ -143,22 +234,27 @@ pub fn game_scores(players: &[Contribution], weights: &Weights) -> Vec<f64> {
         .map(|player| player.deaths as f64)
         .sum::<f64>()
         / count;
+    let base = &scoring.base;
 
     players
         .iter()
         .map(|player| {
+            let own = scoring.weights(player.role);
             let (mut total, mut weight) = (0.0, 0.0);
-            for ((value, average), part_weight) in
-                parts(player).into_iter().zip(averages).zip(weights.parts())
+            for (((value, average), part_weight), base_weight) in parts(player)
+                .into_iter()
+                .zip(averages)
+                .zip(own.parts())
+                .zip(base.parts())
             {
-                if part_weight > 0.0 && average >= MEANINGFUL {
+                if base_weight > 0.0 && average >= MEANINGFUL {
                     total += part_weight * (value / average).min(CAP);
-                    weight += part_weight;
+                    weight += base_weight;
                 }
             }
             total +=
-                weights.survival * ((average_deaths + 1.0) / (player.deaths as f64 + 1.0)).min(CAP);
-            weight += weights.survival;
+                own.survival * ((average_deaths + 1.0) / (player.deaths as f64 + 1.0)).min(CAP);
+            weight += base.survival;
             round1(10.0 / (1.0 + (-STEEPNESS * (total / weight - CENTRE)).exp()))
         })
         .collect()
@@ -363,6 +459,7 @@ mod tests {
             minions: 0,
             vision: 0,
             crowd_control: 20,
+            role: None,
         }
     }
 
@@ -370,7 +467,7 @@ mod tests {
     fn an_average_line_scores_six_and_a_stronger_one_more() {
         let same = vec![player(5, 5, 5, 20_000); 10];
         assert!(
-            game_scores(&same, &Weights::RIFT)
+            game_scores(&same, &Scoring::RIFT)
                 .iter()
                 .all(|&score| score == 6.0)
         );
@@ -378,7 +475,7 @@ mod tests {
         let mut game = same.clone();
         game[0] = player(15, 2, 10, 45_000);
         game[1] = player(0, 12, 2, 5_000);
-        let scores = game_scores(&game, &Weights::RIFT);
+        let scores = game_scores(&game, &Scoring::RIFT);
         assert!(scores[0] > 8.0 && scores[0] <= 10.0, "{scores:?}");
         assert!(scores[1] < 4.0, "{scores:?}");
         assert!(scores.iter().all(|score| (0.0..=10.0).contains(score)));
@@ -388,8 +485,8 @@ mod tests {
     fn a_part_nobody_scored_in_is_left_out() {
         // Vision is zero for everyone (ARAM): it neither helps nor drags anyone.
         let game = vec![player(5, 5, 5, 20_000); 2];
-        assert_eq!(game_scores(&game, &Weights::RIFT), vec![6.0, 6.0]);
-        assert_eq!(game_scores(&[], &Weights::RIFT), Vec::<f64>::new());
+        assert_eq!(game_scores(&game, &Scoring::RIFT), vec![6.0, 6.0]);
+        assert_eq!(game_scores(&[], &Scoring::RIFT), Vec::<f64>::new());
     }
 
     #[test]
@@ -397,7 +494,7 @@ mod tests {
         let outlier = |damage: i64| {
             let mut game = vec![player(1, 5, 1, 10_000); 5];
             game[0].damage = damage;
-            game_scores(&game, &Weights::RIFT)[0]
+            game_scores(&game, &Scoring::RIFT)[0]
         };
         assert_eq!(
             outlier(10_000_000),
@@ -408,7 +505,7 @@ mod tests {
     }
 
     /// How often winer's MVP and SVP are WeGame's, over the games in `fixtures/wegame/`.
-    fn agreement_with_wegame(games: &[Vec<[i64; 11]>], weights: &Weights) -> (f64, f64) {
+    fn agreement_with_wegame(games: &[Vec<[i64; 12]>], scoring: &Scoring) -> (f64, f64) {
         let (mut mvp, mut svp) = (0, 0);
         for game in games {
             let players: Vec<Contribution> = game
@@ -423,10 +520,19 @@ mod tests {
                     crowd_control: row[7],
                     minions: row[8],
                     vision: row[9],
+                    role: [
+                        None,
+                        Some(Role::Tank),
+                        Some(Role::Support),
+                        Some(Role::Mage),
+                        Some(Role::Assassin),
+                        Some(Role::Marksman),
+                        Some(Role::Fighter),
+                    ][row[11] as usize],
                 })
                 .collect();
             let won: Vec<bool> = game.iter().map(|row| row[0] == 1).collect();
-            let scores = game_scores(&players, weights);
+            let scores = game_scores(&players, scoring);
             for (row, award) in game.iter().zip(awards(&scores, &won)) {
                 match award {
                     Some(Award::Mvp) => mvp += i32::from(row[10] == 1),
@@ -443,21 +549,56 @@ mod tests {
     fn mvp_and_svp_mostly_land_where_wegame_puts_them() {
         #[derive(serde::Deserialize)]
         struct Calibration {
-            rift: Vec<Vec<[i64; 11]>>,
-            aram: Vec<Vec<[i64; 11]>>,
+            rift: Vec<Vec<[i64; 12]>>,
+            aram: Vec<Vec<[i64; 12]>>,
         }
         let games: Calibration = crate::test_support::fixture("wegame/calibration.json");
         assert_eq!((games.rift.len(), games.aram.len()), (126, 139));
-        let rift = agreement_with_wegame(&games.rift, Weights::of("CLASSIC"));
-        let aram = agreement_with_wegame(&games.aram, Weights::of("KIWI"));
+        let rift = agreement_with_wegame(&games.rift, Scoring::of("CLASSIC"));
+        let aram = agreement_with_wegame(&games.aram, Scoring::of("KIWI"));
         assert!(
             rift.0 >= 0.84 && rift.1 >= 0.83,
             "Summoner's Rift: {rift:?}"
         );
-        assert!(aram.0 >= 0.76 && aram.1 >= 0.70, "Hextech ARAM: {aram:?}");
+        assert!(aram.0 >= 0.79 && aram.1 >= 0.72, "Hextech ARAM: {aram:?}");
         // One set of weights for both would give up most of it on one side or the other.
-        let swapped = agreement_with_wegame(&games.aram, &Weights::RIFT);
+        let swapped = agreement_with_wegame(&games.aram, &Scoring::RIFT);
         assert!(swapped.1 < aram.1, "{swapped:?}");
+        // Without the champions' roles ARAM falls back to its base weights, and to fewer matches.
+        let unknown: Vec<Vec<[i64; 12]>> = games
+            .aram
+            .iter()
+            .map(|game| {
+                game.iter()
+                    .map(|row| {
+                        let mut row = *row;
+                        row[11] = 0;
+                        row
+                    })
+                    .collect()
+            })
+            .collect();
+        let roleless = agreement_with_wegame(&unknown, Scoring::of("KIWI"));
+        assert!(roleless.0 < aram.0, "{roleless:?} against {aram:?}");
+    }
+
+    #[test]
+    fn in_aram_a_line_is_weighed_against_its_role() {
+        let mut game = vec![player(5, 5, 10, 20_000); 10];
+        game[0].role = Some(Role::Tank);
+        game[1].role = Some(Role::Marksman);
+        for line in &mut game[..2] {
+            line.kills = 12;
+        }
+        let scores = game_scores(&game, Scoring::of("KIWI"));
+        assert!(
+            scores[0] > scores[1],
+            "twelve kills say more of a tank: {scores:?}"
+        );
+        let rift = game_scores(&game, Scoring::of("CLASSIC"));
+        assert_eq!(rift[0], rift[1], "the Rift weighs no role: {rift:?}");
+        assert_eq!(Role::parse("Marksman"), Some(Role::Marksman));
+        assert_eq!(Role::parse("unknown"), None);
     }
 
     #[test]

@@ -512,6 +512,11 @@ pub struct GameData {
     /// Arena and Hextech ARAM augments.
     pub augments: Vec<AugmentInfo>,
     pub queues: Vec<QueueInfo>,
+    /// Each champion's first role, for the game score (`rating::Scoring`); the window has no use
+    /// for it.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub roles: crate::rating::Roles,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]

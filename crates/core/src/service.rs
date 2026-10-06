@@ -316,10 +316,13 @@ impl Service {
         segment(puuid)?;
         let count = count.clamp(1, 50);
         let client = self.client()?;
+        let data = lock(&client.data).clone();
+        let no_roles = crate::rating::Roles::new();
+        let roles = data.as_deref().map_or(&no_roles, |data| &data.roles);
         let summaries = |games: &[crate::model::Game]| -> Vec<_> {
             games
                 .iter()
-                .filter_map(|game| analysis::match_summary(puuid, game))
+                .filter_map(|game| analysis::match_summary(puuid, game, roles))
                 .collect()
         };
         match server_history(&client, puuid, begin, count).await {
@@ -360,12 +363,17 @@ impl Service {
     }
 
     pub async fn match_detail(&self, game_id: i64) -> Result<MatchDetail, CoreError> {
-        let game = self
-            .client()?
+        let client = self.client()?;
+        let game = client
             .lcu
             .get(&format!("/lol-match-history/v1/games/{game_id}"))
             .await?;
-        Ok(analysis::match_detail(&game))
+        let data = lock(&client.data).clone();
+        let no_roles = crate::rating::Roles::new();
+        Ok(analysis::match_detail(
+            &game,
+            data.as_deref().map_or(&no_roles, |data| &data.roles),
+        ))
     }
 
     /// Looks a player up by Riot ID, `name#tag`.

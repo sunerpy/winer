@@ -127,26 +127,43 @@ whose game average is below 1 is left out (vision in ARAM, for example).
 
 WeGame does not publish how it scores. winer's weights were fitted on games WeGame scored, so that
 winer's MVP and SVP are WeGame's as often as possible: in 126 Summoner's Rift games (ranked and
-normal) the MVP matches in 85% and the SVP in 83%; in 139 Hextech ARAM games, 76% and 70%. With the
-earlier single set of weights for every mode these were 68% / 58% and 68% / 56%. Most of the rest
-comes from WeGame comparing a player with others on the same champion, which one game cannot show.
+normal) the MVP matches in 85% and the SVP in 83%; in 139 Hextech ARAM games, 80% and 73%. With the
+earlier single set of weights for every mode these were 68% / 58% and 68% / 56%. WeGame is said to
+compare a player with others on the same champion, which one game cannot show; most of the rest is
+there.
 
 The two kinds of game weigh differently: a map with lanes counts farming and vision; in ARAM nobody
 farms, and gold says more.
 
 | Part                                             | Summoner's Rift | ARAM and Hextech ARAM |
 | ------------------------------------------------ | --------------- | --------------------- |
-| gold                                             | 0.36            | 0.28                  |
-| survival (`(average deaths + 1) / (deaths + 1)`) | 0.19            | 0.25                  |
-| kills                                            | 0.12            | 0.12                  |
-| assists                                          | 0.09            | 0.12                  |
-| damage to champions                              | 0.09            | 0.12                  |
+| gold                                             | 0.36            | 0.34                  |
+| survival (`(average deaths + 1) / (deaths + 1)`) | 0.19            | 0.22                  |
+| kills                                            | 0.12            | 0.09                  |
+| assists                                          | 0.09            | 0.09                  |
+| damage to champions                              | 0.09            | 0.10                  |
 | damage taken                                     | 0.05            | 0.09                  |
 | minions and monsters                             | 0.06            | —                     |
 | vision                                           | 0.04            | —                     |
-| crowd control                                    | —               | 0.02                  |
+| crowd control                                    | —               | 0.01                  |
 
-Arena, URF and the other modes use the Summoner's Rift column.
+In ARAM the champion is random, and the same numbers mean different things for different roles: many
+kills and much damage are rarer for a tank than for a marksman, while taking damage is its job. So
+ARAM weighs each line with its champion's first role in the client, and divides by the ARAM column's
+total above, which keeps an ordinary player of any role around 6.0:
+
+| Role     | Kills | Assists | Damage | Taken | Gold | Crowd control | Survival |
+| -------- | ----- | ------- | ------ | ----- | ---- | ------------- | -------- |
+| Tank     | 0.12  | 0.09    | 0.11   | 0.06  | 0.35 | —             | 0.21     |
+| Support  | 0.14  | 0.09    | 0.13   | 0.10  | 0.35 | —             | 0.20     |
+| Mage     | 0.10  | 0.09    | 0.09   | 0.10  | 0.34 | —             | 0.21     |
+| Assassin | 0.07  | 0.08    | 0.09   | 0.09  | 0.34 | 0.02          | 0.22     |
+| Marksman | 0.07  | 0.08    | 0.09   | 0.11  | 0.33 | 0.02          | 0.22     |
+| Fighter  | 0.08  | 0.08    | 0.10   | 0.08  | 0.34 | 0.01          | 0.22     |
+
+A champion the client gives no role uses the ARAM column above. The same on Summoner's Rift brought
+no gain that would show, so the Rift weighs no role. Arena, URF and the other modes use the
+Summoner's Rift column.
 
 The weighted mean x (how many average players the line was worth) goes into
 `10 / (1 + e^(−4 × (x − c)))` with `c = 1 − ln(1.5) / 4`, which puts exactly one average player at

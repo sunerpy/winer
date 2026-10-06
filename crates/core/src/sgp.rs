@@ -416,14 +416,14 @@ mod tests {
         let from_client: Game = fixture("live/responses/match-history-game-sgp-twin.json");
         assert_eq!(from_server.game_id, from_client.game_id);
         assert_eq!(
-            analysis::match_detail(from_server),
-            analysis::match_detail(&from_client)
+            analysis::match_detail(from_server, &crate::rating::Roles::new()),
+            analysis::match_detail(&from_client, &crate::rating::Roles::new())
         );
         assert_eq!(
-            analysis::match_summary("PUUID-0010", from_server),
-            analysis::match_summary("PUUID-0010", &from_client)
+            analysis::match_summary("PUUID-0010", from_server, &crate::rating::Roles::new()),
+            analysis::match_summary("PUUID-0010", &from_client, &crate::rating::Roles::new())
         );
-        let line = analysis::match_summary("PUUID-0010", from_server)
+        let line = analysis::match_summary("PUUID-0010", from_server, &crate::rating::Roles::new())
             .expect("the player is in the game")
             .line;
         assert_eq!(
@@ -432,7 +432,7 @@ mod tests {
         );
         assert_eq!(line.augments.len(), 4);
         // The whole game is there, so the summary carries what only the whole game knows.
-        let detail = analysis::match_detail(from_server);
+        let detail = analysis::match_detail(from_server, &crate::rating::Roles::new());
         let scored = detail
             .teams
             .iter()
@@ -459,7 +459,7 @@ mod tests {
             .find(|player| player.award == Some(crate::view::Award::Mvp))
             .unwrap();
         assert_eq!(
-            analysis::match_summary(&mvp.puuid, from_server)
+            analysis::match_summary(&mvp.puuid, from_server, &crate::rating::Roles::new())
                 .unwrap()
                 .line
                 .award,
