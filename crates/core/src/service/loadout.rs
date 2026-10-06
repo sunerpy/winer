@@ -122,18 +122,20 @@ impl Service {
     }
 
     /// Called with every gameflow phase: once the game starts, what the player took into it is
-    /// remembered.
+    /// remembered. Outside champ select the watch starts over, so the next champ select sets its
+    /// champion up even where the client numbers both games alike.
     pub(super) fn loadout_phase(&self, client: &Client, phase: Phase) {
-        match phase {
-            Phase::ChampSelect => {}
-            Phase::GameStart | Phase::InProgress => {
-                let last = lock(&client.live).loadout.last.take();
-                if let Some(session) = last {
-                    self.remember(client, session);
-                }
-            }
-            // Champ select ended without a game (a dodge), or there was none to begin with.
-            _ => lock(&client.live).loadout.last = None,
+        if phase == Phase::ChampSelect {
+            return;
+        }
+        let last = {
+            let mut live = lock(&client.live);
+            live.loadout.watch = Watch::default();
+            live.loadout.last.take()
+        };
+        // Champ select ended without a game (a dodge) when the phase is anything else.
+        if let (Phase::GameStart | Phase::InProgress, Some(session)) = (phase, last) {
+            self.remember(client, session);
         }
     }
 
@@ -738,6 +740,9 @@ mod tests {
             (false, true),
             "set up once; the item set needs the build panel's numbers"
         );
+        // Out of champ select the watch starts over, whatever the next game's id.
+        service.loadout_phase(&client, Phase::None);
+        assert_eq!(still_due(&client, &session), (true, true));
     }
 
     #[tokio::test]

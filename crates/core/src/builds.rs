@@ -1930,6 +1930,28 @@ mod tests {
     }
 
     #[test]
+    fn tiers_read_as_letters_or_their_numbers_and_nothing_else() {
+        let tiers: Vec<Option<AugmentTier>> = ["S", " A ", "3", "4", "1", "D", "", "5"]
+            .into_iter()
+            .map(AugmentTier::parse)
+            .collect();
+        assert_eq!(
+            tiers,
+            [
+                Some(AugmentTier::S),
+                Some(AugmentTier::A),
+                Some(AugmentTier::B),
+                Some(AugmentTier::C),
+                Some(AugmentTier::S),
+                None,
+                None,
+                None
+            ]
+        );
+        assert!(AugmentTier::S < AugmentTier::C, "best first when sorted");
+    }
+
+    #[test]
     fn unknown_items_leave_their_options_and_empty_options_go() {
         let known = Known {
             items: HashSet::from([3009, 3031]),

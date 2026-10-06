@@ -974,6 +974,77 @@ mod tests {
         build
     }
 
+    /// Tencent 101's captured numbers for Jhin bottom, read as the panel reads them.
+    fn tencent_jhin() -> Build {
+        use crate::builds::{Known, StyleBook, TencentPayloads, parse_tencent, tencent_payload};
+        let payload = |name: &str| {
+            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../fixtures/builds")
+                .join(name);
+            tencent_payload(&fs::read(path).unwrap()).unwrap()
+        };
+        let items: Vec<crate::model::Item> = fixture("live/static/items.json");
+        let known = Known {
+            items: items.into_iter().map(|item| item.id).collect(),
+            styles: StyleBook::new(&fixture("live/static/perkstyles.json")),
+            ..Known::default()
+        };
+        let payloads = TencentPayloads {
+            build: payload("tencent-build-202-bottom.json"),
+            runeinfo: payload("tencent-runeinfo-202-bottom.json"),
+            ..TencentPayloads::default()
+        };
+        parse_tencent(
+            202,
+            Mode::Ranked,
+            Position::Bottom,
+            "16.19",
+            &payloads,
+            &known,
+        )
+    }
+
+    #[test]
+    fn an_item_set_from_the_captured_numbers_has_the_four_blocks_in_order() {
+        let set: Value =
+            serde_json::from_str(item_set(&tencent_jhin(), "烬", Language::ZhCn).get()).unwrap();
+        let blocks = set["blocks"].as_array().unwrap();
+        let names: Vec<&str> = blocks
+            .iter()
+            .map(|block| block["type"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "起始装备 · 腾讯 101 16.19",
+                "鞋子 · 腾讯 101 16.19",
+                "核心装备 · 腾讯 101 16.19",
+                "后期可选 · 腾讯 101 16.19"
+            ]
+        );
+        let ids = |block: &Value| -> Vec<String> {
+            block["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|item| item["id"].as_str().unwrap().to_owned())
+                .collect()
+        };
+        // Doran's Blade and a potion, then the second start's Doran's Shield; two potions at most.
+        assert_eq!(ids(&blocks[0]), ["1055", "2003", "1086"]);
+        assert_eq!(blocks[0]["items"][1]["count"], 2);
+        assert_eq!(ids(&blocks[1]), ["3009", "3047", "3006"]);
+        assert_eq!(ids(&blocks[2]), ["6697", "6676", "3031", "3094"]);
+        let late = ids(&blocks[3]);
+        assert!(!late.is_empty() && late.len() <= 8);
+        assert!(
+            !late
+                .iter()
+                .any(|id| ["6697", "6676", "3031"].contains(&id.as_str())),
+            "the core is not offered again: {late:?}"
+        );
+    }
+
     #[test]
     fn an_item_set_names_its_blocks_after_the_source_and_shows_on_the_modes_map() {
         let set: Value =
