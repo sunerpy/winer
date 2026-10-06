@@ -348,6 +348,11 @@ pub struct RecentForm {
     pub matches: Vec<RecentMatch>,
     /// Most played first.
     pub champions: Vec<ChampionForm>,
+    /// The counted games' kills, deaths and assists against their modes' averages, which the title
+    /// is read from (`rating::form_title`); the core's alone.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub pace: Option<crate::rating::Pace>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]

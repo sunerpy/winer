@@ -185,6 +185,17 @@ fn form(puuid: &str, games: &[Game], kinds: &QueueKinds) -> (RecentForm, FormSco
     champions.truncate(5);
     scope.remakes = matches.len() as u32 - total;
 
+    // The counted games against their modes' averages, for the title.
+    let pace = rating::Pace::of(games.iter().filter_map(|game| {
+        let participant = game
+            .participant_of(puuid)
+            .or_else(|| game.participants.first())?;
+        let average = rating::average_line(&game.game_mode)?;
+        let stats = &participant.stats;
+        (!is_remake(game, participant))
+            .then_some(([stats.kills, stats.deaths, stats.assists], average))
+    }));
+
     let form = RecentForm {
         games: total,
         wins: counted.iter().filter(|game| game.win).count() as u32,
@@ -194,6 +205,7 @@ fn form(puuid: &str, games: &[Game], kinds: &QueueKinds) -> (RecentForm, FormSco
         streak,
         matches,
         champions,
+        pace,
     };
     (form, scope)
 }
@@ -613,6 +625,31 @@ mod tests {
             "participants": [{"participantId": 1, "championId": champion, "stats": {"win": win, "kills": kills, "deaths": deaths, "assists": 2}}]
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn the_pace_reads_each_game_against_its_modes_average_and_skips_remakes() {
+        let mode = |mut game: Game, mode: &str| {
+            game.game_mode = mode.into();
+            game
+        };
+        let games = [
+            // Eleven deaths: a Rift game's double, an ARAM game's average.
+            mode(game(4, true, 5, 11, 1, false), "KIWI"),
+            mode(game(3, true, 5, 11, 1, false), "ARAM"),
+            mode(game(2, false, 5, 11, 1, false), "CLASSIC"),
+            mode(game(1, false, 0, 0, 1, true), "CLASSIC"),
+            mode(game(0, false, 9, 9, 1, false), "CHERRY"),
+        ];
+        let pace = recent_form("p", &games, &QueueKinds::new()).pace.unwrap();
+        assert_eq!(pace.games, 3, "no remake, no mode without an average");
+        assert!(
+            (pace.deaths - 33.0 / (11.1 + 11.1 + 5.2)).abs() < 1e-9,
+            "{pace:?}"
+        );
+        assert!((pace.assists - 6.0 / (25.6 + 25.6 + 7.5)).abs() < 1e-9);
+        let arena = [mode(game(1, true, 9, 1, 1, false), "CHERRY")];
+        assert_eq!(recent_form("p", &arena, &QueueKinds::new()).pace, None);
     }
 
     #[test]

@@ -63,6 +63,7 @@ const SETTINGS = {
       targetTemplate: "",
       allyTemplate: "",
       gameTeams: "enemies",
+      style: "rich",
     },
     bench: { enabled: false, champions: [] },
     scopes: defaultScopes(),
@@ -355,6 +356,24 @@ describe("tiers", () => {
     expect(title({ killParticipation: 0.3 })).toBe("solo");
     expect(title({ remake: true, kills: 1, deaths: 8 }), "a remake earns nothing").toBeNull();
     expect(gameTitle(player({ kills: 1, deaths: 8 }), [player()]), "nor a team of one").toBeNull();
+  });
+
+  it("reads an ARAM game's counts against ARAM's bars", () => {
+    const aram = (change: Partial<PlayerLine>, mode = "KIWI") => {
+      const line = player({ assists: 20, ...change });
+      return gameTitle(line, [line, player(), player(), player(), player()], mode);
+    };
+    // Eleven deaths are an ordinary ARAM game, a grey screen on the Rift.
+    expect(aram({ kills: 9, deaths: 11 })).toBeNull();
+    expect(aram({ kills: 9, deaths: 11 }, "CLASSIC")).toBe("greyScreen");
+    expect(aram({ kills: 9, deaths: 18 })).toBe("greyScreen");
+    expect(aram({ kills: 9, deaths: 18 }, "ARAM")).toBe("greyScreen");
+    expect(aram({ kills: 18, deaths: 18 })).toBe("trader");
+    expect(aram({ kills: 3, deaths: 15 })).toBe("bodhisattva");
+    expect(aram({ kills: 2, deaths: 9 }), "two kills is not feeding in ARAM").toBeNull();
+    expect(aram({ kills: 12, deaths: 3, assists: 25 })).toBe("immortal");
+    expect(aram({ kills: 6, assists: 32 })).toBe("helper");
+    expect(aram({ kills: 4, assists: 15 }), "fifteen assists are few in ARAM").toBeNull();
   });
 
   it("names as many tiers as the core's sets have, a grade for every letter", () => {

@@ -261,6 +261,7 @@ function PlayerRow({
 
 function TeamTable({
   team,
+  mode,
   maxDamage,
   bests,
   objectives,
@@ -269,6 +270,8 @@ function TeamTable({
   onPlayer,
 }: {
   team: TeamDetail;
+  /** The game's mode, which a title's counts are read against (`gameTitle`). */
+  mode: string;
   maxDamage: number;
   bests: Standouts;
   /** Whether to count dragons and barons. */
@@ -314,7 +317,7 @@ function TeamTable({
             maxDamage={maxDamage}
             bests={bests}
             highlight={player.puuid === highlight}
-            title={titles ? gameTitle(player, team.players) : null}
+            title={titles ? gameTitle(player, team.players, mode) : null}
             onPlayer={onPlayer}
           />
         ))}
@@ -354,6 +357,7 @@ export function MatchDetailView({
         <TeamTable
           key={team.teamId}
           team={team}
+          mode={detail.gameMode}
           maxDamage={maxDamage}
           bests={bests}
           objectives={objectives}

@@ -79,20 +79,25 @@ fn rate(seats: &mut [Seat], ranking: &Ranking, game_id: i64) {
     } else {
         rating::tiers(&scores, names.len())
     };
+    let count = names.len() as u8;
     for ((seat, score), tier) in seats.iter_mut().zip(&scores).zip(tiers) {
-        let tier = tier.map(|tier| tier.min(names.len() as u8 - 1));
-        let title = match &seat.stats {
-            PlayerStats::Ready(summary) if ranking.titles => rating::form_title(&summary.recent)
-                .map(|title| callout::title_name(title, ranking.language).to_owned()),
+        let tier = tier.map(|tier| tier.min(count - 1));
+        let grade = ranking.absolute.then_some(tier).flatten();
+        // The title leans the way its tier does.
+        let title = match (&seat.stats, tier) {
+            (PlayerStats::Ready(summary), Some(tier)) if ranking.titles => {
+                rating::form_title(&summary.recent, rating::lean(tier, count, grade))
+                    .map(|title| callout::title_name(title, ranking.language).to_owned())
+            }
             _ => None,
         };
         let puuid = seat.puuid.clone().unwrap_or_default();
         seat.rating = score.zip(tier).map(|(score, tier)| SeatRating {
             score,
             tier,
-            tiers: names.len() as u8,
+            tiers: count,
             label: names[usize::from(tier)].clone(),
-            grade: ranking.absolute.then_some(tier),
+            grade,
             title,
             quip: ranking.quip(tier, &puuid, game_id),
         });

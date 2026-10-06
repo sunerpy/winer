@@ -4,7 +4,7 @@
 //! rating; the game score's weights were fitted so that its MVP and SVP fall where WeGame's do as
 //! often as possible (`Weights`).
 
-use std::collections::HashMap;
+use std::{cmp::Ordering, collections::HashMap};
 
 use crate::view::{Award, RecentForm};
 
@@ -295,49 +295,177 @@ pub fn grade(score: f64, bands: &[f64; 7]) -> u8 {
         .unwrap_or(bands.len()) as u8
 }
 
-/// What recent games say about a player beyond the grade, the most telling first.
+/// Where a tier stands against the middle of its scheme: a title never says the opposite of the
+/// tier beside it, and the in-game callout names the enemies either side of it. A ranking splits
+/// around its middle tier (of five, the first two are above and the last two below; of two,
+/// neither is the middle); of the eight grades, B and C, the bands either side of an ordinary
+/// player's form, are the middle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FormTitle {
-    /// Three or more wins in a row: 版本答案.
-    OnAStreak,
-    /// Three or more losses in a row: 排位慈善家.
-    GivingAway,
-    /// Hardly a kill and many deaths a game: 电竞菩萨.
-    Bodhisattva,
-    /// KDA of 6 or better: 峡谷永生者.
-    Immortal,
-    /// Many kills and many deaths a game: 一换一专业户.
-    Trader,
-    /// Eight or more deaths a game: 黑白电视机资深会员.
-    GreyScreen,
-    /// Twice as many assists as kills, and plenty of them: 峡谷慈善家.
-    Helper,
+pub enum Lean {
+    Above,
+    Middle,
+    Below,
 }
 
-/// The title recent form earns, if any, from the streak first and then the averages. Needs five
-/// games: fewer say too little.
-pub fn form_title(form: &RecentForm) -> Option<FormTitle> {
+/// The [`Lean`] of `tier` of `tiers`, or of `grade` (0 S+ to 7 F) where the scheme grades.
+pub fn lean(tier: u8, tiers: u8, grade: Option<u8>) -> Lean {
+    let order = match grade {
+        Some(grade) if grade <= 2 => Ordering::Less,
+        Some(grade) if grade >= 5 => Ordering::Greater,
+        Some(_) => Ordering::Equal,
+        None => (2 * u16::from(tier) + 1).cmp(&u16::from(tiers)),
+    };
+    match order {
+        Ordering::Less => Lean::Above,
+        Ordering::Equal => Lean::Middle,
+        Ordering::Greater => Lean::Below,
+    }
+}
+
+/// The average player's kills, deaths and assists a game in `game_mode`, measured on the games
+/// WeGame scored (`fixtures/wegame/calibration.json`: 1,260 Rift lines, 1,390 ARAM lines). An
+/// ARAM game holds about twice the Rift's kills and deaths and over three times its assists, so a
+/// count says little until it is set against its mode. Other modes (Arena, URF, …) have none.
+pub fn average_line(game_mode: &str) -> Option<[f64; 3]> {
+    match game_mode {
+        "CLASSIC" => Some([5.1, 5.2, 7.5]),
+        "ARAM" | "KIWI" => Some([11.1, 11.1, 25.6]),
+        _ => None,
+    }
+}
+
+/// A player's kills, deaths and assists against the average player's of each game's mode, where
+/// 1.0 is that average: over the `games` whose mode has one ([`average_line`]), totals against
+/// totals.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Pace {
+    pub games: u32,
+    pub kills: f64,
+    pub deaths: f64,
+    pub assists: f64,
+}
+
+impl Pace {
+    /// From each game's kills, deaths and assists and its mode's average line; `None` without a
+    /// game.
+    pub fn of(lines: impl IntoIterator<Item = ([i64; 3], [f64; 3])>) -> Option<Self> {
+        let (mut games, mut own, mut usual) = (0u32, [0.0; 3], [0.0; 3]);
+        for (line, average) in lines {
+            games += 1;
+            for stat in 0..3 {
+                own[stat] += line[stat] as f64;
+                usual[stat] += average[stat];
+            }
+        }
+        (games > 0).then(|| Self {
+            games,
+            kills: own[0] / usual[0],
+            deaths: own[1] / usual[1],
+            assists: own[2] / usual[2],
+        })
+    }
+}
+
+/// What recent games say about a player beyond the tier: one title, of the tier's own leaning
+/// ([`form_title`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FormTitle {
+    // ---- Above the middle ----
+    /// Three or more wins in a row: 版本答案.
+    OnAStreak,
+    /// Dies at most 0.65 times as often as the mode's average player: 峡谷永生者.
+    Immortal,
+    /// Kills at least 1.35 times the average: 人头收割机.
+    Reaper,
+    /// Assists at least 1.3 times the average: 团战发动机.
+    Playmaker,
+    /// Two games in three won, over eight games or more: 常胜将军.
+    Winner,
+    /// Above the middle with nothing else standing out: 靠谱队友.
+    Reliable,
+    // ---- Any tier ----
+    /// Kills and deaths both at least 1.2 times the average: 一换一专业户.
+    Trader,
+    /// Assists at least 1.2 times the average, kills at most 0.85: 峡谷慈善家.
+    Helper,
+    /// At the middle with nothing standing out: 正常发挥.
+    Steady,
+    // ---- Below the middle ----
+    /// Three or more losses in a row: 排位慈善家.
+    GivingAway,
+    /// Kills at most 0.55 times the average and deaths at least 1.1: 电竞菩萨.
+    Bodhisattva,
+    /// Deaths at least 1.3 times the average: 黑白电视机资深会员.
+    GreyScreen,
+    /// Kills and assists both at most 0.65 times the average: 团战观众.
+    Spectator,
+    /// A third of the games won or fewer, over eight games or more: 峡谷观光客.
+    Tourist,
+    /// Below the middle with nothing else standing out: 陪跑选手.
+    AlongForTheRide,
+}
+
+/// The title recent form earns beside a tier that leans `lean`: the first that fits of the
+/// leaning's own, then of those any tier may have, else the leaning's plain one. Kills, deaths and
+/// assists are read against each game's mode ([`Pace`]), so an ARAM player's ten deaths are an
+/// ordinary game, and a tier above the middle never gets a title below it, nor the other way
+/// round. Needs five games, and five with a mode's average for what the counts say.
+pub fn form_title(form: &RecentForm, lean: Lean) -> Option<FormTitle> {
+    use FormTitle::*;
     if form.games < 5 {
         return None;
     }
-    let kda = (form.kills + form.assists) / form.deaths.max(1.0);
-    Some(if form.streak >= 3 {
-        FormTitle::OnAStreak
-    } else if form.streak <= -3 {
-        FormTitle::GivingAway
-    } else if form.kills <= 2.0 && form.deaths >= 7.0 {
-        FormTitle::Bodhisattva
-    } else if kda >= 6.0 {
-        FormTitle::Immortal
-    } else if form.kills >= 8.0 && form.deaths >= 7.0 {
-        FormTitle::Trader
-    } else if form.deaths >= 8.0 {
-        FormTitle::GreyScreen
-    } else if form.assists >= 12.0 && form.assists >= 2.0 * form.kills {
-        FormTitle::Helper
-    } else {
-        return None;
-    })
+    let pace = form.pace.filter(|pace| pace.games >= 5);
+    let paced = |test: fn(&Pace) -> bool| pace.as_ref().is_some_and(test);
+    let won = f64::from(form.wins) / f64::from(form.games);
+    let many = form.games >= 8;
+    let own: Vec<(bool, FormTitle)> = match lean {
+        Lean::Above => vec![
+            (form.streak >= 3, OnAStreak),
+            (paced(|pace| pace.deaths <= 0.65), Immortal),
+            (paced(|pace| pace.kills >= 1.35), Reaper),
+            (paced(|pace| pace.assists >= 1.3), Playmaker),
+            (many && won >= 2.0 / 3.0, Winner),
+        ],
+        Lean::Middle => vec![
+            (form.streak >= 3, OnAStreak),
+            (form.streak <= -3, GivingAway),
+        ],
+        Lean::Below => vec![
+            (form.streak <= -3, GivingAway),
+            (
+                paced(|pace| pace.kills <= 0.55 && pace.deaths >= 1.1),
+                Bodhisattva,
+            ),
+            (paced(|pace| pace.deaths >= 1.3), GreyScreen),
+            (
+                paced(|pace| pace.kills <= 0.65 && pace.assists <= 0.65),
+                Spectator,
+            ),
+            (many && won <= 1.0 / 3.0, Tourist),
+        ],
+    };
+    let any = [
+        (
+            paced(|pace| pace.kills >= 1.2 && pace.deaths >= 1.2),
+            Trader,
+        ),
+        (
+            paced(|pace| pace.assists >= 1.2 && pace.kills <= 0.85),
+            Helper,
+        ),
+    ];
+    let plain = match lean {
+        Lean::Above => Reliable,
+        Lean::Middle => Steady,
+        Lean::Below => AlongForTheRide,
+    };
+    Some(
+        own.into_iter()
+            .chain(any)
+            .find_map(|(fits, title)| fits.then_some(title))
+            .unwrap_or(plain),
+    )
 }
 
 /// How many games of evidence weigh as much as the neutral prior in [`form_score`].
@@ -440,23 +568,179 @@ mod tests {
         );
     }
 
+    /// Twenty games, ten won, at `pace` against the mode's average, `streak` the run at the top.
+    fn paced(kills: f64, deaths: f64, assists: f64, streak: i32) -> RecentForm {
+        RecentForm {
+            pace: Some(Pace {
+                games: 20,
+                kills,
+                deaths,
+                assists,
+            }),
+            ..recent(20, 10, 5.0, 5.0, 5.0, streak)
+        }
+    }
+
     #[test]
-    fn form_titles_name_the_streak_first_then_the_averages() {
-        let title = |kills, deaths, assists, streak| {
-            form_title(&recent(20, 10, kills, deaths, assists, streak))
-        };
-        assert_eq!(title(5.0, 5.0, 5.0, 4), Some(FormTitle::OnAStreak));
-        assert_eq!(title(5.0, 5.0, 5.0, -3), Some(FormTitle::GivingAway));
-        assert_eq!(title(1.5, 8.0, 6.0, 0), Some(FormTitle::Bodhisattva));
-        assert_eq!(title(9.0, 2.0, 6.0, 0), Some(FormTitle::Immortal));
-        assert_eq!(title(9.0, 8.0, 6.0, 0), Some(FormTitle::Trader));
-        assert_eq!(title(4.0, 9.0, 8.0, 0), Some(FormTitle::GreyScreen));
-        assert_eq!(title(4.0, 5.0, 14.0, 0), Some(FormTitle::Helper));
-        assert_eq!(title(5.0, 5.0, 5.0, 0), None, "nothing stands out");
+    fn a_tier_leans_above_at_or_below_the_middle_of_its_scheme() {
+        let five: Vec<Lean> = (0..5).map(|tier| lean(tier, 5, None)).collect();
         assert_eq!(
-            form_title(&recent(4, 4, 9.0, 1.0, 9.0, 4)),
+            five,
+            [
+                Lean::Above,
+                Lean::Above,
+                Lean::Middle,
+                Lean::Below,
+                Lean::Below
+            ]
+        );
+        assert_eq!(
+            (lean(0, 2, None), lean(1, 2, None)),
+            (Lean::Above, Lean::Below),
+            "two tiers have no middle"
+        );
+        let grades: Vec<Lean> = (0..8).map(|grade| lean(grade, 8, Some(grade))).collect();
+        assert_eq!(
+            grades,
+            [
+                Lean::Above,
+                Lean::Above,
+                Lean::Above,
+                Lean::Middle,
+                Lean::Middle,
+                Lean::Below,
+                Lean::Below,
+                Lean::Below
+            ],
+            "S+, S, A above; B, C the middle"
+        );
+    }
+
+    #[test]
+    fn counts_are_read_against_each_games_mode() {
+        let rift = average_line("CLASSIC").unwrap();
+        let aram = average_line("KIWI").unwrap();
+        assert_eq!(average_line("ARAM"), Some(aram));
+        assert_eq!(average_line("CHERRY"), None, "Arena has no average here");
+        // Ten deaths a game: twice the Rift's average, under ARAM's.
+        let ten = Pace::of([([5, 10, 10], rift), ([5, 10, 10], rift)]).unwrap();
+        assert!((ten.deaths - 10.0 / 5.2).abs() < 1e-9, "{ten:?}");
+        let in_aram = Pace::of([([11, 10, 26], aram)]).unwrap();
+        assert!(in_aram.deaths < 1.0 && in_aram.kills < 1.0 && in_aram.assists > 1.0);
+        // Games of two modes: totals against totals.
+        let both = Pace::of([([0, 0, 0], rift), ([0, 21, 0], aram)]).unwrap();
+        assert_eq!(both.games, 2);
+        assert!((both.deaths - 21.0 / (5.2 + 11.1)).abs() < 1e-9);
+        assert_eq!(Pace::of([]), None);
+    }
+
+    #[test]
+    fn a_title_never_says_the_opposite_of_its_tier() {
+        // Dies half as often again as the mode's average, nothing else out of the ordinary.
+        let dying = paced(1.0, 1.5, 1.0, 0);
+        assert_eq!(form_title(&dying, Lean::Below), Some(FormTitle::GreyScreen));
+        assert_eq!(
+            form_title(&dying, Lean::Above),
+            Some(FormTitle::Reliable),
+            "a good tier is never a grey screen"
+        );
+        assert_eq!(form_title(&dying, Lean::Middle), Some(FormTitle::Steady));
+        // Three wins in a row: a streak above or at the middle, never below.
+        let winning = paced(1.0, 1.0, 1.0, 3);
+        assert_eq!(
+            form_title(&winning, Lean::Above),
+            Some(FormTitle::OnAStreak)
+        );
+        assert_eq!(
+            form_title(&winning, Lean::Middle),
+            Some(FormTitle::OnAStreak)
+        );
+        assert_eq!(
+            form_title(&winning, Lean::Below),
+            Some(FormTitle::AlongForTheRide)
+        );
+        let losing = paced(1.0, 1.0, 1.0, -3);
+        assert_eq!(form_title(&losing, Lean::Above), Some(FormTitle::Reliable));
+        assert_eq!(
+            form_title(&losing, Lean::Below),
+            Some(FormTitle::GivingAway)
+        );
+    }
+
+    #[test]
+    fn each_leaning_has_its_titles_the_most_telling_first() {
+        use FormTitle::*;
+        let above =
+            |kills, deaths, assists| form_title(&paced(kills, deaths, assists, 0), Lean::Above);
+        assert_eq!(above(1.0, 0.6, 1.0), Some(Immortal));
+        assert_eq!(
+            above(1.4, 0.6, 1.0),
+            Some(Immortal),
+            "rarely dying comes first"
+        );
+        assert_eq!(above(1.4, 1.0, 1.0), Some(Reaper));
+        assert_eq!(above(1.0, 1.0, 1.3), Some(Playmaker));
+        assert_eq!(
+            above(1.25, 1.25, 1.0),
+            Some(Trader),
+            "then what any tier may be"
+        );
+        assert_eq!(above(0.8, 1.0, 1.25), Some(Helper));
+        assert_eq!(above(1.0, 1.0, 1.0), Some(Reliable));
+        let winner = RecentForm {
+            wins: 14,
+            ..paced(1.0, 1.0, 1.0, 0)
+        };
+        assert_eq!(form_title(&winner, Lean::Above), Some(Winner));
+
+        let below =
+            |kills, deaths, assists| form_title(&paced(kills, deaths, assists, 0), Lean::Below);
+        assert_eq!(below(0.5, 1.2, 1.0), Some(Bodhisattva));
+        assert_eq!(below(0.8, 1.3, 1.0), Some(GreyScreen));
+        assert_eq!(below(0.6, 1.0, 0.6), Some(Spectator));
+        assert_eq!(below(1.25, 1.25, 1.0), Some(Trader));
+        assert_eq!(below(1.0, 1.0, 1.0), Some(AlongForTheRide));
+        let tourist = RecentForm {
+            wins: 6,
+            ..paced(1.0, 1.0, 1.0, 0)
+        };
+        assert_eq!(form_title(&tourist, Lean::Below), Some(Tourist));
+
+        let middle =
+            |kills, deaths, assists| form_title(&paced(kills, deaths, assists, 0), Lean::Middle);
+        assert_eq!(middle(1.25, 1.25, 1.0), Some(Trader));
+        assert_eq!(middle(0.8, 1.0, 1.25), Some(Helper));
+        assert_eq!(
+            middle(1.4, 0.5, 1.4),
+            Some(Steady),
+            "no praise at the middle"
+        );
+        assert_eq!(middle(0.5, 1.5, 0.5), Some(Steady), "nor a roast");
+    }
+
+    #[test]
+    fn titles_need_five_games_and_counts_need_five_with_a_mode() {
+        assert_eq!(
+            form_title(&recent(4, 4, 9.0, 1.0, 9.0, 4), Lean::Above),
             None,
             "four games say too little"
+        );
+        // Eight games, mostly Arena: three with a mode's average are too few to read counts from,
+        // so only the streak and the win rate speak.
+        let arena = RecentForm {
+            pace: Some(Pace {
+                games: 3,
+                kills: 2.0,
+                deaths: 0.1,
+                assists: 2.0,
+            }),
+            ..recent(8, 4, 9.0, 1.0, 9.0, 0)
+        };
+        assert_eq!(form_title(&arena, Lean::Above), Some(FormTitle::Reliable));
+        assert_eq!(
+            form_title(&recent(20, 10, 4.0, 12.0, 5.0, 0), Lean::Below),
+            Some(FormTitle::AlongForTheRide),
+            "no pace, no reading of the counts"
         );
     }
 

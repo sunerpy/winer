@@ -378,9 +378,11 @@ pub fn rate_alone(summary: &PlayerSummary, ranking: &Ranking) -> Option<(SeatRat
     } else {
         rating::tier_of_grade(band, names.len())
     };
+    let grade = ranking.absolute.then_some(tier);
+    let lean = rating::lean(tier, names.len() as u8, grade);
     let title = ranking
         .titles
-        .then(|| rating::form_title(&summary.recent))
+        .then(|| rating::form_title(&summary.recent, lean))
         .flatten()
         .map(|title| callout::title_name(title, ranking.language).to_owned());
     // Champ select draws a quip per game; here the newest counted game stands for it, so the quip
@@ -396,7 +398,7 @@ pub fn rate_alone(summary: &PlayerSummary, ranking: &Ranking) -> Option<(SeatRat
         tier,
         tiers: names.len() as u8,
         label: names[usize::from(tier)].clone(),
-        grade: ranking.absolute.then_some(tier),
+        grade,
         title,
         quip: ranking.quip(tier, &summary.puuid, newest),
     };
@@ -865,9 +867,16 @@ mod tests {
 
     #[test]
     fn a_player_alone_gets_champ_selects_title_while_titles_are_on() {
-        // Eight deaths a game and no streak worth naming: the grey screen's regular.
+        // Dies half as often again as the mode's average player and no streak worth naming: below
+        // the middle, the grey screen's regular.
         let mut grey = summary(20, 9, 4.0, 9.0, 8.0);
         grey.recent.streak = 1;
+        grey.recent.pace = Some(rating::Pace {
+            games: 20,
+            kills: 0.8,
+            deaths: 1.5,
+            assists: 1.0,
+        });
         let (rating, _) = rate_alone(&grey, &ranking(TierSet::RiftFive, true)).unwrap();
         assert_eq!(rating.title.as_deref(), Some("黑白电视机资深会员"));
         assert_eq!(rating.tier, 4, "an E is the last of five");

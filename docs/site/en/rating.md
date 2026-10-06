@@ -73,21 +73,40 @@ page's.
 
 ## Callout
 
-By default one line per teammate:
+One line per teammate, the best tier first. **Callout style** in **Automation › Callout** picks the
+default line:
 
-```text
-{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}
-```
+- **Rich** (the default): an emoji before the tier, the title and the tier's quip as well.
 
-For example:
+  ```text
+  {emoji}{standing}: {seat} {name}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}
+  ```
 
-```text
-[Blue side] winer rating
-Rift Demigod: P1 Light in the Dark, 60% in 20 games, KDA 4.1, form 7.4 [Patch Champion], the other team is filing a boosting report
-Rift Civil Servant: P2 Rift Sweeper, 50% in 20 games, KDA 2.9, form 5.2, not flashy, but every job got done
-```
+  ```text
+  📢 [Blue side] winer rating
+  👑 Rift Demigod: P1 Light in the Dark, 60% in 20 games, KDA 4.1, form 7.4 [Patch Champion], the other team is filing a boosting report
+  👌 Rift Civil Servant: P2 Rift Sweeper, 50% in 20 games, KDA 2.9, form 5.2 [Business as Usual], not flashy, but every job got done
+  ```
 
-- The first line names your side and "winer rating", followed by the opening line if you wrote one.
+- **Compact**: one short line a player, the same fields in the same order and the name last, so
+  the lines compare at a glance.
+
+  ```text
+  {seat} {standing} | {winRate} | KDA {kda} | form {score} | {name}
+  ```
+
+  ```text
+  [Blue side] winer rating
+  P1 Rift Demigod | 60% | KDA 4.1 | form 7.4 | Light in the Dark
+  P2 Rift Civil Servant | 50% | KDA 2.9 | form 5.2 | Rift Sweeper
+  ```
+
+`{emoji}` is the tier's emoji: 👑 for the best tier, 🔥 for the others above the middle, 👌 for the
+middle, 😅 below it and 💀 for the worst; in Rift grades S+ is 👑, S and A 🔥, B and C 👌, D and E 😅
+and F 💀. Emoji show in the client's chat only; lines typed in a game have none.
+
+- The first line names your side and "winer rating", followed by the opening line if you wrote one;
+  the rich style puts 📢 before it.
 - `{seat}` is the teammate's place in your team's list in champ select, counted from the top: P1 to
   P5 (1L to 5L in Chinese). A line names the seat and the player, not the champion: champions can
   still change during champ select, seats do not.
@@ -95,9 +114,9 @@ Rift Civil Servant: P2 Rift Sweeper, 50% in 20 games, KDA 2.9, form 5.2, not fla
   the built-in schemes has one (Rift five has three per tier in Chinese), picked per player and per
   game: the same throughout one champ select, likely another the next game. Custom names have none.
 - The line template and the opening line are edited in **Automation › Callout**, with these
-  placeholders: `{standing}` `{seat}` `{name}` `{champion}` `{games}` `{winRate}` `{kda}` `{score}`
-  `{title}` `{quip}`. A template of your own can still use `{champion}`: the champion the teammate
-  has picked or shown when the callout is sent.
+  placeholders: `{emoji}` `{standing}` `{seat}` `{name}` `{champion}` `{games}` `{winRate}` `{kda}`
+  `{score}` `{title}` `{quip}`. A template of your own is used in either style. It can still use
+  `{champion}`: the champion the teammate has picked or shown when the callout is sent.
 
 ### Lines in game
 
@@ -121,7 +140,8 @@ Go after {champion}: {standing}, {winRate} in {games} games
 {standing}: {champion}, {winRate} in {games} games, KDA {kda}, form {score}{title}{quip}
 ```
 
-The first two are about the enemies, the third is the line for each teammate. The enemy lines open
+The first two are about the enemies, the third is the line for each teammate; in the compact
+style a teammate's line is `{standing} {champion} | {winRate} | KDA {kda} | form {score}`. The enemy lines open
 with the enemy's side and "winer rating", for example "[Enemy · Red side] winer rating"; your
 team's with "[My team · Blue side] winer rating". In a game the champions are settled and are how
 players are told apart, so the defaults name the champion alone, or the name where the champion is
@@ -135,37 +155,60 @@ in the callout.
 
 ### Recent-form titles (game analysis and callout)
 
-Five games at least; the first rule that holds:
+Five games at least. A title leans the way the tier beside it does: a tier above the middle only
+ever gets praise, only one below it a roast, and the middle tier one about how the player plays. The
+middle is the one the in-game callout uses, above.
 
-| Rule                                         | Title                 |
-| -------------------------------------------- | --------------------- |
-| three wins in a row or more                  | Patch Champion        |
-| three losses in a row or more                | Ranked Philanthropist |
-| at most 2 kills and at least 7 deaths a game | Esports Bodhisattva   |
-| KDA 6 or more                                | Rift Immortal         |
-| at least 8 kills and 7 deaths a game         | One-for-one Trader    |
-| at least 8 deaths a game                     | Grey-screen Regular   |
-| at least 12 assists a game, twice the kills  | Rift Philanthropist   |
+Kills, deaths and assists a game are set against the same mode's average player: an ARAM game holds
+about twice the Rift's kills and deaths and over three times its assists, so ten deaths are a lot on
+the Rift and ordinary in ARAM. The averages come from the games WeGame scored that the game score was
+fitted on: 5.1 / 5.2 / 7.5 a player a game on Summoner's Rift, 11.1 / 11.1 / 25.6 in both ARAMs.
+"×1.3" below means 1.3 times that average. Modes without an average (Arena and others) take no part
+in these, and they are read only from five such games or more.
+
+The first rule of the tier's own that holds; failing those, the rules for any tier; failing those
+too, the last row.
+
+| Tier             | Rule                                              | Title                                                      |
+| ---------------- | ------------------------------------------------- | ---------------------------------------------------------- |
+| above the middle | three wins in a row or more                       | Patch Champion                                             |
+| above the middle | deaths ×0.65 or fewer                             | Rift Immortal                                              |
+| above the middle | kills ×1.35 or more                               | Kill Collector                                             |
+| above the middle | assists ×1.3 or more                              | Teamfight Engine                                           |
+| above the middle | two games in three won, over 8 or more            | Serial Winner                                              |
+| the middle       | three wins in a row or more                       | Patch Champion                                             |
+| the middle       | three losses in a row or more                     | Ranked Philanthropist                                      |
+| below the middle | three losses in a row or more                     | Ranked Philanthropist                                      |
+| below the middle | kills ×0.55 or fewer, deaths ×1.1 or more         | Esports Bodhisattva                                        |
+| below the middle | deaths ×1.3 or more                               | Grey-screen Regular                                        |
+| below the middle | kills and assists both ×0.65 or fewer             | Teamfight Spectator                                        |
+| below the middle | a third of the games won or fewer, over 8 or more | Rift Tourist                                               |
+| any tier         | kills and deaths both ×1.2 or more                | One-for-one Trader                                         |
+| any tier         | assists ×1.2 or more, kills ×0.85 or fewer        | Rift Philanthropist                                        |
+| none of those    | above / at / below the middle                     | Reliable Teammate / Business as Usual / Along for the Ride |
 
 ### Game titles (scoreboard)
 
-Damage share, damage taken and gold are counted within the team; the first rule that holds:
+Damage share, damage taken and gold are counted within the team. Kills, deaths and assists have bars
+per mode, the ARAMs' in brackets, set where as few players reach them: ten deaths or more are one
+Rift player in twelve but two ARAM players in three, and only eighteen are as rare there. The first
+rule that holds:
 
 | Rule                                                                                      | Title               |
 | ----------------------------------------------------------------------------------------- | ------------------- |
-| at most 1 kill, at least 8 deaths                                                         | Esports Bodhisattva |
-| no deaths, at least 10 kills plus assists                                                 | Rift Immortal       |
+| at most 1 kill (ARAM 4), at least 8 deaths (15)                                           | Esports Bodhisattva |
+| no deaths (at most 3), at least 10 kills plus assists (35)                                | Rift Immortal       |
 | bottom carry (bottom lane, damage share 18% or more), at most 2 deaths, 25% of the damage | Alive Means Damage  |
 | bottom carry, at least 9 deaths                                                           | De-carry            |
 | lost, with 30% of the damage or more                                                      | The Dean            |
 | won, with under 12% of the damage                                                         | Missing Piece       |
-| at least 10 kills and 10 deaths                                                           | One-for-one Trader  |
-| at least 10 deaths                                                                        | Grey-screen Regular |
+| at least 10 kills and 10 deaths (18 and 18)                                               | One-for-one Trader  |
+| at least 10 deaths (18)                                                                   | Grey-screen Regular |
 | KDA 5 or more, under 15% of the damage                                                    | KDA Keeper          |
 | 30% of the team's damage taken or more                                                    | Human Turret        |
 | 24% of the team's gold or more, under 17% of the damage                                   | Rift Banker         |
 | 17% of the team's gold or less, 25% of the damage or more                                 | Self-made Carry     |
-| at least 10 assists, three times the kills                                                | Rift Philanthropist |
+| at least 10 assists (31), three times the kills                                           | Rift Philanthropist |
 | kill participation under 35%                                                              | Solo Player         |
 
 Remakes and teams of one earn no title.
