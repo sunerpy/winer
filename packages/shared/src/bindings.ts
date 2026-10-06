@@ -524,7 +524,14 @@ availability: string,
 /**
  * Put back as well when set; `None` leaves the client's own.
  */
-statusMessage: string | null, };
+statusMessage: string | null, 
+/**
+ * While the mobile state is chosen and no message of the user's own is set, the status
+ * message says 手机在线: the Tencent client names that state 在线分组, while friends read a
+ * status message as written, in quotation marks (`docs/platform-notes.md`). Another state
+ * takes it away again. Off by default.
+ */
+mobileMessage: boolean, };
 
 export type SkinChoice = { id: number, championId: number, 
 /**
@@ -544,7 +551,15 @@ tokens: Array<ChallengeToken>, title: TitleChoice | null,
 /**
  * Every challenge with a level, the highest first: what a slot can hold.
  */
-challenges: Array<ChallengeToken>, titles: Array<TitleChoice>, };
+challenges: Array<ChallengeToken>, titles: Array<TitleChoice>, 
+/**
+ * The banner the profile shows, as the id of one of `banners`: empty for the default.
+ */
+banner: string, 
+/**
+ * What the banner can be (`banner_choices`); empty when the client lists no banners.
+ */
+banners: Array<BannerChoice>, };
 
 export type ChallengeToken = { id: number, name: string, description: string, 
 /**
@@ -561,6 +576,22 @@ export type TitleChoice = {
  * The title's `itemId`, which is what the client takes.
  */
 id: number, name: string, };
+
+export type BannerChoice = { 
+/**
+ * What `bannerAccent` takes; empty for the default.
+ */
+id: string, kind: BannerKind, 
+/**
+ * As the client names it; empty for the default and the rank banner.
+ */
+name: string, 
+/**
+ * An LCU asset path; banners are drawn 580 × 1480.
+ */
+art: string, };
+
+export type BannerKind = "default" | "rank" | "event";
 
 export type BackupInfo = { 
 /**

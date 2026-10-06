@@ -33,8 +33,8 @@ use crate::{
         MatchList, RankedStats, ReadyCheck, Summoner,
     },
     profile::{
-        self, Admit, ChallengeProfile, ChallengeSummary, ClientChallenge, ClientTitle, Fix,
-        SkinChoice, SummonerProfile,
+        self, Admit, ChallengeProfile, ChallengeSummary, ClientBanner, ClientChallenge,
+        ClientTitle, Fix, Regalia, SkinChoice, SummonerProfile,
     },
     settings::{
         self, Audience, CalloutRule, General, Language, Mode, PresenceRule, ProfileSettings,
@@ -449,8 +449,10 @@ impl Service {
 
     /// `chat`, `away` or `offline`, the states the client offers itself, or `mobile`, the phone
     /// app's, which the desktop client keeps and shows as 在线分组. A request for `dnd` is ignored:
-    /// the client marks games on its own (measured on 16.19, `docs/platform-notes.md`).
-    pub async fn set_availability(&self, availability: &str) -> Result<(), CoreError> {
+    /// the client marks games on its own (measured on 16.19, `docs/platform-notes.md`). With the
+    /// mobile message on, the status message follows the state (`profile::mobile_message_for`).
+    /// Returns the presence afterwards.
+    pub async fn set_availability(&self, availability: &str) -> Result<Presence, CoreError> {
         if !PresenceRule::AVAILABILITIES.contains(&availability) {
             return Err(CoreError::Invalid(format!(
                 "unknown availability {availability}"
@@ -467,7 +469,20 @@ impl Service {
                 me.availability
             )));
         }
-        Ok(())
+        if !self.settings().profile.presence.mobile_message {
+            return Ok(presence_of(me));
+        }
+        follow_mobile_message(&lcu, me, true).await
+    }
+
+    /// Brings the status message in line with the mobile-message switch as it is now: the message
+    /// for the mobile state where the client shows that state with none, nothing where winer's no
+    /// longer belongs. Returns the presence afterwards.
+    pub async fn apply_mobile_message(&self) -> Result<Presence, CoreError> {
+        let on = self.settings().profile.presence.mobile_message;
+        let lcu = self.client()?.lcu;
+        let me: ChatMe = lcu.get(CHAT_ME).await?;
+        follow_mobile_message(&lcu, me, on).await
     }
 
     pub async fn set_status_message(&self, message: &str) -> Result<(), CoreError> {
@@ -480,10 +495,7 @@ impl Service {
 
     pub async fn presence(&self) -> Result<Presence, CoreError> {
         let me: ChatMe = self.client()?.lcu.get(CHAT_ME).await?;
-        Ok(Presence {
-            availability: me.availability,
-            status_message: me.status_message,
-        })
+        Ok(presence_of(me))
     }
 
     /// Sends the champ-select callout now, to `audience` or the configured one. Returns the number
@@ -1339,7 +1351,12 @@ const PROFILE: &str = "/lol-summoner/v1/current-summoner/summoner-profile";
 const CHALLENGES: &str = "/lol-challenges/v1/challenges/local-player";
 const CHALLENGE_SUMMARY: &str = "/lol-challenges/v1/summary-player-data/local-player";
 const TITLES: &str = "/lol-challenges/v2/titles/local-player";
+/// The tokens, the title and the banner (`bannerAccent`) the profile shows.
 const PREFERENCES: &str = "/lol-challenges/v1/update-player-preferences";
+/// Every banner there is, owned or not.
+const BANNERS: &str = "/lol-regalia/v3/inventory/REGALIA_BANNER";
+/// How the banner is drawn: plain, or in the tier of last season's rank.
+const REGALIA: &str = "/lol-regalia/v2/current-summoner/regalia";
 /// A change to the profile is the server's to accept: winer reads it back this many times, this
 /// far apart, before taking the answer as final.
 const READ_BACK_ATTEMPTS: u32 = 4;
@@ -1389,37 +1406,57 @@ impl Service {
         Ok(shown)
     }
 
-    /// The tokens and title the profile shows, and every one it could.
+    /// The tokens, title and banner the profile shows, and every one it could.
     pub async fn challenge_profile(&self) -> Result<ChallengeProfile, CoreError> {
         let lcu = self.client()?.lcu;
-        let (challenges, titles) = challenge_choices(&lcu).await?;
-        let summary: ChallengeSummary = lcu.get(CHALLENGE_SUMMARY).await?;
-        Ok(profile::challenge_profile(&challenges, &summary, &titles))
+        let choices = challenge_choices(&lcu).await?;
+        let (summary, regalia) = tokio::join!(
+            lcu.get::<ChallengeSummary>(CHALLENGE_SUMMARY),
+            regalia(&lcu)
+        );
+        Ok(choices.profile(&summary?, &regalia))
     }
 
-    /// Shows `tokens` in the profile's slots, left to right, and `title` when given, then returns
-    /// what the client reports, which is the request only where the server took it.
+    /// Shows `tokens` in the profile's slots, left to right, `title` when given and `banner` when
+    /// given (empty for the default), then returns what the client reports, which is the request
+    /// only where the server took it. The banner goes out as the client's own customizer sends it:
+    /// in the preferences, and in the regalia where it changes how the banner is drawn.
     pub async fn set_challenge_profile(
         &self,
         tokens: Vec<i64>,
         title: Option<i64>,
+        banner: Option<String>,
     ) -> Result<ChallengeProfile, CoreError> {
         profile::check_tokens(&tokens).map_err(CoreError::Invalid)?;
         if title.is_some_and(|id| id <= 0) {
             return Err(CoreError::Invalid("not a title".into()));
         }
+        if let Some(banner) = &banner {
+            profile::check_banner(banner).map_err(CoreError::Invalid)?;
+        }
         let lcu = self.client()?.lcu;
-        lcu.post(PREFERENCES, &profile::preferences_request(&tokens, title))
-            .await?;
-        let (challenges, titles) = challenge_choices(&lcu).await?;
+        lcu.post(
+            PREFERENCES,
+            &profile::preferences_request(&tokens, title, banner.as_deref()),
+        )
+        .await?;
+        if let Some(banner) = &banner
+            && let Some(body) = profile::regalia_request(&regalia(&lcu).await, banner)
+        {
+            lcu.put(REGALIA, &body).await?;
+        }
+        let choices = challenge_choices(&lcu).await?;
         let mut shown = None;
         for attempt in 0..READ_BACK_ATTEMPTS {
             if attempt > 0 {
                 sleep(READ_BACK_GAP).await;
             }
-            let summary: ChallengeSummary = lcu.get(CHALLENGE_SUMMARY).await?;
-            let profile = profile::challenge_profile(&challenges, &summary, &titles);
-            let done = profile::shows(&profile, &tokens, title);
+            let (summary, regalia) = tokio::join!(
+                lcu.get::<ChallengeSummary>(CHALLENGE_SUMMARY),
+                regalia(&lcu)
+            );
+            let profile = choices.profile(&summary?, &regalia);
+            let done = profile::shows(&profile, &tokens, title, banner.as_deref());
             shown = Some(profile);
             if done {
                 break;
@@ -1676,19 +1713,73 @@ impl Service {
     }
 }
 
-/// What the profile's tokens and title can be: the challenges with their levels and the titles.
-async fn challenge_choices(
-    lcu: &Lcu,
-) -> Result<(HashMap<String, ClientChallenge>, Vec<ClientTitle>), CoreError> {
-    let (challenges, titles) = tokio::join!(
+fn presence_of(me: ChatMe) -> Presence {
+    Presence {
+        availability: me.availability,
+        status_message: me.status_message,
+    }
+}
+
+/// Puts up or takes down the mobile state's message on `me`, the presence just read, as
+/// `profile::mobile_message_for` says under `on`; returns the presence the client reports.
+async fn follow_mobile_message(lcu: &Lcu, me: ChatMe, on: bool) -> Result<Presence, CoreError> {
+    let Some(message) = profile::mobile_message_for(&me.availability, &me.status_message, on)
+    else {
+        return Ok(presence_of(me));
+    };
+    lcu.put(CHAT_ME, &json!({ "statusMessage": message }))
+        .await?;
+    Ok(presence_of(lcu.get(CHAT_ME).await?))
+}
+
+/// What the profile can show of challenges: the challenges with their levels, the titles and the
+/// banners. Titles and banners are left out where the client does not list them.
+async fn challenge_choices(lcu: &Lcu) -> Result<ChallengeChoices, CoreError> {
+    let (challenges, titles, banners) = tokio::join!(
         lcu.get::<HashMap<String, ClientChallenge>>(CHALLENGES),
         lcu.get::<Vec<ClientTitle>>(TITLES),
+        lcu.get::<HashMap<String, ClientBanner>>(BANNERS),
     );
     let titles = titles.unwrap_or_else(|error| {
         debug!(%error, "titles unavailable");
         Vec::new()
     });
-    Ok((challenges?, titles))
+    let banners = banners.unwrap_or_else(|error| {
+        debug!(%error, "banners unavailable");
+        HashMap::new()
+    });
+    Ok(ChallengeChoices {
+        challenges: challenges?,
+        titles,
+        banners,
+    })
+}
+
+struct ChallengeChoices {
+    challenges: HashMap<String, ClientChallenge>,
+    titles: Vec<ClientTitle>,
+    banners: HashMap<String, ClientBanner>,
+}
+
+impl ChallengeChoices {
+    fn profile(&self, summary: &ChallengeSummary, regalia: &Regalia) -> ChallengeProfile {
+        profile::challenge_profile(
+            &self.challenges,
+            summary,
+            &self.titles,
+            &self.banners,
+            regalia,
+        )
+    }
+}
+
+/// The regalia, or nothing known of it where the client does not say: the banner is then read
+/// from the challenge summary alone.
+async fn regalia(lcu: &Lcu) -> Regalia {
+    lcu.get(REGALIA).await.unwrap_or_else(|error| {
+        debug!(%error, "regalia unavailable");
+        Regalia::default()
+    })
 }
 
 /// Refuses while the client has not read the game's settings yet, as it may not have just after it
@@ -2387,17 +2478,31 @@ mod tests {
             Err(CoreError::NotConnected)
         ));
         assert!(matches!(
-            service.set_challenge_profile(vec![1, 2, 3, 4], None).await,
-            Err(CoreError::Invalid(_))
-        ));
-        assert!(matches!(
-            service.set_challenge_profile(vec![101304], Some(-1)).await,
+            service
+                .set_challenge_profile(vec![1, 2, 3, 4], None, None)
+                .await,
             Err(CoreError::Invalid(_))
         ));
         assert!(matches!(
             service
-                .set_challenge_profile(vec![101304], Some(1436))
+                .set_challenge_profile(vec![101304], Some(-1), None)
                 .await,
+            Err(CoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            service
+                .set_challenge_profile(vec![101304], None, Some("24\"}".into()))
+                .await,
+            Err(CoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            service
+                .set_challenge_profile(vec![101304], Some(1436), Some("24".into()))
+                .await,
+            Err(CoreError::NotConnected)
+        ));
+        assert!(matches!(
+            service.apply_mobile_message().await,
             Err(CoreError::NotConnected)
         ));
         // Switching the disguise on and off with no client changes the settings alone.

@@ -2,6 +2,7 @@
 // twenty games of history and a working settings round trip. Never part of a release bundle.
 import type {
   BackupInfo,
+  BannerChoice,
   ChallengeProfile,
   ChallengeToken,
   ChampSelectView,
@@ -17,6 +18,7 @@ import type {
   PlayerLine,
   PlayerSummary,
   PluginStatus,
+  Presence,
   Rank,
   RecentMatch,
   Seat,
@@ -37,6 +39,7 @@ import {
 } from "./demoLoadout";
 import { FEAT_ORDER } from "./feats";
 import { defaultScopes } from "./modes";
+import { MOBILE_MESSAGE } from "./presence";
 import { TIER_NAMES } from "./tiers";
 
 const CHAMPIONS: [number, string, string, string][] = [
@@ -520,6 +523,26 @@ const TITLE_CHOICES: TitleChoice[] = [
   { id: 1436, name: "日光浴恶魔" },
 ];
 
+/** The client's default banner, then the banners the demo player owns, as the core lists them. */
+const BANNER_CHOICES: BannerChoice[] = [
+  ["", "default", "", "default.png"],
+  ["6", "event", "北极星(2023)贵族旗帜", "wn2023.png"],
+  ["24", "event", "魄罗之王的旗帜", "ARAM_Banner.png"],
+].map(([id, kind, name, file]) => ({
+  id: id ?? "",
+  kind: kind as BannerChoice["kind"],
+  name: name ?? "",
+  art: `/lol-game-data/assets/ASSETS/Regalia/BannerSkins/${file}`,
+}));
+
+/** What the status message becomes when the client shows `availability` with `current`, as the
+ *  core's `mobile_message_for` decides it; `null` leaves it. */
+function mobileMessageFor(availability: string, current: string, on: boolean): string | null {
+  if (!["chat", "away", "mobile", "offline"].includes(availability)) return null;
+  if (on && availability === "mobile") return current.trim() ? null : MOBILE_MESSAGE;
+  return current === MOBILE_MESSAGE ? "" : null;
+}
+
 // Social: friends at play and a party in the lobby, as the core draws them.
 
 /** Friends in game and in champ select: two in one ARAM game (group 1), one in a ranked game that
@@ -687,7 +710,7 @@ const DEFAULT_SETTINGS: Settings = {
   },
   profile: {
     rankDisguise: { enabled: false, queue: "solo", tier: "DIAMOND", division: "I" },
-    presence: { remember: false, availability: "chat", statusMessage: null },
+    presence: { remember: false, availability: "chat", statusMessage: null, mobileMessage: false },
   },
   builds: { enabled: true, riftSource: "tencent" },
 };
@@ -744,14 +767,22 @@ export function demoBackend(): Backend {
   };
 
   // The profile the demo player shows, and what they backed up before.
-  let presence = { availability: "chat", statusMessage: "今晚上分" };
+  let presence: Presence = { availability: "chat", statusMessage: "今晚上分" };
+  /** The mobile state's message, put up or taken down as the core does. */
+  const followMobileMessage = (on: boolean): Presence => {
+    const message = mobileMessageFor(presence.availability, presence.statusMessage, on);
+    if (message !== null) presence = { ...presence, statusMessage: message };
+    return presence;
+  };
   let background: number | null = 103003;
-  let shown = { tokens: [101304, 505005], title: 1436 as number | null };
+  let shown = { tokens: [101304, 505005], title: 1436 as number | null, banner: "24" };
   const challengeProfile = (): ChallengeProfile => ({
     tokens: shown.tokens.flatMap((id) => CHALLENGE_CHOICES.filter((token) => token.id === id)),
     title: TITLE_CHOICES.find((title) => title.id === shown.title) ?? null,
     challenges: CHALLENGE_CHOICES,
     titles: TITLE_CHOICES,
+    banner: shown.banner,
+    banners: BANNER_CHOICES,
   });
   let backups: BackupInfo[] = [
     {
@@ -828,8 +859,9 @@ export function demoBackend(): Backend {
     get_presence: () => presence,
     set_availability: ({ availability }) => {
       presence = { ...presence, availability };
-      return null;
+      return settings.profile.presence.mobileMessage ? followMobileMessage(true) : presence;
     },
+    apply_mobile_message: () => followMobileMessage(settings.profile.presence.mobileMessage),
     set_status_message: ({ message }) => {
       presence = { ...presence, statusMessage: message };
       return null;
@@ -903,8 +935,13 @@ export function demoBackend(): Backend {
       return background;
     },
     get_challenge_profile: challengeProfile,
-    set_challenge_profile: ({ challengeIds, titleId }) => {
-      shown = { tokens: challengeIds.slice(0, 3), title: titleId ?? shown.title };
+    // As the server does with a banner the player does not own: the banner stays.
+    set_challenge_profile: ({ challengeIds, titleId, bannerId }) => {
+      const banner =
+        bannerId !== null && BANNER_CHOICES.some((choice) => choice.id === bannerId)
+          ? bannerId
+          : shown.banner;
+      shown = { tokens: challengeIds.slice(0, 3), title: titleId ?? shown.title, banner };
       return challengeProfile();
     },
     get_game_settings_backups: () => backups,

@@ -8,6 +8,10 @@ export function isAvailability(value: string | null | undefined): value is Avail
   return (AVAILABILITIES as readonly (string | null | undefined)[]).includes(value);
 }
 
+/** The status message the mobile state gets with its switch on (`PresenceRule::MOBILE_MESSAGE`):
+ *  the Tencent client names that state 在线分组, and friends read a message as written. */
+export const MOBILE_MESSAGE = "手机在线";
+
 /** The statuses that have a name in the window: the client's own `dnd` as well. */
 const NAMED_STATUSES = ["chat", "away", "dnd", "mobile", "offline"] as const;
 export type NamedStatus = (typeof NAMED_STATUSES)[number];

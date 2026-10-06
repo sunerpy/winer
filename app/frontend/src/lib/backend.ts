@@ -46,7 +46,10 @@ export interface Commands {
   find_player: Command<{ riotId: string }, PlayerProfile>;
   get_player_summary: Command<{ puuid: string }, PlayerSummary>;
   get_presence: Command<undefined, Presence>;
-  set_availability: Command<{ availability: string }, null>;
+  /** Answers the presence afterwards: with the mobile message on, the message follows the state. */
+  set_availability: Command<{ availability: string }, Presence>;
+  /** Puts up or takes down the mobile state's message as the switch now says. */
+  apply_mobile_message: Command<undefined, Presence>;
   set_status_message: Command<{ message: string }, null>;
   restart_client_ui: Command<undefined, null>;
   send_callout: Command<{ audience: Audience | null }, number>;
@@ -72,8 +75,9 @@ export interface Commands {
   /** Answers the background the client reports afterwards: the old one where it refused. */
   set_profile_background: Command<{ skinId: number }, number | null>;
   get_challenge_profile: Command<undefined, ChallengeProfile>;
+  /** `bannerId` is empty for the default banner; `null` leaves the banner as it is. */
   set_challenge_profile: Command<
-    { challengeIds: number[]; titleId: number | null },
+    { challengeIds: number[]; titleId: number | null; bannerId: string | null },
     ChallengeProfile
   >;
   get_game_settings_backups: Command<undefined, BackupInfo[]>;

@@ -37,6 +37,7 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         get_player_summary,
         get_presence,
         set_availability,
+        apply_mobile_message,
         set_status_message,
         restart_client_ui,
         send_callout,
@@ -159,9 +160,16 @@ async fn get_presence<R: Runtime>(app: AppHandle<R>) -> Result<Presence> {
     Ok(service(&app).presence().await?)
 }
 
+/// Returns the presence afterwards: with the mobile message on, the status message follows.
 #[tauri::command]
-async fn set_availability<R: Runtime>(app: AppHandle<R>, availability: String) -> Result<()> {
+async fn set_availability<R: Runtime>(app: AppHandle<R>, availability: String) -> Result<Presence> {
     Ok(service(&app).set_availability(&availability).await?)
+}
+
+/// Puts up or takes down the mobile state's message as the switch now says; returns the presence.
+#[tauri::command]
+async fn apply_mobile_message<R: Runtime>(app: AppHandle<R>) -> Result<Presence> {
+    Ok(service(&app).apply_mobile_message().await?)
 }
 
 #[tauri::command]
@@ -370,15 +378,17 @@ async fn get_challenge_profile<R: Runtime>(app: AppHandle<R>) -> Result<Challeng
     Ok(service(&app).challenge_profile().await?)
 }
 
-/// The tokens in slot order and the title; returns what the client reports afterwards.
+/// The tokens in slot order, the title and the banner (empty for the default; `None` leaves it);
+/// returns what the client reports afterwards.
 #[tauri::command]
 async fn set_challenge_profile<R: Runtime>(
     app: AppHandle<R>,
     challenge_ids: Vec<i64>,
     title_id: Option<i64>,
+    banner_id: Option<String>,
 ) -> Result<ChallengeProfile> {
     Ok(service(&app)
-        .set_challenge_profile(challenge_ids, title_id)
+        .set_challenge_profile(challenge_ids, title_id, banner_id)
         .await?)
 }
 
@@ -607,9 +617,10 @@ mod tests {
                     .await
                     .unwrap_err(),
                 get_challenge_profile(handle.clone()).await.unwrap_err(),
-                set_challenge_profile(handle.clone(), vec![101304], None)
+                set_challenge_profile(handle.clone(), vec![101304], None, Some("24".into()))
                     .await
                     .unwrap_err(),
+                apply_mobile_message(handle.clone()).await.unwrap_err(),
                 create_game_settings_backup(handle.clone())
                     .await
                     .unwrap_err(),

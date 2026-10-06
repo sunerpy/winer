@@ -108,7 +108,7 @@ describe("App", () => {
         set_availability: ({ availability }: { availability: string }) => {
           if (availability === "offline")
             throw new Error("the client kept chat instead of offline");
-          return null;
+          return { availability, statusMessage: "今晚上分" };
         },
       }),
     );
@@ -465,7 +465,12 @@ describe("Tools: profile", () => {
       expect(call).toHaveBeenCalledWith("set_settings", {
         settings: expect.objectContaining({
           profile: expect.objectContaining({
-            presence: { remember: true, availability: "chat", statusMessage: "今晚上分" },
+            presence: {
+              remember: true,
+              availability: "chat",
+              statusMessage: "今晚上分",
+              mobileMessage: false,
+            },
           }),
         }),
       }),
@@ -544,10 +549,98 @@ describe("Tools: profile", () => {
     expect(call).toHaveBeenCalledWith("set_challenge_profile", {
       challengeIds: [505005, 101203],
       titleId: 10120303,
+      bannerId: null,
     });
     expect(await screen.findByText(zhCN["profile.challenges.done"])).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "第 1 个徽章: 射手收藏家" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "第 2 个徽章: 雪球大战" })).toBeInTheDocument();
+  });
+
+  it("flies a banner the player owns, or the default, and sends it only when it changed", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openTools(backend);
+    const current = await screen.findByRole("button", { name: /^魄罗之王的旗帜/ });
+    await user.click(current);
+    const picker = screen.getByRole("dialog", { name: zhCN["profile.challenges.chooseBanner"] });
+    expect(
+      within(picker)
+        .getAllByRole("button")
+        .map((tile) => tile.getAttribute("aria-label")),
+      "the default first, then the banners owned",
+    ).toEqual(["默认旗帜", "北极星(2023)贵族旗帜", "魄罗之王的旗帜"]);
+    expect(within(picker).getByRole("button", { name: "魄罗之王的旗帜" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await user.click(within(picker).getByRole("button", { name: "北极星(2023)贵族旗帜" }));
+    const apply = screen.getByRole("button", { name: zhCN["profile.challenges.apply"] });
+    await user.click(apply);
+    expect(call).toHaveBeenCalledWith("set_challenge_profile", {
+      challengeIds: [101304, 505005],
+      titleId: 1436,
+      bannerId: "6",
+    });
+    // The client's answer is in once the button is no longer busy. (A toast of the test before may
+    // still be up, so the panel says it, not the toast.)
+    await waitFor(() => expect(apply).not.toHaveAttribute("aria-busy"));
+    expect(screen.queryByText(zhCN["profile.challenges.partly"])).toBeNull();
+    expect(apply, "nothing left to apply").toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: /^北极星\(2023\)贵族旗帜/ }));
+    await user.click(
+      within(
+        screen.getByRole("dialog", { name: zhCN["profile.challenges.chooseBanner"] }),
+      ).getByRole("button", { name: "默认旗帜" }),
+    );
+    await user.click(apply);
+    expect(call).toHaveBeenCalledWith("set_challenge_profile", {
+      challengeIds: [101304, 505005],
+      titleId: 1436,
+      bannerId: "",
+    });
+    await waitFor(() => expect(apply).not.toHaveAttribute("aria-busy"));
+    expect(screen.getByRole("button", { name: /^默认旗帜/ })).toBeInTheDocument();
+  });
+
+  it("says 手机在线 in the status message while the mobile state is chosen, if asked", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openTools(backend);
+    const statuses = await screen.findByRole("radiogroup", { name: zhCN["tools.presence"] });
+    const message = screen.getByRole("textbox", { name: zhCN["tools.message"] });
+    await waitFor(() => expect(message).toHaveValue("今晚上分"));
+    expect(
+      screen.queryByRole("switch", { name: zhCN["profile.mobileMessage"] }),
+      "a part of the mobile state only",
+    ).toBeNull();
+
+    // No message of the user's own.
+    await user.clear(message);
+    await user.click(screen.getByRole("button", { name: zhCN["common.save"] }));
+    await waitFor(() => expect(call).toHaveBeenCalledWith("set_status_message", { message: "" }));
+
+    await user.click(within(statuses).getByRole("radio", { name: "手机在线" }));
+    const toggle = await screen.findByRole("switch", { name: zhCN["profile.mobileMessage"] });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(message, "off until switched on").toHaveValue("");
+
+    await user.click(toggle);
+    await waitFor(() => expect(message).toHaveValue("手机在线"));
+    expect(call).toHaveBeenCalledWith("set_settings", {
+      settings: expect.objectContaining({
+        profile: expect.objectContaining({
+          presence: expect.objectContaining({ mobileMessage: true }),
+        }),
+      }),
+    });
+    expect(call).toHaveBeenCalledWith("apply_mobile_message");
+
+    await user.click(within(statuses).getByRole("radio", { name: "离开" }));
+    await waitFor(() => expect(message, "another state takes it down").toHaveValue(""));
+    expect(screen.queryByRole("switch", { name: zhCN["profile.mobileMessage"] })).toBeNull();
+    await user.click(within(statuses).getByRole("radio", { name: "手机在线" }));
+    await waitFor(() => expect(message, "and the state puts it back").toHaveValue("手机在线"));
   });
 
   it("says so when the client takes only part of the tokens", async () => {

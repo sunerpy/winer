@@ -1,4 +1,4 @@
-import type { PresenceRule } from "@winer/shared";
+import type { Presence, PresenceRule } from "@winer/shared";
 import { RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -15,7 +15,8 @@ import { ChallengePanel } from "./tools/Challenges";
 import { RankDisguisePanel } from "./tools/RankDisguise";
 
 /** The states the client takes from winer. It sets `dnd` on its own during a game and ignores a
- *  request for it; `mobile` is the phone app's, which the desktop client keeps and shows as 在线分组. */
+ *  request for it; `mobile` is the phone app's, which the desktop client keeps and shows as 在线分组,
+ *  so it comes with a switch that says 手机在线 in the status message instead. */
 const HINTS: Partial<Record<Availability, MessageKey>> = {
   offline: "tools.status.offlineHint",
   mobile: "profile.mobileHint",
@@ -50,6 +51,15 @@ function PresencePanel() {
     return named ? t(`tools.status.${named}` as MessageKey) : value;
   };
 
+  /** What the client reports after a change. A message it did not change keeps what is typed. */
+  const take = (now: Presence) => {
+    setCurrent(now.availability);
+    if (now.statusMessage !== savedMessage) {
+      setMessage(now.statusMessage);
+      setSavedMessage(now.statusMessage);
+    }
+  };
+
   /** Keeps what winer puts back in step with what the user just set, while it is remembered. */
   const remember = (change: Partial<PresenceRule>) => {
     if (!rule.remember) return;
@@ -68,11 +78,27 @@ function PresencePanel() {
     const previous = current;
     setCurrent(next);
     try {
-      await store.backend.call("set_availability", { availability: next });
+      take(await store.backend.call("set_availability", { availability: next }));
       remember({ availability: next });
     } catch {
       setCurrent(previous);
       toast(t("tools.statusRefused"), "danger");
+    }
+  };
+
+  /** The mobile state's message follows the switch at once, then every change of state. */
+  const switchMobileMessage = async (on: boolean) => {
+    try {
+      await store.updateSettings((settings) => ({
+        ...settings,
+        profile: {
+          ...settings.profile,
+          presence: { ...settings.profile.presence, mobileMessage: on },
+        },
+      }));
+      take(await store.backend.call("apply_mobile_message"));
+    } catch (error) {
+      toast(errorMessage(error), "danger");
     }
   };
 
@@ -101,6 +127,7 @@ function PresencePanel() {
             ...settings.profile,
             presence: on
               ? {
+                  ...kept,
                   remember: true,
                   availability: isAvailability(current) ? current : kept.availability,
                   statusMessage: savedMessage ?? kept.statusMessage,
@@ -134,6 +161,15 @@ function PresencePanel() {
           })}
         />
       </Row>
+      {current === "mobile" && (
+        <Row label={t("profile.mobileMessage")} help={t("profile.mobileMessageHint")}>
+          <Toggle
+            checked={rule.mobileMessage}
+            onChange={(on) => void switchMobileMessage(on)}
+            label={t("profile.mobileMessage")}
+          />
+        </Row>
+      )}
       <Row label={t("tools.message")} help={t("tools.messageHint")} htmlFor="status-message">
         <Input
           id="status-message"
