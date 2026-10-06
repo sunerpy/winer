@@ -9,7 +9,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::view::Position;
+use crate::view::{Position, Tier};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
@@ -18,6 +18,7 @@ pub struct Settings {
     pub general: General,
     pub automation: Automation,
     pub plugin: PluginSettings,
+    pub profile: ProfileSettings,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
@@ -490,6 +491,94 @@ impl Default for PluginSettings {
     }
 }
 
+/// What friends see of the player that winer keeps for them: the rank in the friends list and the
+/// status put back after the client resets it. Both act on the client by themselves, so both start
+/// off. Neither is scoped by mode: the chat presence is the same in and out of every game.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ProfileSettings {
+    pub rank_disguise: RankDisguise,
+    pub presence: PresenceRule,
+}
+
+/// The rank friends see in the friends list and on the hover card instead of the real one. Only the
+/// chat presence changes: the real rank, matchmaking and the client's own profile do not.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RankDisguise {
+    pub enabled: bool,
+    pub queue: DisguiseQueue,
+    pub tier: Tier,
+    /// Not shown from Master up, which have no divisions.
+    pub division: Division,
+}
+
+impl Default for RankDisguise {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            queue: DisguiseQueue::Solo,
+            tier: Tier::Diamond,
+            division: Division::One,
+        }
+    }
+}
+
+/// The queue a disguised rank claims to be from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum DisguiseQueue {
+    /// Ranked solo/duo, `RANKED_SOLO_5x5`.
+    #[default]
+    Solo,
+    /// Ranked flex, `RANKED_FLEX_SR`.
+    Flex,
+}
+
+/// A division within a tier, as the client writes it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub enum Division {
+    #[default]
+    #[serde(rename = "I")]
+    One,
+    #[serde(rename = "II")]
+    Two,
+    #[serde(rename = "III")]
+    Three,
+    #[serde(rename = "IV")]
+    Four,
+}
+
+/// The chat status winer puts back when the client resets it: on connecting to a client and after
+/// each game (`profile::Keeper`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PresenceRule {
+    pub remember: bool,
+    /// `chat`, `away`, `mobile` or `offline`: the states the client takes from winer.
+    pub availability: String,
+    /// Put back as well when set; `None` leaves the client's own.
+    pub status_message: Option<String>,
+}
+
+impl Default for PresenceRule {
+    fn default() -> Self {
+        Self {
+            remember: false,
+            availability: "chat".into(),
+            status_message: None,
+        }
+    }
+}
+
+impl PresenceRule {
+    /// The availabilities winer sets. `dnd` is the client's own during a game and a request for it
+    /// is ignored (`docs/platform-notes.md`).
+    pub const AVAILABILITIES: [&str; 4] = ["chat", "away", "mobile", "offline"];
+    /// The client's own limit on a status message is longer; the window's field stops here.
+    pub const MESSAGE_LIMIT: usize = 120;
+}
+
 impl Settings {
     /// Clamps every value into range. Applied to anything read from disk or sent by the window.
     pub fn normalized(mut self) -> Self {
@@ -517,6 +606,13 @@ impl Settings {
         if let Some(dir) = &self.plugin.loader_dir {
             let dir = dir.trim();
             self.plugin.loader_dir = (!dir.is_empty()).then(|| dir.to_owned());
+        }
+        let presence = &mut self.profile.presence;
+        if !PresenceRule::AVAILABILITIES.contains(&presence.availability.as_str()) {
+            presence.availability = PresenceRule::default().availability;
+        }
+        if let Some(message) = &presence.status_message {
+            presence.status_message = Some(clip(message, PresenceRule::MESSAGE_LIMIT));
         }
         self
     }
@@ -720,6 +816,55 @@ mod tests {
         let old: Settings =
             serde_json::from_str(r#"{"automation":{"pick":{"enabled":true}}}"#).unwrap();
         assert_eq!(old.automation.scopes, Scopes::default());
+    }
+
+    #[test]
+    fn what_winer_keeps_in_the_presence_starts_off_and_stays_in_range() {
+        let settings = Settings::default();
+        assert!(!settings.profile.rank_disguise.enabled);
+        assert!(!settings.profile.presence.remember);
+        // A file from before the profile tools has them off.
+        let old: Settings = serde_json::from_str(r#"{"general":{"titles":false}}"#).unwrap();
+        assert_eq!(old.profile, ProfileSettings::default());
+
+        let mut settings = Settings::default();
+        settings.profile.presence = PresenceRule {
+            remember: true,
+            availability: "dnd".into(),
+            status_message: Some(format!("  {}  ", "签".repeat(200))),
+        };
+        let presence = settings.normalized().profile.presence;
+        assert_eq!(presence.availability, "chat", "the client sets dnd itself");
+        assert_eq!(
+            presence
+                .status_message
+                .map(|message| message.chars().count()),
+            Some(PresenceRule::MESSAGE_LIMIT)
+        );
+        let mut mobile = Settings::default();
+        mobile.profile.presence.availability = "mobile".into();
+        assert_eq!(mobile.normalized().profile.presence.availability, "mobile");
+    }
+
+    #[test]
+    fn a_disguise_is_written_as_the_window_reads_it() {
+        let disguise = RankDisguise {
+            enabled: true,
+            queue: DisguiseQueue::Flex,
+            tier: Tier::Master,
+            division: Division::Two,
+        };
+        let json = serde_json::to_value(&disguise).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "enabled": true, "queue": "flex", "tier": "MASTER", "division": "II"
+            })
+        );
+        assert_eq!(
+            serde_json::from_value::<RankDisguise>(json).unwrap(),
+            disguise
+        );
     }
 
     #[test]

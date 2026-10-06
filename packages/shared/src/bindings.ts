@@ -235,7 +235,7 @@ export type Notice = {
  */
 at: number, kind: NoticeKind, };
 
-export type NoticeKind = { "kind": "accepted" } | { "kind": "declared", championId: number, } | { "kind": "picked", championId: number, locked: boolean, } | { "kind": "banned", championId: number, } | { "kind": "playedAgain" } | { "kind": "swapped", championId: number, } | { "kind": "calledOut", lines: number, } | { "kind": "failed", action: string, message: string, };
+export type NoticeKind = { "kind": "accepted" } | { "kind": "declared", championId: number, } | { "kind": "picked", championId: number, locked: boolean, } | { "kind": "banned", championId: number, } | { "kind": "playedAgain" } | { "kind": "swapped", championId: number, } | { "kind": "calledOut", lines: number, } | { "kind": "presenceRestored", availability: string, } | { "kind": "presenceRefused" } | { "kind": "failed", action: string, message: string, };
 
 export type PlayerProfile = { puuid: string, name: RiotId | null, level: number, iconId: number, private: boolean, ranked: Ranked, };
 
@@ -261,7 +261,7 @@ export type IpcError = { code: ErrorCode, message: string, };
 
 export type ErrorCode = "notConnected" | "notFound" | "invalid" | "busy" | "client" | "internal";
 
-export type Settings = { appearance: Appearance, general: General, automation: Automation, plugin: PluginSettings, };
+export type Settings = { appearance: Appearance, general: General, automation: Automation, plugin: PluginSettings, profile: ProfileSettings, };
 
 export type Appearance = { theme: Theme, accent: Accent, density: Density, 
 /**
@@ -385,6 +385,80 @@ benchNoCooldown: boolean,
  * Pengu Loader's directory, when it cannot be found from the client.
  */
 loaderDir: string | null, };
+
+export type ProfileSettings = { rankDisguise: RankDisguise, presence: PresenceRule, };
+
+export type RankDisguise = { enabled: boolean, queue: DisguiseQueue, tier: Tier, 
+/**
+ * Not shown from Master up, which have no divisions.
+ */
+division: Division, };
+
+export type DisguiseQueue = "solo" | "flex";
+
+export type Division = "I" | "II" | "III" | "IV";
+
+export type PresenceRule = { remember: boolean, 
+/**
+ * `chat`, `away`, `mobile` or `offline`: the states the client takes from winer.
+ */
+availability: string, 
+/**
+ * Put back as well when set; `None` leaves the client's own.
+ */
+statusMessage: string | null, };
+
+export type SkinChoice = { id: number, championId: number, 
+/**
+ * As the client names it; a base skin carries the champion's title (`九尾妖狐`).
+ */
+name: string, owned: boolean, base: boolean, 
+/**
+ * LCU asset paths, served to the window through the `lcu` protocol.
+ */
+tile: string, splash: string, };
+
+export type ChallengeProfile = { 
+/**
+ * The tokens in the profile's slots, left to right: three at most.
+ */
+tokens: Array<ChallengeToken>, title: TitleChoice | null, 
+/**
+ * Every challenge with a level, the highest first: what a slot can hold.
+ */
+challenges: Array<ChallengeToken>, titles: Array<TitleChoice>, };
+
+export type ChallengeToken = { id: number, name: string, description: string, 
+/**
+ * `None` for a token the client describes without a level.
+ */
+level: Tier | null, 
+/**
+ * The token at its level, an LCU asset path; empty when the client names none.
+ */
+icon: string, };
+
+export type TitleChoice = { 
+/**
+ * The title's `itemId`, which is what the client takes.
+ */
+id: number, name: string, };
+
+export type BackupInfo = { 
+/**
+ * The name of its file, and the order it was made in.
+ */
+id: number, 
+/**
+ * Epoch milliseconds when the settings were read from the client.
+ */
+takenAt: number, 
+/**
+ * Bytes on disk.
+ */
+size: number, channels: Array<BackupChannel>, };
+
+export type BackupChannel = "general" | "hotkeys";
 
 export type PluginStatus = { loaderDir: string | null, 
 /**

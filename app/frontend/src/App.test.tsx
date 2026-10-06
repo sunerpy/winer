@@ -118,7 +118,7 @@ describe("App", () => {
       within(statuses)
         .getAllByRole("radio")
         .map((radio) => radio.textContent),
-    ).toEqual(["在线", "离开", "隐身"]);
+    ).toEqual(["在线", "离开", "手机在线", "隐身"]);
     await waitFor(() =>
       expect(within(statuses).getByRole("radio", { name: "在线" })).toBeChecked(),
     );
@@ -375,5 +375,246 @@ describe("App", () => {
     await user.click(within(dialog).getByRole("tab", { name: zhCN["settings.general"] }));
     await user.click(within(dialog).getByRole("button", { name: "English" }));
     expect(await screen.findByRole("navigation", { name: en["nav.label"] })).toBeInTheDocument();
+  });
+});
+
+describe("Tools: profile", () => {
+  async function openTools(backend: Backend = demoBackend()) {
+    const rendered = await renderApp(backend);
+    await rendered.user.click(
+      within(rendered.nav).getByRole("button", { name: zhCN["nav.tools"] }),
+    );
+    return rendered;
+  }
+
+  /** The demo client outside any game, on the home screen. */
+  async function idleDemo(answers: Parameters<typeof demoWith>[0] = {}) {
+    const snapshot = await demoBackend().call("get_snapshot");
+    return demoWith({
+      get_snapshot: () => ({ ...snapshot, phase: "None", champSelect: null }),
+      ...answers,
+    });
+  }
+
+  it("remembers the status and the message, and keeps them in step with later changes", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openTools(backend);
+    const statuses = await screen.findByRole("radiogroup", { name: zhCN["tools.presence"] });
+    await waitFor(() =>
+      expect(within(statuses).getByRole("radio", { name: "在线" })).toBeChecked(),
+    );
+    const remember = screen.getByRole("switch", { name: zhCN["profile.remember"] });
+    expect(remember, "off until switched on").toHaveAttribute("aria-checked", "false");
+
+    await user.click(remember);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          profile: expect.objectContaining({
+            presence: { remember: true, availability: "chat", statusMessage: "今晚上分" },
+          }),
+        }),
+      }),
+    );
+
+    await user.click(within(statuses).getByRole("radio", { name: "手机在线" }));
+    expect(call).toHaveBeenCalledWith("set_availability", { availability: "mobile" });
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          profile: expect.objectContaining({
+            presence: expect.objectContaining({ remember: true, availability: "mobile" }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("sets the background from every skin and says when the client keeps the old one", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openTools(backend);
+    await user.type(
+      await screen.findByRole("textbox", { name: zhCN["profile.background.search"] }),
+      "ahri",
+    );
+    // Found by the champion's English name: the base skin and three more, owned or not.
+    expect(await screen.findByText("4 款")).toBeInTheDocument();
+    const unowned = screen.getByRole("button", { name: "K/DA 阿狸 · 未拥有" });
+    expect(screen.getByRole("button", { name: "灵魂莲华 阿狸" })).toBeInTheDocument();
+
+    await user.click(unowned);
+    expect(unowned).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: zhCN["profile.background.apply"] }));
+    expect(call).toHaveBeenCalledWith("set_profile_background", { skinId: 103002 });
+    expect(
+      await screen.findByText(
+        "客户端没有换成 K/DA 阿狸，背景仍是 灵魂莲华 阿狸。未拥有的皮肤可能不被接受。",
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "九尾妖狐" }));
+    await user.click(screen.getByRole("button", { name: zhCN["profile.background.apply"] }));
+    expect(await screen.findByText("已把 九尾妖狐 设为生涯背景")).toBeInTheDocument();
+    expect(screen.queryByText(/^客户端没有换成/)).toBeNull();
+
+    await user.click(screen.getByRole("switch", { name: zhCN["profile.background.owned"] }));
+    expect(screen.queryByRole("button", { name: "K/DA 阿狸 · 未拥有" })).toBeNull();
+    expect(screen.getByText("2 款")).toBeInTheDocument();
+  });
+
+  it("puts challenge tokens in slot order with a title, and shows what the client reports", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openTools(backend);
+    await screen.findByRole("button", { name: "第 1 个徽章: 闪电战" });
+    expect(screen.getByRole("button", { name: "第 2 个徽章: 射手收藏家" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "清空第 1 个徽章" }));
+    expect(screen.getByRole("button", { name: "第 1 个徽章: 选择徽章" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "第 3 个徽章: 选择徽章" }));
+    const picker = screen.getByRole("dialog", { name: "第 3 个徽章" });
+    expect(
+      within(picker).queryByRole("button", { name: /^射手收藏家/ }),
+      "a token shows once",
+    ).toBeNull();
+    await user.click(within(picker).getByRole("button", { name: /^雪球大战/ }));
+
+    await user.click(screen.getByRole("button", { name: /^日光浴恶魔/ }));
+    await user.click(
+      within(
+        screen.getByRole("dialog", { name: zhCN["profile.challenges.chooseTitle"] }),
+      ).getByRole("button", { name: "雪球狙神" }),
+    );
+    await user.click(screen.getByRole("button", { name: zhCN["profile.challenges.apply"] }));
+    expect(call).toHaveBeenCalledWith("set_challenge_profile", {
+      challengeIds: [505005, 101203],
+      titleId: 10120303,
+    });
+    expect(await screen.findByText(zhCN["profile.challenges.done"])).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "第 1 个徽章: 射手收藏家" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "第 2 个徽章: 雪球大战" })).toBeInTheDocument();
+  });
+
+  it("says so when the client takes only part of the tokens", async () => {
+    const before = await demoBackend().call("get_challenge_profile");
+    const { user } = await openTools(demoWith({ set_challenge_profile: () => before }));
+    await user.click(await screen.findByRole("button", { name: "清空第 1 个徽章" }));
+    await user.click(screen.getByRole("button", { name: zhCN["profile.challenges.apply"] }));
+    expect(await screen.findByText(zhCN["profile.challenges.partly"])).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "第 1 个徽章: 闪电战" }),
+      "the slots show what the client kept",
+    ).toBeInTheDocument();
+  });
+
+  it("disguises the rank only once switched on, with no division from Master up", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openTools(backend);
+    const toggle = await screen.findByRole("switch", { name: zhCN["profile.rank.enable"] });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText(zhCN["profile.rank.offPreview"])).toBeInTheDocument();
+
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          profile: expect.objectContaining({
+            rankDisguise: { enabled: true, queue: "solo", tier: "DIAMOND", division: "I" },
+          }),
+        }),
+      }),
+    );
+    expect(screen.getByText("好友看到：璀璨钻石 I · 单双排")).toBeInTheDocument();
+    expect(
+      screen.getByRole("radiogroup", { name: zhCN["profile.rank.division"] }),
+    ).toBeInTheDocument();
+
+    const tiers = screen.getByRole("radiogroup", { name: zhCN["profile.rank.tier"] });
+    await user.click(within(tiers).getByRole("radio", { name: "大师" }));
+    expect(screen.queryByRole("radiogroup", { name: zhCN["profile.rank.division"] })).toBeNull();
+    await user.click(screen.getByRole("radio", { name: zhCN["common.flex"] }));
+    expect(screen.getByText("好友看到：超凡大师 · 灵活组排")).toBeInTheDocument();
+  });
+
+  it("backs up the game settings, and restores them only outside a game", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openTools(backend);
+    const list = await screen.findByRole("list", { name: zhCN["profile.backup.title"] });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    // The demo client is in champ select.
+    for (const button of within(list).getAllByRole("button", {
+      name: zhCN["profile.backup.restore"],
+    }))
+      expect(button).toBeDisabled();
+    expect(screen.getByText(zhCN["profile.backup.busy"])).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: zhCN["profile.backup.create"] }));
+    expect(call).toHaveBeenCalledWith("create_game_settings_backup");
+    expect(await screen.findByText(zhCN["profile.backup.created"])).toBeInTheDocument();
+    expect(within(list).getAllByRole("listitem")).toHaveLength(3);
+
+    await user.click(
+      within(list).getAllByRole("button", { name: zhCN["profile.backup.delete"] })[0]!,
+    );
+    await user.click(
+      within(list).getByRole("button", { name: zhCN["profile.backup.confirmDelete"] }),
+    );
+    expect(await screen.findByText(zhCN["profile.backup.deleted"])).toBeInTheDocument();
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+
+    const snapshot = JSON.stringify({
+      format: "winer-game-settings",
+      version: 1,
+      takenAt: 1,
+      gameSettings: { General: {} },
+    });
+    await user.upload(
+      screen.getByLabelText(zhCN["profile.backup.import"]),
+      new File([snapshot], "backup.json", { type: "application/json" }),
+    );
+    expect(await screen.findByText(zhCN["profile.backup.imported"])).toBeInTheDocument();
+    expect(within(list).getAllByRole("listitem")).toHaveLength(3);
+    await user.upload(
+      screen.getByLabelText(zhCN["profile.backup.import"]),
+      new File(["{}"], "notes.json", { type: "application/json" }),
+    );
+    expect(
+      await screen.findByText("这个文件不是 winer 的设置备份：not a winer settings backup"),
+    ).toBeInTheDocument();
+  });
+
+  it("restores the chosen half from the home screen, and says why it cannot in a game", async () => {
+    const backend = await idleDemo();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openTools(backend);
+    const list = await screen.findByRole("list", { name: zhCN["profile.backup.title"] });
+    const [newest] = within(list).getAllByRole("button", { name: zhCN["profile.backup.restore"] });
+    expect(newest).toBeEnabled();
+    await user.click(newest!);
+    await user.click(screen.getByRole("menuitem", { name: zhCN["profile.backup.hotkeys"] }));
+    expect(call).toHaveBeenCalledWith("restore_game_settings_backup", {
+      id: expect.any(Number),
+      channels: ["hotkeys"],
+    });
+    expect(await screen.findByText(zhCN["profile.backup.restoredHotkeys"])).toBeInTheDocument();
+    cleanup();
+
+    // The phase moved on before the window heard: the core refuses, and the window says why.
+    const refusing = await idleDemo({
+      restore_game_settings_backup: () => {
+        throw { code: "busy", message: "game settings are restored only outside a game" };
+      },
+    });
+    const again = await openTools(refusing);
+    const rows = await screen.findByRole("list", { name: zhCN["profile.backup.title"] });
+    await again.user.click(
+      within(rows).getAllByRole("button", { name: zhCN["profile.backup.restore"] })[0]!,
+    );
+    await again.user.click(screen.getByRole("menuitem", { name: zhCN["profile.backup.all"] }));
+    expect(await screen.findByText(zhCN["profile.backup.busy"])).toBeInTheDocument();
   });
 });

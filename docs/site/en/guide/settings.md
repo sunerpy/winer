@@ -4,11 +4,48 @@
 
 The actions on the **Tools** page act on the client directly:
 
-- **Status**: online, away or invisible, the same as switching it in the client; invisible shows as
-  offline to friends. A status the client set itself (in game, say) shows as the current one.
+- **Status**: online, away, mobile or invisible, the same as switching it in the client; invisible
+  shows as offline to friends, and mobile shows you online on the phone app. A status the client
+  set itself (in game, say) shows as the current one.
 - **Status message**: the line under your name.
+- **Remember my status**: the client sets you back to online when it starts and after each game.
+  With this on, winer puts the status and message chosen here back within a minute of connecting to
+  the client and of each game ending. It does so once per change; if the client undoes it three
+  times in a row straight away, winer stops and says so in the activity feed. Off by default.
 - **Restart the client UI**: restarts only the client's interface process; your sign-in and a
   running game are not affected. Useful when the client's interface hangs, or after a plugin update.
+
+### Profile background
+
+The current background is at the top. Below it are all skins of all champions, owned or not: search
+by champion name, title, English name or skin name, filter by champion, or turn on **Owned only**.
+Pick one and press **Set as background**. winer then reads the client's profile again. The client
+may refuse a skin you do not own; if the background did not change, the page says so, and what the
+client shows is what counts.
+
+### Challenge tokens and title
+
+The three challenge tokens on your profile, left to right: each can be any challenge you have
+reached a level in, or empty. The title is one of those you have earned. After **Apply** the page
+shows the tokens and title the client actually took, and says so when it did not take all of them.
+
+### Rank disguise
+
+With it on, friends see the rank you choose in the friends list and on your hover card: pick the
+queue (solo/duo or flex), the tier and the division; Master and up have no divisions. Only the rank
+friends see changes. Your real rank, matchmaking and your own profile in the client stay as they
+are. When the client puts the rank back, winer changes it again; turning the switch off brings your
+real rank back. Off by default.
+
+### Game settings backup
+
+**Back up** saves the client's general settings (interface, camera, sound, display and so on) and
+key bindings as one backup. Ten are kept and the oldest goes first; winer never backs up on its
+own. A backup restores the general settings, the key bindings or both, and the client saves them at
+once. Restoring works only from the lobby or the home screen, never in champ select or a game.
+
+To take a backup to another computer, use **Show in folder** to find its file, copy it over, and
+choose it there with **Import**.
 
 ## Settings
 

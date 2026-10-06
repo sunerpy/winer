@@ -88,6 +88,27 @@ for one client build or one privilege level, it says so.
   (`--app-port`, served by `LeagueClient`) and an open WAMP socket survive it, the plugin is back
   within seconds, and the window returns **un-minimized** even if it was minimized before.
 
+## Profile and chat presence
+
+Read-only, NJ100, 16.19, 2026-10-06.
+
+- `/lol-champions/v1/inventories/{summonerId}/skins-minimal` lists **2635** skins, owned or not, each
+  with `championId`, `isBase`, `ownership.owned`, `disabled`, and `tilePath` / `splashPath` under
+  `/lol-game-data/assets/` (so the `lcu` protocol serves them). **515** of them belong to the mode's
+  copies of champions (`championId` 60000 and up, skin ids such as 60001000) and repeat the real
+  champions' skins name for name. A base skin is named after the champion's title (`九尾妖狐`).
+- `/lol-summoner/v1/current-summoner/summoner-profile` → `backgroundSkinId` (0 when none is chosen),
+  `backgroundSkinAugments`, and `regalia` as a JSON string.
+- `/lol-challenges/v1/challenges/local-player` is a map of **399** challenges by id (about 1 MB); 349
+  had `currentLevel: "NONE"`. Each carries `levelToIconPath`, one token picture per level, under
+  `/lol-game-data/assets/`. `summary-player-data` names the token slots in
+  `selectedChallengesString` (`"101304"` with one token; how several are joined was not seen), the
+  same tokens in `topChallenges`, and the title in `title` (`itemId`, `name`). It offers no list of
+  banner accents to choose from (`bannerId: ""`).
+- `/lol-chat/v1/me` → `lol` of an unranked account has no `rankedLeagueQueue`, `rankedLeagueTier` or
+  `rankedLeagueDivision` key at all, only `rankedPrevSeasonTier: ""` and
+  `rankedPrevSeasonDivision: "NA"`; `challengeTokensSelected` repeats the token string.
+
 ## Match history from the shard's server (SGP)
 
 Measured on NJ100, 16.19, 2026-10-05.

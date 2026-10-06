@@ -62,6 +62,10 @@ const SETTINGS = {
     benchNoCooldown: true,
     loaderDir: null,
   },
+  profile: {
+    rankDisguise: { enabled: false, queue: "solo", tier: "DIAMOND", division: "I" },
+    presence: { remember: false, availability: "chat", statusMessage: null },
+  },
 } satisfies Settings;
 
 /** A backend whose events the test fires by hand, with each command's answer settable. */

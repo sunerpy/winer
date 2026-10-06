@@ -7,8 +7,10 @@ use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_opener::OpenerExt as _;
 use winer_core::{
     CoreError, Service, Settings,
+    backup::{BackupChannel, BackupInfo},
     bridge::Bridge,
     plugin::PluginStatus,
+    profile::{ChallengeProfile, SkinChoice},
     settings::{Audience, CalloutRule, General, Language},
     view::{
         AppInfo, AugmentDetail, ErrorCode, GameData, IpcError, MatchDetail, MatchPage,
@@ -52,6 +54,18 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         install_update,
         open_releases,
         open_docs,
+        // The profile tools on the Tools page.
+        get_skins,
+        get_profile_background,
+        set_profile_background,
+        get_challenge_profile,
+        set_challenge_profile,
+        get_game_settings_backups,
+        create_game_settings_backup,
+        restore_game_settings_backup,
+        delete_game_settings_backup,
+        import_game_settings_backup,
+        reveal_game_settings_backup,
     ]
 }
 
@@ -312,6 +326,89 @@ async fn open_docs<R: Runtime>(app: AppHandle<R>, page: DocsPage) -> Result<()> 
         .map_err(internal)
 }
 
+/// Every skin of every champion, owned or not, for the profile background picker.
+#[tauri::command]
+async fn get_skins<R: Runtime>(app: AppHandle<R>) -> Result<Vec<SkinChoice>> {
+    Ok(service(&app).skins().await?)
+}
+
+#[tauri::command]
+async fn get_profile_background<R: Runtime>(app: AppHandle<R>) -> Result<Option<i64>> {
+    Ok(service(&app).profile_background().await?)
+}
+
+/// Returns the background the client reports afterwards, which is the old one if it refused.
+#[tauri::command]
+async fn set_profile_background<R: Runtime>(
+    app: AppHandle<R>,
+    skin_id: i64,
+) -> Result<Option<i64>> {
+    Ok(service(&app).set_profile_background(skin_id).await?)
+}
+
+#[tauri::command]
+async fn get_challenge_profile<R: Runtime>(app: AppHandle<R>) -> Result<ChallengeProfile> {
+    Ok(service(&app).challenge_profile().await?)
+}
+
+/// The tokens in slot order and the title; returns what the client reports afterwards.
+#[tauri::command]
+async fn set_challenge_profile<R: Runtime>(
+    app: AppHandle<R>,
+    challenge_ids: Vec<i64>,
+    title_id: Option<i64>,
+) -> Result<ChallengeProfile> {
+    Ok(service(&app)
+        .set_challenge_profile(challenge_ids, title_id)
+        .await?)
+}
+
+#[tauri::command]
+async fn get_game_settings_backups<R: Runtime>(app: AppHandle<R>) -> Result<Vec<BackupInfo>> {
+    let service = service(&app);
+    blocking(move || service.game_settings_backups()).await
+}
+
+#[tauri::command]
+async fn create_game_settings_backup<R: Runtime>(app: AppHandle<R>) -> Result<BackupInfo> {
+    Ok(service(&app).back_up_game_settings().await?)
+}
+
+/// Refused with `busy` outside the lobby and the home screen.
+#[tauri::command]
+async fn restore_game_settings_backup<R: Runtime>(
+    app: AppHandle<R>,
+    id: i64,
+    channels: Vec<BackupChannel>,
+) -> Result<()> {
+    Ok(service(&app).restore_game_settings(id, channels).await?)
+}
+
+#[tauri::command]
+async fn delete_game_settings_backup<R: Runtime>(app: AppHandle<R>, id: i64) -> Result<()> {
+    let service = service(&app);
+    blocking(move || service.delete_game_settings_backup(id)).await
+}
+
+/// A backup file the user picked in the window, as text.
+#[tauri::command]
+async fn import_game_settings_backup<R: Runtime>(
+    app: AppHandle<R>,
+    text: String,
+) -> Result<BackupInfo> {
+    let service = service(&app);
+    blocking(move || service.import_game_settings_backup(&text)).await
+}
+
+/// Shows a backup's file in the file manager, so it can be copied elsewhere. The window names a
+/// backup, never a path.
+#[tauri::command]
+async fn reveal_game_settings_backup<R: Runtime>(app: AppHandle<R>, id: i64) -> Result<()> {
+    let service = service(&app);
+    let path = blocking(move || service.game_settings_backup_path(id)).await?;
+    app.opener().reveal_item_in_dir(path).map_err(internal)
+}
+
 #[cfg(test)]
 mod tests {
     use tauri::test::{MockRuntime, mock_builder, mock_context, noop_assets};
@@ -386,6 +483,57 @@ mod tests {
             ] {
                 assert_eq!(error.code, ErrorCode::NotConnected);
             }
+        });
+    }
+
+    #[test]
+    fn the_profile_tools_answer_without_a_client() {
+        let (app, dir) = app();
+        app.state::<Service>()
+            .set_backup_dir(dir.path().join("game-settings"));
+        let handle = app.handle().clone();
+        tauri::async_runtime::block_on(async move {
+            for error in [
+                get_skins(handle.clone()).await.unwrap_err(),
+                get_profile_background(handle.clone()).await.unwrap_err(),
+                set_profile_background(handle.clone(), 103015)
+                    .await
+                    .unwrap_err(),
+                get_challenge_profile(handle.clone()).await.unwrap_err(),
+                set_challenge_profile(handle.clone(), vec![101304], None)
+                    .await
+                    .unwrap_err(),
+                create_game_settings_backup(handle.clone())
+                    .await
+                    .unwrap_err(),
+                restore_game_settings_backup(handle.clone(), 1, vec![BackupChannel::General])
+                    .await
+                    .unwrap_err(),
+            ] {
+                assert_eq!(error.code, ErrorCode::NotConnected);
+            }
+            // The kept snapshots are files: they list and import with no client at all.
+            assert!(
+                get_game_settings_backups(handle.clone())
+                    .await
+                    .unwrap()
+                    .is_empty()
+            );
+            let text = r#"{"format": "winer-game-settings", "version": 1, "takenAt": 1, "inputSettings": {"GameEvents": {}}}"#;
+            let imported = import_game_settings_backup(handle.clone(), text.into())
+                .await
+                .unwrap();
+            assert_eq!(
+                get_game_settings_backups(handle.clone()).await.unwrap(),
+                vec![imported.clone()]
+            );
+            delete_game_settings_backup(handle.clone(), imported.id)
+                .await
+                .unwrap();
+            let error = reveal_game_settings_backup(handle, imported.id)
+                .await
+                .unwrap_err();
+            assert_eq!(error.code, ErrorCode::Invalid);
         });
     }
 }

@@ -4,6 +4,7 @@
 pub mod analysis;
 pub mod augments;
 pub mod automation;
+pub mod backup;
 pub mod bindings;
 pub mod bridge;
 pub mod callout;
@@ -12,6 +13,7 @@ pub mod live;
 pub mod model;
 pub mod net;
 pub mod plugin;
+pub mod profile;
 pub mod rating;
 pub mod service;
 pub mod settings;

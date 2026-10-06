@@ -1,6 +1,9 @@
 // A believable client for `pnpm dev` in a browser: one summoner in champ select with a full team,
 // twenty games of history and a working settings round trip. Never part of a release bundle.
 import type {
+  BackupInfo,
+  ChallengeProfile,
+  ChallengeToken,
   ChampSelectView,
   Event,
   Feat,
@@ -15,7 +18,9 @@ import type {
   RecentMatch,
   Seat,
   Settings,
+  SkinChoice,
   Snapshot,
+  TitleChoice,
   UpdateStatus,
 } from "@winer/shared";
 
@@ -443,6 +448,66 @@ function champSelect(): ChampSelectView {
   };
 }
 
+// ---- The profile tools: a wardrobe, challenges with levels, and settings backed up before. ----
+
+/** Skin lines the demo's champions come in, after their base skin. */
+const SKIN_LINES = ["星之守护者", "源计划", "K/DA", "灵魂莲华", "西部魔影", "未来战士", "冰雪节"];
+
+/** Every demo champion's base skin and two to four more, some owned, as the client lists them. */
+const SKINS: SkinChoice[] = CHAMPIONS.flatMap(([id, title, short, alias], index) => {
+  const art = (number: number) => {
+    const folder = number === 0 ? "Base" : `Skin${String(number).padStart(2, "0")}`;
+    const images = `/lol-game-data/assets/ASSETS/Characters/${alias}/Skins/${folder}/Images`;
+    const file = alias.toLowerCase();
+    return {
+      tile: `${images}/${file}_splash_tile_${number}.jpg`,
+      splash: `${images}/${file}_splash_centered_${number}.jpg`,
+    };
+  };
+  const lines = SKIN_LINES.slice(index % 3, (index % 3) + 2 + (index % 3));
+  return [
+    { id: id * 1000, championId: id, name: title, owned: true, base: true, ...art(0) },
+    ...lines.map((line, at) => ({
+      id: id * 1000 + at + 1,
+      championId: id,
+      name: `${line} ${short}`,
+      owned: (index + at) % 3 === 0,
+      base: false,
+      ...art(at + 1),
+    })),
+  ];
+});
+
+const CHALLENGE_CHOICES: ChallengeToken[] = [
+  ["101304", "闪电战", "赢得【极地大乱斗】对局且对局时长低于13分钟", "MASTER"],
+  ["101101", "伤害爆表", "在【极地大乱斗】中造成超过1800点每分钟伤害", "MASTER"],
+  ["505005", "射手收藏家", "使用不同的射手英雄获得S-或更高评分", "DIAMOND"],
+  ["505006", "辅助收藏家", "使用不同的辅助英雄获得S-或更高评分", "DIAMOND"],
+  [
+    "101000",
+    "极地权威",
+    "获取来自【极地斗士】、【极地妙手】、【极地战士】等分组中的成就进度",
+    "PLATINUM",
+  ],
+  ["101203", "雪球大战", "在【极地大乱斗】中用雪球命中英雄", "PLATINUM"],
+  ["101104", "回血不如回温泉", "在【极地大乱斗】中击杀近期获得过治疗包的对手", "GOLD"],
+  ["101206", "魄罗破咯", "在【极地大乱斗】中导致一个魄罗爆炸", "BRONZE"],
+].map(([id, name, description, level]) => ({
+  id: Number(id),
+  name: name ?? "",
+  description: description ?? "",
+  level: level as ChallengeToken["level"],
+  icon: `/lol-game-data/assets/ASSETS/Challenges/Config/${id}/Tokens/${level}.png`,
+}));
+
+const TITLE_CHOICES: TitleChoice[] = [
+  { id: 1, name: "初窥门径" },
+  { id: 10120601, name: "魄罗饲养员" },
+  { id: 10120303, name: "雪球狙神" },
+  { id: 1435, name: "混沌代理人" },
+  { id: 1436, name: "日光浴恶魔" },
+];
+
 const DEFAULT_SETTINGS: Settings = {
   appearance: {
     theme: "hextech",
@@ -491,6 +556,10 @@ const DEFAULT_SETTINGS: Settings = {
     benchNoCooldown: true,
     loaderDir: null,
   },
+  profile: {
+    rankDisguise: { enabled: false, queue: "solo", tier: "DIAMOND", division: "I" },
+    presence: { remember: false, availability: "chat", statusMessage: null },
+  },
 };
 
 export function demoBackend(): Backend {
@@ -525,6 +594,30 @@ export function demoBackend(): Backend {
     phase: "ChampSelect",
     champSelect: champSelect(),
     game: null,
+  };
+
+  // The profile the demo player shows, and what they backed up before.
+  let presence = { availability: "chat", statusMessage: "今晚上分" };
+  let background: number | null = 103003;
+  let shown = { tokens: [101304, 505005], title: 1436 as number | null };
+  const challengeProfile = (): ChallengeProfile => ({
+    tokens: shown.tokens.flatMap((id) => CHALLENGE_CHOICES.filter((token) => token.id === id)),
+    title: TITLE_CHOICES.find((title) => title.id === shown.title) ?? null,
+    challenges: CHALLENGE_CHOICES,
+    titles: TITLE_CHOICES,
+  });
+  let backups: BackupInfo[] = [
+    {
+      id: NOW - 86_400_000,
+      takenAt: NOW - 86_400_000,
+      size: 8_402,
+      channels: ["general", "hotkeys"],
+    },
+    { id: NOW - 5 * 86_400_000, takenAt: NOW - 5 * 86_400_000, size: 5_877, channels: ["hotkeys"] },
+  ];
+  const keep = (backup: BackupInfo) => {
+    backups = [backup, ...backups].sort((a, b) => b.id - a.id).slice(0, 10);
+    return backup;
   };
 
   setTimeout(
@@ -583,9 +676,15 @@ export function demoBackend(): Backend {
     },
     get_player_summary: ({ puuid }) =>
       SUMMARIES.get(puuid) ?? summary(puuid, "对手", puuid.length, rank("GOLD", "III", 40)),
-    get_presence: () => ({ availability: "chat", statusMessage: "今晚上分" }),
-    set_availability: () => null,
-    set_status_message: () => null,
+    get_presence: () => presence,
+    set_availability: ({ availability }) => {
+      presence = { ...presence, availability };
+      return null;
+    },
+    set_status_message: ({ message }) => {
+      presence = { ...presence, statusMessage: message };
+      return null;
+    },
     restart_client_ui: () => null,
     send_callout: () => champSelect().callout.length,
     preview_callout: ({ rule, general }) => {
@@ -646,6 +745,54 @@ export function demoBackend(): Backend {
     install_update: () => null,
     open_releases: () => null,
     open_docs: () => null,
+    get_skins: () => SKINS,
+    get_profile_background: () => background,
+    // As the server does with a skin the player does not own: the background stays.
+    set_profile_background: ({ skinId }) => {
+      if (SKINS.some((skin) => skin.id === skinId && skin.owned)) background = skinId;
+      return background;
+    },
+    get_challenge_profile: challengeProfile,
+    set_challenge_profile: ({ challengeIds, titleId }) => {
+      shown = { tokens: challengeIds.slice(0, 3), title: titleId ?? shown.title };
+      return challengeProfile();
+    },
+    get_game_settings_backups: () => backups,
+    create_game_settings_backup: () => {
+      const id = Math.max(Date.now(), ...backups.map((backup) => backup.id + 1));
+      return keep({ id, takenAt: Date.now(), size: 8_410, channels: ["general", "hotkeys"] });
+    },
+    restore_game_settings_backup: () => null,
+    delete_game_settings_backup: ({ id }) => {
+      backups = backups.filter((backup) => backup.id !== id);
+      return null;
+    },
+    import_game_settings_backup: ({ text }) => {
+      let file: {
+        format?: unknown;
+        takenAt?: unknown;
+        gameSettings?: unknown;
+        inputSettings?: unknown;
+      };
+      try {
+        file = JSON.parse(text) as typeof file;
+      } catch {
+        throw { code: "invalid", message: "not JSON" };
+      }
+      if (file.format !== "winer-game-settings")
+        throw { code: "invalid", message: "not a winer settings backup" };
+      const id = Math.max(Date.now(), ...backups.map((backup) => backup.id + 1));
+      return keep({
+        id,
+        takenAt: typeof file.takenAt === "number" ? file.takenAt : id,
+        size: text.length,
+        channels: [
+          ...(file.gameSettings ? (["general"] as const) : []),
+          ...(file.inputSettings ? (["hotkeys"] as const) : []),
+        ],
+      });
+    },
+    reveal_game_settings_backup: () => null,
   };
 
   return {
