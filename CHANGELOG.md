@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.4](https://github.com/sunerpy/winer/compare/v0.0.3...v0.0.4) (2026-10-06)
+
+
+### Features
+
+* builds, in-client history, callout shortcut and storage limits ([#6](https://github.com/sunerpy/winer/issues/6)) ([224b1a8](https://github.com/sunerpy/winer/commit/224b1a847449db4c9c94c9e87ef31cfe208ae686))
+
 ## [0.0.3](https://github.com/sunerpy/winer/compare/v0.0.2...v0.0.3) (2026-10-06)
 
 
