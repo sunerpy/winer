@@ -1,7 +1,7 @@
 # Live game and callout
 
-The **Live game** page analyses both teams in champ select and while the game runs, and empties
-once the client is back in the lobby.
+The **Live game** page lists your party in a lobby, analyses both teams in champ select and while
+the game runs, and empties once the client is back on its home screen.
 
 ## Game analysis
 
@@ -20,9 +20,25 @@ moves between them.
   which one your team is on, and the callout's first line carries `[Blue side]` or `[Red side]`.
   Arena has no sides.
 - **Parties**: once the game is running, players queued together carry the same number
-  ("Party 1", "Party 2").
+  ("Party 1", "Party 2") and one colour per party; the number always shows, so the colour is never
+  needed to tell them apart. In champ select, the teammates who came in from your own lobby are
+  marked too.
 - **Tiers**: from recent form, in the scheme chosen in **Settings › Rating**; the rules are in
   [How rating works](/en/rating).
+
+## Lobby
+
+In a lobby (and while it queues or a match is found), the **Live game** page lists every member of
+your party: name, the positions asked for, rank, win rate and KDA over the last 20 games, recent
+form score and the latest games; the party's leader carries **Leader**. Choose a member to open
+their history. In a custom lobby, everyone in it is listed.
+
+## Friends
+
+The **Friends** panel on the **Overview** page lists the friends in champ select or in a game: the
+mode, the state and how long it has been going, counted by the second; a game that can be watched
+carries an eye. Friends in one game or one party share a colour and a number. Choose a friend to
+open their history.
 
 ## Callout
 
