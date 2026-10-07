@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.10](https://github.com/sunerpy/winer/compare/v0.0.9...v0.0.10) (2026-10-07)
+
+
+### Bug Fixes
+
+* keep passive updater windows fully invisible ([#22](https://github.com/sunerpy/winer/issues/22)) ([cae5e68](https://github.com/sunerpy/winer/commit/cae5e68428d32555eb7f9547c898228d6493ea41))
+
 ## [0.0.9](https://github.com/sunerpy/winer/compare/v0.0.8...v0.0.9) (2026-10-07)
 
 
