@@ -1316,27 +1316,40 @@ describe("loadout", () => {
     expect(screen.getByRole("switch", { name: zhCN["loadout.itemSets"] })).toBeInTheDocument();
   });
 
-  it("switches builds and their Summoner's Rift source in settings", async () => {
+  it("switches builds and each mode's data source in settings", async () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");
     const { user } = await renderApp(backend);
     fireEvent.keyDown(window, { key: ",", ctrlKey: true });
     const dialog = screen.getByRole("dialog", { name: zhCN["settings.title"] });
     await user.click(within(dialog).getByRole("tab", { name: zhCN["settings.general"] }));
+    const saved = (builds: Record<string, unknown>) =>
+      waitFor(() =>
+        expect(call).toHaveBeenCalledWith("set_settings", {
+          settings: expect.objectContaining({ builds: expect.objectContaining(builds) }),
+        }),
+      );
     const sources = within(dialog).getByRole("radiogroup", { name: zhCN["loadout.riftSource"] });
     await user.click(within(sources).getByRole("radio", { name: "OP.GG" }));
+    await saved({ enabled: true, riftSource: "opGg", aramSource: "opGg" });
+    const aram = within(dialog).getByRole("radiogroup", { name: zhCN["loadout.aramSource"] });
+    await user.click(within(aram).getByRole("radio", { name: zhCN["loadout.source.off"] }));
+    await saved({ aramSource: "off", arenaSource: "opGg", hextechFallback: true });
+    await user.click(within(dialog).getByRole("switch", { name: zhCN["loadout.hextechFallback"] }));
+    await saved({ aramSource: "off", hextechFallback: false });
+    // The augment descriptions sit with the sources now, and still save into General.
+    await user.click(within(dialog).getByRole("switch", { name: zhCN["settings.augmentDetails"] }));
     await waitFor(() =>
       expect(call).toHaveBeenCalledWith("set_settings", {
-        settings: expect.objectContaining({ builds: { enabled: true, riftSource: "opGg" } }),
+        settings: expect.objectContaining({
+          general: expect.objectContaining({ augmentDetails: false }),
+        }),
       }),
     );
     await user.click(within(dialog).getByRole("switch", { name: zhCN["loadout.builds"] }));
-    await waitFor(() =>
-      expect(call).toHaveBeenCalledWith("set_settings", {
-        settings: expect.objectContaining({ builds: { enabled: false, riftSource: "opGg" } }),
-      }),
-    );
+    await saved({ enabled: false, riftSource: "opGg" });
     expect(within(sources).getByRole("radio", { name: "腾讯 101" })).toBeDisabled();
+    expect(within(aram).getByRole("radio", { name: "OP.GG" })).toBeDisabled();
   });
 });
 

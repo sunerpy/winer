@@ -123,6 +123,12 @@ export function demoBuild(
   settings: Settings,
 ): Build {
   if (mode === "other") throw { code: "invalid", message: "no numbers for other games" };
+  if (
+    (mode === "aram" && settings.builds.aramSource === "off") ||
+    (mode === "arena" && settings.builds.arenaSource === "off")
+  ) {
+    throw { code: "invalid", message: `no numbers for ${mode} games` };
+  }
   const rift = mode === "ranked" || mode === "normal";
   const source = sourceOf(mode, settings);
   const nudge = ((championId * 7 + (lane?.length ?? 0)) % 9) / 1000;

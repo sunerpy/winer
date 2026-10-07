@@ -20,7 +20,7 @@ use ts_rs::TS;
 use crate::{
     model::PerkStyles,
     net,
-    settings::{Mode, RiftSource},
+    settings::{BuildSettings, Mode, ModeSource, RiftSource},
     view::{Position, Rarity},
 };
 
@@ -42,14 +42,27 @@ pub enum BuildSource {
 }
 
 /// Where the numbers for a kind of game come from, in the order to try them: the next one only
-/// when the one before fails. Other modes have none.
-pub fn sources(mode: Mode, rift: RiftSource) -> &'static [BuildSource] {
-    match (mode, rift) {
-        (Mode::Ranked | Mode::Normal, RiftSource::Tencent) => &[BuildSource::Tencent],
-        (Mode::Ranked | Mode::Normal, RiftSource::OpGg) => &[BuildSource::OpGg],
-        (Mode::Aram | Mode::Arena, _) => &[BuildSource::OpGg],
-        (Mode::Hextech, _) => &[BuildSource::TencentHextech, BuildSource::AramGg],
-        (Mode::Other, _) => &[],
+/// when the one before fails. Other modes have none, and neither has a mode whose source the
+/// settings switch off.
+pub fn sources(mode: Mode, settings: &BuildSettings) -> &'static [BuildSource] {
+    let one = |source: ModeSource| -> &'static [BuildSource] {
+        match source {
+            ModeSource::OpGg => &[BuildSource::OpGg],
+            ModeSource::Off => &[],
+        }
+    };
+    match mode {
+        Mode::Ranked | Mode::Normal => match settings.rift_source {
+            RiftSource::Tencent => &[BuildSource::Tencent],
+            RiftSource::OpGg => &[BuildSource::OpGg],
+        },
+        Mode::Aram => one(settings.aram_source),
+        Mode::Arena => one(settings.arena_source),
+        Mode::Hextech if settings.hextech_fallback => {
+            &[BuildSource::TencentHextech, BuildSource::AramGg]
+        }
+        Mode::Hextech => &[BuildSource::TencentHextech],
+        Mode::Other => &[],
     }
 }
 
@@ -1563,24 +1576,48 @@ mod tests {
 
     #[test]
     fn each_mode_reads_from_its_own_source_and_hextech_falls_back_to_aramgg() {
+        let defaults = BuildSettings::default();
+        let with = |change: fn(&mut BuildSettings)| {
+            let mut settings = BuildSettings::default();
+            change(&mut settings);
+            settings
+        };
+        assert_eq!(sources(Mode::Ranked, &defaults), [BuildSource::Tencent]);
         assert_eq!(
-            sources(Mode::Ranked, RiftSource::Tencent),
-            [BuildSource::Tencent]
-        );
-        assert_eq!(sources(Mode::Normal, RiftSource::OpGg), [BuildSource::OpGg]);
-        assert_eq!(
-            sources(Mode::Aram, RiftSource::Tencent),
+            sources(
+                Mode::Normal,
+                &with(|settings| settings.rift_source = RiftSource::OpGg)
+            ),
             [BuildSource::OpGg]
         );
+        assert_eq!(sources(Mode::Aram, &defaults), [BuildSource::OpGg]);
         assert_eq!(
-            sources(Mode::Hextech, RiftSource::OpGg),
+            sources(
+                Mode::Hextech,
+                &with(|settings| settings.rift_source = RiftSource::OpGg)
+            ),
             [BuildSource::TencentHextech, BuildSource::AramGg]
         );
+        assert_eq!(sources(Mode::Arena, &defaults), [BuildSource::OpGg]);
+        assert!(sources(Mode::Other, &defaults).is_empty());
+        // Each switch takes only its own mode's source away.
+        let aram_off = with(|settings| settings.aram_source = ModeSource::Off);
+        assert!(sources(Mode::Aram, &aram_off).is_empty());
+        assert_eq!(sources(Mode::Arena, &aram_off), [BuildSource::OpGg]);
         assert_eq!(
-            sources(Mode::Arena, RiftSource::Tencent),
-            [BuildSource::OpGg]
+            sources(Mode::Hextech, &aram_off),
+            [BuildSource::TencentHextech, BuildSource::AramGg],
+            "Hextech ARAM is not ARAM's source"
         );
-        assert!(sources(Mode::Other, RiftSource::Tencent).is_empty());
+        let arena_off = with(|settings| settings.arena_source = ModeSource::Off);
+        assert!(sources(Mode::Arena, &arena_off).is_empty());
+        assert_eq!(sources(Mode::Aram, &arena_off), [BuildSource::OpGg]);
+        let no_fallback = with(|settings| settings.hextech_fallback = false);
+        assert_eq!(
+            sources(Mode::Hextech, &no_fallback),
+            [BuildSource::TencentHextech]
+        );
+        assert_eq!(sources(Mode::Ranked, &no_fallback), [BuildSource::Tencent]);
         // The lanes in every source's words.
         assert_eq!(tencent_lane(Position::Utility), "SUPPORT");
         assert_eq!(opgg_position(Position::Bottom), "adc");

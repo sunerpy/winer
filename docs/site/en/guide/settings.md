@@ -77,11 +77,15 @@ Open them with `Ctrl` + `,` or **Settings** at the bottom of the sidebar.
   ✕ beside it turns the shortcut off. When another program already holds the combination, the row
   says so: pick another. The game must run borderless or windowed: in exclusive fullscreen, the
   game minimizes as soon as another window takes the focus.
-- **Augment descriptions from ARAM.GG**: fetches what Hextech ARAM's augments do from ARAM.GG; off,
-  augments show their name and icon only.
 - **Builds**: shows the [build panel](/en/guide/live#builds) on the Live game page, from public
   statistics by the Tencent League app, OP.GG and ARAM.GG; off, it is hidden and nothing is fetched.
-- **Summoner's Rift data**: Tencent 101 (the Chinese servers) or OP.GG (the world).
+- **Data sources**: where each mode's numbers come from, see
+  [Where the numbers come from](/en/guide/live#where-the-numbers-come-from).
+  - **Summoner's Rift data**: Tencent 101 (the Chinese servers) or OP.GG (the world).
+  - **ARAM data**, **Arena data**: OP.GG, or off.
+  - **ARAM.GG when Tencent has no Hextech numbers**: off, only Tencent's numbers are used.
+  - **Augment descriptions from ARAM.GG**: fetches what Hextech ARAM's augments do from ARAM.GG;
+    off, augments show their name and icon only.
 - **Start with Windows**: starts in the tray when you sign in to Windows, without opening the window.
 
 ### Rating

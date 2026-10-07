@@ -85,7 +85,13 @@ const SETTINGS = {
     rankDisguise: { enabled: false, queue: "solo", tier: "DIAMOND", division: "I" },
     presence: { remember: false, availability: "chat", statusMessage: null, mobileMessage: false },
   },
-  builds: { enabled: true, riftSource: "tencent" },
+  builds: {
+    enabled: true,
+    riftSource: "tencent",
+    aramSource: "opGg",
+    arenaSource: "opGg",
+    hextechFallback: true,
+  },
   history: { hideCustomGames: true },
 } satisfies Settings;
 

@@ -11,12 +11,19 @@ import {
   hasNumbers,
   rate,
   rateTone,
+  sourceOff,
   tabsOf,
 } from "./builds";
 
-const SETTINGS = {
-  builds: { enabled: true, riftSource: "tencent" },
-} as Parameters<typeof demoBuild>[3];
+const BUILDS = {
+  enabled: true,
+  riftSource: "tencent",
+  aramSource: "opGg",
+  arenaSource: "opGg",
+  hextechFallback: true,
+} as const;
+
+const SETTINGS = { builds: BUILDS } as Parameters<typeof demoBuild>[3];
 
 const augment = (id: number, rarity: AugmentOption["rarity"]): AugmentOption => ({
   id,
@@ -31,6 +38,18 @@ describe("build panel", () => {
     expect(tabsOf("hextech")).toEqual(["items", "runes", "spells", "skills", "augments"]);
     expect(tabsOf("aram")).not.toContain("matchups");
     expect(hasNumbers("other")).toBe(false);
+
+    // A switched-off source takes only its own mode's numbers away.
+    expect(sourceOff("aram", BUILDS)).toBe(false);
+    expect(sourceOff("aram", { ...BUILDS, aramSource: "off" })).toBe(true);
+    expect(sourceOff("arena", { ...BUILDS, aramSource: "off" })).toBe(false);
+    expect(sourceOff("arena", { ...BUILDS, arenaSource: "off" })).toBe(true);
+    expect(sourceOff("hextech", { ...BUILDS, aramSource: "off", hextechFallback: false })).toBe(
+      false,
+    );
+    expect(() =>
+      demoBuild(103, "aram", null, { builds: { ...BUILDS, aramSource: "off" } } as typeof SETTINGS),
+    ).toThrow();
 
     // Tencent's Hextech numbers have no runes or spells: no empty sections that look like data.
     const hextech = demoBuild(103, "hextech", null, SETTINGS);

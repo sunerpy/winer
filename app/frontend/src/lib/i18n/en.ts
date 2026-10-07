@@ -764,8 +764,18 @@ export const en: Record<MessageKey, string> = {
   "loadout.builds": "Builds",
   "loadout.buildsHint":
     "Shows item, rune, spell, skill and matchup statistics on the Live game page, from public data by the Tencent League app, OP.GG and ARAM.GG. Off, nothing is fetched.",
+  "loadout.sources": "Data sources",
   "loadout.riftSource": "Summoner's Rift data",
   "loadout.riftSourceHint": "Tencent 101 counts the Chinese servers; OP.GG counts the world.",
+  "loadout.aramSource": "ARAM data",
+  "loadout.arenaSource": "Arena data",
+  "loadout.opggSourceHint":
+    "OP.GG's global statistics; its terms do not allow automated collection. Off, the mode shows no builds.",
+  "loadout.hextechFallback": "ARAM.GG when Tencent has no Hextech numbers",
+  "loadout.hextechFallbackHint":
+    "Falls back to ARAM.GG (third-party; it asks programs not to read its data files) when the Tencent League app has nothing. Off, only Tencent's numbers are used.",
+  "loadout.source.off": "Off",
+  "loadout.sourceOff": "This mode's data source is switched off in Settings.",
   "loadout.notice.remembered": "Set up the remembered {what} for {champion}",
   "loadout.notice.recommended": "Set up the client's recommended {what} for {champion}",
   "loadout.notice.noPage": "{champion}'s runes unchanged: no room for winer's rune page",

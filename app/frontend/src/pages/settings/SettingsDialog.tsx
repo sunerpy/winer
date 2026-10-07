@@ -282,15 +282,6 @@ function GeneralSection() {
         />
       </Row>
       <HotkeyRow />
-      <Row label={t("settings.augmentDetails")} help={t("settings.augmentDetailsHint")}>
-        <Toggle
-          checked={general.augmentDetails}
-          onChange={(augmentDetails) =>
-            save((settings) => ({ ...settings, general: { ...settings.general, augmentDetails } }))
-          }
-          label={t("settings.augmentDetails")}
-        />
-      </Row>
       <BuildSettingsRows />
       <Row label={t("settings.autostart")} help={t("settings.autostartHint")}>
         <Toggle

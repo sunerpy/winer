@@ -500,7 +500,7 @@ impl Service {
         if champion_id <= 0 {
             return Err(CoreError::Invalid(format!("no champion {champion_id}")));
         }
-        let sources = builds::sources(mode, settings.rift_source);
+        let sources = builds::sources(mode, &settings);
         if sources.is_empty() {
             return Err(CoreError::Invalid(format!("no numbers for {mode:?} games")));
         }

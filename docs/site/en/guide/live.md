@@ -126,13 +126,19 @@ lookup), the lane the champion is played in most comes first.
 The panel's heading names the source and the patch, for example "Data: Tencent 101 · 16.19", and
 the games behind the numbers.
 
-| Mode           | Source                                                                                                                   |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Ranked, Normal | Tencent's 101 statistics from the League app (the Chinese servers); **Settings › General** switches to OP.GG (the world) |
-| ARAM           | OP.GG                                                                                                                    |
-| Hextech ARAM   | Tencent's League app, and ARAM.GG when that does not answer                                                              |
-| Arena          | OP.GG                                                                                                                    |
-| Other modes    | no build numbers                                                                                                         |
+| Mode           | Source                                                                                   |
+| -------------- | ---------------------------------------------------------------------------------------- |
+| Ranked, Normal | Tencent's 101 statistics from the League app (the Chinese servers), or OP.GG (the world) |
+| ARAM           | OP.GG, or off                                                                            |
+| Hextech ARAM   | Tencent's League app, and ARAM.GG when that does not answer; the fallback can be off     |
+| Arena          | OP.GG, or off                                                                            |
+| Other modes    | no build numbers                                                                         |
+
+All of these are switched in **Settings › General › Data sources**. OP.GG's terms do not allow
+automated collection, and ARAM.GG asks programs not to read its data files; if that matters to you,
+switch the row off. With ARAM's or Arena's source off, that mode's panel only says the source is
+switched off, and remembered runes and spells are still set up; with the Hextech fallback off, only
+Tencent's numbers are used.
 
 These are public statistics from third parties and can lag a patch; in a patch's first days, when
 there are none yet, the previous patch's are used. When a source does not answer, the panel says so

@@ -759,9 +759,23 @@ enabled: boolean,
 /**
  * Where Summoner's Rift numbers come from.
  */
-riftSource: RiftSource, };
+riftSource: RiftSource, 
+/**
+ * Where ARAM's numbers come from, or nowhere.
+ */
+aramSource: ModeSource, 
+/**
+ * Where Arena's numbers come from, or nowhere.
+ */
+arenaSource: ModeSource, 
+/**
+ * Hextech ARAM asks ARAM.GG when Tencent has no numbers; off, Tencent's are the only ones.
+ */
+hextechFallback: boolean, };
 
 export type RiftSource = "tencent" | "opGg";
+
+export type ModeSource = "opGg" | "off";
 
 export type LoadoutSummary = { remembered: number, };
 

@@ -118,6 +118,7 @@ pub fn typescript() -> String {
         settings::LoadoutRule,
         settings::BuildSettings,
         settings::RiftSource,
+        settings::ModeSource,
         loadout::LoadoutSummary,
         loadout::PageOutcome,
         builds::BuildSource,

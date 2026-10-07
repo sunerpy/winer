@@ -854,6 +854,12 @@ pub struct BuildSettings {
     pub enabled: bool,
     /// Where Summoner's Rift numbers come from.
     pub rift_source: RiftSource,
+    /// Where ARAM's numbers come from, or nowhere.
+    pub aram_source: ModeSource,
+    /// Where Arena's numbers come from, or nowhere.
+    pub arena_source: ModeSource,
+    /// Hextech ARAM asks ARAM.GG when Tencent has no numbers; off, Tencent's are the only ones.
+    pub hextech_fallback: bool,
 }
 
 impl Default for BuildSettings {
@@ -861,6 +867,9 @@ impl Default for BuildSettings {
         Self {
             enabled: true,
             rift_source: RiftSource::Tencent,
+            aram_source: ModeSource::OpGg,
+            arena_source: ModeSource::OpGg,
+            hextech_fallback: true,
         }
     }
 }
@@ -922,6 +931,17 @@ pub enum RiftSource {
     Tencent,
     /// OP.GG's global statistics.
     OpGg,
+}
+
+/// Where a mode with one public source (ARAM, Arena) gets its numbers: that source, or none.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum ModeSource {
+    /// OP.GG's global statistics.
+    #[default]
+    OpGg,
+    /// Nothing is fetched for the mode.
+    Off,
 }
 
 impl Settings {
@@ -1773,6 +1793,24 @@ mod tests {
             serde_json::from_str(r#"{"automation":{"scopes":{"accept":["ranked"]}}}"#).unwrap();
         assert_eq!(old.automation.scopes.loadout, Scoped::Loadout.applicable());
         assert_eq!(old.builds, BuildSettings::default());
+        // A file from before the per-mode sources keeps every source it had.
+        let before: Settings =
+            serde_json::from_str(r#"{"builds":{"enabled":true,"riftSource":"opGg"}}"#).unwrap();
+        assert_eq!(
+            before.builds,
+            BuildSettings {
+                rift_source: RiftSource::OpGg,
+                ..BuildSettings::default()
+            }
+        );
+        assert_eq!(
+            (
+                before.builds.aram_source,
+                before.builds.arena_source,
+                before.builds.hextech_fallback
+            ),
+            (ModeSource::OpGg, ModeSource::OpGg, true)
+        );
     }
 
     #[test]

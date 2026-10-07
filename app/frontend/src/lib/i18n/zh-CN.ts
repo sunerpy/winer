@@ -736,8 +736,18 @@ export const zhCN = {
   "loadout.builds": "配装推荐",
   "loadout.buildsHint":
     "在对局页显示出装、符文、召唤师技能、技能加点和对位的统计，来自腾讯掌上英雄联盟、OP.GG 和 ARAM.GG 的公开数据；关闭后不再联网获取。",
+  "loadout.sources": "数据源",
   "loadout.riftSource": "召唤师峡谷的数据来源",
   "loadout.riftSourceHint": "腾讯 101 是国服自己的统计，OP.GG 是全球统计。",
+  "loadout.aramSource": "大乱斗的数据来源",
+  "loadout.arenaSource": "斗魂竞技场的数据来源",
+  "loadout.opggSourceHint":
+    "OP.GG 的全球统计；它的使用条款不允许自动抓取，介意的话可以关闭，关闭后这个模式不显示配装。",
+  "loadout.hextechFallback": "海克斯大乱斗用 ARAM.GG 兜底",
+  "loadout.hextechFallbackHint":
+    "腾讯掌上英雄联盟没有数据时改用 ARAM.GG（第三方数据，它不允许程序批量读取数据文件）；关闭后只用腾讯的数据。",
+  "loadout.source.off": "关闭",
+  "loadout.sourceOff": "已在设置中关闭这个模式的数据源。",
   "loadout.notice.remembered": "为 {champion} 应用了记住的{what}",
   "loadout.notice.recommended": "为 {champion} 应用了客户端推荐的{what}",
   "loadout.notice.noPage": "{champion} 的符文没有改动：没有空位放 winer 的符文页",
