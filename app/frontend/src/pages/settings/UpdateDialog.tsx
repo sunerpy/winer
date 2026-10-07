@@ -46,7 +46,9 @@ export function plainNotes(notes: string, version?: string): string[] {
     )
     .filter(Boolean);
   const normalized = (text: string) => text.trim().replace(/^v/i, "");
-  return version && lines[0] && normalized(lines[0]) === normalized(version)
+  const heading = lines[0] ? normalized(lines[0]) : "";
+  const current = version ? normalized(version) : "";
+  return current && (heading === current || heading.startsWith(`${current} (`))
     ? lines.slice(1)
     : lines;
 }
