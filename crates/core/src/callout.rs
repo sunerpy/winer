@@ -772,6 +772,7 @@ pub fn preview(
         rerolls_remaining: 0,
         callout: Vec::new(),
         side: Some(Side::Blue),
+        recommendations: Vec::new(),
     };
     lines(
         &view,
@@ -1210,6 +1211,7 @@ mod tests {
             rerolls_remaining: 0,
             callout: Vec::new(),
             side: None,
+            recommendations: Vec::new(),
         }
     }
 

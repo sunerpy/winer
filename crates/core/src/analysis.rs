@@ -644,6 +644,32 @@ pub fn match_detail(game: &Game, roles: &Roles) -> MatchDetail {
     }
 }
 
+/// The champions `puuid` played in `lane` among `games`, with games and wins, the most played
+/// first and by id among equals. Remakes and games without a lane (the client's own list, modes
+/// without positions) count for nothing.
+pub fn lane_champions(games: &[Game], puuid: &str, lane: Position) -> Vec<(i64, u32, u32)> {
+    let mut counts: HashMap<i64, (u32, u32)> = HashMap::new();
+    for game in games {
+        let Some(row) = row_of(game, puuid) else {
+            continue;
+        };
+        if is_remake(game, row) || Position::parse(&row.team_position) != Some(lane) {
+            continue;
+        }
+        let count = counts.entry(row.champion_id).or_default();
+        count.0 += 1;
+        if row.stats.win {
+            count.1 += 1;
+        }
+    }
+    let mut champions: Vec<(i64, u32, u32)> = counts
+        .into_iter()
+        .map(|(champion, (games, wins))| (champion, games, wins))
+        .collect();
+    champions.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    champions
+}
+
 // ---- Premade parties in champ select, read from the players' games ----
 
 /// A pair counts as one party once it has played this many games on one team together.
@@ -776,6 +802,33 @@ mod tests {
     ) -> Vec<Vec<usize>> {
         let known: Vec<String> = known.iter().map(|member| (*member).to_owned()).collect();
         infer_parties(seats, &known, |puuid| records.get(puuid).map(Vec::as_slice))
+    }
+
+    #[test]
+    fn the_lanes_own_champions_come_from_the_games_with_that_lane() {
+        let played = |id: i64, champion: i64, lane: &str, win: bool, duration: i64| {
+            let mut game = party_game(id, id, &["me"], &["x"]);
+            game.game_duration = duration;
+            let row = &mut game.participants[0];
+            row.champion_id = champion;
+            row.team_position = lane.into();
+            row.stats.win = win;
+            game
+        };
+        let games = [
+            played(1, 103, "MIDDLE", true, 1800),
+            played(2, 103, "MIDDLE", false, 1800),
+            played(3, 7, "MIDDLE", true, 1800),
+            played(4, 103, "TOP", true, 1800),
+            played(5, 99, "MIDDLE", true, 120),
+            played(6, 64, "", true, 1800),
+        ];
+        assert_eq!(
+            lane_champions(&games, "me", Position::Middle),
+            [(103, 2, 1), (7, 1, 1)],
+            "another lane, a remake and a game without a lane count for nothing"
+        );
+        assert!(lane_champions(&games, "nobody", Position::Middle).is_empty());
     }
 
     #[test]

@@ -419,6 +419,7 @@ function champSelect(seats: Seat[]): ChampSelectView {
     rerollsRemaining: 0,
     callout: [],
     side: null,
+    recommendations: [],
   };
 }
 

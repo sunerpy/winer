@@ -85,6 +85,8 @@ Open them with `Ctrl` + `,` or **Settings** at the bottom of the sidebar.
   game minimizes as soon as another window takes the focus.
 - **Builds**: shows the [build panel](/en/guide/live#builds) on the Live game page, from public
   statistics by the Tencent League app, OP.GG and ARAM.GG; off, it is hidden and nothing is fetched.
+- **Pick suggestions**: three champions suggested in Rift champ select, see
+  [Pick suggestions](/en/guide/live#pick-suggestions); shown only, nothing is picked for you.
 - **Data sources**: where each mode's numbers come from, see
   [Where the numbers come from](/en/guide/live#where-the-numbers-come-from).
   - **Summoner's Rift data**: Tencent 101 (the Chinese servers) or OP.GG (the world).

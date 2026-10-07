@@ -113,6 +113,33 @@ pub fn autofilled(preferences: Option<&LanePreferences>, queue_id: i64, assigned
     !asked.is_empty() && !asked.contains(&lane)
 }
 
+/// The champions the player in `cell` cannot take: gone for everyone (banned, or locked by
+/// anyone), or spoken for by a teammate, who has picked or shown it.
+pub fn spoken_for(session: &ChampSelectSession, cell: i64) -> HashSet<i64> {
+    let mut taken: HashSet<i64> = session
+        .bans
+        .my_team_bans
+        .iter()
+        .chain(&session.bans.their_team_bans)
+        .copied()
+        .collect();
+    taken.extend(
+        session
+            .all_actions()
+            .filter(|action| action.completed && action.champion_id > 0)
+            .map(|action| action.champion_id),
+    );
+    taken.extend(
+        session
+            .my_team
+            .iter()
+            .filter(|player| player.cell_id != cell)
+            .flat_map(|player| [player.champion_id, player.champion_pick_intent])
+            .filter(|&id| id > 0),
+    );
+    taken
+}
+
 /// `filled`: the player was sent to a lane they did not ask for ([`autofilled`]); with
 /// `skip_when_filled` on, only that lane's own list is picked from then.
 pub fn decide(
@@ -129,31 +156,8 @@ pub fn decide(
             .all_actions()
             .filter(|action| action.actor_cell_id == me.cell_id && !action.completed)
     };
-
-    // Gone for everyone: banned, or locked by anyone.
-    let mut gone: HashSet<i64> = session
-        .bans
-        .my_team_bans
-        .iter()
-        .chain(&session.bans.their_team_bans)
-        .copied()
-        .collect();
-    gone.extend(
-        session
-            .all_actions()
-            .filter(|action| action.completed && action.champion_id > 0)
-            .map(|action| action.champion_id),
-    );
-    // Spoken for by a teammate: never take or ban what someone on the team has shown.
-    let teammates: HashSet<i64> = session
-        .my_team
-        .iter()
-        .filter(|player| player.cell_id != me.cell_id)
-        .flat_map(|player| [player.champion_id, player.champion_pick_intent])
-        .filter(|&id| id > 0)
-        .collect();
-    let free =
-        |champion: i64| champion > 0 && !gone.contains(&champion) && !teammates.contains(&champion);
+    let taken = spoken_for(session, me.cell_id);
+    let free = |champion: i64| champion > 0 && !taken.contains(&champion);
 
     let pick = |hovered: i64| {
         // What the user (or an earlier intent) already chose wins over the list.

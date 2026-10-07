@@ -21,6 +21,7 @@ const BUILDS = {
   aramSource: "opGg",
   arenaSource: "opGg",
   hextechFallback: true,
+  recommend: true,
 } as const;
 
 const SETTINGS = { builds: BUILDS } as Parameters<typeof demoBuild>[3];

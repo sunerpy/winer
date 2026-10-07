@@ -653,6 +653,7 @@ function champSelect(): ChampSelectView {
     bench: [99, 81, 22, 157],
     rerollsRemaining: 1,
     side: "blue",
+    recommendations: [],
     callout: [
       "📢【蓝色方】winer 战绩鉴定",
       "👑 峡谷通天代：1L【暗夜里的光】，近20场胜率60%，KDA 4.1，战力7.4【版本答案】，对面五个人准备举报代练",
@@ -988,6 +989,7 @@ const DEFAULT_SETTINGS: Settings = {
     aramSource: "opGg",
     arenaSource: "opGg",
     hextechFallback: true,
+    recommend: true,
   },
   history: { hideCustomGames: true },
 };

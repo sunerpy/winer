@@ -236,6 +236,40 @@ pub struct ChampSelectView {
     pub callout: Vec<String>,
     /// The local team's side; `None` where the mode has none (Arena, Swarm).
     pub side: Option<Side>,
+    /// Champions worth considering for the local player's pick, best first (`recommend`); empty
+    /// where suggestions do not apply or are switched off.
+    pub recommendations: Vec<Recommendation>,
+}
+
+/// A champion worth considering, and why (`recommend::suggest`).
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Recommendation {
+    pub champion_id: i64,
+    /// -1 to 1.
+    pub score: f64,
+    pub reasons: Vec<RecommendReason>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum RecommendReason {
+    /// It wins this often against a revealed enemy, in its lane.
+    Counters { champion_id: i64, win: f64 },
+    /// It wins only this often against a revealed enemy.
+    CounteredBy { champion_id: i64, win: f64 },
+    /// The source's tier, 1 the best of five.
+    Tier { tier: u8 },
+    /// The local player's own games and wins with it in the lane.
+    Played { games: u32, wins: u32 },
+    /// On the player's pick list for the lane.
+    InPickList,
+    /// No source had numbers for it.
+    NoData,
 }
 
 /// Where a team starts on a map of two sides.

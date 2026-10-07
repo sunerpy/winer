@@ -52,7 +52,12 @@ callout: Array<string>,
 /**
  * The local team's side; `None` where the mode has none (Arena, Swarm).
  */
-side: Side | null, };
+side: Side | null, 
+/**
+ * Champions worth considering for the local player's pick, best first (`recommend`); empty
+ * where suggestions do not apply or are switched off.
+ */
+recommendations: Array<Recommendation>, };
 
 export type TimerView = { phase: string, 
 /**
@@ -350,6 +355,14 @@ name: RiotId | null,
 updatedAt: number, };
 
 export type NoteEntry = { puuid: string, note: PlayerNote, };
+
+export type Recommendation = { championId: number, 
+/**
+ * -1 to 1.
+ */
+score: number, reasons: Array<RecommendReason>, };
+
+export type RecommendReason = { "kind": "counters", championId: number, win: number, } | { "kind": "counteredBy", championId: number, win: number, } | { "kind": "tier", tier: number, } | { "kind": "played", games: number, wins: number, } | { "kind": "inPickList" } | { "kind": "noData" };
 
 export type DiagnosticsReport = { 
 /**
@@ -839,7 +852,11 @@ arenaSource: ModeSource,
 /**
  * Hextech ARAM asks ARAM.GG when Tencent has no numbers; off, Tencent's are the only ones.
  */
-hextechFallback: boolean, };
+hextechFallback: boolean, 
+/**
+ * Champ select on the Rift shows champions worth considering (`recommend`); shown only.
+ */
+recommend: boolean, };
 
 export type RiftSource = "tencent" | "opGg";
 

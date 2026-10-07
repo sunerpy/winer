@@ -35,6 +35,14 @@ export function BuildSettingsRows() {
           label={t("loadout.builds")}
         />
       </Row>
+      <Row label={t("loadout.recommend")} help={t("loadout.recommendHint")}>
+        <Toggle
+          checked={builds.recommend}
+          disabled={off}
+          onChange={(recommend) => set({ recommend })}
+          label={t("loadout.recommend")}
+        />
+      </Row>
       <h3 className="eyebrow pt-5 pb-1">{t("loadout.sources")}</h3>
       <Row label={t("loadout.riftSource")} help={t("loadout.riftSourceHint")}>
         <Segmented<RiftSource>

@@ -69,6 +69,8 @@ pub fn typescript() -> String {
         notes::NoteTag,
         notes::PlayerNote,
         notes::NoteEntry,
+        view::Recommendation,
+        view::RecommendReason,
         view::DiagnosticsReport,
         view::Check,
         view::CheckId,

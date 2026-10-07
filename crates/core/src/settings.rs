@@ -872,6 +872,8 @@ pub struct BuildSettings {
     pub arena_source: ModeSource,
     /// Hextech ARAM asks ARAM.GG when Tencent has no numbers; off, Tencent's are the only ones.
     pub hextech_fallback: bool,
+    /// Champ select on the Rift shows champions worth considering (`recommend`); shown only.
+    pub recommend: bool,
 }
 
 impl Default for BuildSettings {
@@ -882,6 +884,7 @@ impl Default for BuildSettings {
             aram_source: ModeSource::OpGg,
             arena_source: ModeSource::OpGg,
             hextech_fallback: true,
+            recommend: true,
         }
     }
 }

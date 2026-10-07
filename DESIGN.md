@@ -118,7 +118,7 @@ The settings dialog's sections are 外观, 通用, 评级 and 关于, a vertical
 holds the global shortcut that summons the window: its keys as `Kbd` caps, 更改快捷键 (a recorder
 that takes the next combination, Esc cancelling, while the shell lets the old one go) and a ✕ that
 turns it off; a lamp says 已生效, or the row says in `danger` that the system refused it. Under the
-配装推荐 switch, a 数据源 eyebrow heads where each mode's numbers come from: 召唤师峡谷 as a Segmented
+配装推荐 and 选人推荐 switches, a 数据源 eyebrow heads where each mode's numbers come from: 召唤师峡谷 as a Segmented
 (腾讯 101 · OP.GG), 大乱斗 and 斗魂竞技场 as Segmented (OP.GG · 关闭), then the Hextech ARAM.GG fallback and
 the augment descriptions as switches; the hints name each source's terms. 关于 holds 诊断: 立即检查 lists
 one line a check (a lamp by status, the check's name, why, and in mono the routes a client lost), and

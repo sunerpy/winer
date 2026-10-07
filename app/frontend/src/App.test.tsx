@@ -1151,6 +1151,7 @@ describe("loadout", () => {
     rerollsRemaining: 0,
     callout: [],
     side: "blue",
+    recommendations: [],
   };
   const live = (snapshot: Partial<Snapshot>): Snapshot => ({
     ...EMPTY_SNAPSHOT,
@@ -1211,6 +1212,42 @@ describe("loadout", () => {
       lane: null,
     });
     expect(await screen.findByText(zhCN["loadout.itemSetWritten"])).toBeInTheDocument();
+  });
+
+  it("shows the pick suggestions with their reasons, and nothing to click in them", async () => {
+    const backend = demoWith({
+      get_snapshot: () =>
+        live({
+          phase: "ChampSelect",
+          champSelect: {
+            ...ranked,
+            recommendations: [
+              {
+                championId: 103,
+                score: 0.6,
+                reasons: [
+                  { kind: "counters", championId: 64, win: 0.54 },
+                  { kind: "tier", tier: 1 },
+                  { kind: "played", games: 8, wins: 6 },
+                  { kind: "inPickList" },
+                ],
+              },
+              { championId: 86, score: 0, reasons: [{ kind: "noData" }] },
+            ],
+          },
+        }),
+    });
+    await openLive(backend);
+    const list = await screen.findByRole("list", { name: zhCN["suggest.title"] });
+    const items = within(list).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    const first = items[0] as HTMLElement;
+    expect(await within(first).findByText("克制 李青（54%）")).toBeInTheDocument();
+    expect(within(first).getByText("版本 T1")).toBeInTheDocument();
+    expect(within(first).getByText("你在这个分路 8 场 6 胜")).toBeInTheDocument();
+    expect(within(first).getByText(zhCN["suggest.inPickList"])).toBeInTheDocument();
+    expect(within(items[1] as HTMLElement).getByText(zhCN["suggest.noData"])).toBeInTheDocument();
+    expect(within(list).queryByRole("button"), "shown only: nothing to hover or lock").toBeNull();
   });
 
   it("sets up runes and spells from a ranked champ select, by lane, and names the matchups", async () => {
@@ -1483,6 +1520,8 @@ describe("loadout", () => {
         }),
       }),
     );
+    await user.click(within(dialog).getByRole("switch", { name: zhCN["loadout.recommend"] }));
+    await saved({ recommend: false });
     await user.click(within(dialog).getByRole("switch", { name: zhCN["loadout.builds"] }));
     await saved({ enabled: false, riftSource: "opGg" });
     expect(within(sources).getByRole("radio", { name: "腾讯 101" })).toBeDisabled();

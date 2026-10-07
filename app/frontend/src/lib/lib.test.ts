@@ -92,6 +92,7 @@ const SETTINGS = {
     aramSource: "opGg",
     arenaSource: "opGg",
     hextechFallback: true,
+    recommend: true,
   },
   history: { hideCustomGames: true },
 } satisfies Settings;

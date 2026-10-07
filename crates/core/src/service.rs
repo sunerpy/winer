@@ -47,6 +47,7 @@ use crate::{
         self, Admit, ChallengeProfile, ChallengeSummary, ClientBanner, ClientChallenge,
         ClientTitle, Fix, Regalia, SkinChoice, SummonerProfile,
     },
+    recommend,
     settings::{
         self, Audience, CalloutRule, General, Language, Mode, ModeSource, PresenceRule,
         ProfileSettings, RiftSource, Scoped, Settings, SettingsStore,
@@ -55,8 +56,8 @@ use crate::{
     view::{
         AugmentDetail, Check, CheckFailure, CheckId, CheckReason, Connection, ErrorCode, Event,
         GameData, HistorySource, IpcError, MatchDetail, MatchPage, Me, Notice, NoticeKind, Patch,
-        Phase, PlayerProfile, PlayerStanding, PlayerStats, PlayerSummary, Presence, QueueInfo,
-        RiotId, Seat, Snapshot, Update,
+        Phase, PlayerProfile, PlayerStanding, PlayerStats, PlayerSummary, Position, Presence,
+        QueueInfo, Recommendation, RiotId, Seat, Snapshot, Update,
     },
 };
 
@@ -231,6 +232,8 @@ struct Live {
     /// The lanes the local player asked for in the last lobby, kept like `party` for the champ
     /// select it leads to (`automation::autofilled`).
     preferences: Option<automation::LanePreferences>,
+    /// The numbers the champ select's pick suggestions asked for, and the answers (`recommend`).
+    recommend: Option<recommend::RecommendState>,
     /// What was set up for the champion in hand, and the champ select to remember (`loadout`).
     loadout: loadout::LoadoutLive,
 }
@@ -242,6 +245,7 @@ impl Live {
         self.available = None;
         self.callout_sent = false;
         self.swaps.clear();
+        self.recommend = None;
     }
 }
 
@@ -1322,6 +1326,7 @@ impl Service {
             for seat in view.my_team.iter_mut().filter(|seat| seat.is_self) {
                 seat.autofilled = filled;
             }
+            view.recommendations = self.recommendations(client, &session, mode, &settings);
             let champion = |id: i64| {
                 data.as_ref()?
                     .champions
@@ -1414,6 +1419,117 @@ impl Service {
             Some(PlayerEntry::Loading { .. }) | None => return PlayerStats::Loading,
         };
         PlayerStats::Ready(Box::new(self.summarize(&record, focus)))
+    }
+
+    /// Champions worth considering for the local player's pick on the Rift, while their own pick is
+    /// not locked (`recommend`). The numbers for any candidate not asked for yet are fetched in the
+    /// background, each answer drawing the view again; none of this acts in the client.
+    fn recommendations(
+        &self,
+        client: &Client,
+        session: &ChampSelectSession,
+        mode: Option<Mode>,
+        settings: &Settings,
+    ) -> Vec<Recommendation> {
+        let builds = &settings.builds;
+        let Some(mode) = mode.filter(|mode| matches!(mode, Mode::Ranked | Mode::Normal)) else {
+            return Vec::new();
+        };
+        let Some(me) = session.local_player() else {
+            return Vec::new();
+        };
+        let Some(lane) = Position::parse(&me.assigned_position) else {
+            return Vec::new();
+        };
+        let locked = session.all_actions().any(|action| {
+            action.actor_cell_id == me.cell_id && action.kind == "pick" && action.completed
+        });
+        if !builds.enabled || !builds.recommend || locked {
+            return Vec::new();
+        }
+        let key = recommend::RecommendKey {
+            game_id: session.game_id,
+            mode,
+            lane,
+            settings: builds.clone(),
+        };
+        let (puuid, pickable) = {
+            let live = lock(&client.live);
+            let pickable = match &live.available {
+                Some((game, Some(available))) if *game == session.game_id => {
+                    available.pickable.clone()
+                }
+                _ => None,
+            };
+            (live.me.clone(), pickable)
+        };
+        let played = match lock(&self.inner.players).get(&puuid) {
+            Some(PlayerEntry::Ready(record, _)) => {
+                analysis::lane_champions(&record.games, &puuid, lane)
+            }
+            _ => Vec::new(),
+        };
+        let taken = automation::spoken_for(session, me.cell_id);
+        let free = |champion: i64| {
+            !taken.contains(&champion)
+                && pickable
+                    .as_ref()
+                    .is_none_or(|pickable| pickable.contains(&champion))
+        };
+        let candidates = recommend::candidates(
+            &settings.automation.pick.champions.candidates(Some(lane)),
+            &played,
+            free,
+        );
+        let enemies: Vec<i64> = session
+            .their_team
+            .iter()
+            .map(|player| player.champion_id)
+            .filter(|&id| id > 0)
+            .collect();
+        let (ask, answers) = {
+            let mut live = lock(&client.live);
+            let mut state = recommend::RecommendState::for_key(live.recommend.take(), key.clone());
+            let ask = state.to_ask(&candidates);
+            let answers = state.builds.clone();
+            live.recommend = Some(state);
+            (ask, answers)
+        };
+        if !ask.is_empty() {
+            self.fetch_recommendations(client, key, ask);
+        }
+        recommend::suggest(&candidates, &answers, &enemies, &played)
+    }
+
+    /// The numbers for `champions` under `key`, one after another, each answer kept only while
+    /// the suggestions are still asked under that key.
+    fn fetch_recommendations(
+        &self,
+        client: &Client,
+        key: recommend::RecommendKey,
+        champions: Vec<i64>,
+    ) {
+        let (service, client) = (self.clone(), client.clone());
+        self.spawn(async move {
+            for champion in champions {
+                let found = service
+                    .build_with(&key.settings, champion, key.mode, Some(key.lane))
+                    .await;
+                if let Err(error) = &found {
+                    debug!(%error, champion, "no numbers for a pick suggestion");
+                }
+                let kept = recommend::answer(
+                    &mut lock(&client.live).recommend,
+                    &key,
+                    champion,
+                    found.ok(),
+                );
+                if !kept {
+                    return;
+                }
+                service.render(&client);
+            }
+        });
     }
 
     /// The user's notes on the seated players.

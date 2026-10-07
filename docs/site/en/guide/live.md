@@ -98,6 +98,23 @@ and you swap at once, without the client's cooldown. While rerolls remain, **Rer
 right. With a wishlist set in **Automation › Bench**, a wishlist champion that ranks above the one
 you hold is taken by itself; wishlist champions carry a star.
 
+## Pick suggestions
+
+In Summoner's Rift ranked and normal champ select, once you have a lane and until you lock in, three
+champions are suggested above the teams, each with why:
+
+- **Beats / Loses to**: an enemy already locked in appears in the champion's lane matchups, with its
+  win rate against that enemy.
+- **Tier 1–5**: the source's standing for it (OP.GG gives one, Tencent 101 does not).
+- **Your games in the lane**: how many games you played it in this lane lately, and won; only the
+  Tencent shards' history says which lane a game was.
+- **On your pick list**: it is on the list in **Automation › Auto-pick a champion**.
+
+The candidates are your pick list for the lane (then Any lane) and the five champions you play most
+there; banned and locked champions, and those a teammate picked or showed, never appear. The
+suggestions are shown only: winer hovers and locks nothing for them. **Pick suggestions** in
+**Settings › General** turns them off.
+
 ## Builds
 
 In champ select, the build of the champion you hover or lock in sits under the analysis; while the
