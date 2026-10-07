@@ -288,7 +288,7 @@ export type Notice = {
  */
 at: number, kind: NoticeKind, };
 
-export type NoticeKind = { "kind": "accepted" } | { "kind": "declared", championId: number, } | { "kind": "picked", championId: number, locked: boolean, } | { "kind": "banned", championId: number, } | { "kind": "playedAgain" } | { "kind": "swapped", championId: number, } | { "kind": "calledOut", lines: number, } | { "kind": "presenceRestored", availability: string, } | { "kind": "presenceRefused" } | { "kind": "foreignLoader", program: string, } | { "kind": "failed", action: string, message: string, } | { "kind": "loadoutApplied", championId: number, 
+export type NoticeKind = { "kind": "accepted" } | { "kind": "declared", championId: number, } | { "kind": "picked", championId: number, locked: boolean, } | { "kind": "banned", championId: number, } | { "kind": "playedAgain" } | { "kind": "swapped", championId: number, } | { "kind": "calledOut", lines: number, } | { "kind": "presenceRestored", availability: string, } | { "kind": "presenceRefused" } | { "kind": "foreignLoader", program: string, } | { "kind": "diagnosticsFailed", version: string, failed: number, } | { "kind": "failed", action: string, message: string, } | { "kind": "loadoutApplied", championId: number, 
 /**
  * The client's own recommendation: nothing was remembered for the champion.
  */
@@ -321,6 +321,30 @@ elevated: boolean, logDir: string, settingsPath: string,
 notices: string, };
 
 export type UpdateStatus = { "state": "idle" } | { "state": "checking" } | { "state": "upToDate", version: string, checkedAt: number, } | { "state": "available", version: string, current: string, notes: string | null, date: string | null, } | { "state": "downloading", version: string, received: number, total: number | null, } | { "state": "installing", version: string, } | { "state": "failed", message: string, };
+
+export type DiagnosticsReport = { 
+/**
+ * Epoch milliseconds.
+ */
+at: number, 
+/**
+ * The client's version, when the client answered.
+ */
+clientVersion: string | null, checks: Array<Check>, };
+
+export type Check = { id: CheckId, status: CheckStatus, reason: CheckReason, detail: string | null, 
+/**
+ * How a request failed, for the reasons that come from one.
+ */
+failure: CheckFailure | null, tookMs: number, };
+
+export type CheckId = "client" | "routes" | "sgp" | "sourceTencent" | "sourceOpgg" | "sourceAramgg" | "plugin" | "hotkey" | "updater";
+
+export type CheckStatus = "ok" | "warn" | "fail" | "unknown" | "skipped";
+
+export type CheckReason = "fine" | "notConnected" | "noServer" | "sourceOff" | "unreachable" | "listUnavailable" | "routesMissing" | "foreignLoader" | "pluginOff" | "loaderInactive" | "pluginStale" | "bridgeIdle" | "noHotkey" | "hotkeyRefused" | "neverChecked" | "checkFailed";
+
+export type CheckFailure = { "kind": "timeout" } | { "kind": "connect" } | { "kind": "status", code: number, } | { "kind": "decode" } | { "kind": "other" };
 
 export type IpcError = { code: ErrorCode, message: string, };
 

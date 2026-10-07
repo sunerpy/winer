@@ -120,7 +120,9 @@ that takes the next combination, Esc cancelling, while the shell lets the old on
 turns it off; a lamp says 已生效, or the row says in `danger` that the system refused it. Under the
 配装推荐 switch, a 数据源 eyebrow heads where each mode's numbers come from: 召唤师峡谷 as a Segmented
 (腾讯 101 · OP.GG), 大乱斗 and 斗魂竞技场 as Segmented (OP.GG · 关闭), then the Hextech ARAM.GG fallback and
-the augment descriptions as switches; the hints name each source's terms. 评级
+the augment descriptions as switches; the hints name each source's terms. 关于 holds 诊断: 立即检查 lists
+one line a check (a lamp by status, the check's name, why, and in mono the routes a client lost), and
+复制 copies the report as text, falling back to a read-only text box when the clipboard refuses. 评级
 holds the rating scheme as radio cards (name, one-line hint, the tiers best to worst; two columns
 from 520px), the custom names as five inputs while 自定义 is chosen, the titles switch, and 评价依据
 in an inset block whose 完整说明 opens the site's rating page (`docs/site/rating.md`). 自动化 › 喊话 shows the scheme by

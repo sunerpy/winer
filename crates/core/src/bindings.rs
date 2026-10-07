@@ -65,6 +65,12 @@ pub fn typescript() -> String {
         view::Presence,
         view::AppInfo,
         view::UpdateStatus,
+        view::DiagnosticsReport,
+        view::Check,
+        view::CheckId,
+        view::CheckStatus,
+        view::CheckReason,
+        view::CheckFailure,
         view::IpcError,
         view::ErrorCode,
         // Social.

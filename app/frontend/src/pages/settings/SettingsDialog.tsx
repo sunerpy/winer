@@ -33,6 +33,7 @@ import {
 } from "../../ui";
 import { HotkeyRow } from "./HotkeyRow";
 import { BuildSettingsRows } from "./BuildSettings";
+import { DiagnosticsRow } from "./DiagnosticsRow";
 import { StorageRows } from "./StorageRows";
 import { updateLine } from "./UpdateDialog";
 
@@ -495,6 +496,7 @@ function AboutSection({ onOpenUpdate }: { onOpenUpdate: () => void }) {
           {t("settings.releases")}
         </Button>
       </Row>
+      <DiagnosticsRow version={info.data?.version ?? ""} />
       <Row label={t("settings.notices")} help={t("settings.noticesHint")}>
         <details className="w-full">
           <summary className="cursor-pointer text-[12.5px] text-fg-muted hover:text-fg">

@@ -11,8 +11,10 @@ use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
 use serde::Deserialize;
 
 use crate::{
+    diagnose::failure_of,
     model::{Game, Participant, ParticipantIdentity, Player, Stats, Team, TeamBan, Timeline},
     net,
+    view::CheckFailure,
 };
 
 /// Fifty games, the most one page asks for, are about 6.5 MB.
@@ -69,15 +71,7 @@ pub async fn history(
     begin: u32,
     count: u32,
 ) -> Result<Page, String> {
-    let url = format!(
-        "{base}/match-history-query/v1/products/lol/player/{puuid}/SUMMARY?startIndex={begin}&count={count}"
-    );
-    let response = net::client()?
-        .get(url)
-        .header(AUTHORIZATION, format!("Bearer {token}"))
-        .header(USER_AGENT, user_agent)
-        .header(ACCEPT, "application/json")
-        .timeout(TIMEOUT)
+    let response = request(base, token, user_agent, puuid, begin, count)?
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
@@ -85,6 +79,44 @@ pub async fn history(
     let body = response.bytes().await.map_err(|error| error.to_string())?;
     let history: History = serde_json::from_slice(&body).map_err(|error| error.to_string())?;
     Ok(history.into_page())
+}
+
+/// Whether the server answers one game of `puuid`'s, for the self-check: how it failed, without
+/// the request (whose address holds the puuid).
+pub async fn probe(
+    base: &str,
+    token: &str,
+    user_agent: &str,
+    puuid: &str,
+) -> Result<(), CheckFailure> {
+    let response = request(base, token, user_agent, puuid, 0, 1)
+        .map_err(|_| CheckFailure::Other)?
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status)
+        .map_err(|error| failure_of(&error))?;
+    let body = response.bytes().await.map_err(|error| failure_of(&error))?;
+    serde_json::from_slice::<History>(&body).map_err(|_| CheckFailure::Decode)?;
+    Ok(())
+}
+
+fn request(
+    base: &str,
+    token: &str,
+    user_agent: &str,
+    puuid: &str,
+    begin: u32,
+    count: u32,
+) -> Result<reqwest::RequestBuilder, String> {
+    let url = format!(
+        "{base}/match-history-query/v1/products/lol/player/{puuid}/SUMMARY?startIndex={begin}&count={count}"
+    );
+    Ok(net::client()?
+        .get(url)
+        .header(AUTHORIZATION, format!("Bearer {token}"))
+        .header(USER_AGENT, user_agent)
+        .header(ACCEPT, "application/json")
+        .timeout(TIMEOUT))
 }
 
 #[derive(Debug, Default, Deserialize)]

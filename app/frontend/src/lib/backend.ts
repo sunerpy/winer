@@ -12,6 +12,7 @@ import type {
   CalloutRule,
   ChallengeProfile,
   CleanupReport,
+  DiagnosticsReport,
   Event,
   GameData,
   General,
@@ -65,6 +66,8 @@ export interface Commands {
   get_app_info: Command<undefined, AppInfo>;
   relaunch_elevated: Command<undefined, null>;
   reveal_logs: Command<undefined, null>;
+  /** The self-check: reads only, each check giving up after a few seconds. */
+  run_diagnostics: Command<undefined, DiagnosticsReport>;
   // Storage: what winer keeps, and the cleanup.
   get_storage: Command<undefined, StorageReport>;
   /** Removes old logs, spent update installers and the caches in memory now, and the WebView's

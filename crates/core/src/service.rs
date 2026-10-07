@@ -29,8 +29,9 @@ use crate::{
     analysis, augments,
     automation::{self, Availability, ChampAction, Step},
     backup::{self, BackupChannel, BackupFile, BackupInfo},
+    builds,
     cache::Lru,
-    callout, catalog,
+    callout, catalog, diagnose,
     friends::{self, FRIENDS, Friend},
     history::{HistoryCache, NEWEST_TTL, Page as HistoryPage, rate_alone},
     live,
@@ -43,14 +44,15 @@ use crate::{
         ClientTitle, Fix, Regalia, SkinChoice, SummonerProfile,
     },
     settings::{
-        self, Audience, CalloutRule, General, Language, Mode, PresenceRule, ProfileSettings,
-        Scoped, Settings, SettingsStore,
+        self, Audience, CalloutRule, General, Language, Mode, ModeSource, PresenceRule,
+        ProfileSettings, RiftSource, Scoped, Settings, SettingsStore,
     },
     sgp,
     view::{
-        AugmentDetail, Connection, ErrorCode, Event, GameData, HistorySource, IpcError,
-        MatchDetail, MatchPage, Me, Notice, NoticeKind, Patch, Phase, PlayerProfile,
-        PlayerStanding, PlayerStats, PlayerSummary, Presence, QueueInfo, Snapshot, Update,
+        AugmentDetail, Check, CheckFailure, CheckId, CheckReason, Connection, ErrorCode, Event,
+        GameData, HistorySource, IpcError, MatchDetail, MatchPage, Me, Notice, NoticeKind, Patch,
+        Phase, PlayerProfile, PlayerStanding, PlayerStats, PlayerSummary, Presence, QueueInfo,
+        Snapshot, Update,
     },
 };
 
@@ -172,6 +174,8 @@ struct Inner {
     /// Counts the plugins' hellos on the bridge: a restarted interface is back once it changes
     /// (`ux`).
     plugin_hellos: watch::Sender<u64>,
+    /// The client version the last connection saw, for the self-check after an update.
+    versions: diagnose::VersionStore,
 }
 
 /// Augment descriptions per language, with when they were fetched.
@@ -297,8 +301,11 @@ impl Service {
     pub fn new(settings_path: impl Into<PathBuf>, runtime: Handle) -> Self {
         let (events, _) = broadcast::channel(256);
         let settings_path = settings_path.into();
-        // Remembered setups live in a file of their own beside the settings.
+        // Remembered setups live in a file of their own beside the settings, as does the client
+        // version last seen.
         let loadouts = settings_path.with_file_name("loadouts.json");
+        let versions =
+            diagnose::VersionStore::new(settings_path.with_file_name("diagnostics.json"));
         Self {
             inner: Arc::new(Inner {
                 settings: SettingsStore::open(settings_path),
@@ -314,6 +321,7 @@ impl Service {
                 loadout: loadout::LoadoutState::new(loadouts),
                 history: Mutex::new(HistoryCache::default()),
                 plugin_hellos: watch::Sender::new(0),
+                versions,
             }),
         }
     }
@@ -698,6 +706,50 @@ impl Service {
 
     fn spawn(&self, task: impl Future<Output = ()> + Send + 'static) {
         self.inner.runtime.spawn(task);
+    }
+
+    /// The core's half of the self-check: the client, its routes, the shard's match-history
+    /// server and the data sources the settings use. The checks run at once, each within its own
+    /// time limit, and write nothing anywhere (`diagnose`).
+    pub async fn diagnose(&self) -> Vec<Check> {
+        let client = self.client().ok();
+        let settings = self.settings();
+        let builds = &settings.builds;
+        // Hextech ARAM always asks Tencent first, so Tencent is in use whenever the panel is on.
+        let tencent = builds.enabled;
+        let opgg = builds.enabled
+            && (builds.rift_source == RiftSource::OpGg
+                || builds.aram_source == ModeSource::OpGg
+                || builds.arena_source == ModeSource::OpGg);
+        let aramgg =
+            settings.general.augment_details || (builds.enabled && builds.hextech_fallback);
+        let client = client.as_ref();
+        let (client_check, routes, server, tencent, opgg, aramgg) = tokio::join!(
+            diagnose::timed(CheckId::Client, check_client(client)),
+            diagnose::timed(CheckId::Routes, check_routes(client)),
+            diagnose::timed(CheckId::Sgp, check_server(client)),
+            diagnose::timed(
+                CheckId::SourceTencent,
+                check_source(tencent, builds::probe_tencent())
+            ),
+            diagnose::timed(
+                CheckId::SourceOpgg,
+                check_source(opgg, builds::probe_opgg())
+            ),
+            diagnose::timed(
+                CheckId::SourceAramgg,
+                check_source(aramgg, builds::probe_aramgg())
+            ),
+        );
+        vec![client_check, routes, server, tencent, opgg, aramgg]
+    }
+
+    /// Keeps the connected client's version as the one last seen, and returns it when another was
+    /// seen before: the client has updated, and the shell runs the self-check.
+    pub async fn note_client_version(&self) -> Result<Option<String>, CoreError> {
+        let client = self.client()?;
+        let version: String = client.lcu.get("/lol-patch/v1/game-version").await?;
+        Ok(self.inner.versions.note(&version)?)
     }
 
     /// A notice from the shell's side of things, for the window like the core's own.
@@ -2384,6 +2436,34 @@ async fn server_history(
     begin: u32,
     count: u32,
 ) -> Option<Result<sgp::Page, CoreError>> {
+    let shard = match shard(client).await? {
+        Ok(shard) => shard,
+        Err(error) => return Some(Err(error)),
+    };
+    Some(
+        sgp::history(
+            shard.base,
+            &shard.token,
+            &shard.user_agent,
+            puuid,
+            begin,
+            count,
+        )
+        .await
+        .map_err(CoreError::Remote),
+    )
+}
+
+/// The shard's match-history server, with what a request to it needs. The token stays in memory.
+struct Shard {
+    base: &'static str,
+    token: String,
+    user_agent: String,
+}
+
+/// The server of the shard the client is on, and the client's own access token for it; `None`
+/// where the shard has no server.
+async fn shard(client: &Client) -> Option<Result<Shard, CoreError>> {
     let (entitlements, version) = tokio::join!(
         client.lcu.get::<Entitlements>("/entitlements/v1/token"),
         client.lcu.get::<String>("/lol-patch/v1/game-version"),
@@ -2404,19 +2484,77 @@ async fn server_history(
             "the client has no access token".into(),
         )));
     }
-    let user_agent = sgp::user_agent(&version.unwrap_or_default());
-    Some(
-        sgp::history(
-            base,
-            &entitlements.access_token,
-            &user_agent,
-            puuid,
-            begin,
-            count,
-        )
+    Some(Ok(Shard {
+        base,
+        token: entitlements.access_token,
+        user_agent: sgp::user_agent(&version.unwrap_or_default()),
+    }))
+}
+
+// ---- Diagnostics: the core's checks (`Service::diagnose`) ----
+
+async fn check_client(client: Option<&Client>) -> diagnose::Outcome {
+    let Some(client) = client else {
+        return diagnose::Outcome::skipped(CheckReason::NotConnected);
+    };
+    match client.lcu.get::<String>("/lol-patch/v1/game-version").await {
+        Ok(version) => diagnose::Outcome::fine().with_detail(version),
+        Err(error) => diagnose::Outcome::failed(diagnose::lcu_failure(&error)),
+    }
+}
+
+/// The client's own list of its routes against the ones winer calls; a client without a list
+/// leaves the check unknown, never failed.
+async fn check_routes(client: Option<&Client>) -> diagnose::Outcome {
+    let Some(client) = client else {
+        return diagnose::Outcome::skipped(CheckReason::NotConnected);
+    };
+    let functions = client
+        .lcu
+        .get::<serde_json::Value>("/help")
         .await
-        .map_err(CoreError::Remote),
-    )
+        .ok()
+        .as_ref()
+        .and_then(diagnose::help_functions);
+    let (status, reason, detail) = diagnose::routes_check(functions.as_ref());
+    diagnose::Outcome {
+        detail,
+        ..diagnose::Outcome::new(status, reason)
+    }
+}
+
+/// One game of the local player's from the shard's match-history server.
+async fn check_server(client: Option<&Client>) -> diagnose::Outcome {
+    let me = client.map(|client| lock(&client.live).me.clone());
+    let (Some(client), Some(me)) = (client, me.filter(|me| !me.is_empty())) else {
+        return diagnose::Outcome::skipped(CheckReason::NotConnected);
+    };
+    match shard(client).await {
+        None => diagnose::Outcome::skipped(CheckReason::NoServer),
+        Some(Err(CoreError::Lcu(error))) => {
+            diagnose::Outcome::failed(diagnose::lcu_failure(&error))
+        }
+        Some(Err(_)) => diagnose::Outcome::failed(CheckFailure::Other),
+        Some(Ok(shard)) => {
+            match sgp::probe(shard.base, &shard.token, &shard.user_agent, &me).await {
+                Ok(()) => diagnose::Outcome::fine(),
+                Err(failure) => diagnose::Outcome::failed(failure),
+            }
+        }
+    }
+}
+
+async fn check_source(
+    on: bool,
+    probe: impl Future<Output = Result<(), CheckFailure>>,
+) -> diagnose::Outcome {
+    if !on {
+        return diagnose::Outcome::skipped(CheckReason::SourceOff);
+    }
+    match probe.await {
+        Ok(()) => diagnose::Outcome::fine(),
+        Err(failure) => diagnose::Outcome::failed(failure),
+    }
 }
 
 /// One page of `puuid`'s games. For the local player either path form has been measured answering

@@ -1347,6 +1347,33 @@ describe("loadout", () => {
     expect(screen.getByRole("switch", { name: zhCN["loadout.itemSets"] })).toBeInTheDocument();
   });
 
+  it("runs the self-check from About and copies it, or shows the text when the clipboard refuses", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await renderApp(backend);
+    fireEvent.keyDown(window, { key: ",", ctrlKey: true });
+    const dialog = screen.getByRole("dialog", { name: zhCN["settings.title"] });
+    await user.click(within(dialog).getByRole("tab", { name: zhCN["settings.about"] }));
+    await user.click(within(dialog).getByRole("button", { name: zhCN["diag.run"] }));
+    expect(call).toHaveBeenCalledWith("run_diagnostics");
+    const results = await within(dialog).findByRole("list", { name: zhCN["diag.results"] });
+    expect(within(results).getByText(/16\.19\.8217343/)).toBeInTheDocument();
+    expect(within(results).getAllByRole("listitem")).toHaveLength(9);
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    await user.click(within(dialog).getByRole("button", { name: zhCN["diag.copy"] }));
+    expect(writeText).toHaveBeenCalledWith(
+      expect.stringContaining("✓ 客户端 · 正常 · 16.19.8217343"),
+    );
+    expect(within(dialog).queryByRole("textbox", { name: zhCN["diag.copyText"] })).toBeNull();
+
+    writeText.mockRejectedValue(new Error("denied"));
+    await user.click(within(dialog).getByRole("button", { name: zhCN["diag.copy"] }));
+    const text = await within(dialog).findByRole("textbox", { name: zhCN["diag.copyText"] });
+    expect((text as HTMLTextAreaElement).value).toContain("winer 0.2.0 · 诊断");
+  });
+
   it("switches builds and each mode's data source in settings", async () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");

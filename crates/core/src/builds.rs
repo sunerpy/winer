@@ -18,10 +18,11 @@ use serde_json::Value;
 use ts_rs::TS;
 
 use crate::{
+    diagnose::failure_of,
     model::PerkStyles,
     net,
     settings::{BuildSettings, Mode, ModeSource, RiftSource},
-    view::{Position, Rarity},
+    view::{CheckFailure, Position, Rarity},
 };
 
 /// The documented per-request bound for these hosts, as for ARAM.GG's descriptions.
@@ -1374,6 +1375,42 @@ async fn get(url: &str) -> Result<Vec<u8>, String> {
         .to_vec())
 }
 
+/// Whether `url` answers with JSON, for the self-check: how it failed, without the request.
+async fn probe(url: &str) -> Result<(), CheckFailure> {
+    let client = net::client().map_err(|_| CheckFailure::Other)?;
+    let response = client
+        .get(url)
+        .header(ACCEPT, "application/json")
+        .timeout(TIMEOUT)
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status)
+        .map_err(|error| failure_of(&error))?;
+    let body = response.bytes().await.map_err(|error| failure_of(&error))?;
+    serde_json::from_slice::<serde::de::IgnoredAny>(&body).map_err(|_| CheckFailure::Decode)?;
+    Ok(())
+}
+
+/// Tencent's list of patches, the first thing every Tencent lookup asks for.
+pub async fn probe_tencent() -> Result<(), CheckFailure> {
+    probe(TENCENT_PATCHES).await
+}
+
+/// One champion's Summoner's Rift page, as a lookup asks for it.
+pub async fn probe_opgg() -> Result<(), CheckFailure> {
+    probe(&opgg_url(
+        "ranked",
+        1,
+        Some(opgg_position(Position::Middle)),
+    ))
+    .await
+}
+
+/// One champion's augments, as a lookup asks for them.
+pub async fn probe_aramgg() -> Result<(), CheckFailure> {
+    probe(&aramgg_url(1)).await
+}
+
 /// What one champion, mode and lane is asked about.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Query {
@@ -1383,8 +1420,10 @@ pub struct Query {
     pub lane: Option<Position>,
 }
 
+const TENCENT_PATCHES: &str = "https://mlol.qt.qq.com/go/database/versionlist?zone=lol&from=h5";
+
 pub async fn fetch_tencent_patches() -> Result<Vec<String>, String> {
-    tencent_patches(&get("https://mlol.qt.qq.com/go/database/versionlist?zone=lol&from=h5").await?)
+    tencent_patches(&get(TENCENT_PATCHES).await?)
 }
 
 async fn tencent_101(
@@ -1466,6 +1505,10 @@ pub async fn fetch_tencent_hextech(champion_id: i64, known: &Known) -> Result<Bu
     Ok(parse_tencent_hextech(champion_id, &payload, known))
 }
 
+fn aramgg_url(champion_id: i64) -> String {
+    format!("https://aramgg.com/data/champion-augments/{champion_id}.json")
+}
+
 fn opgg_url(mode: &str, champion_id: i64, position: Option<&str>) -> String {
     let tier = if mode == "ranked" {
         "emerald_plus"
@@ -1510,8 +1553,7 @@ pub async fn fetch_opgg(query: Query, known: &Known) -> Result<Build, String> {
 }
 
 pub async fn fetch_aramgg(champion_id: i64, known: &Known) -> Result<Build, String> {
-    let url = format!("https://aramgg.com/data/champion-augments/{champion_id}.json");
-    parse_aramgg(champion_id, &get(&url).await?, known)
+    parse_aramgg(champion_id, &get(&aramgg_url(champion_id)).await?, known)
 }
 
 #[cfg(test)]

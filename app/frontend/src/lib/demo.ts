@@ -4,6 +4,10 @@ import type {
   BackupInfo,
   BannerChoice,
   CalloutRule,
+  Check,
+  CheckId,
+  CheckReason,
+  CheckStatus,
   ChallengeProfile,
   ChallengeToken,
   ChampSelectView,
@@ -98,6 +102,17 @@ const GAME_DATA: GameData = {
 };
 
 /** A deterministic sequence, so the demo looks the same on every reload. */
+/** One line of the demo's self-check. */
+function check(
+  id: CheckId,
+  status: CheckStatus,
+  reason: CheckReason,
+  detail: string | null = null,
+  tookMs = 0,
+): Check {
+  return { id, status, reason, detail, failure: null, tookMs };
+}
+
 function random(seed: number): () => number {
   let state = seed;
   return () => {
@@ -1188,6 +1203,21 @@ export function demoBackend(): Backend {
     }),
     relaunch_elevated: () => null,
     reveal_logs: () => null,
+    run_diagnostics: () => ({
+      at: Date.now(),
+      clientVersion: "16.19.8217343",
+      checks: [
+        check("client", "ok", "fine", "16.19.8217343", 12),
+        check("routes", "ok", "fine", null, 140),
+        check("sgp", "ok", "fine", null, 260),
+        check("sourceTencent", "ok", "fine", null, 180),
+        check("sourceOpgg", "skipped", "sourceOff", null, 0),
+        check("sourceAramgg", "ok", "fine", null, 320),
+        check("plugin", plugin.active ? "ok" : "fail", plugin.active ? "fine" : "loaderInactive"),
+        check("hotkey", "ok", "fine"),
+        check("updater", "unknown", "neverChecked"),
+      ],
+    }),
     // Storage: what winer keeps, and the cleanup.
     ...demoStorageHandlers(),
     get_autostart: () => false,

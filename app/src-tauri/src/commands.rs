@@ -15,14 +15,15 @@ use winer_core::{
     profile::{ChallengeProfile, SkinChoice},
     settings::{Audience, CalloutRule, General, Language, Mode},
     view::{
-        AppInfo, AugmentDetail, CleanupReport, ErrorCode, GameData, HotkeyStatus, IpcError,
-        MatchDetail, MatchPage, PlayerProfile, PlayerStanding, PlayerSummary, Position, Presence,
-        Snapshot, StorageReport, UpdateStatus,
+        AppInfo, AugmentDetail, CleanupReport, DiagnosticsReport, ErrorCode, GameData,
+        HotkeyStatus, IpcError, MatchDetail, MatchPage, PlayerProfile, PlayerStanding,
+        PlayerSummary, Position, Presence, Snapshot, StorageReport, UpdateStatus,
     },
 };
 
 use crate::{
-    Paths, RELEASES_URL, VERSION, elevation, hotkey, plugin_host, storage::Storage, updater,
+    Paths, RELEASES_URL, VERSION, diagnostics, elevation, hotkey, plugin_host, storage::Storage,
+    updater,
 };
 
 type Result<T> = std::result::Result<T, IpcError>;
@@ -53,6 +54,7 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         get_app_info,
         relaunch_elevated,
         reveal_logs,
+        run_diagnostics,
         // Storage: what winer keeps, and the cleanup.
         get_storage,
         clear_caches,
@@ -250,6 +252,13 @@ async fn enable_plugin<R: Runtime>(app: AppHandle<R>) -> Result<PluginStatus> {
         plugin_host::start_loader(&service);
     }
     Ok(status)
+}
+
+/// The self-check (`diagnostics`): reads only, and each check gives up after a few seconds.
+#[tauri::command]
+async fn run_diagnostics<R: Runtime>(app: AppHandle<R>) -> Result<DiagnosticsReport> {
+    let (service, bridge) = (service(&app), app.state::<Bridge>().inner().clone());
+    Ok(diagnostics::run(&app, &service, &bridge).await)
 }
 
 #[tauri::command]

@@ -716,6 +716,11 @@ pub enum NoticeKind {
     ForeignLoader {
         program: String,
     },
+    /// The client came back on a new version and the self-check found `failed` checks failing.
+    DiagnosticsFailed {
+        version: String,
+        failed: u32,
+    },
     Failed {
         action: String,
         message: String,
@@ -1117,6 +1122,113 @@ pub struct PlayerStanding {
     pub rating: Option<SeatRating>,
     /// The fixed band of 峡谷八档 (`rating::FORM_GRADES`), 0 (S+) to 7 (F), the tier was read from.
     pub band: Option<u8>,
+}
+
+// ---- Diagnostics: whether what winer relies on still answers ----
+
+/// One self-check, put together by the shell from the core's checks and its own.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticsReport {
+    /// Epoch milliseconds.
+    pub at: i64,
+    /// The client's version, when the client answered.
+    pub client_version: Option<String>,
+    pub checks: Vec<Check>,
+}
+
+/// One thing checked. `detail` carries data only (a version, the routes missing, a program's
+/// file name, the system's refusal of a shortcut), never a port, a path or an id, so a copied
+/// report can be shared as it is.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Check {
+    pub id: CheckId,
+    pub status: CheckStatus,
+    pub reason: CheckReason,
+    pub detail: Option<String>,
+    /// How a request failed, for the reasons that come from one.
+    pub failure: Option<CheckFailure>,
+    pub took_ms: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum CheckId {
+    /// The client answers, and on which version.
+    Client,
+    /// Every client route winer calls is still in the client's own list (`/help`).
+    Routes,
+    /// The shard's match-history server.
+    Sgp,
+    SourceTencent,
+    SourceOpgg,
+    SourceAramgg,
+    /// The loader and the in-client plugin.
+    Plugin,
+    Hotkey,
+    Updater,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum CheckStatus {
+    Ok,
+    Warn,
+    Fail,
+    /// Could not be told either way.
+    Unknown,
+    /// Not in use here, so not checked.
+    Skipped,
+}
+
+/// Why a check came out as it did; the window words it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum CheckReason {
+    Fine,
+    NotConnected,
+    /// The shard has no match-history server winer knows (`sgp::base`).
+    NoServer,
+    /// The source is switched off in the settings, or nothing uses it.
+    SourceOff,
+    /// The request failed; `failure` says how.
+    Unreachable,
+    /// The client offered no list of its routes to check against.
+    ListUnavailable,
+    /// `detail` lists the routes the client no longer has, one per line.
+    RoutesMissing,
+    /// Another program launches the client (`detail`: its file name).
+    ForeignLoader,
+    PluginOff,
+    LoaderInactive,
+    PluginStale,
+    /// The client is connected, but no plugin context talks to winer.
+    BridgeIdle,
+    NoHotkey,
+    /// The system refused the shortcut (`detail`: its words).
+    HotkeyRefused,
+    NeverChecked,
+    /// The last check for updates failed.
+    CheckFailed,
+}
+
+/// How a request failed, without the request itself.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum CheckFailure {
+    Timeout,
+    Connect,
+    Status {
+        code: u16,
+    },
+    /// An answer, but not one winer can read.
+    Decode,
+    Other,
 }
 
 #[cfg(test)]

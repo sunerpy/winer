@@ -111,6 +111,13 @@ remembered setups, update installers and the cache in memory. Where each lives i
   the caches in memory let go of what expires, the WebView's page cache holds 32 MB at most, and
   update installers go at the next start.
 
+**Diagnostics** checks what winer relies on: the client and its version, whether every client route
+winer uses is still there, the match-history server, the data sources the settings use, the
+in-client plugin, the shortcuts, and how the last check for updates went. **Run checks** runs them,
+each for 10 seconds at most; **Copy** copies the results as text for a bug report, with no port,
+path or account in it. Diagnostics only read and never change the client. The first time the client
+connects after an update, winer runs them by itself and sends a notice when one fails.
+
 ## Keyboard shortcuts
 
 | Keys             | Does                             |

@@ -37,6 +37,8 @@ export function noticeText(kind: NoticeKind, t: Translate, catalog: Catalog | nu
       return t("profile.notice.refused");
     case "foreignLoader":
       return t("plugin.notice.foreign", { program: kind.program });
+    case "diagnosticsFailed":
+      return t("diag.notice.failed", { version: kind.version, failed: kind.failed });
     case "failed":
       return t("notice.failed", { message: kind.message });
     // Runes, spells and item sets.
@@ -76,6 +78,7 @@ export function isFailure(kind: NoticeKind): boolean {
   return (
     kind.kind === "failed" ||
     kind.kind === "presenceRefused" ||
+    kind.kind === "diagnosticsFailed" ||
     // The callout's shortcut.
     kind.kind === "typingStopped" ||
     kind.kind === "calloutSkipped"
