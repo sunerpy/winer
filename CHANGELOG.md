@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.14](https://github.com/sunerpy/winer/compare/v0.0.13...v0.0.14) (2026-10-07)
+
+
+### Bug Fixes
+
+* remove external implementation references ([#29](https://github.com/sunerpy/winer/issues/29)) ([7cb6d4f](https://github.com/sunerpy/winer/commit/7cb6d4f6f9aa53eaf23b2f517db459c608eb515b))
+
 ## [0.0.13](https://github.com/sunerpy/winer/compare/v0.0.12...v0.0.13) (2026-10-07)
 
 
