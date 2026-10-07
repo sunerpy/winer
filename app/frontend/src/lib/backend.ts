@@ -13,6 +13,7 @@ import type {
   ChallengeProfile,
   CleanupReport,
   DiagnosticsReport,
+  ExportFormat,
   NoteEntry,
   NoteTag,
   Event,
@@ -127,6 +128,8 @@ export interface Commands {
   >;
   list_player_notes: Command<undefined, NoteEntry[]>;
   delete_player_note: Command<{ puuid: string }, boolean>;
+  /** Into Downloads under a new name when the one asked for is taken; answers the file's name. */
+  save_export: Command<{ stem: string; format: ExportFormat; contents: string }, string>;
 }
 
 export type CommandName = keyof Commands;

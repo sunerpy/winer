@@ -1245,6 +1245,7 @@ export function demoBackend(): Backend {
         .map(([puuid, note]) => ({ puuid, note }))
         .sort((a, b) => b.note.updatedAt - a.note.updatedAt),
     delete_player_note: ({ puuid }) => notes.delete(puuid),
+    save_export: ({ stem, format }) => `${stem}.${format}`,
     run_diagnostics: () => ({
       at: Date.now(),
       clientVersion: "16.19.8217343",

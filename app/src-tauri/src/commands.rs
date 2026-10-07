@@ -10,6 +10,7 @@ use winer_core::{
     backup::{BackupChannel, BackupInfo},
     bridge::Bridge,
     builds::{Build, RunePage},
+    export::{self, ExportFormat},
     loadout::{LoadoutSummary, PageOutcome},
     notes::{NoteEntry, NoteTag, PlayerNote},
     plugin::PluginStatus,
@@ -98,6 +99,8 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         set_player_note,
         list_player_notes,
         delete_player_note,
+        // History: the games as a file.
+        save_export,
     ]
 }
 
@@ -793,4 +796,24 @@ async fn list_player_notes<R: Runtime>(app: AppHandle<R>) -> Result<Vec<NoteEntr
 async fn delete_player_note<R: Runtime>(app: AppHandle<R>, puuid: String) -> Result<bool> {
     let service = service(&app);
     blocking(move || service.delete_player_note(&puuid)).await
+}
+
+/// Writes an export into the user's Downloads, under a new name when the one asked for is taken,
+/// and shows it in Explorer. Returns the file's name, not its path.
+#[tauri::command]
+async fn save_export<R: Runtime>(
+    app: AppHandle<R>,
+    stem: String,
+    format: ExportFormat,
+    contents: String,
+) -> Result<String> {
+    let dir = app.path().download_dir().map_err(internal)?;
+    let path = blocking(move || export::write_export(&dir, &stem, format, &contents)).await?;
+    if let Err(error) = app.opener().reveal_item_in_dir(&path) {
+        tracing::warn!(%error, "the export was not shown in Explorer");
+    }
+    Ok(path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default())
 }

@@ -41,6 +41,16 @@ out of the list and out of the overview's recent games, and the switch says how 
 they show like any other game; the choice is remembered. Either way they never count toward recent
 form.
 
+**Games / Champions** on the right switches the view. **Champions** sums the games read so far by
+champion: games, win rate, KDA, average game score, MVP and SVP awards and the last game, under the
+same filter and custom-game switch, remakes left out; **Read 50 more** widens it.
+
+**Export CSV** and **Export JSON** save the games the list has read (filtered the same way) into
+your Downloads folder and show the file in Explorer: one game a row, the player's own line only
+(time, mode, champion, result, kills/deaths/assists, score, CS, length and game ID). The CSV opens
+in Excel without garbled characters; when the name is taken, the new file gets (2), (3) and so on
+instead of replacing it.
+
 The Tencent client's own history API returns the latest 20 games only. winer asks the region's
 match-history server instead, with the client's own sign-in, so it pages through the whole history;
 when that server cannot be reached it falls back to the client's 20 games and says so under the

@@ -12,6 +12,7 @@ pub mod cache;
 pub mod callout;
 pub mod catalog;
 pub mod diagnose;
+pub mod export;
 pub mod friends;
 pub mod history;
 pub mod live;

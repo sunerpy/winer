@@ -1797,6 +1797,25 @@ describe("history", () => {
         ),
     ).length;
 
+  it("sums the loaded games by champion and exports them as shown", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const user = await openHistory(backend);
+    const views = screen.getByRole("radiogroup", { name: zhCN["history.view"] });
+    await user.click(within(views).getByRole("radio", { name: zhCN["history.champions"] }));
+    const table = await screen.findByRole("table", { name: zhCN["history.champions"] });
+    expect(within(table).getAllByRole("row").length).toBeGreaterThan(1);
+    expect(screen.getByText(/统计了已读到的 \d+ 场/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: zhCN["history.exportCsv"] }));
+    const exported = call.mock.calls.find(([name]) => name === "save_export");
+    expect(exported?.[1]).toMatchObject({ format: "csv" });
+    const args = exported?.[1] as { stem: string; contents: string };
+    expect(args.stem).toMatch(/^winer 战绩 暗夜里的光#10003 \d{4}-\d{2}-\d{2}$/);
+    expect(args.contents.split("\r\n")[0]).toBe(zhCN["history.exportHeader"]);
+    expect(await screen.findByText(/已保存到下载文件夹/)).toBeInTheDocument();
+  });
+
   it("says what the form counts and rates the player alone, with the rule behind each", async () => {
     const backend = demoBackend();
     const user = await openHistory(backend);

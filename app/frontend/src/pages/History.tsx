@@ -1,5 +1,5 @@
-import { riotId, type HistorySource, type MatchSummary } from "@winer/shared";
-import { Search, UserRound } from "lucide-react";
+import { riotId, type ExportFormat, type HistorySource, type MatchSummary } from "@winer/shared";
+import { Download, Search, UserRound } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { FormLabel, StandingRule } from "../game/FormRules";
@@ -11,7 +11,7 @@ import { NoteEditor } from "../game/notes";
 import { errorCode, errorMessage } from "../lib/backend";
 import { useCached } from "../lib/historyCache";
 import { useT } from "../lib/i18n";
-import { useLive, useSettings, useStore } from "../lib/store";
+import { useCatalog, useLive, useSettings, useStore } from "../lib/store";
 import { useAsync } from "../lib/useAsync";
 import { useShell } from "../shell/navigation";
 import {
@@ -28,6 +28,8 @@ import {
   toast,
 } from "../ui";
 import { ConnectionGate, PageBody } from "./common";
+import { ChampionTable } from "./history/ChampionTable";
+import { type ExportWords, championRows, exportStem, gamesCsv, gamesJson } from "./history/records";
 
 const PAGE_SIZES = ["10", "15", "25", "50"] as const;
 type PageSize = (typeof PAGE_SIZES)[number];
@@ -271,6 +273,10 @@ function GameList({ puuid, viewer }: { puuid: string; viewer: string }) {
   );
   const [size, setSize] = useState<PageSize>(readPageSize);
   const [page, setPage] = useState(kept?.page ?? 1);
+  // The champions' sums read the games loaded so far; asking for more reads on to this many.
+  const [view, setView] = useState<"games" | "champions">("games");
+  const [wanted, setWanted] = useState(0);
+  const catalog = useCatalog();
   const [selected, setSelected] = useState<number | null>(null);
   const top = useRef<HTMLDivElement>(null);
   const inFlight = useRef(false);
@@ -298,7 +304,37 @@ function GameList({ puuid, viewer }: { puuid: string; viewer: string }) {
   // Past the last page there is nothing to show; the last one stands in.
   const current = loaded.more ? page : Math.min(page, Math.max(1, known));
   const visible = shown.slice((current - 1) * perPage, current * perPage);
-  const filling = shown.length < current * perPage && loaded.more;
+  const filling =
+    (view === "games" ? shown.length < current * perPage : loaded.games.length < wanted) &&
+    loaded.more;
+  const champions = useMemo(() => championRows(shown), [shown]);
+
+  // The games as shown (filter, custom games) into a file in Downloads, the player's own lines.
+  const exportGames = async (format: ExportFormat) => {
+    const words: ExportWords = {
+      header: t("history.exportHeader").split(","),
+      champion: (id) => catalog?.champions.get(id)?.name ?? String(id),
+      queue: (game) => catalog?.queues.get(game.queueId)?.name ?? game.gameMode,
+      result: (game) =>
+        game.line.remake
+          ? t("history.result.remake")
+          : game.line.win
+            ? t("history.result.win")
+            : t("history.result.loss"),
+    };
+    const contents = format === "csv" ? gamesCsv(shown, words) : gamesJson(shown, words);
+    const name = riotId(store.history.summary(viewer, puuid)?.name ?? null) || puuid.slice(0, 8);
+    try {
+      const file = await store.backend.call("save_export", {
+        stem: exportStem(t("history.exportPrefix"), name, new Date()),
+        format,
+        contents,
+      });
+      toast(t("history.exported", { name: file }), "ok");
+    } catch (error) {
+      toast(errorMessage(error), "danger");
+    }
+  };
 
   // Kept for the next visit, the page and the filter with it.
   useEffect(() => {
@@ -423,111 +459,176 @@ function GameList({ puuid, viewer }: { puuid: string; viewer: string }) {
             )}
           </span>
         </span>
-        <span className="mono text-[11px] text-fg-subtle">{range}</span>
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="mono text-[11px] text-fg-subtle">
+            {view === "games"
+              ? range
+              : t("history.counted", { n: shown.filter((game) => !game.line.remake).length })}
+          </span>
+          <Segmented<"games" | "champions">
+            size="sm"
+            label={t("history.view")}
+            value={view}
+            options={[
+              { value: "games", label: t("history.games") },
+              { value: "champions", label: t("history.champions") },
+            ]}
+            onChange={setView}
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={Download}
+            disabled={shown.length === 0}
+            onClick={() => void exportGames("csv")}
+          >
+            {t("history.exportCsv")}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={Download}
+            disabled={shown.length === 0}
+            onClick={() => void exportGames("json")}
+          >
+            {t("history.exportJson")}
+          </Button>
+        </span>
       </div>
 
-      {visible.length === 0 ? (
-        <Card>
-          {filling || loaded.loading ? (
-            <div className="flex flex-col gap-2" aria-busy>
-              {[0, 1, 2].map((key) => (
-                <Skeleton key={key} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : loaded.error ? (
-            <ErrorNote
-              title={t("common.loadFailed")}
-              detail={errorMessage(loaded.error)}
-              retryLabel={t("common.retry")}
-              onRetry={retry}
-            />
-          ) : hidden > 0 && shown.length === 0 ? (
-            <EmptyState
-              compact
-              title={t("history.emptyHidden")}
-              actions={
-                <Button size="sm" onClick={() => setHideCustom(false)}>
-                  {t("history.showCustom")}
-                </Button>
-              }
-            />
+      {view === "champions" ? (
+        <>
+          {champions.length > 0 ? (
+            <ChampionTable rows={champions} />
           ) : (
-            <EmptyState
-              compact
-              title={loaded.games.length > 0 ? t("history.emptyFilter") : t("history.empty")}
-            />
+            <Card>
+              {filling || loaded.loading ? (
+                <Skeleton className="h-12 w-full" />
+              ) : (
+                <EmptyState compact title={t("history.emptyFilter")} />
+              )}
+            </Card>
           )}
-        </Card>
-      ) : (
-        <ul className="flex flex-col gap-1.5">
-          {visible.map((game) => (
-            <li key={game.gameId} className="flex flex-col gap-1.5">
-              <MatchRow
-                game={game}
-                selected={selected === game.gameId}
-                onSelect={() => setSelected((open) => (open === game.gameId ? null : game.gameId))}
-              />
-              {selected === game.gameId && (
-                <Detail
-                  gameId={game.gameId}
-                  puuid={puuid}
-                  viewer={viewer}
-                  onPlayer={(other) => navigate({ page: "history", puuid: other })}
+          {loaded.more && (
+            <Button
+              size="sm"
+              className="self-center"
+              loading={filling}
+              onClick={() => setWanted(loaded.games.length + CHUNK)}
+            >
+              {t("history.loadMore", { n: CHUNK })}
+            </Button>
+          )}
+        </>
+      ) : null}
+      {view === "games" && (
+        <>
+          {visible.length === 0 ? (
+            <Card>
+              {filling || loaded.loading ? (
+                <div className="flex flex-col gap-2" aria-busy>
+                  {[0, 1, 2].map((key) => (
+                    <Skeleton key={key} className="h-12 w-full" />
+                  ))}
+                </div>
+              ) : loaded.error ? (
+                <ErrorNote
+                  title={t("common.loadFailed")}
+                  detail={errorMessage(loaded.error)}
+                  retryLabel={t("common.retry")}
+                  onRetry={retry}
+                />
+              ) : hidden > 0 && shown.length === 0 ? (
+                <EmptyState
+                  compact
+                  title={t("history.emptyHidden")}
+                  actions={
+                    <Button size="sm" onClick={() => setHideCustom(false)}>
+                      {t("history.showCustom")}
+                    </Button>
+                  }
+                />
+              ) : (
+                <EmptyState
+                  compact
+                  title={loaded.games.length > 0 ? t("history.emptyFilter") : t("history.empty")}
                 />
               )}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {visible.length > 0 && (filling || (loaded.stale && Boolean(loaded.error))) && (
-        <div className="flex justify-center py-1">
-          {loaded.error ? (
-            <ErrorNote
-              title={loaded.stale ? t("history.refreshFailed") : t("common.loadFailed")}
-              detail={errorMessage(loaded.error)}
-              retryLabel={t("common.retry")}
-              onRetry={retry}
-            />
+            </Card>
           ) : (
-            <Spinner size={16} label={t("common.loading")} className="text-fg-subtle" />
+            <ul className="flex flex-col gap-1.5">
+              {visible.map((game) => (
+                <li key={game.gameId} className="flex flex-col gap-1.5">
+                  <MatchRow
+                    game={game}
+                    selected={selected === game.gameId}
+                    onSelect={() =>
+                      setSelected((open) => (open === game.gameId ? null : game.gameId))
+                    }
+                  />
+                  {selected === game.gameId && (
+                    <Detail
+                      gameId={game.gameId}
+                      puuid={puuid}
+                      viewer={viewer}
+                      onPlayer={(other) => navigate({ page: "history", puuid: other })}
+                    />
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
-        </div>
-      )}
 
-      {loaded.games.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-          <Pager
-            page={current}
-            known={known}
-            more={loaded.more}
-            onPage={turnTo}
-            labels={{
-              nav: t("history.pages"),
-              previous: t("history.previous"),
-              next: t("history.next"),
-              page: (n) => t("history.page", { n }),
-            }}
-          />
-          <span className="flex items-center gap-2">
-            <span className="text-[11.5px] text-fg-subtle">{t("history.pageSize")}</span>
-            <Segmented
-              options={PAGE_SIZES.map((value) => ({ value, label: value }))}
-              value={size}
-              onChange={(next) => {
-                setSize(next);
-                savePageSize(next);
-                // The first game on screen stays on screen.
-                turnTo(Math.floor(((current - 1) * perPage) / Number(next)) + 1);
-              }}
-              label={t("history.pageSize")}
-              size="sm"
-            />
-          </span>
-        </div>
-      )}
-      {loaded.source === "client" && (
-        <p className="text-[11.5px] text-fg-subtle">{t("history.clientOnly")}</p>
+          {visible.length > 0 && (filling || (loaded.stale && Boolean(loaded.error))) && (
+            <div className="flex justify-center py-1">
+              {loaded.error ? (
+                <ErrorNote
+                  title={loaded.stale ? t("history.refreshFailed") : t("common.loadFailed")}
+                  detail={errorMessage(loaded.error)}
+                  retryLabel={t("common.retry")}
+                  onRetry={retry}
+                />
+              ) : (
+                <Spinner size={16} label={t("common.loading")} className="text-fg-subtle" />
+              )}
+            </div>
+          )}
+
+          {loaded.games.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+              <Pager
+                page={current}
+                known={known}
+                more={loaded.more}
+                onPage={turnTo}
+                labels={{
+                  nav: t("history.pages"),
+                  previous: t("history.previous"),
+                  next: t("history.next"),
+                  page: (n) => t("history.page", { n }),
+                }}
+              />
+              <span className="flex items-center gap-2">
+                <span className="text-[11.5px] text-fg-subtle">{t("history.pageSize")}</span>
+                <Segmented
+                  options={PAGE_SIZES.map((value) => ({ value, label: value }))}
+                  value={size}
+                  onChange={(next) => {
+                    setSize(next);
+                    savePageSize(next);
+                    // The first game on screen stays on screen.
+                    turnTo(Math.floor(((current - 1) * perPage) / Number(next)) + 1);
+                  }}
+                  label={t("history.pageSize")}
+                  size="sm"
+                />
+              </span>
+            </div>
+          )}
+          {loaded.source === "client" && (
+            <p className="text-[11.5px] text-fg-subtle">{t("history.clientOnly")}</p>
+          )}
+        </>
       )}
     </div>
   );

@@ -331,6 +331,8 @@ notices: string, };
 
 export type UpdateStatus = { "state": "idle" } | { "state": "checking" } | { "state": "upToDate", version: string, checkedAt: number, } | { "state": "available", version: string, current: string, notes: string | null, date: string | null, } | { "state": "downloading", version: string, received: number, total: number | null, } | { "state": "installing", version: string, } | { "state": "failed", message: string, };
 
+export type ExportFormat = "csv" | "json";
+
 export type NoteTag = "reliable" | "weak" | "toxic" | "troll";
 
 export type PlayerNote = { tag: NoteTag | null, text: string, 
