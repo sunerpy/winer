@@ -19,6 +19,7 @@ const STRINGS = {
   open: ["查看战绩", "Show their history"],
   lobby: ["房间成员", "Lobby"],
   premade: ["开黑", "Party"],
+  premadeInferred: ["疑似开黑", "Likely party"],
   // The home page while 隐藏首页推广 is on.
   homeHidden: [
     "首页推广已按 winer 的“隐藏首页推广”选项隐藏。",

@@ -43,6 +43,7 @@ function seat(stats: Seat["stats"], championId = 103, rating: Seat["rating"] = n
     spells: [4, 14],
     isSelf: false,
     premade: null,
+    premadeInferred: false,
     stats,
     rating,
   };

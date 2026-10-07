@@ -21,7 +21,10 @@ moves between them.
 - **Parties**: once the game is running, players queued together carry the same number
   ("Party 1", "Party 2") and one colour per party; the number always shows, so the colour is never
   needed to tell them apart. In champ select, the teammates who came in from your own lobby are
-  marked too.
+  marked too. Other teammates who lately played at least two games on one team together, one of
+  them among either's last ten, are marked **Likely party** with a dashed swatch: that is read from
+  their games and can be wrong. Only the Tencent shards' history lists all ten players of a game,
+  so elsewhere nothing is inferred.
 - **Tiers**: from recent form, in the scheme chosen in **Settings › Rating**; the rules are in
   [How rating works](/en/rating).
 

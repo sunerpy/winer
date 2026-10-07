@@ -131,6 +131,7 @@ pub fn champ_select_view(
             spells: [player.spell1_id, player.spell2_id],
             is_self: player.cell_id == session.local_player_cell_id,
             premade: None,
+            premade_inferred: false,
             rating: None,
         }
     };
@@ -233,6 +234,7 @@ pub fn game_view(
                             .unwrap_or_default(),
                         is_self: !me.is_empty() && player.puuid == me,
                         premade: parties.get(&player.team_participant_id).copied(),
+                        premade_inferred: false,
                         puuid,
                         rating: None,
                     }
@@ -342,6 +344,25 @@ pub fn mark_party(seats: &mut [Seat], party: &[String]) {
     }
     for seat in seats.iter_mut().filter(|seat| ours(seat)) {
         seat.premade = Some(1);
+    }
+}
+
+/// Marks the parties read from the players' games (`analysis::infer_parties`), numbered after the
+/// ones the seats carry already and flagged as inferred.
+pub fn mark_inferred(seats: &mut [Seat], groups: &[Vec<usize>]) {
+    let mut next = seats
+        .iter()
+        .filter_map(|seat| seat.premade)
+        .max()
+        .unwrap_or(0);
+    for group in groups {
+        next = next.saturating_add(1);
+        for &index in group {
+            if let Some(seat) = seats.get_mut(index) {
+                seat.premade = Some(next);
+                seat.premade_inferred = true;
+            }
+        }
     }
 }
 
@@ -715,11 +736,23 @@ mod tests {
             spells: [0, 0],
             is_self: false,
             premade: None,
+            premade_inferred: false,
             stats: PlayerStats::Loading,
             rating: None,
         };
         let party = party_of(&lobby(false));
         let mut team = vec![seat("me"), seat("stranger"), seat("mate")];
+        let mut inferred = team.clone();
+        inferred[0].premade = Some(1);
+        mark_inferred(&mut inferred, &[vec![1, 2]]);
+        assert_eq!(
+            inferred
+                .iter()
+                .map(|seat| (seat.premade, seat.premade_inferred))
+                .collect::<Vec<_>>(),
+            [(Some(1), false), (Some(2), true), (Some(2), true)],
+            "an inferred party takes the number after the known ones"
+        );
         mark_party(&mut team, &party);
         let marks: Vec<Option<u8>> = team.iter().map(|seat| seat.premade).collect();
         assert_eq!(marks, vec![Some(1), None, Some(1)]);

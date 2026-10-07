@@ -92,7 +92,12 @@ intent: boolean, position: Position | null, spells: [number, number], isSelf: bo
 /**
  * Players sharing a number came as one premade party.
  */
-premade: number | null, stats: PlayerStats, 
+premade: number | null, 
+/**
+ * The party was read from the players' recent games together (`analysis::infer_parties`),
+ * not from the lobby or the game: likely, not certain.
+ */
+premadeInferred: boolean, stats: PlayerStats, 
 /**
  * Recent form and the tier it earns within the team; absent until stats arrive.
  */

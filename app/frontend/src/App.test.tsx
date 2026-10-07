@@ -202,6 +202,7 @@ describe("App", () => {
       spells: [4, 14],
       isSelf,
       premade: null,
+      premadeInferred: false,
       rating: null,
       stats: { state: "loading" },
     });
@@ -968,6 +969,13 @@ describe("social", () => {
     expect(badges).toHaveLength(2);
     for (const badge of badges)
       expect(badge.querySelector("[data-group]")).toHaveClass("bg-group-1");
+    // A party read from recent games says so, in words and with a dashed swatch.
+    const inferred = screen.getAllByText("疑似开黑 2");
+    expect(inferred).toHaveLength(2);
+    for (const badge of inferred) {
+      expect(badge).toHaveAttribute("title", zhCN["live.premadeInferredHint"]);
+      expect(badge.querySelector("[data-group]")).toHaveClass("border-dashed", "border-group-2");
+    }
   });
 
   it("opens the history the client asked for, over whatever was open", async () => {
@@ -1072,6 +1080,7 @@ describe("loadout", () => {
     spells: [4, 12],
     isSelf,
     premade: null,
+    premadeInferred: false,
     rating: null,
     stats: { state: "loading" },
   });

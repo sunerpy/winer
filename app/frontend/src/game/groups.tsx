@@ -12,6 +12,16 @@ const DOTS = [
   "bg-group-6",
 ] as const;
 
+/** Group `group`'s colour as a dashed outline: a party read from recent games, not certain. */
+const OUTLINES = [
+  "border-group-1",
+  "border-group-2",
+  "border-group-3",
+  "border-group-4",
+  "border-group-5",
+  "border-group-6",
+] as const;
+
 const STRIPES = [
   "shadow-[inset_3px_0_0_0_var(--group-1)]",
   "shadow-[inset_3px_0_0_0_var(--group-2)]",
@@ -36,22 +46,31 @@ export function groupStripe(group: number): string {
   return STRIPES[groupSlot(group)] ?? STRIPES[0];
 }
 
-/** `■ 开黑 1`: a neutral badge led by the group's colour. */
+/** `■ 开黑 1`: a neutral badge led by the group's colour; an inferred group's swatch is a dashed
+ *  outline instead, its label says as much. */
 export function GroupBadge({
   group,
   label,
   title,
+  inferred = false,
 }: {
   group: number;
   label: string;
   title?: string;
+  inferred?: boolean;
 }) {
   return (
     <Badge title={title}>
       <span
         aria-hidden
         data-group={groupSlot(group) + 1}
-        className={cx("size-2 shrink-0 rounded-[2px]", groupDot(group))}
+        data-inferred={inferred || undefined}
+        className={cx(
+          "size-2 shrink-0 rounded-[2px]",
+          inferred
+            ? cx("border border-dashed", OUTLINES[groupSlot(group)] ?? OUTLINES[0])
+            : groupDot(group),
+        )}
       />
       {label}
     </Badge>

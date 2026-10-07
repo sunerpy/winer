@@ -200,6 +200,9 @@ export const en: Record<MessageKey, string> = {
   "live.gameStarting": "Starting",
   "live.intent": "Intent",
   "live.premade": "Party {n}",
+  "live.premadeInferred": "Likely party {n}",
+  "live.premadeInferredHint":
+    "Read from recent games: at least two lately on one team together. It can be wrong.",
   "live.statsFailed": "Stats unavailable",
   "live.bench": "Bench",
   "live.benchHint": "Click to swap at once; no cooldown.",

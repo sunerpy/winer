@@ -710,6 +710,7 @@ fn sample(me: &PlayerSummary, ranking: &Ranking, tier: usize, is_self: bool) -> 
         spells: [0, 0],
         is_self,
         premade: None,
+        premade_inferred: false,
         stats: PlayerStats::Ready(Box::new(me.clone())),
         rating: Some(SeatRating {
             score: rating::form_score(&me.recent).unwrap_or(5.0),
@@ -1159,6 +1160,7 @@ mod tests {
             spells: [0, 0],
             is_self,
             premade: None,
+            premade_inferred: false,
             stats: PlayerStats::Ready(Box::new(summary)),
             rating: rating.map(|(score, tier)| SeatRating {
                 score,

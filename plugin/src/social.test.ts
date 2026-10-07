@@ -391,6 +391,7 @@ describe("premade groups", () => {
     spells: [4, 14],
     isSelf: false,
     premade,
+    premadeInferred: false,
     stats: { state: "loading" },
     rating: null,
   });
@@ -402,6 +403,13 @@ describe("premade groups", () => {
     expect(chip?.getAttribute("data-winer-group")).toBe("2");
     expect(statsLine(seat(null), "zh-CN").querySelector(".winer-group")).toBeNull();
     expect(lineKey(seat(1), "zh-CN")).not.toBe(lineKey(seat(null), "zh-CN"));
+
+    // A party read from recent games: its own words and the dashed swatch's class.
+    const guessed = { ...seat(3), premadeInferred: true };
+    const inferred = statsLine(guessed, "zh-CN").querySelector(".winer-group");
+    expect(inferred?.textContent).toBe("疑似开黑 3");
+    expect(inferred?.classList.contains("winer-group--inferred")).toBe(true);
+    expect(lineKey(guessed, "zh-CN")).not.toBe(lineKey(seat(3), "zh-CN"));
   });
 });
 

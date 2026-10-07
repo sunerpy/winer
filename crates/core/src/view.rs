@@ -286,6 +286,9 @@ pub struct Seat {
     pub is_self: bool,
     /// Players sharing a number came as one premade party.
     pub premade: Option<u8>,
+    /// The party was read from the players' recent games together (`analysis::infer_parties`),
+    /// not from the lobby or the game: likely, not certain.
+    pub premade_inferred: bool,
     pub stats: PlayerStats,
     /// Recent form and the tier it earns within the team; absent until stats arrive.
     pub rating: Option<SeatRating>,

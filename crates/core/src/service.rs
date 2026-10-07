@@ -52,7 +52,7 @@ use crate::{
         AugmentDetail, Check, CheckFailure, CheckId, CheckReason, Connection, ErrorCode, Event,
         GameData, HistorySource, IpcError, MatchDetail, MatchPage, Me, Notice, NoticeKind, Patch,
         Phase, PlayerProfile, PlayerStanding, PlayerStats, PlayerSummary, Presence, QueueInfo,
-        Snapshot, Update,
+        Seat, Snapshot, Update,
     },
 };
 
@@ -1149,6 +1149,7 @@ impl Service {
             let focus = queue_focus(data.as_deref(), session.queue_id, "");
             let mut view = live::champ_select_view(&session, stats(focus), &ranking, game_mode);
             live::mark_party(&mut view.my_team, &party);
+            self.mark_inferred_parties(&mut view.my_team, &party);
             let champion = |id: i64| {
                 data.as_ref()?
                     .champions
@@ -1240,6 +1241,21 @@ impl Service {
             Some(PlayerEntry::Loading) | None => return PlayerStats::Loading,
         };
         PlayerStats::Ready(Box::new(self.summarize(&record, focus)))
+    }
+
+    /// The parties champ select does not show, read from the records loaded for the team.
+    fn mark_inferred_parties(&self, seats: &mut [Seat], party: &[String]) {
+        let groups = {
+            let players = lock(&self.inner.players);
+            let records = |puuid: &str| match players.get(puuid) {
+                Some(PlayerEntry::Ready(record, _)) => Some(record.games.as_slice()),
+                _ => None,
+            };
+            let puuids: Vec<Option<&str>> =
+                seats.iter().map(|seat| seat.puuid.as_deref()).collect();
+            analysis::infer_parties(&puuids, party, records)
+        };
+        live::mark_inferred(seats, &groups);
     }
 
     /// Fetches `puuid`'s record unless a fresh one holds what a form read within `focus` needs.

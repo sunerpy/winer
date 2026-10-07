@@ -86,9 +86,17 @@ function Summary({ seat, summary }: { seat: Seat; summary: PlayerSummary | null 
             {riotId(seat.name ?? summary?.name ?? null) || t("common.hidden")}
           </span>
         )}
-        {seat.premade !== null && (
-          <GroupBadge group={seat.premade} label={t("live.premade", { n: seat.premade })} />
-        )}
+        {seat.premade !== null &&
+          (seat.premadeInferred ? (
+            <GroupBadge
+              group={seat.premade}
+              inferred
+              label={t("live.premadeInferred", { n: seat.premade })}
+              title={t("live.premadeInferredHint")}
+            />
+          ) : (
+            <GroupBadge group={seat.premade} label={t("live.premade", { n: seat.premade })} />
+          ))}
       </span>
       {/* The tier and its title get a line of their own: beside the name they squeezed it away. */}
       {rating && (

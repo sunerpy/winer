@@ -195,6 +195,8 @@ export const zhCN = {
   "live.gameStarting": "即将开始",
   "live.intent": "意向",
   "live.premade": "开黑 {n}",
+  "live.premadeInferred": "疑似开黑 {n}",
+  "live.premadeInferredHint": "根据近期战绩推断：两人最近一起同队至少 2 局，可能不准",
   "live.statsFailed": "战绩读取失败",
   "live.bench": "备选席",
   "live.benchHint": "点一下就换，不用等冷却。",

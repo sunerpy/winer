@@ -396,6 +396,7 @@ function seat(puuid: string | null, stats: Seat["stats"], rating: Seat["rating"]
     spells: [4, 14],
     isSelf: false,
     premade: null,
+    premadeInferred: false,
     stats,
     rating,
   };

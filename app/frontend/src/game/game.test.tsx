@@ -363,6 +363,7 @@ function rated(puuid: string, matches: RecentMatch[], isSelf = false): Seat {
     spells: [4, 14],
     isSelf,
     premade: null,
+    premadeInferred: false,
     rating: null,
     stats: {
       state: "ready",

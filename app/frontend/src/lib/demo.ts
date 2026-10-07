@@ -626,7 +626,9 @@ function seats(): Seat[] {
       position,
       spells: [4, 14],
       isSelf: index === 0,
-      premade: index === 3 || index === 4 ? 1 : null,
+      // The lobby's party is 1; two others played together lately, which the core infers.
+      premade: index === 3 || index === 4 ? 1 : index === 1 || index === 2 ? 2 : null,
+      premadeInferred: index === 1 || index === 2,
       stats: stats ? { state: "ready", ...stats } : { state: "loading" },
       rating: RATINGS[index] ?? null,
     };
@@ -682,6 +684,7 @@ export function demoGame(): GameView {
     spells: [4, 14],
     isSelf: false,
     premade: null,
+    premadeInferred: false,
     stats: { state: "ready", ...summary(puuid, name, championId % 7, null) },
     rating: { score, tier, tiers: 5, label, grade: null, title: null, quip: null },
   }));

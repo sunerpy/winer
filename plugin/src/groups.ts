@@ -10,11 +10,15 @@ export function groupSlot(group: number): number {
   return ((((Math.trunc(group) - 1) % 6) + 6) % 6) + 1;
 }
 
-/** `■ 开黑 1`, in the group's colour. */
-export function premadeChip(group: number, language: Language): HTMLElement {
+/** `■ 开黑 1`, in the group's colour; a party read from recent games reads `疑似开黑 1` with a
+ *  dashed swatch. */
+export function premadeChip(group: number, language: Language, inferred = false): HTMLElement {
   return h(
     "span",
-    { class: "winer-group", "data-winer-group": String(groupSlot(group)) },
-    `${text(language, "premade")} ${group}`,
+    {
+      class: inferred ? "winer-group winer-group--inferred" : "winer-group",
+      "data-winer-group": String(groupSlot(group)),
+    },
+    `${text(language, inferred ? "premadeInferred" : "premade")} ${group}`,
   );
 }

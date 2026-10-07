@@ -85,7 +85,8 @@ function sideChip(seat: Seat, side: Side | null, language: Language): HTMLElemen
 export function statsLine(seat: Seat, language: Language, side: Side | null = null): HTMLElement {
   const summary = summaryOf(seat);
   const chip = sideChip(seat, side, language);
-  const party = seat.premade === null ? null : premadeChip(seat.premade, language);
+  const party =
+    seat.premade === null ? null : premadeChip(seat.premade, language, seat.premadeInferred);
   if (seat.stats.state === "loading")
     return h(
       "span",
@@ -145,6 +146,7 @@ export function lineKey(seat: Seat, language: Language, side: Side | null = null
     language,
     seat.isSelf ? side : null,
     seat.premade,
+    seat.premadeInferred,
     seat.stats.state,
     seat.rating?.label,
     seat.rating?.grade,
