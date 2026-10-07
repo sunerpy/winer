@@ -452,8 +452,8 @@ pub struct CalloutRule {
     /// One line per player, with `{standing}`, `{seat}` (the place in champ select's list: `1L`,
     /// `P1`), `{name}`, `{champion}`, `{games}`, `{winRate}`, `{kda}`, `{score}`, `{title}` and
     /// `{quip}`; a value left blank (a hidden name) takes the brackets around it with it. Empty
-    /// means the language's default (`callout::template`); the Chinese default follows Sona's
-    /// seat → tier → data columns and omits free-form names, titles and quips.
+    /// means the language's default (`callout::template`); the Chinese default uses seat → tier
+    /// → data columns and omits free-form names, titles and quips.
     pub template: String,
     /// How the team is split, and what the tiers are called.
     pub tiers: TierSet,
@@ -1231,7 +1231,7 @@ mod tests {
     }
 
     #[test]
-    fn the_0_0_7_chinese_defaults_become_sona_style_safe_columns() {
+    fn the_0_0_7_chinese_defaults_become_seat_first_safe_columns() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
         let file = serde_json::json!({

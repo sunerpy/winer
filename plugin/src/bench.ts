@@ -43,8 +43,8 @@ export function benchChampion(item: Element): number | null {
   return null;
 }
 
-/** Gives each usable bench item its own capture handler, as Sona does. The client recreates these
- *  nodes during champ select, so the mutation-driven render calls this again for new items. */
+/** Gives each usable bench item its own capture handler. The client recreates these nodes during
+ *  champ select, so the mutation-driven render calls this again for new items. */
 export function hijackBenchItems(root: ParentNode, swap: (championId: number) => boolean): number {
   let hijacked = 0;
   for (const container of root.querySelectorAll(BENCH_SELECTOR)) {
@@ -99,8 +99,8 @@ export function interceptBenchClicks(
 ): () => void {
   const onClick = (event: MouseEvent) => {
     const direct = event.target instanceof Element ? event.target.closest(ITEM_SELECTOR) : null;
-    // A direct click reaches the item's Sona-style handler later in the capture path. This global
-    // handler remains for overlays and for a newly drawn item before the next render.
+    // A direct click reaches the item's own handler later in the capture path. This global handler
+    // remains for overlays and for a newly drawn item before the next render.
     if (direct?.hasAttribute(HIJACKED)) return;
     const item = direct ?? clickedItem(doc, event);
     if (!item || item.classList.contains(EMPTY) || item.classList.contains(LOCKED)) return;

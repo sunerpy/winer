@@ -122,7 +122,7 @@ export const en: Record<MessageKey, string> = {
   "auto.calloutSelf": "Include myself",
   "auto.calloutStyle": "Callout style",
   "auto.calloutStyleHint":
-    "Compact uses one aligned line per player. Rich adds the tier emoji and sample size. The Chinese default follows Sona's seat, tier, win rate, KDA and strength columns, omitting free-form names, titles and quips so the chat filter cannot join them. Emoji show in the client's chat only; lines typed in a game have none.",
+    "Compact uses one aligned line per player. Rich adds the tier emoji and sample size. The Chinese default uses seat, tier, win rate, KDA and strength columns, omitting free-form names, titles and quips so the chat filter cannot join them. Emoji show in the client's chat only; lines typed in a game have none.",
   "auto.style.compact": "Compact",
   "auto.style.rich": "Rich",
   "auto.header": "Opening line",

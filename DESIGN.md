@@ -252,8 +252,8 @@ while the client is not connected), `ProfileIcon` (circle), `AssetIcon` (items, 
   tier; what earned it is the tooltip where it is known. The plugin draws it as a dashed outline in
   the client's amber. 设置 › 评级 turns titles off everywhere.
 - **Callout.** A Panel beside the team in one-team modes (ARAM) and under both teams otherwise:
-  the lines exactly as they will be sent, in an inset block. The Chinese team-safe default follows
-  Sona's scan order (`1L: 档位|胜率|KDA|战力`) and omits free-form names, titles and quips. Team-visible
+  the lines exactly as they will be sent, in an inset block. The Chinese team-safe default uses
+  a seat-first scan order (`1L: 档位|胜率|KDA|战力`) and omits free-form names, titles and quips. Team-visible
   delivery sends one short message per line with a measured gap so the remote chat keeps it; local-only
   delivery keeps the whole block in one message. Then 发送到队伍 (accent) and
   仅自己可见 (outline). An accent badge in the header says when automatic sending is on. A last line

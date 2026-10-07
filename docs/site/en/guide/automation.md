@@ -83,8 +83,8 @@ summoner spells for Jhin"; a failure says why. Nothing is posted to chat.
   select (P1 to P5, from the top), `{name}`, `{champion}`, `{games}`, `{winRate}`, `{kda}`, `{score}`
   the recent-form score, `{title}` and `{quip}`. Blank uses the chosen style's default, which names
   the seat and the player rather than a champion that can still change; a live preview shows the
-  result. The Chinese default follows Sona's seat, tier and data columns and omits free-form names,
-  titles and quips so the client filter cannot join them (see [How rating works](/en/rating#callout)).
+  result. The Chinese default uses seat, tier and data columns and omits free-form names, titles and
+  quips so the client filter cannot join them (see [How rating works](/en/rating#callout)).
   A custom template may still use every placeholder.
 - **Shortcut to send the callout**: none by default. Once set, pressing it in champ select posts the
   callout to the team chat, as **Send to team** on the Live game page does; in a game, with
