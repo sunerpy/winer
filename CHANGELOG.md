@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.11](https://github.com/sunerpy/winer/compare/v0.0.10...v0.0.11) (2026-10-07)
+
+
+### Features
+
+* diagnostics, player notes, premade hints and pick suggestions ([#20](https://github.com/sunerpy/winer/issues/20)) ([7d4e90f](https://github.com/sunerpy/winer/commit/7d4e90f66a81cb0999fffec82d4c4202c9d1d8e9))
+
 ## [0.0.10](https://github.com/sunerpy/winer/compare/v0.0.9...v0.0.10) (2026-10-07)
 
 
