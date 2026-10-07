@@ -76,34 +76,33 @@ describe("App", () => {
     expect(main.scrollTop).toBe(0);
   });
 
-  it("pages through the history, filling a filtered page from as many requests as it takes", async () => {
+  it("loads the total and supports first, last and numeric page jumps", async () => {
     localStorage.removeItem("winer.history.pageSize");
     const { user, nav } = await renderApp();
     await user.click(within(nav).getByRole("button", { name: zhCN["nav.history"] }));
-    expect(await screen.findByText("第 1–10 场")).toBeInTheDocument();
+    expect(await screen.findByText("第 1–10 场 · 共 60 场")).toBeInTheDocument();
     const pages = screen.getByRole("navigation", { name: zhCN["history.pages"] });
-    expect(within(pages).getByRole("button", { name: "上一页" })).toBeDisabled();
+    expect(within(pages).getByRole("button", { name: "首页" })).toBeDisabled();
 
-    await user.click(within(pages).getByRole("button", { name: "下一页" }));
-    expect(screen.getByText("第 11–20 场")).toBeInTheDocument();
+    await user.click(within(pages).getByRole("button", { name: "尾页" }));
+    expect(screen.getByText("第 51–60 场 · 共 60 场")).toBeInTheDocument();
+    expect(within(pages).getByRole("button", { name: "尾页" })).toBeDisabled();
+
+    const jump = within(pages).getByRole("spinbutton", { name: "跳转页码" });
+    await user.clear(jump);
+    await user.type(jump, "2");
+    await user.click(within(pages).getByRole("button", { name: "跳转" }));
+    expect(screen.getByText("第 11–20 场 · 共 60 场")).toBeInTheDocument();
     expect(within(pages).getByRole("button", { name: "第 2 页" })).toHaveAttribute(
       "aria-current",
       "page",
     );
 
-    // The demo player has sixty games and one request brings fifty.
+    await user.click(within(pages).getByRole("button", { name: "首页" }));
+    expect(screen.getByText("第 1–10 场 · 共 60 场")).toBeInTheDocument();
     await user.click(screen.getByRole("radio", { name: "25" }));
-    expect(screen.getByText("第 1–25 场"), "the first game on screen stays").toBeInTheDocument();
+    expect(screen.getByText("第 1–25 场 · 共 60 场")).toBeInTheDocument();
     expect(localStorage.getItem("winer.history.pageSize")).toBe("25");
-    await user.click(within(pages).getByRole("button", { name: "下一页" }));
-    expect(screen.getByText("第 26–50 场")).toBeInTheDocument();
-    expect(
-      within(pages).queryByRole("button", { name: "第 3 页" }),
-      "a page not read yet has no number",
-    ).toBeNull();
-    await user.click(within(pages).getByRole("button", { name: "下一页" }));
-    expect(await screen.findByText("第 51–60 场 · 共 60 场")).toBeInTheDocument();
-    expect(within(pages).getByRole("button", { name: "下一页" })).toBeDisabled();
 
     await user.click(screen.getByRole("radio", { name: zhCN["history.aram"] }));
     expect(
@@ -1882,7 +1881,7 @@ describe("history", () => {
     localStorage.removeItem("winer.history.pageSize");
     const { user, nav } = await renderApp(backend);
     await user.click(within(nav).getByRole("button", { name: zhCN["nav.history"] }));
-    expect(await screen.findByText("第 1–10 场")).toBeInTheDocument();
+    expect(await screen.findByText("第 1–10 场 · 共 60 场")).toBeInTheDocument();
     return user;
   }
 
@@ -1900,7 +1899,7 @@ describe("history", () => {
         ),
     ).length;
 
-  it("sums the loaded games by champion and exports them as shown", async () => {
+  it("loads every available game before summing champions and exporting", async () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");
     const user = await openHistory(backend);
@@ -1908,7 +1907,8 @@ describe("history", () => {
     await user.click(within(views).getByRole("radio", { name: zhCN["history.champions"] }));
     const table = await screen.findByRole("table", { name: zhCN["history.champions"] });
     expect(within(table).getAllByRole("row").length).toBeGreaterThan(1);
-    expect(screen.getByText(/统计了已读到的 \d+ 场/)).toBeInTheDocument();
+    expect(screen.getByText("统计最近可查的 60 场（不含重开局）")).toBeInTheDocument();
+    expect(asked(call, "get_match_history", { begin: 50, count: 50 })).toBe(1);
 
     await user.click(screen.getByRole("button", { name: zhCN["history.exportCsv"] }));
     const exported = call.mock.calls.find(([name]) => name === "save_export");
@@ -1917,6 +1917,22 @@ describe("history", () => {
     expect(args.stem).toMatch(/^winer 战绩 暗夜里的光#10003 \d{4}-\d{2}-\d{2}$/);
     expect(args.contents.split("\r\n")[0]).toBe(zhCN["history.exportHeader"]);
     expect(await screen.findByText(/已保存到下载文件夹/)).toBeInTheDocument();
+  });
+
+  it("keeps the history search available offline and explains the live credential boundary", async () => {
+    const backend = demoWith({ get_snapshot: () => EMPTY_SNAPSHOT });
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.history"] }));
+    const search = screen.getByRole("textbox", { name: zhCN["history.search"] });
+    expect(search).toBeInTheDocument();
+    expect(
+      screen.getByText("未连接客户端时可查看本次运行已缓存的战绩；查询新玩家仍需客户端登录凭证。"),
+    ).toBeInTheDocument();
+    await user.type(search, "未缓存#10000");
+    await user.click(screen.getByRole("button", { name: zhCN["history.find"] }));
+    expect(
+      await screen.findByText("该玩家没有本次运行的缓存；连接客户端后才能查询。"),
+    ).toBeInTheDocument();
   });
 
   it("says what the form counts and rates the player alone, with the rule behind each", async () => {
@@ -1948,14 +1964,19 @@ describe("history", () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");
     const user = await openHistory(backend);
+    await user.click(screen.getByRole("radio", { name: "50" }));
     await user.type(
       screen.getByRole("textbox", { name: zhCN["history.search"] }),
       "野区观光客#10005",
     );
     await user.click(screen.getByRole("button", { name: zhCN["history.find"] }));
     expect(await screen.findByText("已隐藏 2 场")).toBeInTheDocument();
+    expect(await screen.findByText("第 1–50 场 · 共 60 场")).toBeInTheDocument();
     expect(screen.queryByText("嚎哭深渊 全随机"), "custom games are hidden").toBeNull();
-    expect(screen.getAllByText("入门级"), "a game against bots is listed").toHaveLength(1);
+    await user.click(screen.getByRole("radio", { name: zhCN["history.other"] }));
+    await waitFor(() =>
+      expect(screen.getAllByText("入门级"), "a game against bots is listed").toHaveLength(1),
+    );
     const standing = await backend.call("get_player_standing", { puuid: "demo-3" });
     expect(standing.scope).toMatchObject({ custom: 2, bots: 1 });
 
@@ -1967,8 +1988,8 @@ describe("history", () => {
         settings: expect.objectContaining({ history: { hideCustomGames: false } }),
       }),
     );
-    expect(screen.getAllByText("嚎哭深渊 全随机")).toHaveLength(2);
-    expect(screen.queryByText("已隐藏 2 场")).toBeNull();
+    await waitFor(() => expect(screen.getAllByText("嚎哭深渊 全随机")).toHaveLength(2));
+    await waitFor(() => expect(screen.queryByText("已隐藏 2 场")).toBeNull());
   });
 
   it("goes back to a player at once, where the list was left, and reopens a scoreboard unasked", async () => {
@@ -1977,7 +1998,7 @@ describe("history", () => {
     const user = await openHistory(backend);
     const pages = screen.getByRole("navigation", { name: zhCN["history.pages"] });
     await user.click(within(pages).getByRole("button", { name: "下一页" }));
-    expect(screen.getByText("第 11–20 场")).toBeInTheDocument();
+    expect(screen.getByText("第 11–20 场 · 共 60 场")).toBeInTheDocument();
     const game = screen.getAllByRole("button", { pressed: false })[0] as HTMLElement;
     await user.click(game);
     const scoreboard = await screen.findByLabelText(zhCN["history.detail"]);
@@ -1987,12 +2008,12 @@ describe("history", () => {
     await user.click(opponent[0] as HTMLElement);
     await user.click(await screen.findByRole("button", { name: zhCN["history.mine"] }));
     // Drawn from what was shown: no skeleton, the second page, the header.
-    expect(screen.getByText("第 11–20 场")).toBeInTheDocument();
+    expect(screen.getByText("第 11–20 场 · 共 60 场")).toBeInTheDocument();
     expect(screen.getByText("近 20 场 · 所有模式")).toBeInTheDocument();
     const mine = { puuid: "demo-me", begin: 0, count: 50 };
     // The newest games asked for once more, in the background: the same ones, the list stays.
     await waitFor(() => expect(asked(call, "get_match_history", mine)).toBe(2));
-    expect(screen.getByText("第 11–20 场")).toBeInTheDocument();
+    expect(screen.getByText("第 11–20 场 · 共 60 场")).toBeInTheDocument();
     const again = screen.getAllByRole("button", { pressed: false })[0] as HTMLElement;
     expect(again).toHaveTextContent(game.textContent ?? "");
     await user.click(again);

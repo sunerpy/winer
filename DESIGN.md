@@ -176,10 +176,13 @@ while the client is not connected), `ProfileIcon` (circle), `AssetIcon` (items, 
   While titles are on, the title a line earned sits under the name as a title chip.
 - **History.** A row's champion carries its MVP or SVP in the top-left corner, both solid (accent
   and `raised` with a hairline): a translucent chip on artwork cannot be read. Pages of 10, 15, 25
-  or 50 games (remembered), cut from what has arrived: a filter
-  fills its page from as many requests as it takes. A Pager under the list, the range (第 11–20
-  场, and 共 N 场 once the last page is known) beside the filters. Turning a page closes the open
-  scoreboard and brings the list's head into view. Beside the filters a Toggle, 隐藏自定义对局 (on
+  or 50 games (remembered); the first page appears at once while every available page is read in the
+  background, establishing a stable total and the complete source for the champion summary. Under
+  the list: 首页, numbered Pager, 尾页 and a numeric jump field; the range and total (第 11–20 场 ·
+  共 N 场) sit beside the filters. Turning a page closes the open scoreboard and brings the list's
+  head into view. Without a client, the page can search and show players cached during this process,
+  but says plainly that a new lookup needs the client's sign-in credentials. Beside the filters a
+  Toggle, 隐藏自定义对局 (on
   by default, kept in the settings), with what it hides as a mono count; a page of nothing but
   custom games says so and offers to show them. A player seen a moment ago is drawn at once from
   what was shown, on the page left, and checked for new games behind it; a scoreboard opened
@@ -250,8 +253,9 @@ while the client is not connected), `ProfileIcon` (circle), `AssetIcon` (items, 
   the client's amber. 设置 › 评级 turns titles off everywhere.
 - **Callout.** A Panel beside the team in one-team modes (ARAM) and under both teams otherwise:
   the lines exactly as they will be sent, in an inset block. The Chinese team-safe default follows
-  Sona's scan order (`1L: 档位|胜率|KDA|战力`), omits free-form names, titles and quips, and sends the
-  whole block as one chat message; then 发送到队伍 (accent) and
+  Sona's scan order (`1L: 档位|胜率|KDA|战力`) and omits free-form names, titles and quips. Team-visible
+  delivery sends one short message per line with a measured gap so the remote chat keeps it; local-only
+  delivery keeps the whole block in one message. Then 发送到队伍 (accent) and
   仅自己可见 (outline). An accent badge in the header says when automatic sending is on. A last line
   under a hairline names the callout's shortcut in `Kbd` caps after a lamp (ok; `danger` when the
   system refused it; off without one), with 去设置 as a link to 自动化. In the game the panel holds

@@ -4,7 +4,9 @@
 
 The **History** page opens on your own games. Type `name#tag` (for example `Light in the Dark#10003`)
 to look up anyone; choosing a name in the game analysis or on a scoreboard opens that player's
-history too.
+history too. A new lookup needs the active client's sign-in credentials. After the client closes,
+players and games already read during this app run remain searchable and pageable in memory; winer
+does not persist the login token or that history cache to disk.
 
 ## The player
 
@@ -33,19 +35,22 @@ your accounts and never go into a callout. **Tools › My notes** lists, searche
 
 ## Pages and filters
 
-Games come in pages of 10, 15, 25 or 50, and the choice is remembered. Filter by **All, Ranked,
-Normal, ARAM, Other** at the top; a filtered page is still full.
+Games come in pages of 10, 15, 25 or 50, and the choice is remembered. The first page appears at
+once while winer reads every recently available record in the background. Once complete it shows
+the total; use **First / Last**, a page number, or type a page number to jump directly. Filter by
+**All, Ranked, Normal, ARAM, Other** at the top; the total and page count follow the filter.
 
 Beside them, **Hide custom games** is on by default: custom games (the practice tool included) stay
 out of the list and out of the overview's recent games, and the switch says how many it hid. Off,
 they show like any other game; the choice is remembered. Either way they never count toward recent
 form.
 
-**Games / Champions** on the right switches the view. **Champions** sums the games read so far by
-champion: games, win rate, KDA, average game score, MVP and SVP awards and the last game, under the
-same filter and custom-game switch, remakes left out; **Read 50 more** widens it.
+**Games / Champions** on the right switches the view. **Champions** waits for the complete available
+history, then sums it by champion: games, win rate, KDA, average game score, MVP and SVP awards and
+the last game, under the same filter and custom-game switch, remakes left out. Its numbers therefore
+never depend on which page you happen to be viewing.
 
-**Export CSV** and **Export JSON** save the games the list has read (filtered the same way) into
+**Export CSV** and **Export JSON** save all recently available games (filtered the same way) into
 your Downloads folder and show the file in Explorer: one game a row, the player's own line only
 (time, mode, champion, result, kills/deaths/assists, score, CS, length and game ID). The CSV opens
 in Excel without garbled characters; when the name is taken, the new file gets (2), (3) and so on
@@ -56,11 +61,11 @@ match-history server instead, with the client's own sign-in, so it pages through
 when that server cannot be reached it falls back to the client's 20 games and says so under the
 list.
 
-Histories seen a moment ago are kept for a while: going back to a player shows their profile and
-games at once, on the page you left, while winer checks for new games in the background, and a
-scoreboard opened before opens without being read again. The newest page is kept for a minute and a
-half at most, and after one of your games ends it is read again the next time it is shown; signing
-in to another account empties all of it.
+Histories seen a moment ago stay in memory for this app run: going back to a player shows their
+profile and games at once, on the page you left, while winer checks for new games in the background,
+and a scoreboard opened before opens without being read again. They remain readable after the
+client closes, and are cleared when winer exits or another account signs in. The newest page is kept
+for a minute and a half at most, and after one of your games ends it is read again when next shown.
 
 ## Each game
 

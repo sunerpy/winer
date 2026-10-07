@@ -36,6 +36,10 @@ describe("history cache", () => {
     cache.putList("me", "p", list([3, 2, 1]));
     cache.putDetail("me", detail(3));
     cache.putSummary("me", summary("p"));
+    cache.remember("me", {
+      puuid: "p",
+      name: { gameName: "暗夜里的光", tagLine: "10003" },
+    });
     expect(cache.list("me", "p")?.page).toBe(2);
     expect(cache.detail("me", 3)?.gameId).toBe(3);
     expect(cache.summary("me", "p")?.puuid).toBe("p");
@@ -61,6 +65,20 @@ describe("history cache", () => {
     expect(cache.list("other", "p")).toBeUndefined();
   });
 
+  it("finds a player after the client closes", () => {
+    const cache = new HistoryCache();
+    cache.scope("me");
+    cache.putSummary("me", {
+      ...summary("p"),
+      name: { gameName: "暗夜里的光", tagLine: "10003" },
+    });
+    cache.putList("me", "p", list([3, 2, 1]));
+    cache.scope(null);
+
+    expect(cache.find("me", "  暗夜里的光 # 10003 ")).toBe("p");
+    expect(cache.find("other", "暗夜里的光#10003")).toBeUndefined();
+  });
+
   it("empties for a cleanup and stays the same account's", () => {
     const cache = new HistoryCache();
     cache.scope("me");
@@ -71,6 +89,7 @@ describe("history cache", () => {
     expect(cache.list("me", "p")).toBeUndefined();
     expect(cache.detail("me", 3)).toBeUndefined();
     expect(cache.summary("me", "p")).toBeUndefined();
+    expect(cache.find("me", "暗夜里的光#10003")).toBeUndefined();
     expect(cache.viewer).toBe("me");
     cache.putList("me", "p", list([1]));
     expect(cache.list("me", "p")?.games).toHaveLength(1);

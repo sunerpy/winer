@@ -93,6 +93,9 @@ const FRIENDS_REFRESH: Duration = Duration::from_secs(60);
 /// Sooner until it has been read once: chat can still be signing in when the client connects.
 const FRIENDS_RETRY: Duration = Duration::from_secs(5);
 
+/// Between team-visible callout lines: short messages survive the remote chat service, and the gap
+/// keeps the six-message block below its burst limit.
+const MESSAGE_GAP: Duration = Duration::from_millis(350);
 /// Champ select's chat room opens a moment after champ select itself.
 const CHAT_WAIT_ATTEMPTS: u32 = 10;
 
@@ -2692,21 +2695,29 @@ async fn champ_select_chat(lcu: &Lcu) -> Result<Option<String>, CoreError> {
         .map(|conversation| conversation.id))
 }
 
-/// Posts one multi-line message, as Sona does: fewer chat requests, no artificial burst and one
-/// coherent block in the client. `Me` uses a type shown only locally (`celebration`).
+/// Posts short team-visible messages in line order. The remote chat service can optimistically show
+/// a multi-line `chat` message and then remove it; `Me` is local-only and keeps one coherent block.
 async fn say(lcu: &Lcu, chat: &str, lines: &[String], audience: Audience) -> Result<(), CoreError> {
     let path = format!("/lol-chat/v1/conversations/{}/messages", query_value(chat));
     let kind = match audience {
         Audience::Team => "chat",
         Audience::Me => "celebration",
     };
-    lcu.post(&path, &json!({ "body": callout_body(lines), "type": kind }))
-        .await?;
+    for (index, body) in callout_messages(lines, audience).iter().enumerate() {
+        if index > 0 {
+            sleep(MESSAGE_GAP).await;
+        }
+        lcu.post(&path, &json!({ "body": body, "type": kind }))
+            .await?;
+    }
     Ok(())
 }
 
-fn callout_body(lines: &[String]) -> String {
-    lines.join("\n")
+fn callout_messages(lines: &[String], audience: Audience) -> Vec<String> {
+    match audience {
+        Audience::Team => lines.to_vec(),
+        Audience::Me => vec![lines.join("\n")],
+    }
 }
 
 async fn execute(lcu: &Lcu, action: ChampAction) -> Result<(), lcu::Error> {
@@ -3113,13 +3124,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_callout_is_one_multiline_chat_message() {
+    fn team_callouts_are_short_messages_while_only_me_keeps_one_block() {
+        let lines = [
+            "winer 战绩鉴定".into(),
+            "1L: 🦄 独角马|胜率55%|KDA3.5|战力7.2".into(),
+        ];
+        assert_eq!(callout_messages(&lines, Audience::Team), lines);
         assert_eq!(
-            callout_body(&[
-                "winer 战绩鉴定".into(),
-                "1L: 🦄 独角马|胜率55%|KDA3.5|战力7.2".into(),
-            ]),
-            "winer 战绩鉴定\n1L: 🦄 独角马|胜率55%|KDA3.5|战力7.2"
+            callout_messages(&lines, Audience::Me),
+            ["winer 战绩鉴定\n1L: 🦄 独角马|胜率55%|KDA3.5|战力7.2"]
         );
     }
 
