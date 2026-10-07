@@ -11,7 +11,10 @@ use std::{
     collections::HashMap,
     fs, io,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock},
+    sync::{
+        Arc, Mutex, MutexGuard, OnceLock, RwLock,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -162,6 +165,8 @@ struct Inner {
     players: Mutex<HashMap<String, PlayerEntry>>,
     /// Each player costs three requests; four players at a time keeps the client responsive.
     player_slots: Semaphore,
+    /// Numbers the requests for players' records, so that only the one awaited writes its answer.
+    player_requests: AtomicU64,
     /// Pictures the window has drawn, within `caches::ASSETS`.
     assets: Mutex<Lru<String, Arc<Asset>>>,
     /// Augment descriptions, per language, with when they were fetched (`caches`).
@@ -241,10 +246,69 @@ impl Live {
 }
 
 enum PlayerEntry {
-    Loading,
+    /// A request is out: the `generation`th, for a form read within `focus`. A request for another
+    /// focus takes its place, and only the request awaited writes its answer ([`finish_load`]).
+    Loading {
+        generation: u64,
+        focus: Option<analysis::Focus>,
+    },
     /// When it was fetched; `None` once the player has finished a game since.
     Ready(Arc<PlayerRecord>, Option<Instant>),
     Failed(String, Instant),
+}
+
+/// Whether `puuid`'s record is to be asked for within `focus`, and if so marks the request out as
+/// the `generation`th: nothing kept serves it fresh, and no request for the same focus is out.
+fn begin_load(
+    players: &mut HashMap<String, PlayerEntry>,
+    puuid: &str,
+    focus: Option<&analysis::Focus>,
+    kinds: &analysis::QueueKinds,
+    generation: u64,
+) -> bool {
+    let due = match players.get(puuid) {
+        Some(PlayerEntry::Loading { focus: loading, .. }) => loading.as_ref() != focus,
+        Some(entry @ PlayerEntry::Ready(record, _)) => {
+            !(entry.fresh(PLAYER_TTL).is_some() && record.serves(focus, kinds))
+        }
+        Some(PlayerEntry::Failed(_, at)) => at.elapsed() >= FAILED_PLAYER_TTL,
+        None => true,
+    };
+    if due {
+        players.insert(
+            puuid.to_owned(),
+            PlayerEntry::Loading {
+                generation,
+                focus: focus.cloned(),
+            },
+        );
+    }
+    due
+}
+
+/// Keeps what the `generation`th request for `puuid` brought, if that request is still the one
+/// awaited: a newer one, or an answer already in, wins. For an account signed out since (`current`
+/// false) the request's own mark is removed instead. Returns whether the answer was kept.
+fn finish_load(
+    players: &mut HashMap<String, PlayerEntry>,
+    puuid: &str,
+    generation: u64,
+    entry: PlayerEntry,
+    current: bool,
+) -> bool {
+    let awaited = matches!(
+        players.get(puuid),
+        Some(PlayerEntry::Loading { generation: out, .. }) if *out == generation
+    );
+    if !awaited {
+        return false;
+    }
+    if current {
+        players.insert(puuid.to_owned(), entry);
+    } else {
+        players.remove(puuid);
+    }
+    current
 }
 
 /// What a player's summary is worked out from, as the client sent it. The summary is read from it
@@ -322,6 +386,7 @@ impl Service {
                 client: RwLock::new(None),
                 players: Mutex::new(HashMap::new()),
                 player_slots: Semaphore::new(4),
+                player_requests: AtomicU64::new(0),
                 assets: Mutex::new(Lru::new(caches::ASSETS)),
                 augment_details: tokio::sync::Mutex::new(HashMap::new()),
                 backups: OnceLock::new(),
@@ -1346,7 +1411,7 @@ impl Service {
                     message: message.clone(),
                 };
             }
-            Some(PlayerEntry::Loading) | None => return PlayerStats::Loading,
+            Some(PlayerEntry::Loading { .. }) | None => return PlayerStats::Loading,
         };
         PlayerStats::Ready(Box::new(self.summarize(&record, focus)))
     }
@@ -1382,20 +1447,12 @@ impl Service {
         self.scope_account(&me);
         let shown = caches::players_shown(client);
         let kinds = catalog_kinds(client);
+        let generation = self.inner.player_requests.fetch_add(1, Ordering::Relaxed);
         {
             let mut players = lock(&self.inner.players);
-            let fresh = match players.get(&puuid) {
-                Some(PlayerEntry::Loading) => true,
-                Some(entry @ PlayerEntry::Ready(record, _)) => {
-                    entry.fresh(PLAYER_TTL).is_some() && record.serves(focus.as_ref(), &kinds)
-                }
-                Some(PlayerEntry::Failed(_, at)) => at.elapsed() < FAILED_PLAYER_TTL,
-                None => false,
-            };
-            if fresh {
+            if !begin_load(&mut players, &puuid, focus.as_ref(), &kinds, generation) {
                 return;
             }
-            players.insert(puuid.clone(), PlayerEntry::Loading);
             caches::trim_players(&mut players, &shown, Instant::now());
         }
         let (service, client) = (self.clone(), client.clone());
@@ -1414,12 +1471,9 @@ impl Service {
             let shown = caches::players_shown(&client);
             {
                 let mut players = lock(&service.inner.players);
-                if current {
-                    players.insert(puuid, entry);
+                // Fetched for an account that has signed out since: the next one asks again.
+                if finish_load(&mut players, &puuid, generation, entry, current) {
                     caches::trim_players(&mut players, &shown, Instant::now());
-                } else if matches!(players.get(&puuid), Some(PlayerEntry::Loading)) {
-                    // Fetched for an account that has signed out since: the next one asks again.
-                    players.remove(&puuid);
                 }
             }
             service.render(&client);
@@ -3049,6 +3103,103 @@ mod tests {
         }
     }
 
+    fn fetched(focus: Option<analysis::Focus>) -> PlayerEntry {
+        PlayerEntry::Ready(
+            Arc::new(PlayerRecord {
+                summoner: Summoner::default(),
+                ranked: None,
+                games: Vec::new(),
+                focus,
+                complete: false,
+            }),
+            Some(Instant::now()),
+        )
+    }
+
+    fn generation(players: &HashMap<String, PlayerEntry>) -> Option<u64> {
+        match players.get("p") {
+            Some(PlayerEntry::Loading { generation, .. }) => Some(*generation),
+            _ => None,
+        }
+    }
+
+    /// One request per focus at a time; a request for another focus takes over, and whichever of
+    /// the two answers first, only the newer one's answer is kept.
+    #[test]
+    fn only_the_request_awaited_writes_its_answer() {
+        let kinds = analysis::QueueKinds::default();
+        let rift = analysis::Focus::of("CLASSIC");
+        let aram = analysis::Focus::of("ARAM");
+        let mut players = HashMap::new();
+        assert!(begin_load(&mut players, "p", rift.as_ref(), &kinds, 1));
+        assert!(
+            !begin_load(&mut players, "p", rift.as_ref(), &kinds, 2),
+            "the same focus is out already"
+        );
+        assert_eq!(generation(&players), Some(1));
+        assert!(
+            begin_load(&mut players, "p", aram.as_ref(), &kinds, 3),
+            "another focus takes over"
+        );
+        assert_eq!(generation(&players), Some(3));
+
+        // The older answer comes first: dropped, the newer one still awaited.
+        assert!(!finish_load(
+            &mut players,
+            "p",
+            1,
+            fetched(rift.clone()),
+            true
+        ));
+        assert_eq!(generation(&players), Some(3));
+        assert!(finish_load(
+            &mut players,
+            "p",
+            3,
+            fetched(aram.clone()),
+            true
+        ));
+        assert!(matches!(
+            players.get("p"),
+            Some(PlayerEntry::Ready(record, _)) if record.focus == aram
+        ));
+
+        // The newer answer comes first: the older one, arriving late, changes nothing.
+        let mut players = HashMap::new();
+        begin_load(&mut players, "p", rift.as_ref(), &kinds, 4);
+        begin_load(&mut players, "p", aram.as_ref(), &kinds, 5);
+        assert!(finish_load(
+            &mut players,
+            "p",
+            5,
+            fetched(aram.clone()),
+            true
+        ));
+        assert!(!finish_load(&mut players, "p", 4, fetched(rift), true));
+        assert!(matches!(
+            players.get("p"),
+            Some(PlayerEntry::Ready(record, _)) if record.focus == aram
+        ));
+    }
+
+    /// An answer for an account signed out since removes only its own request's mark.
+    #[test]
+    fn a_signed_out_answer_clears_only_its_own_request() {
+        let kinds = analysis::QueueKinds::default();
+        let rift = analysis::Focus::of("CLASSIC");
+        let mut players = HashMap::new();
+        begin_load(&mut players, "p", rift.as_ref(), &kinds, 1);
+        begin_load(&mut players, "p", None, &kinds, 2);
+        assert!(!finish_load(&mut players, "p", 1, fetched(None), false));
+        assert_eq!(
+            generation(&players),
+            Some(2),
+            "the newer request is still out"
+        );
+        assert!(!finish_load(&mut players, "p", 2, fetched(None), false));
+        assert!(players.get("p").is_none(), "its own mark goes");
+    }
+
     /// A retry asks again only for a record that failed; one that loaded is left alone.
     #[tokio::test]
     async fn only_a_failed_record_is_asked_for_again() {
@@ -3071,7 +3222,7 @@ mod tests {
         service.retry_player("failed").unwrap();
         assert!(matches!(
             lock(&service.inner.players).get("failed"),
-            Some(PlayerEntry::Loading)
+            Some(PlayerEntry::Loading { .. })
         ));
         service.retry_player("unknown").unwrap();
         assert!(
