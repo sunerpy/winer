@@ -180,11 +180,10 @@ and F 💀. Emoji show in the client's chat only; lines typed in a game have non
 
 - The first line names your side and "winer rating", followed by the opening line if you wrote one;
   the rich style puts 📢 before it.
-- In Chinese, names, titles and the opening line sit in 【】, and so do champions in the in-game
-  lines: the client's chat masks some words, and it reads across spaces and some punctuation,
-  joining the characters of neighbouring fields. The tier 上等马, a space and the name 会跑路的防御塔
-  hold 马会, which gets masked; the brackets keep the two apart. A hidden name drops its brackets
-  too.
+- The Chinese default follows Sona's `seat: tier|win rate|KDA|strength` format and omits player
+  names, titles and quips. Champ-select seats already identify the players, and removing free-form
+  text prevents the client filter from joining 上等马 with a name such as 会跑路的防御塔. The window
+  and in-client panel still show those details; a custom template may still include them.
 - `{seat}` is the teammate's place in your team's list in champ select, counted from the top: P1 to
   P5 (1L to 5L in Chinese). A line names the seat and the player, not the champion: champions can
   still change during champ select, seats do not.

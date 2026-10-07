@@ -253,7 +253,7 @@ describe("App", () => {
     // The demo champ select is Hextech ARAM.
     const { user } = await renderApp(scoped(["ranked", "normal"]));
     await user.click(await screen.findByRole("button", { name: zhCN["overview.open"] }));
-    expect(screen.getByText(/^👑 峡谷通天代：1L【暗夜里的光】/)).toBeInTheDocument();
+    expect(screen.getByText(/^1L: 👑 峡谷通天代\|/)).toBeInTheDocument();
     expect(screen.queryByText(zhCN["live.calloutAuto"])).toBeNull();
     cleanup();
 
@@ -281,14 +281,15 @@ describe("App", () => {
       "the side and winer's name lead the callout",
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/^👑 峡谷通天代：1L【暗夜里的光】/),
-      "the seat and the player, not the champion",
+      screen.getByText(/^1L: 👑 峡谷通天代\|/),
+      "the seat and tier lead the safe columns",
     ).toBeInTheDocument();
-    expect(screen.getByText(/^💀 纯正牛马：5L【眼位守护者】/)).toBeInTheDocument();
-    expect(
-      screen.getByText(/^👑 峡谷通天代：1L/),
-      "the title and the quip ride along",
-    ).toHaveTextContent("战力7.4【版本答案】，对面五个人准备举报代练");
+    expect(screen.getByText(/^5L: 💀 纯正牛马\|/)).toBeInTheDocument();
+    const topLine = screen.getByText(/^1L: 👑 峡谷通天代\|/);
+    expect(topLine).toHaveTextContent("战力7.4");
+    expect(topLine, "free-form name, title and quip stay out").not.toHaveTextContent(
+      /暗夜里的光|版本答案|举报代练/,
+    );
     await user.click(screen.getByRole("button", { name: zhCN["live.sendTeam"] }));
     expect(call).toHaveBeenCalledWith("send_callout", { audience: "team" });
     expect(await screen.findByText("已发送 6 条喊话")).toBeInTheDocument();
@@ -367,28 +368,26 @@ describe("App", () => {
   it("previews the callout as it is written: opening line, scheme and own tiers", async () => {
     const { user, nav } = await renderApp();
     await user.click(within(nav).getByRole("button", { name: zhCN["nav.automation"] }));
-    expect(await screen.findByText(/^👑 峡谷通天代：1L【/)).toBeInTheDocument();
-    expect(screen.getByText(/^💀 纯正牛马：5L【/)).toBeInTheDocument();
+    expect(await screen.findByText(/^1L: 👑 峡谷通天代\|/)).toBeInTheDocument();
+    expect(screen.getByText(/^5L: 💀 纯正牛马\|/)).toBeInTheDocument();
     expect(
       screen.getByRole("textbox", { name: zhCN["auto.template"] }),
       "a blank template shows the default, which names the seat",
     ).toHaveAttribute(
       "placeholder",
-      "{emoji}{standing}：{seat}【{name}】，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
+      "{seat}: {emoji}{standing}|近{games}场胜率{winRate}|KDA{kda}|战力{score}",
     );
 
     // The compact style: one short line a player, the same columns, no emoji, title or quip.
     await user.click(screen.getByRole("radio", { name: zhCN["auto.style.compact"] }));
-    expect(
-      await screen.findByText("1L 峡谷通天代｜胜率60%｜KDA 4.1｜战力7.4｜【暗夜里的光】"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("1L: 峡谷通天代|胜率60%|KDA4.1|战力7.4")).toBeInTheDocument();
     expect(screen.getByText("【蓝色方】winer 战绩鉴定")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: zhCN["auto.template"] })).toHaveAttribute(
       "placeholder",
-      "{seat} {standing}｜胜率{winRate}｜KDA {kda}｜战力{score}｜【{name}】",
+      "{seat}: {standing}|胜率{winRate}|KDA{kda}|战力{score}",
     );
     await user.click(screen.getByRole("radio", { name: zhCN["auto.style.rich"] }));
-    expect(await screen.findByText(/^👑 峡谷通天代：1L【/)).toBeInTheDocument();
+    expect(await screen.findByText(/^1L: 👑 峡谷通天代\|/)).toBeInTheDocument();
 
     await user.type(screen.getByRole("textbox", { name: zhCN["auto.header"] }), "开局分析{Enter}");
     expect(await screen.findByText("📢【蓝色方】winer 战绩鉴定【开局分析】")).toBeInTheDocument();
@@ -401,24 +400,24 @@ describe("App", () => {
       "true",
     );
     await user.click(within(dialog).getByRole("radio", { name: /^峡谷食物链/ }));
-    expect(await screen.findByText(/^👑 峡谷之王：1L【/)).toBeInTheDocument();
+    expect(await screen.findByText(/^1L: 👑 峡谷之王\|/)).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole("radio", { name: /^自定义/ }));
     await user.type(within(dialog).getByRole("textbox", { name: "第 1 档" }), "大腿{Enter}");
     await user.type(within(dialog).getByRole("textbox", { name: "第 2 档" }), "挂件{Enter}");
-    expect(await screen.findByText(/^💀 挂件：2L【/)).toBeInTheDocument();
+    expect(await screen.findByText(/^2L: 💀 挂件\|/)).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole("button", { name: zhCN["common.close"] }));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByText(zhCN["rating.scheme.custom"])).toBeInTheDocument();
   });
 
-  it("explains the rating in settings, switches the titles and opens the documentation", async () => {
+  it("keeps titles out of the safe preview while switching them for local surfaces", async () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");
     const { user, nav } = await renderApp(backend);
     await user.click(within(nav).getByRole("button", { name: zhCN["nav.automation"] }));
-    expect(await screen.findByText(/^👑 峡谷通天代：1L【/)).toHaveTextContent("【靠谱队友】");
+    expect(await screen.findByText(/^1L: 👑 峡谷通天代\|/)).not.toHaveTextContent("靠谱队友");
 
     fireEvent.keyDown(window, { key: ",", ctrlKey: true });
     const dialog = screen.getByRole("dialog", { name: zhCN["settings.title"] });
@@ -432,7 +431,7 @@ describe("App", () => {
 
     await user.click(within(dialog).getByRole("switch", { name: zhCN["rating.titles"] }));
     await waitFor(() =>
-      expect(screen.getByText(/^👑 峡谷通天代：1L【/)).not.toHaveTextContent("【靠谱队友】"),
+      expect(screen.getByText(/^1L: 👑 峡谷通天代\|/)).not.toHaveTextContent("靠谱队友"),
     );
     expect(call).toHaveBeenCalledWith(
       "preview_callout",
@@ -454,6 +453,31 @@ describe("App", () => {
     await user.click(within(dialog).getByRole("tab", { name: zhCN["settings.general"] }));
     await user.click(within(dialog).getByRole("button", { name: "English" }));
     expect(await screen.findByRole("navigation", { name: en["nav.label"] })).toBeInTheDocument();
+  });
+});
+
+describe("updates", () => {
+  it("keeps a verified update in winer until the user explicitly restarts", async () => {
+    const backend = demoWith({
+      get_update_status: () => ({ state: "ready", version: "0.0.8" }),
+      install_update: () => null,
+    });
+    const call = vi.spyOn(backend, "call");
+    const { user } = await renderApp(backend);
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: zhCN["update.restartBadge"].replace("{version}", "0.0.8"),
+      }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: zhCN["update.ready"].replace("{version}", "0.0.8"),
+    });
+    expect(within(dialog).getByText(zhCN["update.verified"])).toBeInTheDocument();
+    expect(within(dialog).getByText(zhCN["update.readyHint"])).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: zhCN["update.restart"] }));
+    expect(call).toHaveBeenCalledWith("install_update");
   });
 });
 
@@ -1265,7 +1289,7 @@ describe("loadout", () => {
     });
     const call = vi.spyOn(backend, "call");
     await openLive(backend);
-    expect(await screen.findByText(/^👑 峡谷通天代：1L【/)).toBeInTheDocument();
+    expect(await screen.findByText(/^1L: 👑 峡谷通天代\|/)).toBeInTheDocument();
     expect(screen.queryByText(zhCN["loadout.panel"])).toBeNull();
     expect(call).not.toHaveBeenCalledWith("get_build", expect.anything());
   });
@@ -1433,13 +1457,13 @@ describe("callout", () => {
       panel().getByRole("region", { name: zhCN["callout.gameTeams.enemies"] }),
     );
     expect(enemies.getByText("【敌方·红色方】winer 战绩鉴定")).toBeInTheDocument();
-    expect(enemies.getByText(/^小心【卡兹克】：峡谷通天代/)).toBeInTheDocument();
-    expect(enemies.getByText(/^对面【亚索】：纯正牛马/)).toBeInTheDocument();
+    expect(enemies.getByText(/^小心【卡兹克】\|档位峡谷通天代\|/)).toBeInTheDocument();
+    expect(enemies.getByText(/^对面【亚索】\|档位纯正牛马\|/)).toBeInTheDocument();
     // Callout: beside them the team's own lines, as champ select's, by champion.
     const allies = within(panel().getByRole("region", { name: zhCN["callout.gameTeams.allies"] }));
     expect(allies.getByText("【我方·蓝色方】winer 战绩鉴定")).toBeInTheDocument();
     expect(
-      allies.getByText(/^峡谷通天代【阿狸】，近20场胜率60%/),
+      allies.getByText(/^【阿狸】\|档位峡谷通天代\|近20场胜率60%/),
       "the champion where champ select names the seat and the player",
     ).toBeInTheDocument();
     expect(allies.getAllByRole("listitem")).toHaveLength(6);
@@ -1524,8 +1548,8 @@ describe("callout", () => {
       await screen.findByText("【敌方·红色方】winer 战绩鉴定"),
       "what the shortcut would type in the game, previewed",
     ).toBeInTheDocument();
-    expect(screen.getByText(/^小心【阿狸】：峡谷通天代/)).toBeInTheDocument();
-    expect(screen.getByText(/^对面【阿狸】：纯正牛马/)).toBeInTheDocument();
+    expect(screen.getByText(/^小心【阿狸】\|档位峡谷通天代\|/)).toBeInTheDocument();
+    expect(screen.getByText(/^对面【阿狸】\|档位纯正牛马\|/)).toBeInTheDocument();
     expect(call).toHaveBeenCalledWith("preview_game_callout", {
       rule: expect.objectContaining({ hotkey: null, inGame: false }),
       general: expect.objectContaining({ language: "zh-CN" }),
@@ -1566,7 +1590,7 @@ describe("callout", () => {
     const watch = screen.getByRole("textbox", { name: zhCN["callout.watch"] });
     expect(watch).toHaveAttribute(
       "placeholder",
-      "小心【{champion}】：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}",
+      "小心【{champion}】|档位{standing}|近{games}场胜率{winRate}|KDA{kda}",
     );
     // `{{` types a brace; `{Enter}` commits.
     await user.type(watch, "注意 {{champion}{Enter}");
@@ -1607,7 +1631,7 @@ describe("callout", () => {
       await screen.findByText("【我方·蓝色方】winer 战绩鉴定"),
       "the preview types the team",
     ).toBeInTheDocument();
-    expect(screen.getByText(/^峡谷通天代【阿狸】，近20场胜率60%/)).toBeInTheDocument();
+    expect(screen.getByText(/^【阿狸】\|档位峡谷通天代\|近20场胜率60%/)).toBeInTheDocument();
     expect(screen.queryByText("【敌方·红色方】winer 战绩鉴定")).toBeNull();
 
     await user.click(within(teams).getByRole("radio", { name: "双方" }));
@@ -1615,13 +1639,13 @@ describe("callout", () => {
     // As one press would: the enemy's three lines, then the team's first line and its best two.
     const enemy = await screen.findByText("【敌方·红色方】winer 战绩鉴定");
     expect(within(enemy.closest("ol") as HTMLElement).getAllByRole("listitem")).toHaveLength(6);
-    expect(screen.getByText(/^人形防御塔【阿狸】，/)).toBeInTheDocument();
+    expect(screen.getByText(/^【阿狸】\|档位人形防御塔\|/)).toBeInTheDocument();
     expect(screen.queryByText(/^峡谷公务员【阿狸】，/), "cut at the limit").toBeNull();
 
     const ally = screen.getByRole("textbox", { name: zhCN["callout.ally"] });
     expect(ally).toHaveAttribute(
       "placeholder",
-      "{standing}【{champion}】，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
+      "【{champion}】|档位{standing}|近{games}场胜率{winRate}|KDA{kda}|战力{score}",
     );
     await user.type(ally, "{{champion} {{standing}{Enter}");
     await saved({ allyTemplate: "{champion} {standing}" });

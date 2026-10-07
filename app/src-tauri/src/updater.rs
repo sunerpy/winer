@@ -9,6 +9,8 @@ use std::{
     time::Duration,
 };
 
+#[cfg(any(windows, test))]
+use tauri::utils::config::{BundleType, PluginConfig};
 use tauri::{AppHandle, Emitter as _, Manager, Runtime};
 use tauri_plugin_updater::{Update, UpdaterExt as _};
 use tracing::{info, warn};
@@ -23,12 +25,18 @@ const FIRST_CHECK: Duration = Duration::from_secs(20);
 /// Between checks on its own while winer keeps running.
 const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 
+enum Pending {
+    /// Found by a manifest check, not downloaded yet.
+    Available(Update),
+    /// Downloaded and signature-verified. The bytes stay in memory until the user restarts.
+    Ready { update: Update, bytes: Vec<u8> },
+}
+
 #[derive(Default)]
 pub(crate) struct Updater {
     status: Mutex<UpdateStatus>,
     busy: AtomicBool,
-    /// What the last check found, kept so Install does not ask the server twice.
-    pending: Mutex<Option<Update>>,
+    pending: Mutex<Option<Pending>>,
 }
 
 impl Updater {
@@ -110,7 +118,14 @@ pub(crate) fn check_in_background<R: Runtime>(app: AppHandle<R>) {
 
 async fn quiet_check<R: Runtime>(app: &AppHandle<R>) {
     let updater = app.state::<Updater>();
-    if updater.begin().is_err() {
+    if matches!(
+        updater.status(),
+        UpdateStatus::Available { .. }
+            | UpdateStatus::Downloading { .. }
+            | UpdateStatus::Ready { .. }
+            | UpdateStatus::Installing { .. }
+    ) || updater.begin().is_err()
+    {
         return;
     }
     match find(app).await {
@@ -120,7 +135,8 @@ async fn quiet_check<R: Runtime>(app: &AppHandle<R>) {
             *updater
                 .pending
                 .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(update);
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) =
+                Some(Pending::Available(update));
             updater.finish(app, status);
         }
         Ok(None) => updater.finish(
@@ -140,6 +156,11 @@ async fn quiet_check<R: Runtime>(app: &AppHandle<R>) {
 pub(crate) async fn check<R: Runtime>(app: &AppHandle<R>) -> Result<UpdateStatus, IpcError> {
     let updater = app.state::<Updater>();
     updater.begin()?;
+    updater
+        .pending
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take();
     updater.publish(app, UpdateStatus::Checking);
     let status = match find(app).await {
         Ok(Some(update)) => {
@@ -148,7 +169,8 @@ pub(crate) async fn check<R: Runtime>(app: &AppHandle<R>) -> Result<UpdateStatus
             *updater
                 .pending
                 .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(update);
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) =
+                Some(Pending::Available(update));
             status
         }
         Ok(None) => UpdateStatus::UpToDate {
@@ -166,8 +188,9 @@ pub(crate) async fn check<R: Runtime>(app: &AppHandle<R>) -> Result<UpdateStatus
     Ok(status)
 }
 
-/// Downloads, verifies and installs, then restarts. On Windows the installer takes over and this
-/// process exits inside `install`.
+/// First intent downloads and verifies an available update, stopping at [`UpdateStatus::Ready`].
+/// A second explicit intent installs those same bytes and restarts. On Windows the installer takes
+/// over and this process exits inside `install`.
 pub(crate) async fn install<R: Runtime>(app: &AppHandle<R>) -> Result<(), IpcError> {
     let updater = app.state::<Updater>();
     updater.begin()?;
@@ -176,10 +199,11 @@ pub(crate) async fn install<R: Runtime>(app: &AppHandle<R>) -> Result<(), IpcErr
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .take();
-    let update = match pending {
-        Some(update) => update,
+
+    let pending = match pending {
+        Some(pending) => pending,
         None => match find(app).await {
-            Ok(Some(update)) => update,
+            Ok(Some(update)) => Pending::Available(update),
             Ok(None) => {
                 updater.finish(
                     app,
@@ -202,48 +226,61 @@ pub(crate) async fn install<R: Runtime>(app: &AppHandle<R>) -> Result<(), IpcErr
         },
     };
 
-    let version = update.version.clone();
-    let (mut received, mut published) = (0u64, 0u64);
-    updater.publish(
-        app,
-        UpdateStatus::Downloading {
-            version: version.clone(),
-            received: 0,
-            total: None,
-        },
-    );
-    let download = update
-        .download(
-            |chunk, total| {
-                received += chunk as u64;
-                if received - published >= PROGRESS_STEP || Some(received) == total {
-                    published = received;
-                    updater.publish(
-                        app,
-                        UpdateStatus::Downloading {
-                            version: version.clone(),
-                            received,
-                            total,
-                        },
-                    );
-                }
-            },
-            || {},
-        )
-        .await;
-    let bytes = match download {
-        Ok(bytes) => bytes,
-        Err(error) => {
-            updater.finish(
+    let (update, bytes) = match pending {
+        Pending::Ready { update, bytes } => (update, bytes),
+        Pending::Available(update) => {
+            let version = update.version.clone();
+            let (mut received, mut published) = (0u64, 0u64);
+            updater.publish(
                 app,
-                UpdateStatus::Failed {
-                    message: describe(&error),
+                UpdateStatus::Downloading {
+                    version: version.clone(),
+                    received: 0,
+                    total: None,
                 },
             );
+            let download = update
+                .download(
+                    |chunk, total| {
+                        received += chunk as u64;
+                        if received - published >= PROGRESS_STEP || Some(received) == total {
+                            published = received;
+                            updater.publish(
+                                app,
+                                UpdateStatus::Downloading {
+                                    version: version.clone(),
+                                    received,
+                                    total,
+                                },
+                            );
+                        }
+                    },
+                    || {},
+                )
+                .await;
+            let bytes = match download {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    updater.finish(
+                        app,
+                        UpdateStatus::Failed {
+                            message: describe(&error),
+                        },
+                    );
+                    return Ok(());
+                }
+            };
+            *updater
+                .pending
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) =
+                Some(Pending::Ready { update, bytes });
+            updater.finish(app, UpdateStatus::Ready { version });
             return Ok(());
         }
     };
 
+    let version = update.version.clone();
     updater.publish(
         app,
         UpdateStatus::Installing {
@@ -268,6 +305,39 @@ pub(crate) async fn install<R: Runtime>(app: &AppHandle<R>) -> Result<(), IpcErr
         ),
     }
     Ok(())
+}
+
+/// NSIS current-user updates can run without UI; MSI and unknown bundle types stay passive so a
+/// per-machine package can still show its UAC prompt.
+#[cfg(any(windows, test))]
+pub(crate) fn windows_install_mode(bundle: Option<BundleType>) -> &'static str {
+    match bundle {
+        Some(BundleType::Nsis) => "quiet",
+        _ => "passive",
+    }
+}
+
+/// The updater plugin deserializes its config once at startup, so the bundle-specific mode must be
+/// written into the context before the builder runs.
+#[cfg(any(windows, test))]
+pub(crate) fn set_windows_install_mode(plugins: &mut PluginConfig, mode: &str) {
+    let Some(updater) = plugins
+        .0
+        .get_mut("updater")
+        .and_then(|value| value.as_object_mut())
+    else {
+        return;
+    };
+    let windows = updater
+        .entry("windows")
+        .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+    if !windows.is_object() {
+        *windows = serde_json::Value::Object(serde_json::Map::new());
+    }
+    windows
+        .as_object_mut()
+        .expect("windows updater config is an object")
+        .insert("installMode".into(), mode.into());
 }
 
 /// The whole cause chain: the plugin's own message is only its outermost line.
@@ -295,7 +365,8 @@ fn now_ms() -> i64 {
 mod tests {
     use std::{error::Error, fmt};
 
-    use super::describe;
+    use super::{describe, set_windows_install_mode, windows_install_mode};
+    use tauri::utils::config::{BundleType, PluginConfig};
 
     #[derive(Debug)]
     struct Outer(Inner);
@@ -328,5 +399,28 @@ mod tests {
             describe(&Outer(Inner)),
             "error sending request: connection refused"
         );
+    }
+    #[test]
+    fn nsis_updates_are_quiet_but_msi_and_unknown_packages_stay_passive() {
+        assert_eq!(windows_install_mode(Some(BundleType::Nsis)), "quiet");
+        assert_eq!(windows_install_mode(Some(BundleType::Msi)), "passive");
+        assert_eq!(windows_install_mode(None), "passive");
+    }
+
+    #[test]
+    fn the_install_mode_is_patched_before_the_plugin_reads_its_config() {
+        let mut plugins = PluginConfig::default();
+        plugins.0.insert(
+            "updater".into(),
+            serde_json::json!({
+                "pubkey": "key",
+                "endpoints": ["https://example.invalid/latest.json"],
+                "windows": { "installMode": "passive" }
+            }),
+        );
+        set_windows_install_mode(&mut plugins, "quiet");
+        let config: tauri_plugin_updater::Config =
+            serde_json::from_value(plugins.0["updater"].clone()).unwrap();
+        assert_eq!(config.windows.unwrap().install_mode.to_string(), "quiet");
     }
 }
