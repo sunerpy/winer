@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.9](https://github.com/sunerpy/winer/compare/v0.0.8...v0.0.9) (2026-10-07)
+
+
+### Bug Fixes
+
+* hide the updater installer before its first frame ([#19](https://github.com/sunerpy/winer/issues/19)) ([7cae57a](https://github.com/sunerpy/winer/commit/7cae57a2a85c3124b52fee32cfc6e7e77ab77af1))
+
 ## [0.0.8](https://github.com/sunerpy/winer/compare/v0.0.7...v0.0.8) (2026-10-07)
 
 
