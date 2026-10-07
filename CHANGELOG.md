@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.12](https://github.com/sunerpy/winer/compare/v0.0.11...v0.0.12) (2026-10-07)
+
+
+### Bug Fixes
+
+* accept matches reliably and keep callouts in seat order ([#25](https://github.com/sunerpy/winer/issues/25)) ([c61a003](https://github.com/sunerpy/winer/commit/c61a00361861a91cbc4170c253dc012864e09243))
+
 ## [0.0.11](https://github.com/sunerpy/winer/compare/v0.0.10...v0.0.11) (2026-10-07)
 
 
