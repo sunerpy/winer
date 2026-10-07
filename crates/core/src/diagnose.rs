@@ -434,6 +434,19 @@ mod tests {
         );
     }
 
+    /// The names, read off a real client's `/help`, hold every route winer calls: the naming rule
+    /// and the parameters' names are the client's own.
+    #[test]
+    fn every_route_winer_calls_is_in_a_real_clients_list() {
+        let body: Value = crate::test_support::fixture("lcu-rest/help-functions.json");
+        let functions = help_functions(&body).expect("the capture lists functions");
+        assert!(functions.len() > 1000, "{}", functions.len());
+        assert_eq!(
+            routes_check(Some(&functions)),
+            (CheckStatus::Ok, CheckReason::Fine, None)
+        );
+    }
+
     #[test]
     fn a_version_change_is_noticed_once_and_the_first_version_only_kept() {
         let dir = tempfile::tempdir().unwrap();

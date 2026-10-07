@@ -102,6 +102,12 @@ for one client build or one privilege level, it says so.
   waits, for as long as the client stays open, until chat has signed in (`/lol-chat/v1/me` carries
   `lol`) and the phase is `None`, and `ux-show` follows once the plugin is back on the bridge, or
   after half a minute without it.
+- **`GET /help` lists the client's routes** (Tencent client 16.19, 2026-10-07, windows-local):
+  `{events, functions, types}`, 1,468 functions, each named by its method and path in Pascal case
+  with a path parameter as `By` and its name (`PatchLolChampSelectV1SessionActionsById`). Every
+  route winer calls was there under the name `diagnose::function_name` gives it; the names are kept
+  in `fixtures/lcu-rest/help-functions.json` (descriptions dropped), which a test checks the routes
+  against. The self-check reads this one route and requests none of the others.
 
 ## Profile and chat presence
 
@@ -202,6 +208,9 @@ Measured on NJ100, 16.19, 2026-10-05.
   `/lol-match-history/v1/games/{id}` does for the analysis (the test
   `a_page_from_the_server_describes_its_game_as_the_client_does`, on both captures of one game).
   So a scoreboard opened from a server page is drawn from that page's game, with no request.
+- The server compresses when asked (GZ100, 2026-10-07): a page of 20 games was 22,485 bytes as
+  JSON and 4,067 on the wire with `Accept-Encoding: gzip` (`content-encoding: gzip`), the same
+  bytes unpacked. winer's internet client asks for it; the LCU's does not.
 
 ## Kinds of game
 
@@ -314,6 +323,14 @@ Linux build host the same day; each answers a plain GET with no key, cookie or u
   `requestAnimationFrame` never fires: anything the plugin draws waits until the window is shown.
 - `POST /lol-champ-select/v1/session/bench/swap/{id}` answered OK for a champion that was on the
   client's cooldown, sent through the bridge from a page-level mouse click in the client.
+- **Pengu Loader 1.2.0-dev (`+dab9d75`) activates through IFEO**, measured on windows-local
+  (elevated) on 2026-10-07: `Pengu Loader.exe --install` exits 0 and writes
+  `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\LeagueClientUx.exe`
+  `Debugger` = `rundll32 "<its folder>\core.dll", #6000`. It leaves an existing `version.dll` link
+  alone, so with one in place both loaders would start with the client, and it creates no data
+  folder at install time. `--uninstall` exits 0 and removes the value but leaves the key, empty.
+  winer reads the value (`plugin_host::read_ifeo`, shown as `rundll32 core.dll`), links nothing
+  of its own while it is there, and keeps up only a loader the client links already.
 - For QA only, Pengu's `config` takes `RemoteDebuggingPort=<n>`: after a UI reload the client
   page is reachable over CDP (`scripts/windows/cdp.mjs` with `WINER_CDP_PORT` and
   `WINER_CDP_MATCH=/index.html`). Put it back to `0` and reload again afterwards: while it is

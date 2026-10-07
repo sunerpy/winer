@@ -142,19 +142,41 @@ pub(crate) fn read_ifeo() -> Option<String> {
 }
 
 /// The file name of the program a `Debugger` command line starts: the quoted path, else up to and
-/// including the first `.exe`, else up to the first space.
+/// including the first `.exe`, else up to the first space. For `rundll32`, the DLL it starts as
+/// well: Pengu Loader 1.2 writes `rundll32 "…\core.dll", #6000` (measured on 1.2.0-dev).
 #[cfg_attr(not(windows), allow(dead_code))]
 fn program_name(command: &str) -> Option<String> {
     let command = command.trim();
-    let path = match command.strip_prefix('"') {
-        Some(rest) => rest.split('"').next().unwrap_or(rest),
+    let (path, rest) = match command.strip_prefix('"') {
+        Some(quoted) => quoted.split_once('"').unwrap_or((quoted, "")),
         None => match command.to_ascii_lowercase().find(".exe") {
-            Some(at) => &command[..at + 4],
-            None => command.split(' ').next().unwrap_or(command),
+            Some(at) => command.split_at(at + 4),
+            None => command.split_once(' ').unwrap_or((command, "")),
         },
     };
+    let name = file_name(path)?;
+    let launcher = name
+        .strip_suffix(".exe")
+        .or_else(|| name.strip_suffix(".EXE"))
+        .unwrap_or(name);
+    if launcher.eq_ignore_ascii_case("rundll32") {
+        let rest = rest.trim_start();
+        let argument = match rest.strip_prefix('"') {
+            Some(quoted) => quoted.split('"').next().unwrap_or(quoted),
+            None => rest.split([',', ' ']).next().unwrap_or(rest),
+        };
+        if let Some(dll) = file_name(argument) {
+            return Some(format!("{name} {dll}"));
+        }
+    }
+    Some(name.to_owned())
+}
+
+/// The last component of a Windows or Unix path, when there is one.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn file_name(path: &str) -> Option<&str> {
     let name = path.rsplit(['\\', '/']).next().unwrap_or(path).trim();
-    (!name.is_empty()).then(|| name.to_owned())
+    (!name.is_empty()).then_some(name)
 }
 
 #[cfg(windows)]
@@ -478,6 +500,16 @@ mod tests {
             Some("Pengu Loader.EXE")
         );
         assert_eq!(program_name("loader --x").as_deref(), Some("loader"));
+        // What Pengu Loader 1.2.0-dev wrote on the QA host, its folder aside.
+        assert_eq!(
+            program_name(r#"rundll32 "C:\winer-dev\pengu\unpacked\core.dll", #6000"#).as_deref(),
+            Some("rundll32 core.dll")
+        );
+        assert_eq!(
+            program_name(r"C:\Windows\System32\rundll32.exe C:\tools\boot.dll,Start").as_deref(),
+            Some("rundll32.exe boot.dll")
+        );
+        assert_eq!(program_name("rundll32").as_deref(), Some("rundll32"));
         assert_eq!(program_name("   "), None);
         assert_eq!(program_name(r#""""#), None);
     }
