@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.8](https://github.com/sunerpy/winer/compare/v0.0.7...v0.0.8) (2026-10-07)
+
+
+### Bug Fixes
+
+* keep callouts readable and Windows updates silent ([#17](https://github.com/sunerpy/winer/issues/17)) ([584b0a9](https://github.com/sunerpy/winer/commit/584b0a9099039029edf6f6887b5f03b7a49f1b6c))
+
 ## [0.0.7](https://github.com/sunerpy/winer/compare/v0.0.6...v0.0.7) (2026-10-06)
 
 
