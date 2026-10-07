@@ -712,13 +712,13 @@ pub fn infer_parties<'a>(
     }
     let mut groups: Vec<Vec<usize>> = Vec::new();
     let mut of_root: HashMap<usize, usize> = HashMap::new();
-    for member in 0..open.len() {
+    for (member, &(seat, _)) in open.iter().enumerate() {
         let top = root(&mut parent, member);
         match of_root.get(&top) {
-            Some(&group) => groups[group].push(open[member].0),
+            Some(&group) => groups[group].push(seat),
             None => {
                 of_root.insert(top, groups.len());
-                groups.push(vec![open[member].0]);
+                groups.push(vec![seat]);
             }
         }
     }
