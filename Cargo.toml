@@ -23,8 +23,10 @@ getrandom = "=0.4.3"
 # `system-proxy` lets a client read the proxy set in Windows' settings, which a GUI app otherwise
 # never sees (it has no HTTPS_PROXY). It is on for the updater, whose reqwest is this one: in
 # China GitHub is often reachable only through that proxy. The LCU and game-data clients opt out
-# with `no_proxy()`.
+# with `no_proxy()`. `gzip` asks for compressed answers and unpacks them: a page of 50 games from
+# the shard's server is about 6.5 MB as JSON. The LCU's client opts out with `no_gzip()`.
 reqwest = { version = "=0.13.4", default-features = false, features = [
+  "gzip",
   "rustls-no-provider",
   "system-proxy",
 ] }

@@ -30,3 +30,54 @@ fn build() -> Result<reqwest::Client, String> {
         .build()
         .map_err(|error| error.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        io::{Read as _, Write as _},
+        net::TcpListener,
+    };
+
+    /// `{"ok":true}`, gzipped.
+    const GZIPPED: [u8; 31] = [
+        31, 139, 8, 0, 0, 0, 0, 0, 2, 255, 171, 86, 202, 207, 86, 178, 42, 41, 42, 77, 173, 5, 0,
+        144, 95, 212, 167, 11, 0, 0, 0,
+    ];
+
+    /// The shard's server compresses when asked: the client asks, and reads the answer unpacked.
+    #[tokio::test]
+    async fn answers_are_asked_for_compressed_and_read_unpacked() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 2048];
+            let read = stream.read(&mut request).unwrap();
+            let request = String::from_utf8_lossy(&request[..read]).to_ascii_lowercase();
+            let head = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-encoding: gzip\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                GZIPPED.len()
+            );
+            stream.write_all(head.as_bytes()).unwrap();
+            stream.write_all(&GZIPPED).unwrap();
+            request
+        });
+        let body = super::client()
+            .unwrap()
+            .get(format!("http://127.0.0.1:{port}/"))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        assert_eq!(body, r#"{"ok":true}"#);
+        let request = server.join().unwrap();
+        assert!(
+            request
+                .lines()
+                .any(|line| line.starts_with("accept-encoding:") && line.contains("gzip")),
+            "{request}"
+        );
+    }
+}
