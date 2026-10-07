@@ -3197,7 +3197,7 @@ mod tests {
             "the newer request is still out"
         );
         assert!(!finish_load(&mut players, "p", 2, fetched(None), false));
-        assert!(players.get("p").is_none(), "its own mark goes");
+        assert!(!players.contains_key("p"), "its own mark goes");
     }
 
     /// A retry asks again only for a record that failed; one that loaded is left alone.
