@@ -518,17 +518,13 @@ fn rated_lines(
     champion: &impl Fn(i64) -> Option<String>,
     emoji: bool,
 ) -> Vec<String> {
-    let mut rated: Vec<(usize, &Seat, &SeatRating)> = team
+    // Keep the client's team order. The tier describes each seat; it must not rearrange 1L–5L.
+    let rated: Vec<(usize, &Seat, &SeatRating)> = team
         .iter()
         .enumerate()
         .filter(|(_, seat)| include_self || !seat.is_self)
         .filter_map(|(index, seat)| Some((index + 1, seat, seat.rating.as_ref()?)))
         .collect();
-    rated.sort_by(|a, b| {
-        a.2.tier
-            .cmp(&b.2.tier)
-            .then(b.2.score.total_cmp(&a.2.score))
-    });
     rated
         .into_iter()
         .filter_map(|(number, seat, rating)| {
@@ -1033,7 +1029,7 @@ pub fn game_lines(
 }
 
 /// The team's own lines in the game: a first line with the team's side and winer's name, then one
-/// line per rated teammate as champ select has them (`lines`: the best first, oneself only with
+/// line per rated teammate in the client's team order (`lines`: 1L through 5L, oneself only with
 /// `include_self`), each naming the champion (`ally_template`) where champ select names the seat
 /// and the player: in the game the team knows its players by champion, and champions no longer
 /// change. Nothing where `game_lines` has no teams to tell apart, nor while nobody is rated.
@@ -1252,7 +1248,7 @@ mod tests {
     }
 
     #[test]
-    fn lines_fill_sona_style_columns_best_tier_first_and_keep_each_seat() {
+    fn lines_follow_champ_select_seat_order_whatever_each_players_tier() {
         let view = view(vec![
             seat("bo", 0, false, Some((4.1, 2))),
             seat("ann", 1, true, Some((7.2, 0))),
@@ -1261,16 +1257,16 @@ mod tests {
         assert_eq!(
             players(&view, &CalloutRule::default(), Language::ZhCn),
             [
+                "1L: 💀 下等马|近20场胜率55%|KDA3.5|战力4.1",
                 "2L: 👑 上等马|近20场胜率55%|KDA3.5|战力7.2",
                 "3L: 👌 中等马|近20场胜率55%|KDA3.5|战力5.5",
-                "1L: 💀 下等马|近20场胜率55%|KDA3.5|战力4.1",
             ],
-            "the seat is the place in champ select's list, whatever order the lines take"
+            "the lines stay in the same 1L-to-5L order as champ select"
         );
         // The labels were resolved in Chinese when the seats were rated; the line is English.
         assert_eq!(
             players(&view, &CalloutRule::default(), Language::En)[0],
-            "👑 上等马: P2 ann, 55% in 20 games, KDA 3.5, form 7.2"
+            "💀 下等马: P1 bo, 55% in 20 games, KDA 3.5, form 4.1"
         );
     }
 
@@ -1290,15 +1286,15 @@ mod tests {
             lines(&team, &compact, Language::ZhCn, names),
             [
                 "【红色方】winer 战绩鉴定",
+                "1L: 下等马|胜率55%|KDA3.5|战力4.1",
                 "2L: 上等马|胜率55%|KDA3.5|战力7.2",
                 "3L: 中等马|胜率55%|KDA3.5|战力5.5",
-                "1L: 下等马|胜率55%|KDA3.5|战力4.1",
             ],
             "no emoji, title or quip: the same fields in the same order"
         );
         assert_eq!(
             players(&team, &compact, Language::En)[0],
-            "P2 上等马 | 55% | KDA 3.5 | form 7.2 | ann"
+            "P1 下等马 | 55% | KDA 3.5 | form 4.1 | bo"
         );
         // A name the client hides takes its brackets with it and leaves no separator hanging.
         let mut hidden = seat("dee", 3, false, Some((5.0, 1)));
@@ -1315,7 +1311,7 @@ mod tests {
             template: "{emoji}{seat} {standing}".into(),
             ..compact
         };
-        assert_eq!(players(&team, &own, Language::ZhCn)[0], "👑 2L 上等马");
+        assert_eq!(players(&team, &own, Language::ZhCn)[0], "💀 1L 下等马");
     }
 
     #[test]
@@ -1396,8 +1392,8 @@ mod tests {
         };
         assert_eq!(
             players(&view, &rule, Language::ZhCn),
-            ["上等马：安妮 ann 2L", "下等马：bo 1L"],
-            "an unknown champion leaves no double space"
+            ["下等马：bo 1L", "上等马：安妮 ann 2L"],
+            "seat order is kept and an unknown champion leaves no double space"
         );
     }
 
@@ -1855,16 +1851,16 @@ mod tests {
         assert_eq!(
             heads,
             [
-                "5L: 👑 峡谷通天代",
-                "4L: 🔥 人形防御塔",
-                "3L: 👌 峡谷公务员",
+                "1L: 💀 纯正牛马",
                 "2L: 😅 移动眼位",
-                "1L: 💀 纯正牛马"
+                "3L: 👌 峡谷公务员",
+                "4L: 🔥 人形防御塔",
+                "5L: 👑 峡谷通天代"
             ]
         );
         assert!(
-            lines[0].starts_with("5L: 👑 峡谷通天代|近20场胜率70%"),
-            "the best form sits in the fifth cell: {lines:?}"
+            lines[4].starts_with("5L: 👑 峡谷通天代|近20场胜率70%"),
+            "the best form stays in the fifth cell: {lines:?}"
         );
         assert!(
             lines
@@ -1889,7 +1885,7 @@ mod tests {
     }
 
     /// A full five-player team, from the client's session to the lines sent: every player lands in
-    /// their own tier of the five horses, best form first, each line naming who it is about.
+    /// their own tier of the five horses, in 1L-to-5L seat order, each line naming who it is about.
     #[test]
     fn a_five_player_team_is_ranked_into_five_tiers_end_to_end() {
         use crate::{live, model::ChampSelectSession};
@@ -1967,16 +1963,16 @@ mod tests {
         assert_eq!(
             heads,
             [
-                "4L: 👑 独角马",
-                "3L: 🔥 上等马",
                 "1L: 👌 中等马",
-                "5L: 😅 下等马",
-                "2L: 💀 纯牛马"
+                "2L: 💀 纯牛马",
+                "3L: 🔥 上等马",
+                "4L: 👑 独角马",
+                "5L: 😅 下等马"
             ],
             "{lines:?}"
         );
         assert!(
-            lines[0].starts_with("4L: 👑 独角马|近20场胜率85%"),
+            lines[3].starts_with("4L: 👑 独角马|近20场胜率85%"),
             "{lines:?}"
         );
         assert!(
@@ -2438,7 +2434,7 @@ mod tests {
     }
 
     #[test]
-    fn in_game_the_team_hears_about_itself_by_champion_best_first() {
+    fn in_game_the_team_hears_about_itself_by_champion_in_team_order() {
         let mut best = seat("ann", 2, false, Some((7.2, 0)));
         if let Some(rating) = best.rating.as_mut() {
             rating.title = Some("版本答案".into());
@@ -2457,11 +2453,11 @@ mod tests {
             ally_lines(&game_of(team.clone()), &rule, Language::ZhCn, champions),
             [
                 "【我方·蓝色方】winer 战绩鉴定",
-                "【盖伦】|档位上等马|近20场胜率55%|KDA3.5|战力7.2",
                 "【亚索】|档位中等马|近20场胜率55%|KDA3.5|战力5.5",
+                "【盖伦】|档位上等马|近20场胜率55%|KDA3.5|战力7.2",
                 "【bo】|档位下等马|近20场胜率55%|KDA3.5|战力4.1",
             ],
-            "the best first, each by champion, the one without a champion by name"
+            "the team order, each by champion, the one without a champion by name"
         );
 
         let red = GameView {
@@ -2472,7 +2468,7 @@ mod tests {
         assert_eq!(english[0], "[My team · Red side] winer rating");
         assert_eq!(
             english[2],
-            "中等马: 亚索, 55% in 20 games, KDA 3.5, form 5.5"
+            "上等马: 盖伦, 55% in 20 games, KDA 3.5, form 7.2【版本答案】，稳得离谱，能C还能活"
         );
 
         let without_me = CalloutRule {
