@@ -10,7 +10,7 @@ One row per player:
   its quip. A player whose history is hidden shows as "Hidden player" and gets no tier.
 - **Right**: the latest 6 to 12 games (more on a wider window), one tile each: champion,
   kills/deaths/assists and mode; a win is green, a loss red, a remake grey. Hover a tile for its
-  queue, result and age.
+  queue, result and age. When a player's history could not be read, **Retry** here reads it again.
 
 Choose a name to open that player's history. When both teams are known, a switch at the top right
 moves between them.
@@ -21,7 +21,10 @@ moves between them.
 - **Parties**: once the game is running, players queued together carry the same number
   ("Party 1", "Party 2") and one colour per party; the number always shows, so the colour is never
   needed to tell them apart. In champ select, the teammates who came in from your own lobby are
-  marked too.
+  marked too. Other teammates who lately played at least two games on one team together, one of
+  them among either's last ten, are marked **Likely party** with a dashed swatch: that is read from
+  their games and can be wrong. Only the Tencent shards' history lists all ten players of a game,
+  so elsewhere nothing is inferred.
 - **Tiers**: from recent form, in the scheme chosen in **Settings › Rating**; the rules are in
   [How rating works](/en/rating).
 
@@ -95,6 +98,23 @@ and you swap at once, without the client's cooldown. While rerolls remain, **Rer
 right. With a wishlist set in **Automation › Bench**, a wishlist champion that ranks above the one
 you hold is taken by itself; wishlist champions carry a star.
 
+## Pick suggestions
+
+In Summoner's Rift ranked and normal champ select, once you have a lane and until you lock in, three
+champions are suggested above the teams, each with why:
+
+- **Beats / Loses to**: an enemy already locked in appears in the champion's lane matchups, with its
+  win rate against that enemy.
+- **Tier 1–5**: the source's standing for it (OP.GG gives one, Tencent 101 does not).
+- **Your games in the lane**: how many games you played it in this lane lately, and won; only the
+  Tencent shards' history says which lane a game was.
+- **On your pick list**: it is on the list in **Automation › Auto-pick a champion**.
+
+The candidates are your pick list for the lane (then Any lane) and the five champions you play most
+there; banned and locked champions, and those a teammate picked or showed, never appear. The
+suggestions are shown only: winer hovers and locks nothing for them. **Pick suggestions** in
+**Settings › General** turns them off.
+
 ## Builds
 
 In champ select, the build of the champion you hover or lock in sits under the analysis; while the
@@ -126,13 +146,19 @@ lookup), the lane the champion is played in most comes first.
 The panel's heading names the source and the patch, for example "Data: Tencent 101 · 16.19", and
 the games behind the numbers.
 
-| Mode           | Source                                                                                                                   |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Ranked, Normal | Tencent's 101 statistics from the League app (the Chinese servers); **Settings › General** switches to OP.GG (the world) |
-| ARAM           | OP.GG                                                                                                                    |
-| Hextech ARAM   | Tencent's League app, and ARAM.GG when that does not answer                                                              |
-| Arena          | OP.GG                                                                                                                    |
-| Other modes    | no build numbers                                                                                                         |
+| Mode           | Source                                                                                   |
+| -------------- | ---------------------------------------------------------------------------------------- |
+| Ranked, Normal | Tencent's 101 statistics from the League app (the Chinese servers), or OP.GG (the world) |
+| ARAM           | OP.GG, or off                                                                            |
+| Hextech ARAM   | Tencent's League app, and ARAM.GG when that does not answer; the fallback can be off     |
+| Arena          | OP.GG, or off                                                                            |
+| Other modes    | no build numbers                                                                         |
+
+All of these are switched in **Settings › General › Data sources**. OP.GG's terms do not allow
+automated collection, and ARAM.GG asks programs not to read its data files; if that matters to you,
+switch the row off. With ARAM's or Arena's source off, that mode's panel only says the source is
+switched off, and remembered runes and spells are still set up; with the Hextech fallback off, only
+Tencent's numbers are used.
 
 These are public statistics from third parties and can lag a patch; in a patch's first days, when
 there are none yet, the previous patch's are used. When a source does not answer, the panel says so

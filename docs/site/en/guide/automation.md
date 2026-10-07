@@ -21,6 +21,11 @@ there. The automation switches on the overview list their modes too.
 - **Pick mode**: **Lock in** locks the pick; **Hover only** puts the champion up once and leaves the
   rest to you.
 - **Show an intent while planning**: shows your pick to the team during the planning phase.
+- **When autofilled, use only that lane's list**: on by default. Sent to a lane you did not ask for
+  in the lobby, the pick comes from that lane's own list only, never from "Any"; with no list for
+  that lane, nothing is picked. FILL asked for, no lane asked for, or a mode without positions never
+  counts as autofilled. A champion you hovered yourself is still locked. Your seat in champ select
+  says **Autofilled**.
 - **Auto-ban a champion**: on your ban turn, bans the first champion on the ban list that can be
   banned; a champion a teammate picked or showed is never banned. A champion you chose to ban
   yourself is the one banned.

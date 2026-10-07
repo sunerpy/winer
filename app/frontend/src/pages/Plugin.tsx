@@ -41,7 +41,7 @@ function StatusPanel({
 }) {
   const t = useT();
   const store = useStore();
-  const auto = useSettings().plugin.auto;
+  const { auto, penguIfeo } = useSettings().plugin;
   const connected = useLive((snapshot) => snapshot.connection.status === "connected");
   const [busy, setBusy] = useState<"enable" | "disable" | "reload" | null>(null);
 
@@ -79,31 +79,44 @@ function StatusPanel({
     );
   }
 
-  // What the loader row says, worst first: a stated problem, then off, then not there yet. A
-  // refusal for want of administrator rights is explained in a note above the rows rather than in
-  // the system's words, which call winer "the client"; any other failure keeps them, with context.
-  const needsAdmin = auto && !status.active && !status.occupied && status.needsElevation;
-  const [tone, state, note] = status.active
+  // What the loader row says, worst first: another program launching the client, a stated
+  // problem, then off, then not there yet. A refusal for want of administrator rights is explained
+  // in a note above the rows rather than in the system's words, which call winer "the client"; any
+  // other failure keeps them, with context.
+  const foreign = status.foreignActivation;
+  const needsAdmin =
+    !foreign && auto && !status.active && !status.occupied && status.needsElevation;
+  const [tone, state, note] = foreign
     ? ([
-        "ok",
-        status.managed
-          ? t("plugin.loaderManaged", { version: status.bundledLoader })
-          : t("plugin.loaderOwn"),
-        null,
+        "warn",
+        t("plugin.loaderForeign", { program: foreign }),
+        !penguIfeo
+          ? t("plugin.loaderForeignOff")
+          : status.active && status.managed
+            ? t("plugin.loaderForeignBoth")
+            : t("plugin.loaderForeignHint"),
       ] as const)
-    : !auto
-      ? (["off", t("plugin.loaderOff"), null] as const)
-      : status.occupied
-        ? (["warn", t("plugin.loaderOccupied"), null] as const)
-        : status.needsElevation
-          ? (["warn", t("plugin.loaderNeedsAdmin"), null] as const)
-          : status.setupError
-            ? ([
-                "danger",
-                t("plugin.loaderFailed", { error: status.setupError }),
-                t("plugin.loaderFailedHint"),
-              ] as const)
-            : (["idle", t("plugin.loaderWaiting"), null] as const);
+    : status.active
+      ? ([
+          "ok",
+          status.managed
+            ? t("plugin.loaderManaged", { version: status.bundledLoader })
+            : t("plugin.loaderOwn"),
+          null,
+        ] as const)
+      : !auto
+        ? (["off", t("plugin.loaderOff"), null] as const)
+        : status.occupied
+          ? (["warn", t("plugin.loaderOccupied"), null] as const)
+          : status.needsElevation
+            ? (["warn", t("plugin.loaderNeedsAdmin"), null] as const)
+            : status.setupError
+              ? ([
+                  "danger",
+                  t("plugin.loaderFailed", { error: status.setupError }),
+                  t("plugin.loaderFailedHint"),
+                ] as const)
+              : (["idle", t("plugin.loaderWaiting"), null] as const);
   return (
     <Panel
       eyebrow={t("plugin.setup")}
@@ -234,6 +247,21 @@ function FeaturesPanel() {
           label={t("plugin.hidePromotions")}
         />
       </Row>
+      <Row
+        label={
+          <span className="inline-flex items-center gap-2">
+            {t("plugin.penguIfeo")}
+            <Badge tone="warning">{t("loadout.experimental")}</Badge>
+          </span>
+        }
+        help={t("plugin.penguIfeoHint")}
+      >
+        <Toggle
+          checked={plugin.penguIfeo}
+          onChange={(penguIfeo) => save((value) => ({ ...value, penguIfeo }))}
+          label={t("plugin.penguIfeo")}
+        />
+      </Row>
       <Row label={t("plugin.dir")} help={t("plugin.dirHint")} htmlFor="loader-dir">
         <Input
           id="loader-dir"
@@ -259,7 +287,7 @@ export function PluginPage() {
   const settings = useSettings();
   const query = useAsync(
     () => store.backend.call("get_plugin_status"),
-    [settings.plugin.loaderDir],
+    [settings.plugin.loaderDir, settings.plugin.penguIfeo],
   );
   const [override, setOverride] = useState<PluginStatus | undefined>();
   const status = override ?? query.data;

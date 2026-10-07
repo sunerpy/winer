@@ -3,6 +3,7 @@
 
 mod assets;
 mod commands;
+mod diagnostics;
 mod elevation;
 mod events;
 mod game_chat;

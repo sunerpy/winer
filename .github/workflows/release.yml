@@ -3,8 +3,9 @@
 # Topology (identical to the Go, Rust and Node profiles): release-please owns
 # the version, the tag and a DRAFT Release; every job below runs in the same
 # workflow run gated on release_created; the terminal job verifies every remote
-# asset and flips the draft. Nothing listens on `push: tags` or `release:`
-# because events created with GITHUB_TOKEN never start workflows.
+# asset and flips the draft. Nothing listens on `push: tags` or `release:`:
+# release-please writes with the release app's token, whose tag and draft would
+# start such a workflow, and the jobs after it keep GITHUB_TOKEN.
 #
 # Tauri-specific decisions (references/tauri-release.md):
 # - Builds use the project's own lockfile-pinned Tauri CLI, not
@@ -71,12 +72,26 @@ jobs:
       prerelease: ${{ steps.gate.outputs.prerelease }}
       release_sha: ${{ steps.gate.outputs.release_sha }}
     steps:
+      # release-please works with the release app's token, not GITHUB_TOKEN: a pull request
+      # GITHUB_TOKEN opens starts no workflow on its own, so the release PR's CI waited for a
+      # re-run by hand. Every later step keeps GITHUB_TOKEN; tags and releases start no workflow.
+      - name: Mint the release app's token
+        id: app-token
+        if: github.event_name == 'push'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+
       - name: Run release-please
         id: release
         if: github.event_name == 'push'
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 

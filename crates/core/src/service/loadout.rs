@@ -21,7 +21,7 @@ use crate::{
         PerkPage, RecommendedPage, Setup, Watch,
     },
     model::{ChampSelectSession, PerkStyles, Summoner},
-    settings::Mode,
+    settings::{BuildSettings, Mode},
     view::{GameData, NoticeKind, Phase, Position},
 };
 
@@ -494,13 +494,26 @@ impl Service {
         lane: Option<Position>,
     ) -> Result<Build, CoreError> {
         let settings = self.settings().builds;
+        let build = self.build_with(&settings, champion_id, mode, lane).await?;
+        Ok((*build).clone())
+    }
+
+    /// [`Self::build`] by the sources `settings` name, as passed rather than as saved now: a
+    /// lookup started under one source answers for that source.
+    pub(crate) async fn build_with(
+        &self,
+        settings: &BuildSettings,
+        champion_id: i64,
+        mode: Mode,
+        lane: Option<Position>,
+    ) -> Result<Arc<Build>, CoreError> {
         if !settings.enabled {
             return Err(CoreError::Invalid("the build panel is switched off".into()));
         }
         if champion_id <= 0 {
             return Err(CoreError::Invalid(format!("no champion {champion_id}")));
         }
-        let sources = builds::sources(mode, settings.rift_source);
+        let sources = builds::sources(mode, settings);
         if sources.is_empty() {
             return Err(CoreError::Invalid(format!("no numbers for {mode:?} games")));
         }
@@ -514,7 +527,7 @@ impl Service {
         let mut failure = None;
         for &source in sources {
             match self.source_build(source, query, &known).await {
-                Ok(build) => return Ok((*build).clone()),
+                Ok(build) => return Ok(build),
                 Err(error) => {
                     debug!(%error, ?source, "no build from this source");
                     failure = Some(error);

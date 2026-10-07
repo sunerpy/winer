@@ -1,6 +1,9 @@
 //! Folding LCU documents into the views: ranks, recent form and scoreboard lines.
 
-use std::{cmp::Reverse, collections::HashMap};
+use std::{
+    cmp::Reverse,
+    collections::{HashMap, HashSet},
+};
 
 use crate::{
     model::{Game, Participant, RankedEntry, RankedStats, Stats, Summoner},
@@ -641,9 +644,273 @@ pub fn match_detail(game: &Game, roles: &Roles) -> MatchDetail {
     }
 }
 
+/// The champions `puuid` played in `lane` among `games`, with games and wins, the most played
+/// first and by id among equals. Remakes and games without a lane (the client's own list, modes
+/// without positions) count for nothing.
+pub fn lane_champions(games: &[Game], puuid: &str, lane: Position) -> Vec<(i64, u32, u32)> {
+    let mut counts: HashMap<i64, (u32, u32)> = HashMap::new();
+    for game in games {
+        let Some(row) = row_of(game, puuid) else {
+            continue;
+        };
+        if is_remake(game, row) || Position::parse(&row.team_position) != Some(lane) {
+            continue;
+        }
+        let count = counts.entry(row.champion_id).or_default();
+        count.0 += 1;
+        if row.stats.win {
+            count.1 += 1;
+        }
+    }
+    let mut champions: Vec<(i64, u32, u32)> = counts
+        .into_iter()
+        .map(|(champion, (games, wins))| (champion, games, wins))
+        .collect();
+    champions.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    champions
+}
+
+// ---- Premade parties in champ select, read from the players' games ----
+
+/// A pair counts as one party once it has played this many games on one team together.
+pub const PARTY_GAMES: usize = 2;
+/// At least one of them among either player's newest this many games.
+pub const PARTY_RECENT: usize = 10;
+
+/// The parties champ select cannot show: groups of seats (indices into `seats`, each seat's
+/// puuid, `None` for a hidden one) that played on one team together lately. Two players are linked
+/// when the union of their records, each game once by its id, holds [`PARTY_GAMES`] games with
+/// both of them on one team, one of them among the newest [`PARTY_RECENT`] of either record;
+/// linked players make one group. Only games from the shard's server list all ten players: a
+/// record of the player's own rows links no one.
+///
+/// The local player's lobby (`known`, the local player alone included) is certain, so its members
+/// are neither linked nor linked to; without a lobby (`known` empty) every seat is read. Groups
+/// come in the order of their first seat, each in seat order.
+pub fn infer_parties<'a>(
+    seats: &[Option<&str>],
+    known: &[String],
+    records: impl Fn(&str) -> Option<&'a [Game]>,
+) -> Vec<Vec<usize>> {
+    let open: Vec<(usize, &str)> = seats
+        .iter()
+        .enumerate()
+        .filter_map(|(index, puuid)| Some((index, (*puuid)?)))
+        .filter(|(_, puuid)| !puuid.is_empty() && !known.iter().any(|member| member == puuid))
+        .collect();
+    let newest = |puuid: &str| -> HashSet<i64> {
+        let mut games: Vec<&Game> = records(puuid).unwrap_or_default().iter().collect();
+        games.sort_by_key(|game| Reverse(game.game_creation));
+        games
+            .iter()
+            .take(PARTY_RECENT)
+            .map(|game| game.game_id)
+            .collect()
+    };
+    let recent: Vec<HashSet<i64>> = open.iter().map(|(_, puuid)| newest(puuid)).collect();
+    // Union-find over `open`.
+    let mut parent: Vec<usize> = (0..open.len()).collect();
+    fn root(parent: &mut [usize], mut at: usize) -> usize {
+        while parent[at] != at {
+            parent[at] = parent[parent[at]];
+            at = parent[at];
+        }
+        at
+    }
+    for a in 0..open.len() {
+        for b in a + 1..open.len() {
+            let (pa, pb) = (open[a].1, open[b].1);
+            let together: HashSet<i64> = records(pa)
+                .unwrap_or_default()
+                .iter()
+                .chain(records(pb).unwrap_or_default())
+                .filter(|game| same_team(game, pa, pb))
+                .map(|game| game.game_id)
+                .collect();
+            let lately = together
+                .iter()
+                .any(|id| recent[a].contains(id) || recent[b].contains(id));
+            if together.len() >= PARTY_GAMES && lately {
+                let (ra, rb) = (root(&mut parent, a), root(&mut parent, b));
+                parent[ra.max(rb)] = ra.min(rb);
+            }
+        }
+    }
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    let mut of_root: HashMap<usize, usize> = HashMap::new();
+    for (member, &(seat, _)) in open.iter().enumerate() {
+        let top = root(&mut parent, member);
+        match of_root.get(&top) {
+            Some(&group) => groups[group].push(seat),
+            None => {
+                of_root.insert(top, groups.len());
+                groups.push(vec![seat]);
+            }
+        }
+    }
+    groups.retain(|group| group.len() >= 2);
+    groups
+}
+
+/// Both players in `game`, on one team.
+fn same_team(game: &Game, a: &str, b: &str) -> bool {
+    match (game.participant_of(a), game.participant_of(b)) {
+        (Some(a), Some(b)) => a.team_id > 0 && a.team_id == b.team_id,
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Game `id`, created at `creation`, `blue` on team 100 and `red` on 200, as the shard's
+    /// server lists them: every player with a row.
+    fn party_game(id: i64, creation: i64, blue: &[&str], red: &[&str]) -> Game {
+        use crate::model::{ParticipantIdentity, Player};
+        let mut game = Game {
+            game_id: id,
+            game_creation: creation,
+            ..Game::default()
+        };
+        let sides = blue
+            .iter()
+            .map(|puuid| (*puuid, 100))
+            .chain(red.iter().map(|puuid| (*puuid, 200)));
+        for (index, (puuid, team_id)) in sides.enumerate() {
+            let participant_id = index as i64 + 1;
+            game.participants.push(Participant {
+                participant_id,
+                team_id,
+                ..Participant::default()
+            });
+            game.participant_identities.push(ParticipantIdentity {
+                participant_id,
+                player: Player {
+                    puuid: puuid.into(),
+                    ..Player::default()
+                },
+            });
+        }
+        game
+    }
+
+    fn parties(
+        seats: &[Option<&str>],
+        known: &[&str],
+        records: &HashMap<&str, Vec<Game>>,
+    ) -> Vec<Vec<usize>> {
+        let known: Vec<String> = known.iter().map(|member| (*member).to_owned()).collect();
+        infer_parties(seats, &known, |puuid| records.get(puuid).map(Vec::as_slice))
+    }
+
+    #[test]
+    fn the_lanes_own_champions_come_from_the_games_with_that_lane() {
+        let played = |id: i64, champion: i64, lane: &str, win: bool, duration: i64| {
+            let mut game = party_game(id, id, &["me"], &["x"]);
+            game.game_duration = duration;
+            let row = &mut game.participants[0];
+            row.champion_id = champion;
+            row.team_position = lane.into();
+            row.stats.win = win;
+            game
+        };
+        let games = [
+            played(1, 103, "MIDDLE", true, 1800),
+            played(2, 103, "MIDDLE", false, 1800),
+            played(3, 7, "MIDDLE", true, 1800),
+            played(4, 103, "TOP", true, 1800),
+            played(5, 99, "MIDDLE", true, 120),
+            played(6, 64, "", true, 1800),
+        ];
+        assert_eq!(
+            lane_champions(&games, "me", Position::Middle),
+            [(103, 2, 1), (7, 1, 1)],
+            "another lane, a remake and a game without a lane count for nothing"
+        );
+        assert!(lane_champions(&games, "nobody", Position::Middle).is_empty());
+    }
+
+    #[test]
+    fn two_games_on_one_team_one_of_them_lately_make_a_party() {
+        let records = HashMap::from([
+            (
+                "a",
+                vec![
+                    party_game(2, 200, &["a", "b"], &["x"]),
+                    party_game(1, 100, &["a", "b"], &["y"]),
+                ],
+            ),
+            ("b", vec![party_game(2, 200, &["a", "b"], &["x"])]),
+        ]);
+        assert_eq!(
+            parties(&[Some("me"), Some("a"), None, Some("b")], &[], &records),
+            [vec![1, 3]]
+        );
+    }
+
+    #[test]
+    fn one_game_together_opponents_or_old_games_make_no_party() {
+        // The same game in both records counts once.
+        let once = HashMap::from([
+            ("a", vec![party_game(1, 100, &["a", "b"], &[])]),
+            ("b", vec![party_game(1, 100, &["a", "b"], &[])]),
+        ]);
+        assert!(parties(&[Some("a"), Some("b")], &[], &once).is_empty());
+
+        let opponents = HashMap::from([(
+            "a",
+            vec![
+                party_game(1, 100, &["a"], &["b"]),
+                party_game(2, 200, &["a"], &["b"]),
+            ],
+        )]);
+        assert!(parties(&[Some("a"), Some("b")], &[], &opponents).is_empty());
+
+        // Two games together, both older than either player's newest ten.
+        let mut a = vec![
+            party_game(1, 1, &["a", "b"], &[]),
+            party_game(2, 2, &["a", "b"], &[]),
+        ];
+        let mut b = a.clone();
+        for id in 10..20 {
+            a.push(party_game(id, id * 10, &["a"], &[]));
+            b.push(party_game(id + 100, id * 10, &["b"], &[]));
+        }
+        let old = HashMap::from([("a", a), ("b", b)]);
+        assert!(parties(&[Some("a"), Some("b")], &[], &old).is_empty());
+    }
+
+    #[test]
+    fn the_lobby_is_certain_and_linked_players_make_one_group() {
+        let records = HashMap::from([
+            (
+                "b",
+                vec![
+                    party_game(1, 100, &["a", "b", "c"], &[]),
+                    party_game(2, 200, &["a", "b"], &[]),
+                    party_game(3, 300, &["b", "c"], &[]),
+                ],
+            ),
+            (
+                "me",
+                vec![
+                    party_game(4, 400, &["me", "d"], &[]),
+                    party_game(5, 500, &["me", "d"], &[]),
+                ],
+            ),
+        ]);
+        let seats = [Some("me"), Some("a"), Some("b"), Some("c"), Some("d")];
+        // b–a and b–c: one group of three; `me` came alone, so `d` is no partner of theirs.
+        assert_eq!(parties(&seats, &["me"], &records), [vec![1, 2, 3]]);
+        // Without a lobby, the local player is read like the others.
+        assert_eq!(parties(&seats, &[], &records), [vec![0, 4], vec![1, 2, 3]]);
+        // A member of the lobby is neither linked nor linked to.
+        assert_eq!(
+            parties(&seats, &["me", "b"], &records),
+            Vec::<Vec<usize>>::new()
+        );
+    }
 
     /// The form over every kind of game, champions' roles unknown.
     fn form_of(puuid: &str, games: &[Game], kinds: &QueueKinds) -> RecentForm {

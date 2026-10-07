@@ -17,6 +17,7 @@ import { useShell } from "../shell/navigation";
 import { Badge, Button, Card, EmptyState, Lamp, Panel, Segmented, toast } from "../ui";
 import { ConnectionGate, PageBody } from "./common";
 import { BuildLookup, ChampSelectBuild, GameBuild } from "./live/BuildPanel";
+import { Suggestions } from "./live/Suggestions";
 import { Keycaps } from "./settings/HotkeyRow";
 
 const TIMER_PHASES: Record<string, MessageKey> = {
@@ -359,6 +360,7 @@ function ChampSelect({ view }: { view: ChampSelectView }) {
       </Card>
 
       {view.benchEnabled && <Bench view={view} />}
+      {view.recommendations.length > 0 && <Suggestions items={view.recommendations} />}
 
       <Teams
         teams={[

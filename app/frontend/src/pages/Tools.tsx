@@ -12,6 +12,7 @@ import { ConnectionGate, PageBody } from "./common";
 import { BackgroundPanel } from "./tools/Background";
 import { BackupPanel } from "./tools/Backup";
 import { ChallengePanel } from "./tools/Challenges";
+import { NotesPanel } from "./tools/Notes";
 import { RankDisguisePanel } from "./tools/RankDisguise";
 
 /** The states the client takes from winer. It sets `dnd` on its own during a game and ignores a
@@ -231,6 +232,7 @@ export function ToolsPage() {
           <ChallengePanel />
           <RankDisguisePanel />
           <BackupPanel />
+          <NotesPanel />
         </div>
       </ConnectionGate>
     </PageBody>

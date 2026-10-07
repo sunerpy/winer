@@ -13,6 +13,7 @@ import {
   winRate,
   type ChampSelectView,
   type Language,
+  type PlayerNote,
   type PlayerSummary,
   type Seat,
   type SeatRating,
@@ -85,13 +86,16 @@ function sideChip(seat: Seat, side: Side | null, language: Language): HTMLElemen
 export function statsLine(seat: Seat, language: Language, side: Side | null = null): HTMLElement {
   const summary = summaryOf(seat);
   const chip = sideChip(seat, side, language);
-  const party = seat.premade === null ? null : premadeChip(seat.premade, language);
+  const party =
+    seat.premade === null ? null : premadeChip(seat.premade, language, seat.premadeInferred);
+  const note = seat.note && noteChip(seat.note, language);
   if (seat.stats.state === "loading")
     return h(
       "span",
       { class: "winer-line" },
       chip,
       party,
+      note,
       h("span", { class: "winer-muted" }, text(language, "loading")),
     );
   if (!summary)
@@ -100,6 +104,7 @@ export function statsLine(seat: Seat, language: Language, side: Side | null = nu
       { class: "winer-line" },
       chip,
       party,
+      note,
       h(
         "span",
         { class: "winer-muted" },
@@ -114,12 +119,33 @@ export function statsLine(seat: Seat, language: Language, side: Side | null = nu
     { class: "winer-line" },
     chip,
     party,
+    note,
     standingChip(seat.rating),
     titleChip(seat.rating),
     rankChip(summary, language),
     form.games > 0 && h("span", { class: rateClass(ratio) }, percent(ratio)),
     form.games > 0 && h("span", {}, `KDA ${formatKda(kda(form.kills, form.deaths, form.assists))}`),
     streak && h("span", { class: form.streak > 0 ? "winer-win" : "winer-loss" }, streak),
+  );
+}
+
+const NOTE_TAG = {
+  reliable: "noteReliable",
+  weak: "noteWeak",
+  toxic: "noteToxic",
+  troll: "noteTroll",
+} as const;
+
+/** The user's note from winer: its tag (or 备注), with the text on hover. Never in a chat line. */
+function noteChip(note: PlayerNote, language: Language): HTMLElement {
+  const label = text(language, note.tag ? NOTE_TAG[note.tag] : "note");
+  return h(
+    "span",
+    {
+      class: note.tag ? `winer-note winer-note--${note.tag}` : "winer-note",
+      title: note.text || label,
+    },
+    label,
   );
 }
 
@@ -145,6 +171,9 @@ export function lineKey(seat: Seat, language: Language, side: Side | null = null
     language,
     seat.isSelf ? side : null,
     seat.premade,
+    seat.premadeInferred,
+    seat.note?.tag,
+    seat.note?.text,
     seat.stats.state,
     seat.rating?.label,
     seat.rating?.grade,

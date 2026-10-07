@@ -244,6 +244,7 @@ function member(
     positions: ["middle"],
     stats,
     score,
+    note: null,
   };
 }
 
@@ -391,6 +392,9 @@ describe("premade groups", () => {
     spells: [4, 14],
     isSelf: false,
     premade,
+    premadeInferred: false,
+    note: null,
+    autofilled: false,
     stats: { state: "loading" },
     rating: null,
   });
@@ -402,6 +406,25 @@ describe("premade groups", () => {
     expect(chip?.getAttribute("data-winer-group")).toBe("2");
     expect(statsLine(seat(null), "zh-CN").querySelector(".winer-group")).toBeNull();
     expect(lineKey(seat(1), "zh-CN")).not.toBe(lineKey(seat(null), "zh-CN"));
+
+    // A party read from recent games: its own words and the dashed swatch's class.
+    const guessed = { ...seat(3), premadeInferred: true };
+    const inferred = statsLine(guessed, "zh-CN").querySelector(".winer-group");
+    expect(inferred?.textContent).toBe("疑似开黑 3");
+    expect(inferred?.classList.contains("winer-group--inferred")).toBe(true);
+    expect(lineKey(guessed, "zh-CN")).not.toBe(lineKey(seat(3), "zh-CN"));
+
+    // The user's own note: its tag, the text on hover; a note of text only reads 备注.
+    const noted = {
+      ...seat(null),
+      note: { tag: "weak" as const, text: "不看小地图", name: null, updatedAt: 1 },
+    };
+    const noteChip = statsLine(noted, "zh-CN").querySelector(".winer-note");
+    expect(noteChip?.textContent).toBe("坑");
+    expect(noteChip?.getAttribute("title")).toBe("不看小地图");
+    const plain = { ...noted, note: { ...noted.note, tag: null } };
+    expect(statsLine(plain, "zh-CN").querySelector(".winer-note")?.textContent).toBe("备注");
+    expect(lineKey(noted, "zh-CN")).not.toBe(lineKey(plain, "zh-CN"));
   });
 });
 

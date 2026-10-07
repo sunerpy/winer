@@ -531,6 +531,15 @@ export function AutomationPage() {
               label={t("auto.declare")}
             />
           </Row>
+          <Row label={t("auto.skipWhenFilled")} help={t("auto.skipWhenFilledHint")}>
+            <Toggle
+              checked={automation.pick.skipWhenFilled}
+              onChange={(skipWhenFilled) =>
+                save((value) => ({ ...value, pick: { ...value.pick, skipWhenFilled } }))
+              }
+              label={t("auto.skipWhenFilled")}
+            />
+          </Row>
           <Card padding="sm" className="mt-3 bg-inset/50">
             <ChampionPoolEditor
               label={t("auto.pool")}

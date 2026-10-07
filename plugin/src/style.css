@@ -257,6 +257,34 @@
   background: var(--winer-group, #9ba7b3);
 }
 
+.winer-note {
+  padding: 0 4px;
+  border-radius: 3px;
+  font-weight: 700;
+  background: #223142;
+  color: #c8c1ae;
+}
+
+.winer-note--reliable {
+  color: #7fd07f;
+}
+
+.winer-note--weak {
+  color: #f0b44c;
+}
+
+.winer-note--toxic,
+.winer-note--troll {
+  color: #ef6f6c;
+}
+
+.winer-group--inferred::before {
+  width: 4px;
+  height: 4px;
+  background: transparent;
+  border: 1px dashed var(--winer-group, #9ba7b3);
+}
+
 [data-winer-group="1"],
 [data-winer-friend-group="1"] {
   --winer-group: #e69f00;

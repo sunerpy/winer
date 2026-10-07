@@ -11,7 +11,10 @@ use std::{
     collections::HashMap,
     fs, io,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock},
+    sync::{
+        Arc, Mutex, MutexGuard, OnceLock, RwLock,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -29,8 +32,9 @@ use crate::{
     analysis, augments,
     automation::{self, Availability, ChampAction, Step},
     backup::{self, BackupChannel, BackupFile, BackupInfo},
+    builds,
     cache::Lru,
-    callout, catalog,
+    callout, catalog, diagnose,
     friends::{self, FRIENDS, Friend},
     history::{HistoryCache, NEWEST_TTL, Page as HistoryPage, rate_alone},
     live,
@@ -38,19 +42,22 @@ use crate::{
         ChampSelectSession, ChatMe, Conversation, Entitlements, Game, GameQueue, GameflowSession,
         Lobby, MatchList, RankedStats, ReadyCheck, Summoner,
     },
+    notes::{NoteEntry, NoteError, NoteStore, NoteTag, PlayerNote},
     profile::{
         self, Admit, ChallengeProfile, ChallengeSummary, ClientBanner, ClientChallenge,
         ClientTitle, Fix, Regalia, SkinChoice, SummonerProfile,
     },
+    recommend,
     settings::{
-        self, Audience, CalloutRule, General, Language, Mode, PresenceRule, ProfileSettings,
-        Scoped, Settings, SettingsStore,
+        self, Audience, CalloutRule, General, Language, Mode, ModeSource, PresenceRule,
+        ProfileSettings, RiftSource, Scoped, Settings, SettingsStore,
     },
     sgp,
     view::{
-        AugmentDetail, Connection, ErrorCode, Event, GameData, HistorySource, IpcError,
-        MatchDetail, MatchPage, Me, Notice, NoticeKind, Patch, Phase, PlayerProfile,
-        PlayerStanding, PlayerStats, PlayerSummary, Presence, QueueInfo, Snapshot, Update,
+        AugmentDetail, Check, CheckFailure, CheckId, CheckReason, Connection, ErrorCode, Event,
+        GameData, HistorySource, IpcError, MatchDetail, MatchPage, Me, Notice, NoticeKind, Patch,
+        Phase, PlayerProfile, PlayerStanding, PlayerStats, PlayerSummary, Position, Presence,
+        QueueInfo, Recommendation, RiotId, Seat, Snapshot, Update,
     },
 };
 
@@ -157,6 +164,8 @@ struct Inner {
     players: Mutex<HashMap<String, PlayerEntry>>,
     /// Each player costs three requests; four players at a time keeps the client responsive.
     player_slots: Semaphore,
+    /// Numbers the requests for players' records, so that only the one awaited writes its answer.
+    player_requests: AtomicU64,
     /// Pictures the window has drawn, within `caches::ASSETS`.
     assets: Mutex<Lru<String, Arc<Asset>>>,
     /// Augment descriptions, per language, with when they were fetched (`caches`).
@@ -170,6 +179,10 @@ struct Inner {
     /// Counts the plugins' hellos on the bridge: a restarted interface is back once it changes
     /// (`ux`).
     plugin_hellos: watch::Sender<u64>,
+    /// The client version the last connection saw, for the self-check after an update.
+    versions: diagnose::VersionStore,
+    /// The user's notes on other players (`notes`).
+    notes: NoteStore,
 }
 
 /// Augment descriptions per language, with when they were fetched.
@@ -214,6 +227,11 @@ struct Live {
     lobby: Option<Lobby>,
     /// The local player's party as the last lobby had it, for champ select's premade marks.
     party: Vec<String>,
+    /// The lanes the local player asked for in the last lobby, kept like `party` for the champ
+    /// select it leads to (`automation::autofilled`).
+    preferences: Option<automation::LanePreferences>,
+    /// The numbers the champ select's pick suggestions asked for, and the answers (`recommend`).
+    recommend: Option<recommend::RecommendState>,
     /// What was set up for the champion in hand, and the champ select to remember (`loadout`).
     loadout: loadout::LoadoutLive,
 }
@@ -225,14 +243,74 @@ impl Live {
         self.available = None;
         self.callout_sent = false;
         self.swaps.clear();
+        self.recommend = None;
     }
 }
 
 enum PlayerEntry {
-    Loading,
+    /// A request is out: the `generation`th, for a form read within `focus`. A request for another
+    /// focus takes its place, and only the request awaited writes its answer ([`finish_load`]).
+    Loading {
+        generation: u64,
+        focus: Option<analysis::Focus>,
+    },
     /// When it was fetched; `None` once the player has finished a game since.
     Ready(Arc<PlayerRecord>, Option<Instant>),
     Failed(String, Instant),
+}
+
+/// Whether `puuid`'s record is to be asked for within `focus`, and if so marks the request out as
+/// the `generation`th: nothing kept serves it fresh, and no request for the same focus is out.
+fn begin_load(
+    players: &mut HashMap<String, PlayerEntry>,
+    puuid: &str,
+    focus: Option<&analysis::Focus>,
+    kinds: &analysis::QueueKinds,
+    generation: u64,
+) -> bool {
+    let due = match players.get(puuid) {
+        Some(PlayerEntry::Loading { focus: loading, .. }) => loading.as_ref() != focus,
+        Some(entry @ PlayerEntry::Ready(record, _)) => {
+            !(entry.fresh(PLAYER_TTL).is_some() && record.serves(focus, kinds))
+        }
+        Some(PlayerEntry::Failed(_, at)) => at.elapsed() >= FAILED_PLAYER_TTL,
+        None => true,
+    };
+    if due {
+        players.insert(
+            puuid.to_owned(),
+            PlayerEntry::Loading {
+                generation,
+                focus: focus.cloned(),
+            },
+        );
+    }
+    due
+}
+
+/// Keeps what the `generation`th request for `puuid` brought, if that request is still the one
+/// awaited: a newer one, or an answer already in, wins. For an account signed out since (`current`
+/// false) the request's own mark is removed instead. Returns whether the answer was kept.
+fn finish_load(
+    players: &mut HashMap<String, PlayerEntry>,
+    puuid: &str,
+    generation: u64,
+    entry: PlayerEntry,
+    current: bool,
+) -> bool {
+    let awaited = matches!(
+        players.get(puuid),
+        Some(PlayerEntry::Loading { generation: out, .. }) if *out == generation
+    );
+    if !awaited {
+        return false;
+    }
+    if current {
+        players.insert(puuid.to_owned(), entry);
+    } else {
+        players.remove(puuid);
+    }
+    current
 }
 
 /// What a player's summary is worked out from, as the client sent it. The summary is read from it
@@ -295,8 +373,12 @@ impl Service {
     pub fn new(settings_path: impl Into<PathBuf>, runtime: Handle) -> Self {
         let (events, _) = broadcast::channel(256);
         let settings_path = settings_path.into();
-        // Remembered setups live in a file of their own beside the settings.
+        // Remembered setups live in a file of their own beside the settings, as does the client
+        // version last seen.
         let loadouts = settings_path.with_file_name("loadouts.json");
+        let versions =
+            diagnose::VersionStore::new(settings_path.with_file_name("diagnostics.json"));
+        let notes = NoteStore::open(settings_path.with_file_name("notes.json"));
         Self {
             inner: Arc::new(Inner {
                 settings: SettingsStore::open(settings_path),
@@ -306,12 +388,15 @@ impl Service {
                 client: RwLock::new(None),
                 players: Mutex::new(HashMap::new()),
                 player_slots: Semaphore::new(4),
+                player_requests: AtomicU64::new(0),
                 assets: Mutex::new(Lru::new(caches::ASSETS)),
                 augment_details: tokio::sync::Mutex::new(HashMap::new()),
                 backups: OnceLock::new(),
                 loadout: loadout::LoadoutState::new(loadouts),
                 history: Mutex::new(HistoryCache::default()),
                 plugin_hellos: watch::Sender::new(0),
+                versions,
+                notes,
             }),
         }
     }
@@ -698,6 +783,142 @@ impl Service {
         self.inner.runtime.spawn(task);
     }
 
+    /// The user's note on `puuid`, if any.
+    pub fn player_note(&self, puuid: &str) -> Result<Option<PlayerNote>, CoreError> {
+        segment(puuid)?;
+        Ok(self.inner.notes.get(puuid))
+    }
+
+    /// Saves the user's note on `puuid`; neither a tag nor text removes it. The views that show
+    /// the player are drawn again. Writes a file: call it off the runtime.
+    pub fn set_player_note(
+        &self,
+        puuid: &str,
+        tag: Option<NoteTag>,
+        text: &str,
+        name: Option<RiotId>,
+    ) -> Result<Option<PlayerNote>, CoreError> {
+        segment(puuid)?;
+        let note = self
+            .inner
+            .notes
+            .set(puuid, tag, text, name, now_ms())
+            .map_err(|error| match error {
+                NoteError::Io(error) => CoreError::Io(error),
+                other => CoreError::Invalid(other.to_string()),
+            })?;
+        self.redraw();
+        Ok(note)
+    }
+
+    pub fn player_notes(&self) -> Vec<NoteEntry> {
+        self.inner.notes.list()
+    }
+
+    /// Removes the user's note on `puuid`; returns whether there was one. Writes a file.
+    pub fn delete_player_note(&self, puuid: &str) -> Result<bool, CoreError> {
+        segment(puuid)?;
+        let removed = self.inner.notes.delete(puuid)?;
+        if removed {
+            self.redraw();
+        }
+        Ok(removed)
+    }
+
+    /// Asks again for `puuid`'s record when the last try failed, within the kind of game the view
+    /// showing the player is of; a record that loaded, or is loading, is left as it is.
+    pub fn retry_player(&self, puuid: &str) -> Result<(), CoreError> {
+        segment(puuid)?;
+        let client = self.client()?;
+        {
+            let mut players = lock(&self.inner.players);
+            if !matches!(players.get(puuid), Some(PlayerEntry::Failed(..))) {
+                return Ok(());
+            }
+            players.remove(puuid);
+        }
+        let focus = self.current_focus(&client);
+        self.ensure_player(&client, puuid.to_owned(), focus);
+        self.render(&client);
+        Ok(())
+    }
+
+    /// The kind of game the live views are reading players in: champ select's queue, the game's,
+    /// else the lobby's.
+    fn current_focus(&self, client: &Client) -> Option<analysis::Focus> {
+        let (champ_select, gameflow, lobby) = {
+            let live = lock(&client.live);
+            (
+                live.champ_select.as_ref().map(|session| session.queue_id),
+                live.gameflow.as_ref().map(|session| {
+                    let queue = &session.game_data.queue;
+                    (queue.id, queue.game_mode.clone())
+                }),
+                live.lobby.as_ref().map(|lobby| {
+                    let config = &lobby.game_config;
+                    (config.queue_id, config.game_mode.clone())
+                }),
+            )
+        };
+        let data = lock(&client.data).clone();
+        if let Some(queue_id) = champ_select {
+            return queue_focus(data.as_deref(), queue_id, "");
+        }
+        let (queue_id, game_mode) = gameflow.or(lobby)?;
+        queue_focus(data.as_deref(), queue_id, &game_mode)
+    }
+
+    /// The live views again, with the connected client's state as it is.
+    fn redraw(&self) {
+        if let Ok(client) = self.client() {
+            self.render(&client);
+        }
+    }
+
+    /// The core's half of the self-check: the client, its routes, the shard's match-history
+    /// server and the data sources the settings use. The checks run at once, each within its own
+    /// time limit, and write nothing anywhere (`diagnose`).
+    pub async fn diagnose(&self) -> Vec<Check> {
+        let client = self.client().ok();
+        let settings = self.settings();
+        let builds = &settings.builds;
+        // Hextech ARAM always asks Tencent first, so Tencent is in use whenever the panel is on.
+        let tencent = builds.enabled;
+        let opgg = builds.enabled
+            && (builds.rift_source == RiftSource::OpGg
+                || builds.aram_source == ModeSource::OpGg
+                || builds.arena_source == ModeSource::OpGg);
+        let aramgg =
+            settings.general.augment_details || (builds.enabled && builds.hextech_fallback);
+        let client = client.as_ref();
+        let (client_check, routes, server, tencent, opgg, aramgg) = tokio::join!(
+            diagnose::timed(CheckId::Client, check_client(client)),
+            diagnose::timed(CheckId::Routes, check_routes(client)),
+            diagnose::timed(CheckId::Sgp, check_server(client)),
+            diagnose::timed(
+                CheckId::SourceTencent,
+                check_source(tencent, builds::probe_tencent())
+            ),
+            diagnose::timed(
+                CheckId::SourceOpgg,
+                check_source(opgg, builds::probe_opgg())
+            ),
+            diagnose::timed(
+                CheckId::SourceAramgg,
+                check_source(aramgg, builds::probe_aramgg())
+            ),
+        );
+        vec![client_check, routes, server, tencent, opgg, aramgg]
+    }
+
+    /// Keeps the connected client's version as the one last seen, and returns it when another was
+    /// seen before: the client has updated, and the shell runs the self-check.
+    pub async fn note_client_version(&self) -> Result<Option<String>, CoreError> {
+        let client = self.client()?;
+        let version: String = client.lcu.get("/lol-patch/v1/game-version").await?;
+        Ok(self.inner.versions.note(&version)?)
+    }
+
     fn notice(&self, kind: NoticeKind) {
         info!(?kind, "notice");
         let _ = self
@@ -1064,13 +1285,14 @@ impl Service {
     /// Rebuilds the champ select and game views from the last sessions and the stats known now,
     /// and sends the automatic callout once its lines are final.
     fn render(&self, client: &Client) {
-        let (champ_select, gameflow, me, party) = {
+        let (champ_select, gameflow, me, party, preferences) = {
             let live = lock(&client.live);
             (
                 live.champ_select.clone(),
                 live.gameflow.clone(),
                 live.me.clone(),
                 live.party.clone(),
+                live.preferences.clone(),
             )
         };
         let settings = self.settings();
@@ -1090,6 +1312,19 @@ impl Service {
             let focus = queue_focus(data.as_deref(), session.queue_id, "");
             let mut view = live::champ_select_view(&session, stats(focus), &ranking, game_mode);
             live::mark_party(&mut view.my_team, &party);
+            self.mark_inferred_parties(&mut view.my_team, &party);
+            self.attach_notes(view.my_team.iter_mut().chain(view.their_team.iter_mut()));
+            let filled = session.local_player().is_some_and(|me| {
+                automation::autofilled(
+                    preferences.as_ref(),
+                    session.queue_id,
+                    &me.assigned_position,
+                )
+            });
+            for seat in view.my_team.iter_mut().filter(|seat| seat.is_self) {
+                seat.autofilled = filled;
+            }
+            view.recommendations = self.recommendations(client, &session, mode, &settings);
             let champion = |id: i64| {
                 data.as_ref()?
                     .champions
@@ -1118,6 +1353,7 @@ impl Service {
             let mut view = live::game_view(&session, &me, stats(focus), &ranking);
             // Callout: the lines the shortcut types into the game's chat, both teams by champion.
             if let Some(view) = view.as_mut() {
+                self.attach_notes(view.teams.iter_mut().flatten());
                 let data = lock(&client.data).clone();
                 let champion = |id: i64| {
                     data.as_ref()?
@@ -1178,9 +1414,145 @@ impl Service {
                     message: message.clone(),
                 };
             }
-            Some(PlayerEntry::Loading) | None => return PlayerStats::Loading,
+            Some(PlayerEntry::Loading { .. }) | None => return PlayerStats::Loading,
         };
         PlayerStats::Ready(Box::new(self.summarize(&record, focus)))
+    }
+
+    /// Champions worth considering for the local player's pick on the Rift, while their own pick is
+    /// not locked (`recommend`). The numbers for any candidate not asked for yet are fetched in the
+    /// background, each answer drawing the view again; none of this acts in the client.
+    fn recommendations(
+        &self,
+        client: &Client,
+        session: &ChampSelectSession,
+        mode: Option<Mode>,
+        settings: &Settings,
+    ) -> Vec<Recommendation> {
+        let builds = &settings.builds;
+        let Some(mode) = mode.filter(|mode| matches!(mode, Mode::Ranked | Mode::Normal)) else {
+            return Vec::new();
+        };
+        let Some(me) = session.local_player() else {
+            return Vec::new();
+        };
+        let Some(lane) = Position::parse(&me.assigned_position) else {
+            return Vec::new();
+        };
+        let locked = session.all_actions().any(|action| {
+            action.actor_cell_id == me.cell_id && action.kind == "pick" && action.completed
+        });
+        if !builds.enabled || !builds.recommend || locked {
+            return Vec::new();
+        }
+        let key = recommend::RecommendKey {
+            game_id: session.game_id,
+            mode,
+            lane,
+            settings: builds.clone(),
+        };
+        let (puuid, pickable) = {
+            let live = lock(&client.live);
+            let pickable = match &live.available {
+                Some((game, Some(available))) if *game == session.game_id => {
+                    available.pickable.clone()
+                }
+                _ => None,
+            };
+            (live.me.clone(), pickable)
+        };
+        let played = match lock(&self.inner.players).get(&puuid) {
+            Some(PlayerEntry::Ready(record, _)) => {
+                analysis::lane_champions(&record.games, &puuid, lane)
+            }
+            _ => Vec::new(),
+        };
+        let taken = automation::spoken_for(session, me.cell_id);
+        let free = |champion: i64| {
+            !taken.contains(&champion)
+                && pickable
+                    .as_ref()
+                    .is_none_or(|pickable| pickable.contains(&champion))
+        };
+        let candidates = recommend::candidates(
+            &settings.automation.pick.champions.candidates(Some(lane)),
+            &played,
+            free,
+        );
+        let enemies: Vec<i64> = session
+            .their_team
+            .iter()
+            .map(|player| player.champion_id)
+            .filter(|&id| id > 0)
+            .collect();
+        let (ask, answers) = {
+            let mut live = lock(&client.live);
+            let mut state = recommend::RecommendState::for_key(live.recommend.take(), key.clone());
+            let ask = state.to_ask(&candidates);
+            let answers = state.builds.clone();
+            live.recommend = Some(state);
+            (ask, answers)
+        };
+        if !ask.is_empty() {
+            self.fetch_recommendations(client, key, ask);
+        }
+        recommend::suggest(&candidates, &answers, &enemies, &played)
+    }
+
+    /// The numbers for `champions` under `key`, one after another, each answer kept only while
+    /// the suggestions are still asked under that key.
+    fn fetch_recommendations(
+        &self,
+        client: &Client,
+        key: recommend::RecommendKey,
+        champions: Vec<i64>,
+    ) {
+        let (service, client) = (self.clone(), client.clone());
+        self.spawn(async move {
+            for champion in champions {
+                let found = service
+                    .build_with(&key.settings, champion, key.mode, Some(key.lane))
+                    .await;
+                if let Err(error) = &found {
+                    debug!(%error, champion, "no numbers for a pick suggestion");
+                }
+                let kept = recommend::answer(
+                    &mut lock(&client.live).recommend,
+                    &key,
+                    champion,
+                    found.ok(),
+                );
+                if !kept {
+                    return;
+                }
+                service.render(&client);
+            }
+        });
+    }
+
+    /// The user's notes on the seated players.
+    fn attach_notes<'a>(&self, seats: impl Iterator<Item = &'a mut Seat>) {
+        for seat in seats {
+            seat.note = seat
+                .puuid
+                .as_deref()
+                .and_then(|puuid| self.inner.notes.get(puuid));
+        }
+    }
+
+    /// The parties champ select does not show, read from the records loaded for the team.
+    fn mark_inferred_parties(&self, seats: &mut [Seat], party: &[String]) {
+        let groups = {
+            let players = lock(&self.inner.players);
+            let records = |puuid: &str| match players.get(puuid) {
+                Some(PlayerEntry::Ready(record, _)) => Some(record.games.as_slice()),
+                _ => None,
+            };
+            let puuids: Vec<Option<&str>> =
+                seats.iter().map(|seat| seat.puuid.as_deref()).collect();
+            analysis::infer_parties(&puuids, party, records)
+        };
+        live::mark_inferred(seats, &groups);
     }
 
     /// Fetches `puuid`'s record unless a fresh one holds what a form read within `focus` needs.
@@ -1189,20 +1561,12 @@ impl Service {
         self.scope_account(&me);
         let shown = caches::players_shown(client);
         let kinds = catalog_kinds(client);
+        let generation = self.inner.player_requests.fetch_add(1, Ordering::Relaxed);
         {
             let mut players = lock(&self.inner.players);
-            let fresh = match players.get(&puuid) {
-                Some(PlayerEntry::Loading) => true,
-                Some(entry @ PlayerEntry::Ready(record, _)) => {
-                    entry.fresh(PLAYER_TTL).is_some() && record.serves(focus.as_ref(), &kinds)
-                }
-                Some(PlayerEntry::Failed(_, at)) => at.elapsed() < FAILED_PLAYER_TTL,
-                None => false,
-            };
-            if fresh {
+            if !begin_load(&mut players, &puuid, focus.as_ref(), &kinds, generation) {
                 return;
             }
-            players.insert(puuid.clone(), PlayerEntry::Loading);
             caches::trim_players(&mut players, &shown, Instant::now());
         }
         let (service, client) = (self.clone(), client.clone());
@@ -1221,12 +1585,9 @@ impl Service {
             let shown = caches::players_shown(&client);
             {
                 let mut players = lock(&service.inner.players);
-                if current {
-                    players.insert(puuid, entry);
+                // Fetched for an account that has signed out since: the next one asks again.
+                if finish_load(&mut players, &puuid, generation, entry, current) {
                     caches::trim_players(&mut players, &shown, Instant::now());
-                } else if matches!(players.get(&puuid), Some(PlayerEntry::Loading)) {
-                    // Fetched for an account that has signed out since: the next one asks again.
-                    players.remove(&puuid);
                 }
             }
             service.render(&client);
@@ -1269,7 +1630,14 @@ impl Service {
         if live.acting {
             return;
         }
-        let Some(action) = automation::decide(&session, &rules, &available) else {
+        let filled = session.local_player().is_some_and(|me| {
+            automation::autofilled(
+                live.preferences.as_ref(),
+                session.queue_id,
+                &me.assigned_position,
+            )
+        });
+        let Some(action) = automation::decide(&session, &rules, &available, filled) else {
             return;
         };
         let attempts = live
@@ -2037,6 +2405,7 @@ impl Service {
             // A lobby gone keeps its party: champ select, which follows it, still needs it.
             if let Some(lobby) = &lobby {
                 live.party = live::party_of(lobby);
+                live.preferences = Some(live::preferences_of(lobby, &live.me));
             }
             live.lobby = lobby.clone();
         }
@@ -2077,9 +2446,13 @@ impl Service {
                 config.queue_id,
                 &config.game_mode,
             );
-            live::lobby_view(&lobby, &me, |puuid| {
+            let mut view = live::lobby_view(&lobby, &me, |puuid| {
                 self.player_stats(puuid, focus.as_ref())
-            })
+            });
+            for member in &mut view.members {
+                member.note = self.inner.notes.get(&member.puuid);
+            }
+            view
         });
         self.patch(Patch::Lobby(view));
     }
@@ -2376,6 +2749,34 @@ async fn server_history(
     begin: u32,
     count: u32,
 ) -> Option<Result<sgp::Page, CoreError>> {
+    let shard = match shard(client).await? {
+        Ok(shard) => shard,
+        Err(error) => return Some(Err(error)),
+    };
+    Some(
+        sgp::history(
+            shard.base,
+            &shard.token,
+            &shard.user_agent,
+            puuid,
+            begin,
+            count,
+        )
+        .await
+        .map_err(CoreError::Remote),
+    )
+}
+
+/// The shard's match-history server, with what a request to it needs. The token stays in memory.
+struct Shard {
+    base: &'static str,
+    token: String,
+    user_agent: String,
+}
+
+/// The server of the shard the client is on, and the client's own access token for it; `None`
+/// where the shard has no server.
+async fn shard(client: &Client) -> Option<Result<Shard, CoreError>> {
     let (entitlements, version) = tokio::join!(
         client.lcu.get::<Entitlements>("/entitlements/v1/token"),
         client.lcu.get::<String>("/lol-patch/v1/game-version"),
@@ -2396,19 +2797,77 @@ async fn server_history(
             "the client has no access token".into(),
         )));
     }
-    let user_agent = sgp::user_agent(&version.unwrap_or_default());
-    Some(
-        sgp::history(
-            base,
-            &entitlements.access_token,
-            &user_agent,
-            puuid,
-            begin,
-            count,
-        )
+    Some(Ok(Shard {
+        base,
+        token: entitlements.access_token,
+        user_agent: sgp::user_agent(&version.unwrap_or_default()),
+    }))
+}
+
+// ---- Diagnostics: the core's checks (`Service::diagnose`) ----
+
+async fn check_client(client: Option<&Client>) -> diagnose::Outcome {
+    let Some(client) = client else {
+        return diagnose::Outcome::skipped(CheckReason::NotConnected);
+    };
+    match client.lcu.get::<String>("/lol-patch/v1/game-version").await {
+        Ok(version) => diagnose::Outcome::fine().with_detail(version),
+        Err(error) => diagnose::Outcome::failed(diagnose::lcu_failure(&error)),
+    }
+}
+
+/// The client's own list of its routes against the ones winer calls; a client without a list
+/// leaves the check unknown, never failed.
+async fn check_routes(client: Option<&Client>) -> diagnose::Outcome {
+    let Some(client) = client else {
+        return diagnose::Outcome::skipped(CheckReason::NotConnected);
+    };
+    let functions = client
+        .lcu
+        .get::<serde_json::Value>("/help")
         .await
-        .map_err(CoreError::Remote),
-    )
+        .ok()
+        .as_ref()
+        .and_then(diagnose::help_functions);
+    let (status, reason, detail) = diagnose::routes_check(functions.as_ref());
+    diagnose::Outcome {
+        detail,
+        ..diagnose::Outcome::new(status, reason)
+    }
+}
+
+/// One game of the local player's from the shard's match-history server.
+async fn check_server(client: Option<&Client>) -> diagnose::Outcome {
+    let me = client.map(|client| lock(&client.live).me.clone());
+    let (Some(client), Some(me)) = (client, me.filter(|me| !me.is_empty())) else {
+        return diagnose::Outcome::skipped(CheckReason::NotConnected);
+    };
+    match shard(client).await {
+        None => diagnose::Outcome::skipped(CheckReason::NoServer),
+        Some(Err(CoreError::Lcu(error))) => {
+            diagnose::Outcome::failed(diagnose::lcu_failure(&error))
+        }
+        Some(Err(_)) => diagnose::Outcome::failed(CheckFailure::Other),
+        Some(Ok(shard)) => {
+            match sgp::probe(shard.base, &shard.token, &shard.user_agent, &me).await {
+                Ok(()) => diagnose::Outcome::fine(),
+                Err(failure) => diagnose::Outcome::failed(failure),
+            }
+        }
+    }
+}
+
+async fn check_source(
+    on: bool,
+    probe: impl Future<Output = Result<(), CheckFailure>>,
+) -> diagnose::Outcome {
+    if !on {
+        return diagnose::Outcome::skipped(CheckReason::SourceOff);
+    }
+    match probe.await {
+        Ok(()) => diagnose::Outcome::fine(),
+        Err(failure) => diagnose::Outcome::failed(failure),
+    }
 }
 
 /// One page of `puuid`'s games. For the local player either path form has been measured answering
@@ -2766,6 +3225,134 @@ mod tests {
                 ..Live::default()
             })),
         }
+    }
+
+    fn fetched(focus: Option<analysis::Focus>) -> PlayerEntry {
+        PlayerEntry::Ready(
+            Arc::new(PlayerRecord {
+                summoner: Summoner::default(),
+                ranked: None,
+                games: Vec::new(),
+                focus,
+                complete: false,
+            }),
+            Some(Instant::now()),
+        )
+    }
+
+    fn generation(players: &HashMap<String, PlayerEntry>) -> Option<u64> {
+        match players.get("p") {
+            Some(PlayerEntry::Loading { generation, .. }) => Some(*generation),
+            _ => None,
+        }
+    }
+
+    /// One request per focus at a time; a request for another focus takes over, and whichever of
+    /// the two answers first, only the newer one's answer is kept.
+    #[test]
+    fn only_the_request_awaited_writes_its_answer() {
+        let kinds = analysis::QueueKinds::default();
+        let rift = analysis::Focus::of("CLASSIC");
+        let aram = analysis::Focus::of("ARAM");
+        let mut players = HashMap::new();
+        assert!(begin_load(&mut players, "p", rift.as_ref(), &kinds, 1));
+        assert!(
+            !begin_load(&mut players, "p", rift.as_ref(), &kinds, 2),
+            "the same focus is out already"
+        );
+        assert_eq!(generation(&players), Some(1));
+        assert!(
+            begin_load(&mut players, "p", aram.as_ref(), &kinds, 3),
+            "another focus takes over"
+        );
+        assert_eq!(generation(&players), Some(3));
+
+        // The older answer comes first: dropped, the newer one still awaited.
+        assert!(!finish_load(
+            &mut players,
+            "p",
+            1,
+            fetched(rift.clone()),
+            true
+        ));
+        assert_eq!(generation(&players), Some(3));
+        assert!(finish_load(
+            &mut players,
+            "p",
+            3,
+            fetched(aram.clone()),
+            true
+        ));
+        assert!(matches!(
+            players.get("p"),
+            Some(PlayerEntry::Ready(record, _)) if record.focus == aram
+        ));
+
+        // The newer answer comes first: the older one, arriving late, changes nothing.
+        let mut players = HashMap::new();
+        begin_load(&mut players, "p", rift.as_ref(), &kinds, 4);
+        begin_load(&mut players, "p", aram.as_ref(), &kinds, 5);
+        assert!(finish_load(
+            &mut players,
+            "p",
+            5,
+            fetched(aram.clone()),
+            true
+        ));
+        assert!(!finish_load(&mut players, "p", 4, fetched(rift), true));
+        assert!(matches!(
+            players.get("p"),
+            Some(PlayerEntry::Ready(record, _)) if record.focus == aram
+        ));
+    }
+
+    /// An answer for an account signed out since removes only its own request's mark.
+    #[test]
+    fn a_signed_out_answer_clears_only_its_own_request() {
+        let kinds = analysis::QueueKinds::default();
+        let rift = analysis::Focus::of("CLASSIC");
+        let mut players = HashMap::new();
+        begin_load(&mut players, "p", rift.as_ref(), &kinds, 1);
+        begin_load(&mut players, "p", None, &kinds, 2);
+        assert!(!finish_load(&mut players, "p", 1, fetched(None), false));
+        assert_eq!(
+            generation(&players),
+            Some(2),
+            "the newer request is still out"
+        );
+        assert!(!finish_load(&mut players, "p", 2, fetched(None), false));
+        assert!(!players.contains_key("p"), "its own mark goes");
+    }
+
+    /// A retry asks again only for a record that failed; one that loaded is left alone.
+    #[tokio::test]
+    async fn only_a_failed_record_is_asked_for_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        assert!(matches!(
+            service.retry_player("p"),
+            Err(CoreError::NotConnected)
+        ));
+        *service
+            .inner
+            .client
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(quiet_client(Phase::Lobby));
+        assert!(service.retry_player("../x").is_err());
+        lock(&service.inner.players).insert(
+            "failed".into(),
+            PlayerEntry::Failed("no".into(), Instant::now()),
+        );
+        service.retry_player("failed").unwrap();
+        assert!(matches!(
+            lock(&service.inner.players).get("failed"),
+            Some(PlayerEntry::Loading { .. })
+        ));
+        service.retry_player("unknown").unwrap();
+        assert!(
+            lock(&service.inner.players).get("unknown").is_none(),
+            "nothing was asked for a player never read"
+        );
     }
 
     #[tokio::test]

@@ -615,6 +615,9 @@ pub struct PickRule {
     /// Show the first choice as an intent during the planning phase.
     pub declare_intent: bool,
     pub champions: ChampionPool,
+    /// Sent to a lane the player did not ask for (补位), pick from that lane's own list only, never
+    /// from `any`: a list for any lane was chosen for the lanes the player plays.
+    pub skip_when_filled: bool,
 }
 
 impl Default for PickRule {
@@ -624,6 +627,7 @@ impl Default for PickRule {
             lock_in: true,
             declare_intent: true,
             champions: ChampionPool::default(),
+            skip_when_filled: true,
         }
     }
 }
@@ -661,6 +665,14 @@ impl ChampionPool {
     }
 
     /// The position's own list, then `any`, without repeats.
+    /// The position's own list alone, without `any`: for a player sent to a lane they did not ask
+    /// for.
+    pub fn own_candidates(&self, position: Option<Position>) -> Vec<i64> {
+        position
+            .map(|position| self.list(position).to_vec())
+            .unwrap_or_default()
+    }
+
     pub fn candidates(&self, position: Option<Position>) -> Vec<i64> {
         let own = position
             .map(|position| self.list(position))
@@ -710,6 +722,11 @@ pub struct PluginSettings {
     pub bench_no_cooldown: bool,
     /// Pengu Loader's directory, when it cannot be found from the client.
     pub loader_dir: Option<String>,
+    /// Experimental, off by default: while another program launches the client through IFEO (Pengu
+    /// Loader 1.2, still a test build), link no loader of winer's own, write nothing into the
+    /// configured folder and keep up only a loader the client links already. Off, such a program
+    /// is only reported.
+    pub pengu_ifeo: bool,
     // Social.
     /// In the client's friends list: the mode and running time of a friend's game, and one colour
     /// for the friends playing together.
@@ -731,6 +748,7 @@ impl Default for PluginSettings {
             hide_promotions: false,
             bench_no_cooldown: true,
             loader_dir: None,
+            pengu_ifeo: false,
             friend_status: true,
             lobby_panel: true,
             // The history panel in the client.
@@ -854,6 +872,14 @@ pub struct BuildSettings {
     pub enabled: bool,
     /// Where Summoner's Rift numbers come from.
     pub rift_source: RiftSource,
+    /// Where ARAM's numbers come from, or nowhere.
+    pub aram_source: ModeSource,
+    /// Where Arena's numbers come from, or nowhere.
+    pub arena_source: ModeSource,
+    /// Hextech ARAM asks ARAM.GG when Tencent has no numbers; off, Tencent's are the only ones.
+    pub hextech_fallback: bool,
+    /// Champ select on the Rift shows champions worth considering (`recommend`); shown only.
+    pub recommend: bool,
 }
 
 impl Default for BuildSettings {
@@ -861,6 +887,10 @@ impl Default for BuildSettings {
         Self {
             enabled: true,
             rift_source: RiftSource::Tencent,
+            aram_source: ModeSource::OpGg,
+            arena_source: ModeSource::OpGg,
+            hextech_fallback: true,
+            recommend: true,
         }
     }
 }
@@ -922,6 +952,17 @@ pub enum RiftSource {
     Tencent,
     /// OP.GG's global statistics.
     OpGg,
+}
+
+/// Where a mode with one public source (ARAM, Arena) gets its numbers: that source, or none.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum ModeSource {
+    /// OP.GG's global statistics.
+    #[default]
+    OpGg,
+    /// Nothing is fetched for the mode.
+    Off,
 }
 
 impl Settings {
@@ -1800,6 +1841,24 @@ mod tests {
             serde_json::from_str(r#"{"automation":{"scopes":{"accept":["ranked"]}}}"#).unwrap();
         assert_eq!(old.automation.scopes.loadout, Scoped::Loadout.applicable());
         assert_eq!(old.builds, BuildSettings::default());
+        // A file from before the per-mode sources keeps every source it had.
+        let before: Settings =
+            serde_json::from_str(r#"{"builds":{"enabled":true,"riftSource":"opGg"}}"#).unwrap();
+        assert_eq!(
+            before.builds,
+            BuildSettings {
+                rift_source: RiftSource::OpGg,
+                ..BuildSettings::default()
+            }
+        );
+        assert_eq!(
+            (
+                before.builds.aram_source,
+                before.builds.arena_source,
+                before.builds.hextech_fallback
+            ),
+            (ModeSource::OpGg, ModeSource::OpGg, true)
+        );
     }
 
     #[test]

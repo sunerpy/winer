@@ -36,7 +36,19 @@ enum Pending {
 pub(crate) struct Updater {
     status: Mutex<UpdateStatus>,
     busy: AtomicBool,
+    /// What the last check found, or what was downloaded since, kept so Install does not ask the
+    /// server twice.
     pending: Mutex<Option<Pending>>,
+    /// How the last check went, the quiet ones included: those leave `status` alone.
+    last_check: Mutex<Option<LastCheck>>,
+}
+
+/// One check for updates as the self-check reads it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct LastCheck {
+    /// Epoch milliseconds.
+    pub at: i64,
+    pub ok: bool,
 }
 
 impl Updater {
@@ -45,6 +57,21 @@ impl Updater {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone()
+    }
+
+    pub(crate) fn last_check(&self) -> Option<LastCheck> {
+        *self
+            .last_check
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    pub(crate) fn checked(&self, ok: bool) {
+        *self
+            .last_check
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) =
+            Some(LastCheck { at: now_ms(), ok });
     }
 
     fn begin(&self) -> Result<(), IpcError> {
@@ -128,7 +155,9 @@ async fn quiet_check<R: Runtime>(app: &AppHandle<R>) {
     {
         return;
     }
-    match find(app).await {
+    let found = find(app).await;
+    updater.checked(found.is_ok());
+    match found {
         Ok(Some(update)) => {
             info!(version = %update.version, "update available");
             let status = available(&update);
@@ -162,7 +191,9 @@ pub(crate) async fn check<R: Runtime>(app: &AppHandle<R>) -> Result<UpdateStatus
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .take();
     updater.publish(app, UpdateStatus::Checking);
-    let status = match find(app).await {
+    let found = find(app).await;
+    updater.checked(found.is_ok());
+    let status = match found {
         Ok(Some(update)) => {
             info!(version = %update.version, "update available");
             let status = available(&update);

@@ -4,6 +4,8 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::notes::PlayerNote;
+
 use crate::{loadout::PageOutcome, settings::Settings};
 
 /// Everything live, in one document. Changes after it arrive as [`Update`]s.
@@ -107,7 +109,7 @@ impl Phase {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, TS)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct RiotId {
     pub game_name: String,
@@ -234,6 +236,40 @@ pub struct ChampSelectView {
     pub callout: Vec<String>,
     /// The local team's side; `None` where the mode has none (Arena, Swarm).
     pub side: Option<Side>,
+    /// Champions worth considering for the local player's pick, best first (`recommend`); empty
+    /// where suggestions do not apply or are switched off.
+    pub recommendations: Vec<Recommendation>,
+}
+
+/// A champion worth considering, and why (`recommend::suggest`).
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Recommendation {
+    pub champion_id: i64,
+    /// -1 to 1.
+    pub score: f64,
+    pub reasons: Vec<RecommendReason>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum RecommendReason {
+    /// It wins this often against a revealed enemy, in its lane.
+    Counters { champion_id: i64, win: f64 },
+    /// It wins only this often against a revealed enemy.
+    CounteredBy { champion_id: i64, win: f64 },
+    /// The source's tier, 1 the best of five.
+    Tier { tier: u8 },
+    /// The local player's own games and wins with it in the lane.
+    Played { games: u32, wins: u32 },
+    /// On the player's pick list for the lane.
+    InPickList,
+    /// No source had numbers for it.
+    NoData,
 }
 
 /// Where a team starts on a map of two sides.
@@ -286,6 +322,13 @@ pub struct Seat {
     pub is_self: bool,
     /// Players sharing a number came as one premade party.
     pub premade: Option<u8>,
+    /// The party was read from the players' recent games together (`analysis::infer_parties`),
+    /// not from the lobby or the game: likely, not certain.
+    pub premade_inferred: bool,
+    /// The user's own note on the player (`notes`).
+    pub note: Option<PlayerNote>,
+    /// The local player was sent to a lane they did not ask for (`automation::autofilled`).
+    pub autofilled: bool,
     pub stats: PlayerStats,
     /// Recent form and the tier it earns within the team; absent until stats arrive.
     pub rating: Option<SeatRating>,
@@ -711,6 +754,17 @@ pub enum NoticeKind {
     /// The client kept undoing the remembered status or the disguised rank; winer stopped trying
     /// until the rule changes or the client reconnects.
     PresenceRefused,
+    /// Another program launches the client's interface (IFEO). With the experimental switch on
+    /// (`yielded`) winer linked no loader of its own; off, both may load. Once a run.
+    ForeignLoader {
+        program: String,
+        yielded: bool,
+    },
+    /// The client came back on a new version and the self-check found `failed` checks failing.
+    DiagnosticsFailed {
+        version: String,
+        failed: u32,
+    },
     Failed {
         action: String,
         message: String,
@@ -1015,6 +1069,8 @@ pub struct LobbyMember {
     pub stats: PlayerStats,
     /// Recent form, 0–10 (`rating::form_score`), once the stats are in.
     pub score: Option<f64>,
+    /// The user's own note on the player (`notes`).
+    pub note: Option<PlayerNote>,
 }
 
 /// A lane a lobby member asked for: one of the five, or any (补位).
@@ -1030,6 +1086,18 @@ pub enum LanePreference {
 }
 
 impl LanePreference {
+    /// The lane itself; `None` for any lane (补位).
+    pub fn position(self) -> Option<Position> {
+        Some(match self {
+            Self::Top => Position::Top,
+            Self::Jungle => Position::Jungle,
+            Self::Middle => Position::Middle,
+            Self::Bottom => Position::Bottom,
+            Self::Utility => Position::Utility,
+            Self::Fill => return None,
+        })
+    }
+
     /// The lobby's `firstPositionPreference` words: `TOP` … `UTILITY`, `FILL`; `UNSELECTED` and
     /// anything else is no preference.
     pub fn parse(value: &str) -> Option<Self> {
@@ -1116,6 +1184,113 @@ pub struct PlayerStanding {
     pub rating: Option<SeatRating>,
     /// The fixed band of 峡谷八档 (`rating::FORM_GRADES`), 0 (S+) to 7 (F), the tier was read from.
     pub band: Option<u8>,
+}
+
+// ---- Diagnostics: whether what winer relies on still answers ----
+
+/// One self-check, put together by the shell from the core's checks and its own.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticsReport {
+    /// Epoch milliseconds.
+    pub at: i64,
+    /// The client's version, when the client answered.
+    pub client_version: Option<String>,
+    pub checks: Vec<Check>,
+}
+
+/// One thing checked. `detail` carries data only (a version, the routes missing, a program's
+/// file name, the system's refusal of a shortcut), never a port, a path or an id, so a copied
+/// report can be shared as it is.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Check {
+    pub id: CheckId,
+    pub status: CheckStatus,
+    pub reason: CheckReason,
+    pub detail: Option<String>,
+    /// How a request failed, for the reasons that come from one.
+    pub failure: Option<CheckFailure>,
+    pub took_ms: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum CheckId {
+    /// The client answers, and on which version.
+    Client,
+    /// Every client route winer calls is still in the client's own list (`/help`).
+    Routes,
+    /// The shard's match-history server.
+    Sgp,
+    SourceTencent,
+    SourceOpgg,
+    SourceAramgg,
+    /// The loader and the in-client plugin.
+    Plugin,
+    Hotkey,
+    Updater,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum CheckStatus {
+    Ok,
+    Warn,
+    Fail,
+    /// Could not be told either way.
+    Unknown,
+    /// Not in use here, so not checked.
+    Skipped,
+}
+
+/// Why a check came out as it did; the window words it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum CheckReason {
+    Fine,
+    NotConnected,
+    /// The shard has no match-history server winer knows (`sgp::base`).
+    NoServer,
+    /// The source is switched off in the settings, or nothing uses it.
+    SourceOff,
+    /// The request failed; `failure` says how.
+    Unreachable,
+    /// The client offered no list of its routes to check against.
+    ListUnavailable,
+    /// `detail` lists the routes the client no longer has, one per line.
+    RoutesMissing,
+    /// Another program launches the client (`detail`: its file name).
+    ForeignLoader,
+    PluginOff,
+    LoaderInactive,
+    PluginStale,
+    /// The client is connected, but no plugin context talks to winer.
+    BridgeIdle,
+    NoHotkey,
+    /// The system refused the shortcut (`detail`: its words).
+    HotkeyRefused,
+    NeverChecked,
+    /// The last check for updates failed.
+    CheckFailed,
+}
+
+/// How a request failed, without the request itself.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum CheckFailure {
+    Timeout,
+    Connect,
+    Status {
+        code: u16,
+    },
+    /// An answer, but not one winer can read.
+    Decode,
+    Other,
 }
 
 #[cfg(test)]

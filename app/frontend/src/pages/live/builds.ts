@@ -4,6 +4,7 @@ import type {
   AugmentInfo,
   AugmentOption,
   Build,
+  BuildSettings,
   BuildSource,
   Mode,
   Position,
@@ -34,6 +35,13 @@ export function isRift(mode: Mode): boolean {
 /** Whether any source has numbers for the mode (`builds::sources` in the core). */
 export function hasNumbers(mode: Mode): boolean {
   return mode !== "other";
+}
+
+/** Whether the settings switched the mode's one source off (`builds::sources` in the core). */
+export function sourceOff(mode: Mode, builds: BuildSettings): boolean {
+  if (mode === "aram") return builds.aramSource === "off";
+  if (mode === "arena") return builds.arenaSource === "off";
+  return false;
 }
 
 /** Augments are picked in Arena and Hextech ARAM. */

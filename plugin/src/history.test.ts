@@ -65,6 +65,7 @@ function member(puuid: string, name: string, stats: LobbyMember["stats"]): Lobby
     positions: [],
     stats,
     score: stats.state === "ready" ? 7.4 : null,
+    note: null,
   };
 }
 
@@ -396,6 +397,9 @@ function seat(puuid: string | null, stats: Seat["stats"], rating: Seat["rating"]
     spells: [4, 14],
     isSelf: false,
     premade: null,
+    premadeInferred: false,
+    note: null,
+    autofilled: false,
     stats,
     rating,
   };
@@ -415,6 +419,7 @@ function champSelect(seats: Seat[]): ChampSelectView {
     rerollsRemaining: 0,
     callout: [],
     side: null,
+    recommendations: [],
   };
 }
 

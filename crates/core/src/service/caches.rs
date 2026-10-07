@@ -103,7 +103,7 @@ impl Service {
             let mut players = lock(&self.inner.players);
             let before = players.len();
             players.retain(|puuid, entry| {
-                shown.contains(puuid) || matches!(entry, PlayerEntry::Loading)
+                shown.contains(puuid) || matches!(entry, PlayerEntry::Loading { .. })
             });
             before - players.len()
         };
@@ -167,7 +167,7 @@ pub(super) fn players_shown(client: &Client) -> HashSet<String> {
 fn expired(entry: &PlayerEntry, now: Instant) -> bool {
     let age = |at: &Instant| now.saturating_duration_since(*at);
     match entry {
-        PlayerEntry::Loading => false,
+        PlayerEntry::Loading { .. } => false,
         PlayerEntry::Ready(_, Some(at)) => age(at) >= PLAYER_TTL,
         PlayerEntry::Ready(_, None) => true,
         PlayerEntry::Failed(_, at) => age(at) >= FAILED_PLAYER_TTL,
@@ -196,7 +196,7 @@ pub(super) fn trim_players(
             PlayerEntry::Ready(_, Some(at)) | PlayerEntry::Failed(_, at) => {
                 Some((*at, puuid.clone()))
             }
-            PlayerEntry::Ready(_, None) | PlayerEntry::Loading => None,
+            PlayerEntry::Ready(_, None) | PlayerEntry::Loading { .. } => None,
         })
         .collect();
     oldest.sort_unstable();
@@ -216,6 +216,14 @@ mod tests {
     use lcu::{Credentials, Lcu};
     use serde_json::json;
     use tokio::runtime::Handle;
+
+    /// A request out for a player, as `begin_load` marks it.
+    fn loading() -> PlayerEntry {
+        PlayerEntry::Loading {
+            generation: 0,
+            focus: None,
+        }
+    }
 
     use super::*;
     use crate::{
@@ -247,7 +255,7 @@ mod tests {
         let start = Instant::now();
         let at = |seconds: u64| start + Duration::from_secs(seconds);
         let mut players = HashMap::new();
-        players.insert("loading".to_owned(), PlayerEntry::Loading);
+        players.insert("loading".to_owned(), loading());
         players.insert("shown".to_owned(), ready("shown", Some(start)));
         players.insert("due".to_owned(), ready("due", None));
         players.insert(
@@ -311,7 +319,7 @@ mod tests {
             for puuid in ["me", "mate", "foe", "seen-before"] {
                 players.insert(puuid.into(), ready(puuid, Some(start)));
             }
-            players.insert("fetching".into(), PlayerEntry::Loading);
+            players.insert("fetching".into(), loading());
             players.insert("just-now".into(), ready("just-now", Some(just_now)));
         }
         lock(&service.inner.assets).insert(

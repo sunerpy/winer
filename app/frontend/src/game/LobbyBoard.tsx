@@ -16,6 +16,7 @@ import { Badge, Skeleton } from "../ui";
 import { ProfileIcon } from "./icons";
 import { KdaValue, RankBadge, StreakBadge, WinRate, bestRank } from "./stats";
 import { RecentTiles } from "./TeamBoard";
+import { NoteChip } from "./notes";
 
 function laneLabel(lane: LanePreference, t: Translate, language: Language): string {
   return lane === "fill" ? t("social.fill") : positionLabel(lane, language);
@@ -61,6 +62,7 @@ function MemberRow({
             {member.positions.map((lane) => (
               <Badge key={lane}>{laneLabel(lane, t, language)}</Badge>
             ))}
+            {member.note && <NoteChip note={member.note} />}
           </span>
           {summary && form ? (
             <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11.5px] text-fg-subtle">
@@ -106,7 +108,7 @@ function MemberRow({
           className="ml-auto shrink-0 text-fg-subtle opacity-0 transition-opacity duration-150 group-hover:opacity-100"
         />
       </button>
-      <RecentTiles stats={member.stats} />
+      <RecentTiles stats={member.stats} puuid={member.puuid} />
     </li>
   );
 }

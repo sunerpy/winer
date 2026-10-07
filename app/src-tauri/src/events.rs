@@ -1,15 +1,17 @@
 //! Core events to the window, and the few things the shell does itself when they arrive.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tauri::{AppHandle, Emitter as _, Manager as _, Runtime};
 use tokio::sync::broadcast::error::RecvError;
-use tracing::warn;
+use tracing::{debug, info, warn};
 use winer_core::{
     Service,
     bridge::Bridge,
-    view::{Connection, Event, Patch},
+    view::{CheckStatus, Connection, Event, NoticeKind, Patch},
 };
 
-use crate::{elevation, hotkey, plugin_host, tray, window};
+use crate::{diagnostics, elevation, hotkey, plugin_host, tray, window};
 
 /// Every core [`Event`], unchanged.
 pub(crate) const EVENT: &str = "winer://event";
@@ -19,6 +21,50 @@ pub(crate) const RESYNC: &str = "winer://resync";
 pub(crate) const UPDATE: &str = "winer://update";
 /// A new [`winer_core::view::HotkeyStatus`].
 pub(crate) const HOTKEY: &str = "winer://hotkey";
+
+/// Whether this run has told the window that another program launches the client.
+static FOREIGN_TOLD: AtomicBool = AtomicBool::new(false);
+
+/// A client back on another version than the last one seen gets the self-check once: an update is
+/// when routes go missing and automation stops working. Failures are logged one by one and told in
+/// one notice.
+async fn self_check_after_update<R: Runtime>(
+    app: &AppHandle<R>,
+    service: &Service,
+    bridge: &Bridge,
+) {
+    let version = match service.note_client_version().await {
+        Ok(Some(version)) => version,
+        Ok(None) => return,
+        Err(error) => {
+            debug!(%error, "the client's version was not read");
+            return;
+        }
+    };
+    let report = diagnostics::run(app, service, bridge).await;
+    let failed: Vec<_> = report
+        .checks
+        .iter()
+        .filter(|check| check.status == CheckStatus::Fail)
+        .collect();
+    for check in &failed {
+        warn!(
+            id = ?check.id,
+            reason = ?check.reason,
+            failure = ?check.failure,
+            detail = ?check.detail,
+            "self-check failed after the client updated"
+        );
+    }
+    if failed.is_empty() {
+        info!(%version, "self-check passed after the client updated");
+    } else {
+        service.report(NoticeKind::DiagnosticsFailed {
+            version,
+            failed: u32::try_from(failed.len()).unwrap_or(u32::MAX),
+        });
+    }
+}
 
 pub(crate) fn forward<R: Runtime>(app: AppHandle<R>, service: Service, bridge: Bridge) {
     let mut events = service.subscribe();
@@ -58,7 +104,7 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
             let (app, service, bridge) = (app.clone(), service.clone(), bridge.clone());
             tauri::async_runtime::spawn(async move {
                 let outcome = {
-                    let (app, service) = (app.clone(), service.clone());
+                    let (app, service, bridge) = (app.clone(), service.clone(), bridge.clone());
                     tauri::async_runtime::spawn_blocking(move || {
                         plugin_host::refresh(&service, &bridge, &app.state::<plugin_host::Host>())
                     })
@@ -71,6 +117,15 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
                 if outcome.linked {
                     plugin_host::start_loader(&service);
                 }
+                if let Some(program) = outcome.foreign
+                    && !FOREIGN_TOLD.swap(true, Ordering::Relaxed)
+                {
+                    service.report(NoticeKind::ForeignLoader {
+                        program,
+                        yielded: outcome.yielded,
+                    });
+                }
+                self_check_after_update(&app, &service, &bridge).await;
             });
         }
         // The client runs elevated and winer does not: restart elevated rather than ask first.

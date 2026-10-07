@@ -32,8 +32,10 @@ impl Lcu {
         let client = Client::builder()
             .tls_backend_preconfigured((*tls::config()).clone())
             .default_headers(headers)
-            // The LCU is loopback; a system or environment proxy must never see it.
+            // The LCU is loopback; a system or environment proxy must never see it, and nothing is
+            // gained by compressing what never leaves the machine.
             .no_proxy()
+            .no_gzip()
             .connect_timeout(Duration::from_secs(3))
             // Match history for a busy account is the slowest call the app makes.
             .timeout(Duration::from_secs(20))

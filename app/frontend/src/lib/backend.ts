@@ -12,6 +12,10 @@ import type {
   CalloutRule,
   ChallengeProfile,
   CleanupReport,
+  DiagnosticsReport,
+  ExportFormat,
+  NoteEntry,
+  NoteTag,
   Event,
   GameData,
   General,
@@ -25,9 +29,11 @@ import type {
   PlayerProfile,
   PlayerStanding,
   PlayerSummary,
+  PlayerNote,
   PluginStatus,
   Position,
   Presence,
+  RiotId,
   RunePage,
   Settings,
   SkinChoice,
@@ -65,6 +71,8 @@ export interface Commands {
   get_app_info: Command<undefined, AppInfo>;
   relaunch_elevated: Command<undefined, null>;
   reveal_logs: Command<undefined, null>;
+  /** The self-check: reads only, each check giving up after a few seconds. */
+  run_diagnostics: Command<undefined, DiagnosticsReport>;
   // Storage: what winer keeps, and the cleanup.
   get_storage: Command<undefined, StorageReport>;
   /** Removes old logs, spent update installers and the caches in memory now, and the WebView's
@@ -111,6 +119,19 @@ export interface Commands {
   // History.
   /** What a player's form counts, and the tier, title and quip it earns on its own. */
   get_player_standing: Command<{ puuid: string }, PlayerStanding>;
+  // The user's notes on other players.
+  get_player_note: Command<{ puuid: string }, PlayerNote | null>;
+  /** Neither a tag nor text removes the note, and answers null. */
+  set_player_note: Command<
+    { puuid: string; tag: NoteTag | null; text: string; name: RiotId | null },
+    PlayerNote | null
+  >;
+  list_player_notes: Command<undefined, NoteEntry[]>;
+  delete_player_note: Command<{ puuid: string }, boolean>;
+  /** Into Downloads under a new name when the one asked for is taken; answers the file's name. */
+  save_export: Command<{ stem: string; format: ExportFormat; contents: string }, string>;
+  /** Asks again for a player whose record failed to load; nothing for one that loaded. */
+  retry_player: Command<{ puuid: string }, null>;
 }
 
 export type CommandName = keyof Commands;

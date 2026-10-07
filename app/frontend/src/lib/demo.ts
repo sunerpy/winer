@@ -4,6 +4,11 @@ import type {
   BackupInfo,
   BannerChoice,
   CalloutRule,
+  Check,
+  CheckId,
+  CheckReason,
+  CheckStatus,
+  PlayerNote,
   ChallengeProfile,
   ChallengeToken,
   ChampSelectView,
@@ -98,6 +103,17 @@ const GAME_DATA: GameData = {
 };
 
 /** A deterministic sequence, so the demo looks the same on every reload. */
+/** One line of the demo's self-check. */
+function check(
+  id: CheckId,
+  status: CheckStatus,
+  reason: CheckReason,
+  detail: string | null = null,
+  tookMs = 0,
+): Check {
+  return { id, status, reason, detail, failure: null, tookMs };
+}
+
 function random(seed: number): () => number {
   let state = seed;
   return () => {
@@ -604,7 +620,11 @@ function seats(): Seat[] {
       position,
       spells: [4, 14],
       isSelf: index === 0,
-      premade: index === 3 || index === 4 ? 1 : null,
+      // The lobby's party is 1; two others played together lately, which the core infers.
+      premade: index === 3 || index === 4 ? 1 : index === 1 || index === 2 ? 2 : null,
+      premadeInferred: index === 1 || index === 2,
+      note: null,
+      autofilled: false,
       stats: stats ? { state: "ready", ...stats } : { state: "loading" },
       rating: RATINGS[index] ?? null,
     };
@@ -626,6 +646,7 @@ function champSelect(): ChampSelectView {
     bench: [99, 81, 22, 157],
     rerollsRemaining: 1,
     side: "blue",
+    recommendations: [],
     callout: [
       "📢【蓝色方】winer 战绩鉴定",
       "1L: 👑 峡谷通天代|近20场胜率60%|KDA4.1|战力7.4",
@@ -660,6 +681,9 @@ export function demoGame(): GameView {
     spells: [4, 14],
     isSelf: false,
     premade: null,
+    premadeInferred: false,
+    note: null,
+    autofilled: false,
     stats: { state: "ready", ...summary(puuid, name, championId % 7, null) },
     rating: { score, tier, tiers: 5, label, grade: null, title: null, quip: null },
   }));
@@ -847,6 +871,7 @@ export function demoLobby(): LobbyView {
         positions: ["middle", "fill"],
         stats: ready("demo-me"),
         score: 7.4,
+        note: null,
       },
       {
         puuid: "demo-2",
@@ -857,6 +882,12 @@ export function demoLobby(): LobbyView {
         positions: ["top", "jungle"],
         stats: ready("demo-2"),
         score: 5.2,
+        note: {
+          tag: "reliable",
+          text: "上次一起打团很靠谱",
+          name: { gameName: "峡谷清道夫", tagLine: "10004" },
+          updatedAt: Date.UTC(2026, 9, 1),
+        },
       },
       {
         puuid: "demo-6",
@@ -867,6 +898,7 @@ export function demoLobby(): LobbyView {
         positions: ["utility"],
         stats: { state: "loading" },
         score: null,
+        note: null,
       },
     ],
   };
@@ -893,6 +925,7 @@ const DEFAULT_SETTINGS: Settings = {
       enabled: true,
       lockIn: true,
       declareIntent: true,
+      skipWhenFilled: true,
       champions: {
         any: [103, 1],
         top: [],
@@ -934,6 +967,7 @@ const DEFAULT_SETTINGS: Settings = {
     hidePromotions: false,
     benchNoCooldown: true,
     loaderDir: null,
+    penguIfeo: false,
     friendStatus: true,
     lobbyPanel: true,
     // The history panel in the client.
@@ -943,7 +977,14 @@ const DEFAULT_SETTINGS: Settings = {
     rankDisguise: { enabled: false, queue: "solo", tier: "DIAMOND", division: "I" },
     presence: { remember: false, availability: "chat", statusMessage: null, mobileMessage: false },
   },
-  builds: { enabled: true, riftSource: "tencent" },
+  builds: {
+    enabled: true,
+    riftSource: "tencent",
+    aramSource: "opGg",
+    arenaSource: "opGg",
+    hextechFallback: true,
+    recommend: true,
+  },
   history: { hideCustomGames: true },
 };
 
@@ -982,6 +1023,17 @@ export function demoBackend(): Backend {
     hotkeyListeners.forEach((listener) => listener(hotkey));
     return hotkey;
   };
+  const notes = new Map<string, PlayerNote>([
+    [
+      "demo-7",
+      {
+        tag: "weak",
+        text: "上把逆风一直送，还开了投降",
+        name: { gameName: "上等马", tagLine: "10010" },
+        updatedAt: Date.now() - 86_400_000,
+      },
+    ],
+  ]);
   let plugin: PluginStatus = {
     loaderDir: "C:\\Users\\Player\\AppData\\Local\\app.winer.desktop\\pengu",
     active: true,
@@ -994,6 +1046,7 @@ export function demoBackend(): Backend {
     bundledVersion: "0.2.0",
     current: true,
     connected: 2,
+    foreignActivation: null,
   };
 
   const snapshot: Snapshot = {
@@ -1172,6 +1225,40 @@ export function demoBackend(): Backend {
     }),
     relaunch_elevated: () => null,
     reveal_logs: () => null,
+    get_player_note: ({ puuid }) => notes.get(puuid) ?? null,
+    set_player_note: ({ puuid, tag, text, name }) => {
+      const trimmed = text.trim();
+      if (Array.from(trimmed).length > 200) throw { code: "invalid", message: "too long" };
+      if (!tag && !trimmed) {
+        notes.delete(puuid);
+        return null;
+      }
+      const note = { tag, text: trimmed, name, updatedAt: Date.now() };
+      notes.set(puuid, note);
+      return note;
+    },
+    list_player_notes: () =>
+      [...notes.entries()]
+        .map(([puuid, note]) => ({ puuid, note }))
+        .sort((a, b) => b.note.updatedAt - a.note.updatedAt),
+    delete_player_note: ({ puuid }) => notes.delete(puuid),
+    save_export: ({ stem, format }) => `${stem}.${format}`,
+    retry_player: () => null,
+    run_diagnostics: () => ({
+      at: Date.now(),
+      clientVersion: "16.19.8217343",
+      checks: [
+        check("client", "ok", "fine", "16.19.8217343", 12),
+        check("routes", "ok", "fine", null, 140),
+        check("sgp", "ok", "fine", null, 260),
+        check("sourceTencent", "ok", "fine", null, 180),
+        check("sourceOpgg", "skipped", "sourceOff", null, 0),
+        check("sourceAramgg", "ok", "fine", null, 320),
+        check("plugin", plugin.active ? "ok" : "fail", plugin.active ? "fine" : "loaderInactive"),
+        check("hotkey", "ok", "fine"),
+        check("updater", "unknown", "neverChecked"),
+      ],
+    }),
     // Storage: what winer keeps, and the cleanup.
     ...demoStorageHandlers(),
     get_autostart: () => false,

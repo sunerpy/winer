@@ -47,6 +47,7 @@ import {
   availableTabs,
   defaultTab,
   hasNumbers,
+  sourceOff,
   isRift,
   rate,
   rateTone,
@@ -553,14 +554,14 @@ function BuildBody({
   const t = useT();
   const language = useLanguage();
   const store = useStore();
-  const riftSource = useSettings().builds.riftSource;
+  const { riftSource, hextechFallback } = useSettings().builds;
   // Lanes are the Rift's; elsewhere the numbers are the champion's whatever its seat says.
   const [chosen, setChosen] = useState<Position | null>(isRift(mode) ? lane : null);
   const [tab, setTab] = useState<BuildTab | null>(null);
   const actions = useActions();
   const answer = useAsync(
     () => store.backend.call("get_build", { championId, mode, lane: chosen }),
-    [championId, mode, chosen, riftSource],
+    [championId, mode, chosen, riftSource, hextechFallback],
   );
   const build = answer.data;
   // The header says where the numbers on screen come from, so it follows the answer shown.
@@ -709,16 +710,20 @@ export function BuildPanel({
 }) {
   const t = useT();
   const catalog = useCatalog();
-  const enabled = useSettings().builds.enabled;
+  const builds = useSettings().builds;
   const [build, setBuild] = useState<Build | null>(null);
-  if (!enabled) return null;
+  if (!builds.enabled) return null;
   const champion = championId ? catalog?.champions.get(championId) : undefined;
   const ready = championId !== null && championId > 0;
   return (
     <Panel
       eyebrow={context === "lookup" ? t("loadout.lookup") : t("loadout.panel")}
       title={champion ? `${champion.name} · ${champion.shortName}` : undefined}
-      right={ready && hasNumbers(mode) ? <SourceLine build={build} /> : undefined}
+      right={
+        ready && hasNumbers(mode) && !sourceOff(mode, builds) ? (
+          <SourceLine build={build} />
+        ) : undefined
+      }
       className={cx("@container", className)}
     >
       {toolbar && <div className="mb-3 flex flex-wrap items-center gap-2">{toolbar}</div>}
@@ -728,6 +733,8 @@ export function BuildPanel({
         </p>
       ) : !hasNumbers(mode) ? (
         <EmptyState compact icon={Swords} title={t("loadout.noData")} />
+      ) : sourceOff(mode, builds) ? (
+        <EmptyState compact icon={Swords} title={t("loadout.sourceOff")} />
       ) : (
         <BuildBody
           key={`${championId}:${mode}:${lane ?? ""}`}

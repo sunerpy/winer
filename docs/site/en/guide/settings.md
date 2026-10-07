@@ -21,6 +21,12 @@ The actions on the **Tools** page act on the client directly:
 - **Restart the client UI**: restarts only the client's interface process; your sign-in and a
   running game are not affected. Useful when the client's interface hangs, or after a plugin update.
 
+### My notes
+
+The [notes](/en/guide/history#my-note) you wrote on other players, newest first. Search them by
+name or text; a name opens that player's history, where the note is edited, and the bin beside a
+note deletes it.
+
 ### Profile background
 
 The current background is at the top. Below it are all skins of all champions, owned or not: search
@@ -77,11 +83,17 @@ Open them with `Ctrl` + `,` or **Settings** at the bottom of the sidebar.
   ✕ beside it turns the shortcut off. When another program already holds the combination, the row
   says so: pick another. The game must run borderless or windowed: in exclusive fullscreen, the
   game minimizes as soon as another window takes the focus.
-- **Augment descriptions from ARAM.GG**: fetches what Hextech ARAM's augments do from ARAM.GG; off,
-  augments show their name and icon only.
 - **Builds**: shows the [build panel](/en/guide/live#builds) on the Live game page, from public
   statistics by the Tencent League app, OP.GG and ARAM.GG; off, it is hidden and nothing is fetched.
-- **Summoner's Rift data**: Tencent 101 (the Chinese servers) or OP.GG (the world).
+- **Pick suggestions**: three champions suggested in Rift champ select, see
+  [Pick suggestions](/en/guide/live#pick-suggestions); shown only, nothing is picked for you.
+- **Data sources**: where each mode's numbers come from, see
+  [Where the numbers come from](/en/guide/live#where-the-numbers-come-from).
+  - **Summoner's Rift data**: Tencent 101 (the Chinese servers) or OP.GG (the world).
+  - **ARAM data**, **Arena data**: OP.GG, or off.
+  - **ARAM.GG when Tencent has no Hextech numbers**: off, only Tencent's numbers are used.
+  - **Augment descriptions from ARAM.GG**: fetches what Hextech ARAM's augments do from ARAM.GG;
+    off, augments show their name and icon only.
 - **Start with Windows**: starts in the tray when you sign in to Windows, without opening the window.
 
 ### Rating
@@ -106,6 +118,13 @@ remembered setups, update installers and the cache in memory. Where each lives i
 - Without a cleanup nothing grows past its limit either: logs keep the last 7 days and 50 MB in all,
   the caches in memory let go of what expires, the WebView's page cache holds 32 MB at most, and
   update installers go at the next start.
+
+**Diagnostics** checks what winer relies on: the client and its version, whether every client route
+winer uses is still there, the match-history server, the data sources the settings use, the
+in-client plugin, the shortcuts, and how the last check for updates went. **Run checks** runs them,
+each for 10 seconds at most; **Copy** copies the results as text for a bug report, with no port,
+path or account in it. Diagnostics only read and never change the client. The first time the client
+connects after an update, winer runs them by itself and sends a notice when one fails.
 
 ## Keyboard shortcuts
 

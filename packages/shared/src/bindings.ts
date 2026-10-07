@@ -52,7 +52,12 @@ callout: Array<string>,
 /**
  * The local team's side; `None` where the mode has none (Arena, Swarm).
  */
-side: Side | null, };
+side: Side | null, 
+/**
+ * Champions worth considering for the local player's pick, best first (`recommend`); empty
+ * where suggestions do not apply or are switched off.
+ */
+recommendations: Array<Recommendation>, };
 
 export type TimerView = { phase: string, 
 /**
@@ -92,7 +97,20 @@ intent: boolean, position: Position | null, spells: [number, number], isSelf: bo
 /**
  * Players sharing a number came as one premade party.
  */
-premade: number | null, stats: PlayerStats, 
+premade: number | null, 
+/**
+ * The party was read from the players' recent games together (`analysis::infer_parties`),
+ * not from the lobby or the game: likely, not certain.
+ */
+premadeInferred: boolean, 
+/**
+ * The user's own note on the player (`notes`).
+ */
+note: PlayerNote | null, 
+/**
+ * The local player was sent to a lane they did not ask for (`automation::autofilled`).
+ */
+autofilled: boolean, stats: PlayerStats, 
 /**
  * Recent form and the tier it earns within the team; absent until stats arrive.
  */
@@ -288,7 +306,7 @@ export type Notice = {
  */
 at: number, kind: NoticeKind, };
 
-export type NoticeKind = { "kind": "accepted" } | { "kind": "declared", championId: number, } | { "kind": "picked", championId: number, locked: boolean, } | { "kind": "banned", championId: number, } | { "kind": "playedAgain" } | { "kind": "swapped", championId: number, } | { "kind": "calledOut", lines: number, } | { "kind": "presenceRestored", availability: string, } | { "kind": "presenceRefused" } | { "kind": "failed", action: string, message: string, } | { "kind": "loadoutApplied", championId: number, 
+export type NoticeKind = { "kind": "accepted" } | { "kind": "declared", championId: number, } | { "kind": "picked", championId: number, locked: boolean, } | { "kind": "banned", championId: number, } | { "kind": "playedAgain" } | { "kind": "swapped", championId: number, } | { "kind": "calledOut", lines: number, } | { "kind": "presenceRestored", availability: string, } | { "kind": "presenceRefused" } | { "kind": "foreignLoader", program: string, yielded: boolean, } | { "kind": "diagnosticsFailed", version: string, failed: number, } | { "kind": "failed", action: string, message: string, } | { "kind": "loadoutApplied", championId: number, 
 /**
  * The client's own recommendation: nothing was remembered for the champion.
  */
@@ -321,6 +339,54 @@ elevated: boolean, logDir: string, settingsPath: string,
 notices: string, };
 
 export type UpdateStatus = { "state": "idle" } | { "state": "checking" } | { "state": "upToDate", version: string, checkedAt: number, } | { "state": "available", version: string, current: string, notes: string | null, date: string | null, } | { "state": "downloading", version: string, received: number, total: number | null, } | { "state": "ready", version: string, } | { "state": "installing", version: string, } | { "state": "failed", message: string, };
+
+export type ExportFormat = "csv" | "json";
+
+export type NoteTag = "reliable" | "weak" | "toxic" | "troll";
+
+export type PlayerNote = { tag: NoteTag | null, text: string, 
+/**
+ * The Riot ID the player had when the note was last saved, for the list of notes.
+ */
+name: RiotId | null, 
+/**
+ * Epoch milliseconds.
+ */
+updatedAt: number, };
+
+export type NoteEntry = { puuid: string, note: PlayerNote, };
+
+export type Recommendation = { championId: number, 
+/**
+ * -1 to 1.
+ */
+score: number, reasons: Array<RecommendReason>, };
+
+export type RecommendReason = { "kind": "counters", championId: number, win: number, } | { "kind": "counteredBy", championId: number, win: number, } | { "kind": "tier", tier: number, } | { "kind": "played", games: number, wins: number, } | { "kind": "inPickList" } | { "kind": "noData" };
+
+export type DiagnosticsReport = { 
+/**
+ * Epoch milliseconds.
+ */
+at: number, 
+/**
+ * The client's version, when the client answered.
+ */
+clientVersion: string | null, checks: Array<Check>, };
+
+export type Check = { id: CheckId, status: CheckStatus, reason: CheckReason, detail: string | null, 
+/**
+ * How a request failed, for the reasons that come from one.
+ */
+failure: CheckFailure | null, tookMs: number, };
+
+export type CheckId = "client" | "routes" | "sgp" | "sourceTencent" | "sourceOpgg" | "sourceAramgg" | "plugin" | "hotkey" | "updater";
+
+export type CheckStatus = "ok" | "warn" | "fail" | "unknown" | "skipped";
+
+export type CheckReason = "fine" | "notConnected" | "noServer" | "sourceOff" | "unreachable" | "listUnavailable" | "routesMissing" | "foreignLoader" | "pluginOff" | "loaderInactive" | "pluginStale" | "bridgeIdle" | "noHotkey" | "hotkeyRefused" | "neverChecked" | "checkFailed";
+
+export type CheckFailure = { "kind": "timeout" } | { "kind": "connect" } | { "kind": "status", code: number, } | { "kind": "decode" } | { "kind": "other" };
 
 export type IpcError = { code: ErrorCode, message: string, };
 
@@ -373,7 +439,11 @@ positions: Array<LanePreference>, stats: PlayerStats,
 /**
  * Recent form, 0–10 (`rating::form_score`), once the stats are in.
  */
-score: number | null, };
+score: number | null, 
+/**
+ * The user's own note on the player (`notes`).
+ */
+note: PlayerNote | null, };
 
 export type LanePreference = "top" | "jungle" | "middle" | "bottom" | "utility" | "fill";
 
@@ -474,7 +544,12 @@ lockIn: boolean,
 /**
  * Show the first choice as an intent during the planning phase.
  */
-declareIntent: boolean, champions: ChampionPool, };
+declareIntent: boolean, champions: ChampionPool, 
+/**
+ * Sent to a lane the player did not ask for (补位), pick from that lane's own list only, never
+ * from `any`: a list for any lane was chosen for the lanes the player plays.
+ */
+skipWhenFilled: boolean, };
 
 export type BanRule = { enabled: boolean, champions: ChampionPool, };
 
@@ -584,6 +659,13 @@ benchNoCooldown: boolean,
  * Pengu Loader's directory, when it cannot be found from the client.
  */
 loaderDir: string | null, 
+/**
+ * Experimental, off by default: while another program launches the client through IFEO (Pengu
+ * Loader 1.2, still a test build), link no loader of winer's own, write nothing into the
+ * configured folder and keep up only a loader the client links already. Off, such a program
+ * is only reported.
+ */
+penguIfeo: boolean, 
 /**
  * In the client's friends list: the mode and running time of a friend's game, and one colour
  * for the friends playing together.
@@ -738,7 +820,13 @@ current: boolean,
 /**
  * Plugin contexts connected to the bridge right now.
  */
-connected: number, };
+connected: number, 
+/**
+ * The file name of a program Windows starts in place of the client's interface (IFEO's
+ * `Debugger`, the way Pengu Loader 1.2 loads itself). While one does, winer links no loader
+ * of its own and keeps up only one the client links already.
+ */
+foreignActivation: string | null, };
 
 export type BridgeMessage = { "type": "hello", version: string, snapshot: Snapshot, settings: Settings, } | { "type": "event", event: Event, } | { "type": "historyResult", requestId: number, page: PanelHistory | null, error: IpcError | null, };
 
@@ -760,9 +848,27 @@ enabled: boolean,
 /**
  * Where Summoner's Rift numbers come from.
  */
-riftSource: RiftSource, };
+riftSource: RiftSource, 
+/**
+ * Where ARAM's numbers come from, or nowhere.
+ */
+aramSource: ModeSource, 
+/**
+ * Where Arena's numbers come from, or nowhere.
+ */
+arenaSource: ModeSource, 
+/**
+ * Hextech ARAM asks ARAM.GG when Tencent has no numbers; off, Tencent's are the only ones.
+ */
+hextechFallback: boolean, 
+/**
+ * Champ select on the Rift shows champions worth considering (`recommend`); shown only.
+ */
+recommend: boolean, };
 
 export type RiftSource = "tencent" | "opGg";
+
+export type ModeSource = "opGg" | "off";
 
 export type LoadoutSummary = { remembered: number, };
 

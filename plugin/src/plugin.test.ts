@@ -43,6 +43,9 @@ function seat(stats: Seat["stats"], championId = 103, rating: Seat["rating"] = n
     spells: [4, 14],
     isSelf: false,
     premade: null,
+    premadeInferred: false,
+    note: null,
+    autofilled: false,
     stats,
     rating,
   };
@@ -62,6 +65,7 @@ function view(seats: Seat[]): ChampSelectView {
     rerollsRemaining: 0,
     callout: [],
     side: null,
+    recommendations: [],
   };
 }
 

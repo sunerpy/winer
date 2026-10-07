@@ -10,19 +10,22 @@ use winer_core::{
     backup::{BackupChannel, BackupInfo},
     bridge::Bridge,
     builds::{Build, RunePage},
+    export::{self, ExportFormat},
     loadout::{LoadoutSummary, PageOutcome},
+    notes::{NoteEntry, NoteTag, PlayerNote},
     plugin::PluginStatus,
     profile::{ChallengeProfile, SkinChoice},
     settings::{Audience, CalloutRule, General, Language, Mode},
     view::{
-        AppInfo, AugmentDetail, CleanupReport, ErrorCode, GameData, HotkeyStatus, IpcError,
-        MatchDetail, MatchPage, PlayerProfile, PlayerStanding, PlayerSummary, Position, Presence,
-        Snapshot, StorageReport, UpdateStatus,
+        AppInfo, AugmentDetail, CleanupReport, DiagnosticsReport, ErrorCode, GameData,
+        HotkeyStatus, IpcError, MatchDetail, MatchPage, PlayerProfile, PlayerStanding,
+        PlayerSummary, Position, Presence, RiotId, Snapshot, StorageReport, UpdateStatus,
     },
 };
 
 use crate::{
-    Paths, RELEASES_URL, VERSION, elevation, hotkey, plugin_host, storage::Storage, updater,
+    Paths, RELEASES_URL, VERSION, diagnostics, elevation, hotkey, plugin_host, storage::Storage,
+    updater,
 };
 
 type Result<T> = std::result::Result<T, IpcError>;
@@ -53,6 +56,7 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         get_app_info,
         relaunch_elevated,
         reveal_logs,
+        run_diagnostics,
         // Storage: what winer keeps, and the cleanup.
         get_storage,
         clear_caches,
@@ -90,6 +94,15 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         preview_game_callout,
         // History.
         get_player_standing,
+        // The user's notes on other players.
+        get_player_note,
+        set_player_note,
+        list_player_notes,
+        delete_player_note,
+        // History: the games as a file.
+        save_export,
+        // A player's record that failed to load, asked for again.
+        retry_player,
     ]
 }
 
@@ -250,6 +263,13 @@ async fn enable_plugin<R: Runtime>(app: AppHandle<R>) -> Result<PluginStatus> {
         plugin_host::start_loader(&service);
     }
     Ok(status)
+}
+
+/// The self-check (`diagnostics`): reads only, and each check gives up after a few seconds.
+#[tauri::command]
+async fn run_diagnostics<R: Runtime>(app: AppHandle<R>) -> Result<DiagnosticsReport> {
+    let (service, bridge) = (service(&app), app.state::<Bridge>().inner().clone());
+    Ok(diagnostics::run(&app, &service, &bridge).await)
 }
 
 #[tauri::command]
@@ -744,4 +764,64 @@ mod tests {
             assert_eq!(error.code, ErrorCode::Invalid);
         });
     }
+}
+
+// The user's notes on other players (`winer_core::notes`).
+
+#[tauri::command]
+async fn get_player_note<R: Runtime>(
+    app: AppHandle<R>,
+    puuid: String,
+) -> Result<Option<PlayerNote>> {
+    Ok(service(&app).player_note(&puuid)?)
+}
+
+/// Neither a tag nor text removes the note. Writes a file.
+#[tauri::command]
+async fn set_player_note<R: Runtime>(
+    app: AppHandle<R>,
+    puuid: String,
+    tag: Option<NoteTag>,
+    text: String,
+    name: Option<RiotId>,
+) -> Result<Option<PlayerNote>> {
+    let service = service(&app);
+    blocking(move || service.set_player_note(&puuid, tag, &text, name)).await
+}
+
+#[tauri::command]
+async fn list_player_notes<R: Runtime>(app: AppHandle<R>) -> Result<Vec<NoteEntry>> {
+    Ok(service(&app).player_notes())
+}
+
+#[tauri::command]
+async fn delete_player_note<R: Runtime>(app: AppHandle<R>, puuid: String) -> Result<bool> {
+    let service = service(&app);
+    blocking(move || service.delete_player_note(&puuid)).await
+}
+
+/// Writes an export into the user's Downloads, under a new name when the one asked for is taken,
+/// and shows it in Explorer. Returns the file's name, not its path.
+#[tauri::command]
+async fn save_export<R: Runtime>(
+    app: AppHandle<R>,
+    stem: String,
+    format: ExportFormat,
+    contents: String,
+) -> Result<String> {
+    let dir = app.path().download_dir().map_err(internal)?;
+    let path = blocking(move || export::write_export(&dir, &stem, format, &contents)).await?;
+    if let Err(error) = app.opener().reveal_item_in_dir(&path) {
+        tracing::warn!(%error, "the export was not shown in Explorer");
+    }
+    Ok(path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default())
+}
+
+/// Asks again for a player whose record failed to load; nothing for one that loaded.
+#[tauri::command]
+async fn retry_player<R: Runtime>(app: AppHandle<R>, puuid: String) -> Result<()> {
+    Ok(service(&app).retry_player(&puuid)?)
 }

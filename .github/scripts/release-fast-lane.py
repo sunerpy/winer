@@ -9,9 +9,11 @@ again. Such a run skips the Rust and frontend jobs; anything else runs every job
 The run is fast only when every check below holds (github-project-scaffold's ci.md, "Use release
 PR fast lanes only with a delta proof"):
 
-- pull_request: the author is github-actions[bot], the head repository is this repository and the
-  title is `chore: release X.Y.Z`. push to main: the head commit's author is github-actions[bot] and
-  its subject is `chore: release X.Y.Z (#N)`. merge_group and every other event run in full.
+- pull_request: the author is release-please's bot, the head repository is this repository and the
+  title is `chore: release X.Y.Z`. push to main: the head commit's author is that bot and its
+  subject is `chore: release X.Y.Z (#N)`. merge_group and every other event run in full. The bot is
+  github-actions[bot], or the release app's bot the repository names with both RELEASE_BOT_LOGIN
+  (`<slug>[bot]`) and RELEASE_BOT_EMAIL (`<id>+<slug>[bot]@users.noreply.github.com`).
 - check-release-delta.py, read from the base commit rather than the head, proves that the head sits
   directly on the base and changes CHANGELOG.md, .release-please-manifest.json and nothing of
   package.json but its version.
@@ -57,13 +59,28 @@ def version_of(text: str) -> tuple[int, int, int]:
     return tuple(int(part) for part in match.groups())  # type: ignore[return-value]
 
 
+def release_bots(event: dict[str, str]) -> tuple[set[str], set[str]]:
+    """The logins and commit emails release-please writes as: github-actions[bot], and the release
+    app's bot where the repository names both, the email the bot's own no-reply address."""
+    logins, emails = {BOT_LOGIN}, {BOT_EMAIL}
+    login, email = event.get("bot_login", ""), event.get("bot_email", "")
+    if (
+        re.fullmatch(r"[a-z0-9-]+\[bot\]", login)
+        and re.fullmatch(rf"\d+\+{re.escape(login)}@users\.noreply\.github\.com", email)
+    ):
+        logins.add(login)
+        emails.add(email)
+    return logins, emails
+
+
 def decide(repo: Path, event: dict[str, str]) -> tuple[bool, str]:
     """(fast, reason) for one run. Any exception means a full run."""
     name = event.get("event_name", "")
     base, head = event.get("base", ""), event.get("head", "")
+    logins, emails = release_bots(event)
     if name == "pull_request":
-        if event.get("author") != BOT_LOGIN:
-            return False, "not a pull request from github-actions[bot]"
+        if event.get("author") not in logins:
+            return False, "not a pull request from release-please's bot"
         if event.get("head_repo") != event.get("repo"):
             return False, "the head is in another repository"
         title = PR_TITLE.fullmatch(event.get("title", ""))
@@ -75,8 +92,8 @@ def decide(repo: Path, event: dict[str, str]) -> tuple[bool, str]:
         if not (SHA.fullmatch(head) and SHA.fullmatch(base)):
             return False, "the push has no single previous commit"
         author = git(repo, "log", "-1", "--format=%ae", head).strip()
-        if author != BOT_EMAIL:
-            return False, "the head commit is not github-actions[bot]'s"
+        if author not in emails:
+            return False, "the head commit is not release-please's bot's"
         title = COMMIT_SUBJECT.fullmatch(git(repo, "log", "-1", "--format=%s", head).strip())
         if not title:
             return False, "the head commit is not `chore: release X.Y.Z (#N)`"
@@ -150,6 +167,8 @@ def from_environment() -> dict[str, str]:
         "ref": os.environ.get("RUN_REF", ""),
         "base": os.environ.get("BASE_SHA", ""),
         "head": os.environ.get("HEAD_SHA", ""),
+        "bot_login": os.environ.get("RELEASE_BOT_LOGIN", ""),
+        "bot_email": os.environ.get("RELEASE_BOT_EMAIL", ""),
     }
 
 
@@ -191,7 +210,7 @@ def self_test() -> None:
 def run_cases(scratch: Path, checker: str, changelog: str, package: str) -> list:
     """The self-test's cases, each in its own repository under `scratch`."""
 
-    def repo_with(edit) -> tuple[Path, str, str]:
+    def repo_with(edit, email: str = BOT_EMAIL) -> tuple[Path, str, str]:
         root = Path(tempfile.mkdtemp(dir=scratch))
         git(root, "init", "-q", "-b", "main")
         git(root, "config", "user.name", "t")
@@ -221,7 +240,7 @@ def run_cases(scratch: Path, checker: str, changelog: str, package: str) -> list
             "-c",
             "user.name=github-actions[bot]",
             "-c",
-            f"user.email={BOT_EMAIL}",
+            f"user.email={email}",
             "commit",
             "-q",
             "-m",
@@ -255,6 +274,24 @@ def run_cases(scratch: Path, checker: str, changelog: str, package: str) -> list
         ("another title", decide(root, pr(base, head, title="chore: release 0.0.7")), False),
         ("a merge queue", decide(root, {**pr(base, head), "event_name": "merge_group"}), False),
         ("a push elsewhere", decide(root, {**push(base, head), "ref": "refs/heads/x"}), False),
+    ]
+
+    # The release app's bot, once the repository names it.
+    app, app_email = "winer-release[bot]", "123+winer-release[bot]@users.noreply.github.com"
+    named = {"bot_login": app, "bot_email": app_email}
+    cases += [
+        ("the app's release PR", decide(root, pr(base, head, author=app, **named)), True),
+        ("the app's PR, the app not named", decide(root, pr(base, head, author=app)), False),
+        (
+            "a human named as the bot",
+            decide(root, pr(base, head, author="someone", bot_login="someone", bot_email=app_email)),
+            False,
+        ),
+    ]
+    root, base, head = repo_with(lambda files: None, email=app_email)
+    cases += [
+        ("the app's squash commit", decide(root, {**push(base, head), **named}), True),
+        ("the app's commit, the app not named", decide(root, push(base, head)), False),
     ]
 
     def extra_file(files):

@@ -21,6 +21,7 @@ import { demoBackend, demoGame, demoLobby } from "./lib/demo";
 import { AppStore, EMPTY_SNAPSHOT, StoreContext } from "./lib/store";
 import { LivePage } from "./pages/Live";
 import { ShellContext } from "./shell/navigation";
+import { translate } from "./lib/i18n";
 import { en } from "./lib/i18n/en";
 import { zhCN } from "./lib/i18n/zh-CN";
 
@@ -201,6 +202,9 @@ describe("App", () => {
       spells: [4, 14],
       isSelf,
       premade: null,
+      premadeInferred: false,
+      note: null,
+      autofilled: false,
       rating: null,
       stats: { state: "loading" },
     });
@@ -363,6 +367,55 @@ describe("App", () => {
     expect(screen.getByText(zhCN["plugin.loaderFailedHint"])).toBeInTheDocument();
     expect(screen.queryByText(zhCN["plugin.needsAdmin"])).toBeNull();
     expect(screen.queryByRole("button", { name: zhCN["connection.relaunch"] })).toBeNull();
+  });
+
+  it("says another program launches the client, and what that leaves of winer's loader", async () => {
+    const base = demoBackend();
+    const [status, settings] = await Promise.all([
+      base.call("get_plugin_status"),
+      base.call("get_settings"),
+    ]);
+    const program = "Pengu Loader.exe";
+    const view = async (linked: boolean, penguIfeo: boolean) => {
+      const backend = demoWith({
+        get_plugin_status: () => ({
+          ...status,
+          active: linked,
+          managed: linked,
+          loaderDir: linked ? status.loaderDir : null,
+          foreignActivation: program,
+          // An earlier refusal is not what the page leads with now.
+          needsElevation: true,
+        }),
+        get_settings: () => ({ ...settings, plugin: { ...settings.plugin, penguIfeo } }),
+      });
+      const call = vi.spyOn(backend, "call");
+      const { user, nav } = await renderApp(backend);
+      await user.click(within(nav).getByRole("button", { name: zhCN["nav.plugin"] }));
+      return { user, call };
+    };
+    // Off, the default: the other program is reported, and winer's loader stays as it was.
+    const { user, call } = await view(true, false);
+    expect(
+      await screen.findByText(translate("zh-CN", "plugin.loaderForeign", { program })),
+    ).toBeInTheDocument();
+    expect(screen.getByText(zhCN["plugin.loaderForeignOff"])).toBeInTheDocument();
+    expect(screen.queryByText(zhCN["plugin.needsAdmin"])).toBeNull();
+    await user.click(screen.getByRole("switch", { name: zhCN["plugin.penguIfeo"] }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          plugin: expect.objectContaining({ penguIfeo: true }),
+        }),
+      }),
+    );
+    cleanup();
+    // On: no link of winer's, or one left from before.
+    await view(false, true);
+    expect(await screen.findByText(zhCN["plugin.loaderForeignHint"])).toBeInTheDocument();
+    cleanup();
+    await view(true, true);
+    expect(await screen.findByText(zhCN["plugin.loaderForeignBoth"])).toBeInTheDocument();
   });
 
   it("previews the callout as it is written: opening line, scheme and own tiers", async () => {
@@ -950,6 +1003,12 @@ describe("social", () => {
     expect(within(me).getByText("中单")).toBeInTheDocument();
     expect(within(me).getByText(zhCN["social.fill"])).toBeInTheDocument();
     expect(within(me).getByText("战力 7.4")).toBeInTheDocument();
+    // The user's own note on a member: its tag, the text on hover.
+    const noted = screen.getByRole("button", { name: "查看 峡谷清道夫#10004 的战绩" });
+    expect(within(noted).getByText(zhCN["note.tag.reliable"]).closest("[title]")).toHaveAttribute(
+      "title",
+      "上次一起打团很靠谱",
+    );
     await user.click(screen.getByRole("button", { name: "查看 新来的队友#10009 的战绩" }));
     expect(navigate).toHaveBeenCalledWith({ page: "history", puuid: "demo-6" });
   });
@@ -961,6 +1020,54 @@ describe("social", () => {
     expect(badges).toHaveLength(2);
     for (const badge of badges)
       expect(badge.querySelector("[data-group]")).toHaveClass("bg-group-1");
+    // A party read from recent games says so, in words and with a dashed swatch.
+    const inferred = screen.getAllByText("疑似开黑 2");
+    expect(inferred).toHaveLength(2);
+    for (const badge of inferred) {
+      expect(badge).toHaveAttribute("title", zhCN["live.premadeInferredHint"]);
+      expect(badge.querySelector("[data-group]")).toHaveClass("border-dashed", "border-group-2");
+    }
+  });
+
+  it("writes, lists and deletes a note on another player, never on the user", async () => {
+    const { backend, push } = demoWithEvents();
+    const call = vi.spyOn(backend, "call");
+    const { user, nav } = await renderApp(backend);
+    await push({ type: "openHistory", data: { puuid: "demo-3" } });
+    expect(await screen.findByText("野区观光客#10005")).toBeInTheDocument();
+    const tags = await screen.findByRole("radiogroup", { name: zhCN["note.tag"] });
+    await user.click(within(tags).getByRole("radio", { name: zhCN["note.tag.toxic"] }));
+    await user.type(screen.getByRole("textbox", { name: zhCN["note.text"] }), "  打字很凶 ");
+    await user.click(screen.getByRole("button", { name: zhCN["note.save"] }));
+    expect(call).toHaveBeenCalledWith("set_player_note", {
+      puuid: "demo-3",
+      tag: "toxic",
+      text: "  打字很凶 ",
+      name: { gameName: "野区观光客", tagLine: "10005" },
+    });
+    expect(await screen.findByText(zhCN["note.saved"])).toBeInTheDocument();
+
+    // The list on the Tools page: the newest first, searchable, a name opening the history.
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.tools"] }));
+    const list = await screen.findByRole("list", { name: zhCN["note.list"] });
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0] as HTMLElement).getByText("野区观光客#10005")).toBeInTheDocument();
+    expect(within(rows[0] as HTMLElement).getByText(zhCN["note.tag.toxic"])).toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: zhCN["note.search"] }), "投降");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(1);
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("zh-CN", "note.deleteOf", { name: "上等马#10010" }),
+      }),
+    );
+    expect(call).toHaveBeenCalledWith("delete_player_note", { puuid: "demo-7" });
+    expect(await screen.findByText(zhCN["note.noMatch"])).toBeInTheDocument();
+
+    // On the user's own history there is nothing to note.
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.history"] }));
+    expect((await screen.findAllByText("暗夜里的光#10003")).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("radiogroup", { name: zhCN["note.tag"] })).toBeNull();
   });
 
   it("opens the history the client asked for, over whatever was open", async () => {
@@ -1065,6 +1172,9 @@ describe("loadout", () => {
     spells: [4, 12],
     isSelf,
     premade: null,
+    premadeInferred: false,
+    note: null,
+    autofilled: false,
     rating: null,
     stats: { state: "loading" },
   });
@@ -1084,6 +1194,7 @@ describe("loadout", () => {
     rerollsRemaining: 0,
     callout: [],
     side: "blue",
+    recommendations: [],
   };
   const live = (snapshot: Partial<Snapshot>): Snapshot => ({
     ...EMPTY_SNAPSHOT,
@@ -1144,6 +1255,42 @@ describe("loadout", () => {
       lane: null,
     });
     expect(await screen.findByText(zhCN["loadout.itemSetWritten"])).toBeInTheDocument();
+  });
+
+  it("shows the pick suggestions with their reasons, and nothing to click in them", async () => {
+    const backend = demoWith({
+      get_snapshot: () =>
+        live({
+          phase: "ChampSelect",
+          champSelect: {
+            ...ranked,
+            recommendations: [
+              {
+                championId: 103,
+                score: 0.6,
+                reasons: [
+                  { kind: "counters", championId: 64, win: 0.54 },
+                  { kind: "tier", tier: 1 },
+                  { kind: "played", games: 8, wins: 6 },
+                  { kind: "inPickList" },
+                ],
+              },
+              { championId: 86, score: 0, reasons: [{ kind: "noData" }] },
+            ],
+          },
+        }),
+    });
+    await openLive(backend);
+    const list = await screen.findByRole("list", { name: zhCN["suggest.title"] });
+    const items = within(list).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    const first = items[0] as HTMLElement;
+    expect(await within(first).findByText("克制 李青（54%）")).toBeInTheDocument();
+    expect(within(first).getByText("版本 T1")).toBeInTheDocument();
+    expect(within(first).getByText("你在这个分路 8 场 6 胜")).toBeInTheDocument();
+    expect(within(first).getByText(zhCN["suggest.inPickList"])).toBeInTheDocument();
+    expect(within(items[1] as HTMLElement).getByText(zhCN["suggest.noData"])).toBeInTheDocument();
+    expect(within(list).queryByRole("button"), "shown only: nothing to hover or lock").toBeNull();
   });
 
   it("sets up runes and spells from a ranked champ select, by lane, and names the matchups", async () => {
@@ -1340,27 +1487,88 @@ describe("loadout", () => {
     expect(screen.getByRole("switch", { name: zhCN["loadout.itemSets"] })).toBeInTheDocument();
   });
 
-  it("switches builds and their Summoner's Rift source in settings", async () => {
+  it("runs the self-check from About and copies it, or shows the text when the clipboard refuses", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await renderApp(backend);
+    fireEvent.keyDown(window, { key: ",", ctrlKey: true });
+    const dialog = screen.getByRole("dialog", { name: zhCN["settings.title"] });
+    await user.click(within(dialog).getByRole("tab", { name: zhCN["settings.about"] }));
+    await user.click(within(dialog).getByRole("button", { name: zhCN["diag.run"] }));
+    expect(call).toHaveBeenCalledWith("run_diagnostics");
+    const results = await within(dialog).findByRole("list", { name: zhCN["diag.results"] });
+    expect(within(results).getByText(/16\.19\.8217343/)).toBeInTheDocument();
+    expect(within(results).getAllByRole("listitem")).toHaveLength(9);
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    await user.click(within(dialog).getByRole("button", { name: zhCN["diag.copy"] }));
+    expect(writeText).toHaveBeenCalledWith(
+      expect.stringContaining("✓ 客户端 · 正常 · 16.19.8217343"),
+    );
+    expect(within(dialog).queryByRole("textbox", { name: zhCN["diag.copyText"] })).toBeNull();
+
+    writeText.mockRejectedValue(new Error("denied"));
+    await user.click(within(dialog).getByRole("button", { name: zhCN["diag.copy"] }));
+    const text = await within(dialog).findByRole("textbox", { name: zhCN["diag.copyText"] });
+    expect((text as HTMLTextAreaElement).value).toContain("winer 0.2.0 · 诊断");
+  });
+
+  it("turns the autofilled pick rule off on the Automation page", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.automation"] }));
+    const toggle = await screen.findByRole("switch", { name: zhCN["auto.skipWhenFilled"] });
+    expect(toggle).toBeChecked();
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          automation: expect.objectContaining({
+            pick: expect.objectContaining({ skipWhenFilled: false }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("switches builds and each mode's data source in settings", async () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");
     const { user } = await renderApp(backend);
     fireEvent.keyDown(window, { key: ",", ctrlKey: true });
     const dialog = screen.getByRole("dialog", { name: zhCN["settings.title"] });
     await user.click(within(dialog).getByRole("tab", { name: zhCN["settings.general"] }));
+    const saved = (builds: Record<string, unknown>) =>
+      waitFor(() =>
+        expect(call).toHaveBeenCalledWith("set_settings", {
+          settings: expect.objectContaining({ builds: expect.objectContaining(builds) }),
+        }),
+      );
     const sources = within(dialog).getByRole("radiogroup", { name: zhCN["loadout.riftSource"] });
     await user.click(within(sources).getByRole("radio", { name: "OP.GG" }));
+    await saved({ enabled: true, riftSource: "opGg", aramSource: "opGg" });
+    const aram = within(dialog).getByRole("radiogroup", { name: zhCN["loadout.aramSource"] });
+    await user.click(within(aram).getByRole("radio", { name: zhCN["loadout.source.off"] }));
+    await saved({ aramSource: "off", arenaSource: "opGg", hextechFallback: true });
+    await user.click(within(dialog).getByRole("switch", { name: zhCN["loadout.hextechFallback"] }));
+    await saved({ aramSource: "off", hextechFallback: false });
+    // The augment descriptions sit with the sources now, and still save into General.
+    await user.click(within(dialog).getByRole("switch", { name: zhCN["settings.augmentDetails"] }));
     await waitFor(() =>
       expect(call).toHaveBeenCalledWith("set_settings", {
-        settings: expect.objectContaining({ builds: { enabled: true, riftSource: "opGg" } }),
+        settings: expect.objectContaining({
+          general: expect.objectContaining({ augmentDetails: false }),
+        }),
       }),
     );
+    await user.click(within(dialog).getByRole("switch", { name: zhCN["loadout.recommend"] }));
+    await saved({ recommend: false });
     await user.click(within(dialog).getByRole("switch", { name: zhCN["loadout.builds"] }));
-    await waitFor(() =>
-      expect(call).toHaveBeenCalledWith("set_settings", {
-        settings: expect.objectContaining({ builds: { enabled: false, riftSource: "opGg" } }),
-      }),
-    );
+    await saved({ enabled: false, riftSource: "opGg" });
     expect(within(sources).getByRole("radio", { name: "腾讯 101" })).toBeDisabled();
+    expect(within(aram).getByRole("radio", { name: "OP.GG" })).toBeDisabled();
   });
 });
 
@@ -1691,6 +1899,25 @@ describe("history", () => {
           ([key, value]) => (args as Record<string, unknown> | undefined)?.[key] === value,
         ),
     ).length;
+
+  it("sums the loaded games by champion and exports them as shown", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const user = await openHistory(backend);
+    const views = screen.getByRole("radiogroup", { name: zhCN["history.view"] });
+    await user.click(within(views).getByRole("radio", { name: zhCN["history.champions"] }));
+    const table = await screen.findByRole("table", { name: zhCN["history.champions"] });
+    expect(within(table).getAllByRole("row").length).toBeGreaterThan(1);
+    expect(screen.getByText(/统计了已读到的 \d+ 场/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: zhCN["history.exportCsv"] }));
+    const exported = call.mock.calls.find(([name]) => name === "save_export");
+    expect(exported?.[1]).toMatchObject({ format: "csv" });
+    const args = exported?.[1] as { stem: string; contents: string };
+    expect(args.stem).toMatch(/^winer 战绩 暗夜里的光#10003 \d{4}-\d{2}-\d{2}$/);
+    expect(args.contents.split("\r\n")[0]).toBe(zhCN["history.exportHeader"]);
+    expect(await screen.findByText(/已保存到下载文件夹/)).toBeInTheDocument();
+  });
 
   it("says what the form counts and rates the player alone, with the rule behind each", async () => {
     const backend = demoBackend();

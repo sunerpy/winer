@@ -645,12 +645,20 @@ fn line(
     ];
     let mut text = template.to_owned();
     for (key, value) in values {
+        // A blank value is marked, so that only brackets it emptied go: a pair the user wrote
+        // empty in the template is the user's to keep.
+        let value = if value.is_empty() {
+            BLANK.to_string()
+        } else {
+            value
+        };
         text = text.replace(key, &value);
     }
     // A blank value (no champion yet, a hidden name) must not leave a gap in the sentence: the
     // brackets it sat in go with it, full-width punctuation takes no space on either side, and a
     // comma or a colon between words none before it.
-    let mut text = without_empty_brackets(&text)
+    let mut text = without_emptied_brackets(&text)
+        .replace(BLANK, "")
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
@@ -673,20 +681,30 @@ const BRACKETS: [(char, char); 5] = [
     ('（', '）'),
 ];
 
-/// `text` without the pairs of brackets that hold nothing but spaces: what a blank value inside
-/// them leaves.
-fn without_empty_brackets(text: &str) -> String {
+/// Stands in for a value left blank until the brackets it emptied are taken away; a character of
+/// Unicode's private use area, which no template or value holds.
+const BLANK: char = '\u{E000}';
+
+/// `text` without the pairs of brackets a blank value emptied: holding nothing but spaces and at
+/// least one [`BLANK`]. A pair the template itself left empty holds no mark and stays.
+fn without_emptied_brackets(text: &str) -> String {
     let mut kept = String::with_capacity(text.len());
     for character in text.chars() {
         let Some(&(open, _)) = BRACKETS.iter().find(|(_, close)| *close == character) else {
             kept.push(character);
             continue;
         };
-        // A closing bracket whose opening one comes before it with only spaces between takes it
-        // away; any other is kept. An empty pair inside another leaves that one empty in turn.
-        match kept.trim_end().strip_suffix(open).map(str::len) {
-            Some(before) => kept.truncate(before),
-            None => kept.push(character),
+        // A closing bracket whose opening one comes before it with only spaces and blanks between,
+        // one blank at least, takes it away and leaves a blank in its place, so that an emptied
+        // pair inside another empties that one in turn; any other is kept.
+        let inside = kept.trim_end_matches([' ', BLANK]);
+        let emptied = kept[inside.len()..].contains(BLANK);
+        match inside.strip_suffix(open).map(str::len) {
+            Some(before) if emptied => {
+                kept.truncate(before);
+                kept.push(BLANK);
+            }
+            _ => kept.push(character),
         }
     }
     kept
@@ -717,6 +735,9 @@ fn sample(me: &PlayerSummary, ranking: &Ranking, tier: usize, is_self: bool) -> 
         spells: [0, 0],
         is_self,
         premade: None,
+        premade_inferred: false,
+        autofilled: false,
+        note: None,
         stats: PlayerStats::Ready(Box::new(me.clone())),
         rating: Some(SeatRating {
             score: rating::form_score(&me.recent).unwrap_or(5.0),
@@ -758,6 +779,7 @@ pub fn preview(
         rerolls_remaining: 0,
         callout: Vec::new(),
         side: Some(Side::Blue),
+        recommendations: Vec::new(),
     };
     lines(
         &view,
@@ -1178,6 +1200,9 @@ mod tests {
             spells: [0, 0],
             is_self,
             premade: None,
+            premade_inferred: false,
+            autofilled: false,
+            note: None,
             stats: PlayerStats::Ready(Box::new(summary)),
             rating: rating.map(|(score, tier)| SeatRating {
                 score,
@@ -1205,6 +1230,7 @@ mod tests {
             rerolls_remaining: 0,
             callout: Vec::new(),
             side: None,
+            recommendations: Vec::new(),
         }
     }
 
@@ -1628,25 +1654,25 @@ mod tests {
 
     #[test]
     fn brackets_a_blank_value_leaves_empty_go_with_it() {
-        assert_eq!(without_empty_brackets("1L【】，近20场"), "1L，近20场");
-        assert_eq!(without_empty_brackets("上等马【 】｜胜率"), "上等马｜胜率");
+        let emptied = |text: &str| without_emptied_brackets(text).replace(BLANK, "");
+        assert_eq!(emptied("1L【\u{E000}】，近20场"), "1L，近20场");
+        assert_eq!(emptied("上等马【 \u{E000} 】｜胜率"), "上等马｜胜率");
+        assert_eq!(emptied("Top horse [\u{E000}] | 55%"), "Top horse  | 55%");
+        assert_eq!(emptied("Watch 亚索 (\u{E000}): T0"), "Watch 亚索 : T0");
         assert_eq!(
-            without_empty_brackets("Top horse [] | 55%"),
-            "Top horse  | 55%"
-        );
-        assert_eq!(
-            without_empty_brackets("Watch 亚索 (): T0"),
-            "Watch 亚索 : T0"
-        );
-        assert_eq!(
-            without_empty_brackets("「」（）【【】】"),
+            emptied("「\u{E000}」（\u{E000}）【【\u{E000}】】"),
             "",
-            "an empty pair inside another leaves that one empty too"
+            "an emptied pair inside another empties that one too"
         );
         assert_eq!(
-            without_empty_brackets("【蓝色方】1L【ann】：】x【"),
+            emptied("【蓝色方】1L【ann】：】x【"),
             "【蓝色方】1L【ann】：】x【",
             "a pair with something in it stays, and so does a bracket without its other half"
+        );
+        assert_eq!(
+            emptied("留着【】和( )【【】】"),
+            "留着【】和( )【【】】",
+            "pairs the template wrote empty are the user's"
         );
         // Through a line of the user's own: a hidden name, and no champion to stand in for it.
         let rule = CalloutRule {
@@ -1655,8 +1681,17 @@ mod tests {
         };
         let lone = nameless(seat("cy", 0, false, Some((5.0, 1))));
         assert_eq!(
-            players(&view(vec![lone]), &rule, Language::ZhCn),
+            players(&view(vec![lone.clone()]), &rule, Language::ZhCn),
             ["中等马 1L"]
+        );
+        // A pair the user wrote empty stays, beside the ones a blank value emptied.
+        let own = CalloutRule {
+            template: "{standing}【】【{name}】{seat}".into(),
+            ..CalloutRule::default()
+        };
+        assert_eq!(
+            players(&view(vec![lone]), &own, Language::ZhCn),
+            ["中等马【】1L"]
         );
     }
 

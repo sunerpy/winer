@@ -23,6 +23,14 @@ that form earns.
 The overview's Recent form reads the same numbers and says "Last N · all modes" as well; the wins
 and losses on its rank cards are ranked games, not recent form.
 
+### My note
+
+On someone else's history, under their profile, you can write a note on the player: a tag
+(Reliable, Weak, Toxic, Troll, or none) and a line of up to 200 characters, then **Save**. From then
+on their name carries the tag in champ select, in the game and in the lobby, with the note on hover,
+and the in-client teammate stats show it too. Notes stay on this PC, follow the other player across
+your accounts and never go into a callout. **Tools › My notes** lists, searches and deletes them all.
+
 ## Pages and filters
 
 Games come in pages of 10, 15, 25 or 50, and the choice is remembered. Filter by **All, Ranked,
@@ -32,6 +40,16 @@ Beside them, **Hide custom games** is on by default: custom games (the practice 
 out of the list and out of the overview's recent games, and the switch says how many it hid. Off,
 they show like any other game; the choice is remembered. Either way they never count toward recent
 form.
+
+**Games / Champions** on the right switches the view. **Champions** sums the games read so far by
+champion: games, win rate, KDA, average game score, MVP and SVP awards and the last game, under the
+same filter and custom-game switch, remakes left out; **Read 50 more** widens it.
+
+**Export CSV** and **Export JSON** save the games the list has read (filtered the same way) into
+your Downloads folder and show the file in Explorer: one game a row, the player's own line only
+(time, mode, champion, result, kills/deaths/assists, score, CS, length and game ID). The CSV opens
+in Excel without garbled characters; when the name is taken, the new file gets (2), (3) and so on
+instead of replacing it.
 
 The Tencent client's own history API returns the latest 20 games only. winer asks the region's
 match-history server instead, with the client's own sign-in, so it pages through the whole history;

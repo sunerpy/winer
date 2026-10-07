@@ -33,6 +33,7 @@ import {
 } from "../../ui";
 import { HotkeyRow } from "./HotkeyRow";
 import { BuildSettingsRows } from "./BuildSettings";
+import { DiagnosticsRow } from "./DiagnosticsRow";
 import { StorageRows } from "./StorageRows";
 import { updateLine } from "./UpdateDialog";
 
@@ -282,15 +283,6 @@ function GeneralSection() {
         />
       </Row>
       <HotkeyRow />
-      <Row label={t("settings.augmentDetails")} help={t("settings.augmentDetailsHint")}>
-        <Toggle
-          checked={general.augmentDetails}
-          onChange={(augmentDetails) =>
-            save((settings) => ({ ...settings, general: { ...settings.general, augmentDetails } }))
-          }
-          label={t("settings.augmentDetails")}
-        />
-      </Row>
       <BuildSettingsRows />
       <Row label={t("settings.autostart")} help={t("settings.autostartHint")}>
         <Toggle
@@ -505,6 +497,7 @@ function AboutSection({ onOpenUpdate }: { onOpenUpdate: () => void }) {
           {t("settings.releases")}
         </Button>
       </Row>
+      <DiagnosticsRow version={info.data?.version ?? ""} />
       <Row label={t("settings.notices")} help={t("settings.noticesHint")}>
         <details className="w-full">
           <summary className="cursor-pointer text-[12.5px] text-fg-muted hover:text-fg">

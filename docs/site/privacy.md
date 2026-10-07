@@ -22,6 +22,8 @@ winer 没有账号，不收集使用数据，也没有自己的服务器。它�
 | -------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | 设置                       | `%APPDATA%\app.winer.desktop\settings.json`               | 一直保留，几 KB                                                              |
 | 记住的符文和召唤师技能     | `%APPDATA%\app.winer.desktop\loadouts.json`               | 一直保留，每个英雄每种模式一套，全部记满也不到 1 MB；可在 **自动化** 里清除  |
+| 玩家备注                   | `%APPDATA%\app.winer.desktop\notes.json`                  | 一直保留，最多 5000 条，每条最多 200 字；可在 **工具 › 我的备注** 里删除     |
+| 客户端版本记录             | `%APPDATA%\app.winer.desktop\diagnostics.json`            | 一直保留，只有上次连上的客户端版本号，用来在客户端更新后自动诊断             |
 | 游戏设置备份               | `%LOCALAPPDATA%\app.winer.desktop\game-settings`          | 最多 10 份，每份几 KB，超出时删除最旧的一份                                  |
 | 内置的 Pengu Loader 与插件 | `%LOCALAPPDATA%\app.winer.desktop\pengu`                  | 约 0.5 MB，随 winer 更新                                                     |
 | 日志                       | `%LOCALAPPDATA%\app.winer.desktop\logs`                   | 最近 7 天，合计最多 50 MB；单个文件写到 10 MB 后换下一个，超出时先删除最旧的 |

@@ -60,6 +60,9 @@ jobs:
           RUN_REF: ${{ github.ref }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          # The release app that opens the release PRs (release.yml), as repository variables.
+          RELEASE_BOT_LOGIN: ${{ vars.RELEASE_BOT_LOGIN }}
+          RELEASE_BOT_EMAIL: ${{ vars.RELEASE_BOT_EMAIL }}
         run: python3 .github/scripts/release-fast-lane.py
 
   frontend:

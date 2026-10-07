@@ -363,6 +363,9 @@ function rated(puuid: string, matches: RecentMatch[], isSelf = false): Seat {
     spells: [4, 14],
     isSelf,
     premade: null,
+    premadeInferred: false,
+    note: null,
+    autofilled: false,
     rating: null,
     stats: {
       state: "ready",
@@ -484,5 +487,28 @@ describe("TeamBoard", () => {
     expect(screen.getByText("版本答案")).toBeInTheDocument();
     expect(screen.getByText("“对面五个人举报代练的水平”")).toBeInTheDocument();
     expect(screen.getAllByText(/峡谷通天代/), "an unrated seat shows none of it").toHaveLength(1);
+  });
+});
+
+describe("the team board's own seat and failed records", () => {
+  it("marks the local player autofilled and asks again for a record that failed", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const user = userEvent.setup();
+    const me = { ...rated("me", [], true), autofilled: true };
+    const failed: Seat = {
+      ...rated("lost", []),
+      stats: { state: "failed", message: "timed out" },
+    };
+    render(
+      <StoreContext value={new AppStore(backend)}>
+        <TeamBoard seats={[me, failed]} onPlayer={() => {}} />
+      </StoreContext>,
+    );
+    expect(screen.getByText("补位")).toHaveAttribute("title", "你被分到了房间里没选的分路");
+    expect(screen.getAllByText("补位"), "only the local player's own seat").toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    expect(call).toHaveBeenCalledWith("retry_player", { puuid: "lost" });
+    expect(screen.getAllByRole("button", { name: "重试" })).toHaveLength(1);
   });
 });
