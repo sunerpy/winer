@@ -119,13 +119,13 @@ by line, and a line too long for one message goes out as several.
 - **Enemies** (the default): the enemy to watch and the one to go after, three lines at most. Your
   teammates heard about themselves in champ select, and every line typed is one more you wait
   through.
-- **My team**: one line per teammate, best first, as in champ select; **Include myself** applies
+- **My team**: one line per teammate in the same team-list order as champ select; **Include myself** applies
   here too.
 - **Both**: the enemy lines, then your team's.
 
 Each line typed holds your keyboard for about a second, so one press types six lines at most: your
 team's first line and five teammates fit exactly; with **Both**, the teammates that do not fit (the
-lowest tiers) are left out.
+later seats) are left out.
 
 The two enemies are chosen this way:
 

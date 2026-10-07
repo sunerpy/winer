@@ -211,6 +211,8 @@ struct Live {
     attempts: HashMap<(i64, Step), u8>,
     acting: bool,
     accepting: bool,
+    /// Changes when a ReadyCheck starts or ends, so an old delayed accept cannot act on the next one.
+    accept_generation: u64,
     /// The automatic callout went out for this champ select.
     callout_sent: bool,
     /// Bench swaps tried per champion, and one in flight.
@@ -1131,7 +1133,15 @@ impl Service {
     }
 
     async fn on_phase(&self, client: &Client, phase: Phase) {
-        let previous = std::mem::replace(&mut lock(&client.live).phase, phase);
+        let previous = {
+            let mut live = lock(&client.live);
+            let previous = std::mem::replace(&mut live.phase, phase);
+            if previous != phase && (previous == Phase::ReadyCheck || phase == Phase::ReadyCheck) {
+                live.accept_generation = live.accept_generation.wrapping_add(1);
+                live.accepting = false;
+            }
+            previous
+        };
         if game_over(previous, phase) {
             self.forget_newest(client);
         }
@@ -1160,7 +1170,14 @@ impl Service {
                 }
             }
             Phase::EndOfGame => self.play_again(client),
-            Phase::None | Phase::Lobby | Phase::Matchmaking | Phase::ReadyCheck => {
+            Phase::ReadyCheck => {
+                lock(&client.live).gameflow = None;
+                self.patch(Patch::Game(None));
+                // The phase is the reliable trigger. The resource event can be missed when winer
+                // connects or subscribes while the ready-check dialog is already opening.
+                self.schedule_accept(client, "gameflow-phase");
+            }
+            Phase::None | Phase::Lobby | Phase::Matchmaking => {
                 lock(&client.live).gameflow = None;
                 self.patch(Patch::Game(None));
             }
@@ -1177,17 +1194,43 @@ impl Service {
     }
 
     fn on_ready_check(&self, client: &Client, check: Option<ReadyCheck>) {
+        match check.as_ref() {
+            Some(check) if automation::should_accept(check) => {
+                self.schedule_accept(client, "ready-check-resource");
+            }
+            // A response is final for this player. An `Invalid` state with no response can be a
+            // transient resource event while the phase-driven delay is already running.
+            Some(check) if check.player_response != "None" => Self::cancel_accept(client),
+            None => Self::cancel_accept(client),
+            Some(_) => {}
+        }
+    }
+
+    /// Starts one delayed accept for this ReadyCheck. Both the gameflow phase and the resource event
+    /// call this; `accepting` makes them one task, while `accept_generation` cancels stale tasks.
+    fn schedule_accept(&self, client: &Client, trigger: &'static str) {
         let rule = self.settings().automation.accept;
-        if !rule.enabled || !check.as_ref().is_some_and(automation::should_accept) {
+        if !rule.enabled {
             return;
         }
-        if std::mem::replace(&mut lock(&client.live).accepting, true) {
-            return;
-        }
+        let generation = {
+            let mut live = lock(&client.live);
+            if live.accepting {
+                return;
+            }
+            live.accepting = true;
+            live.accept_generation
+        };
+        info!(trigger, delay_ms = rule.delay_ms, "auto-accept scheduled");
+
         let (service, client) = (self.clone(), client.clone());
         self.spawn(async move {
             sleep(Duration::from_millis(u64::from(rule.delay_ms))).await;
-            // Re-read rather than trust the old event: the user may have answered meanwhile.
+            if lock(&client.live).accept_generation != generation {
+                return;
+            }
+
+            // Re-read rather than trust either trigger: the user may have answered meanwhile.
             let still = client
                 .lcu
                 .get_optional::<ReadyCheck>(READY_CHECK)
@@ -1203,9 +1246,11 @@ impl Service {
                 .flatten()
                 .and_then(|session| gameflow_mode(&session.game_data.queue));
             let automation = service.settings().automation;
-            if !automation.scopes.covers(Scoped::Accept, mode) {
+            let current = lock(&client.live).accept_generation == generation;
+            if current && !automation.scopes.covers(Scoped::Accept, mode) {
                 debug!(?mode, "match found in a mode auto-accept leaves alone");
-            } else if automation.accept.enabled
+            } else if current
+                && automation.accept.enabled
                 && still.as_ref().is_some_and(automation::should_accept)
             {
                 match client
@@ -1213,15 +1258,32 @@ impl Service {
                     .post("/lol-matchmaking/v1/ready-check/accept", &json!({}))
                     .await
                 {
-                    Ok(()) => service.notice(NoticeKind::Accepted),
-                    Err(error) => service.notice(NoticeKind::Failed {
-                        action: "accept".into(),
-                        message: error.to_string(),
-                    }),
+                    Ok(()) => {
+                        info!(trigger, "accepted match automatically");
+                        service.notice(NoticeKind::Accepted);
+                    }
+                    Err(error) => {
+                        warn!(trigger, %error, "auto-accept failed");
+                        service.notice(NoticeKind::Failed {
+                            action: "accept".into(),
+                            message: error.to_string(),
+                        });
+                    }
                 }
             }
-            lock(&client.live).accepting = false;
+            let mut live = lock(&client.live);
+            if live.accept_generation == generation {
+                live.accepting = false;
+            }
         });
+    }
+
+    fn cancel_accept(client: &Client) {
+        let mut live = lock(&client.live);
+        if live.accepting {
+            live.accept_generation = live.accept_generation.wrapping_add(1);
+            live.accepting = false;
+        }
     }
 
     fn on_champ_select(&self, client: &Client, session: Option<ChampSelectSession>) {
@@ -3160,6 +3222,60 @@ mod tests {
         assert_eq!(
             Service::new(dir.path().join("settings.json"), Handle::current()).settings(),
             settings
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn ready_check_phase_is_an_accept_trigger() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        let client = quiet_client(Phase::Matchmaking);
+        let mut settings = service.settings();
+        settings.automation.accept.enabled = true;
+        settings.automation.accept.delay_ms = 60_000;
+        service.set_settings(settings).unwrap();
+
+        service.on_phase(&client, Phase::ReadyCheck).await;
+
+        assert!(
+            lock(&client.live).accepting,
+            "the phase is the reliable trigger even when the ready-check resource event is missed"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_old_accept_delay_cannot_block_or_accept_the_next_ready_check() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        let client = quiet_client(Phase::Matchmaking);
+        let mut settings = service.settings();
+        settings.automation.accept.enabled = true;
+        settings.automation.accept.delay_ms = 1_000;
+        service.set_settings(settings.clone()).unwrap();
+
+        service.on_phase(&client, Phase::ReadyCheck).await;
+        let first = lock(&client.live).accept_generation;
+        service.on_phase(&client, Phase::Matchmaking).await;
+        assert!(
+            !lock(&client.live).accepting,
+            "leaving cancels the old delay"
+        );
+
+        settings.automation.accept.delay_ms = 2_000;
+        service.set_settings(settings).unwrap();
+        service.on_phase(&client, Phase::ReadyCheck).await;
+        let second = lock(&client.live).accept_generation;
+        assert_ne!(first, second, "each ReadyCheck has its own generation");
+        assert!(
+            lock(&client.live).accepting,
+            "the next match gets its own delay"
+        );
+
+        tokio::time::advance(Duration::from_millis(1_000)).await;
+        tokio::task::yield_now().await;
+        assert!(
+            lock(&client.live).accepting,
+            "the stale first task cannot clear the second task"
         );
     }
 

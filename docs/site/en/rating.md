@@ -146,7 +146,7 @@ page's.
 
 ## Callout
 
-One line per teammate, the best tier first. **Callout style** in **Automation › Callout** picks the
+One line per teammate, kept in champ-select order from P1 through P5; an unrated teammate is skipped, and a tier never rearranges the lines. **Callout style** in **Automation › Callout** picks the
 default line:
 
 - **Rich** (the default): an emoji before the tier, the title and the tier's quip as well.
