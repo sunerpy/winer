@@ -452,7 +452,8 @@ pub struct CalloutRule {
     /// One line per player, with `{standing}`, `{seat}` (the place in champ select's list: `1L`,
     /// `P1`), `{name}`, `{champion}`, `{games}`, `{winRate}`, `{kda}`, `{score}`, `{title}` and
     /// `{quip}`; a value left blank (a hidden name) takes the brackets around it with it. Empty
-    /// means the language's default (`callout::template`).
+    /// means the language's default (`callout::template`); the Chinese default follows Sona's
+    /// seat → tier → data columns and omits free-form names, titles and quips.
     pub template: String,
     /// How the team is split, and what the tiers are called.
     pub tiers: TierSet,
@@ -553,11 +554,10 @@ pub enum Audience {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum CalloutStyle {
-    /// One short line a player, the same fields in the same order: seat, tier, win rate, KDA,
-    /// form and name, so the lines compare at a glance.
+    /// One short line a player: seat, tier, win rate, KDA and form in aligned columns.
     Compact,
-    /// The tier's emoji in champ select, then the tier, the player, their numbers, the title and
-    /// the tier's quip.
+    /// Adds the tier's emoji and sample size. The Chinese team-safe default still omits free-form
+    /// names, titles and quips; a custom template may use them.
     #[default]
     Rich,
 }
@@ -1019,11 +1019,10 @@ impl Settings {
 
     /// Brings a file an older winer wrote up to date. Up to 0.0.2 the default callout line named
     /// the champion, up to 0.0.3 it called the form score 评分 and ran the name into the numbers,
-    /// the in-game lines first named the champion and the player, and up to 0.0.4 the Chinese
-    /// lines left names bare, for the chat's filter to read together with the tier as one word; a
-    /// template saved as exactly one of those texts would have kept it for good: it becomes the
-    /// current default of the same style and language. A template the user changed stays as
-    /// written.
+    /// the in-game lines first named the champion and the player, up to 0.0.4 the Chinese lines
+    /// left names bare, and up to 0.0.7 they still included free-form names, titles and quips. A
+    /// template saved as exactly one of those texts becomes the current default of the same style
+    /// and language. A template the user changed stays as written.
     fn migrated(mut self) -> Self {
         let language = self.general.language;
         let callout = &mut self.automation.callout;
@@ -1223,6 +1222,34 @@ mod tests {
         ] {
             assert_eq!(loaded("zh-CN", own).template, own, "changed by the user");
         }
+    }
+
+    #[test]
+    fn the_0_0_7_chinese_defaults_become_sona_style_safe_columns() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let file = serde_json::json!({
+            "general": { "language": "zh-CN" },
+            "automation": { "callout": {
+                "style": "rich",
+                "template": "{emoji}{standing}：{seat}【{name}】，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}",
+                "watchTemplate": "小心【{champion}】：{standing}，近{games}场胜率{winRate}，KDA {kda}{title}",
+                "targetTemplate": "对面【{champion}】：{standing}，近{games}场胜率{winRate}，可以多抓",
+                "allyTemplate": "{standing}【{champion}】，近{games}场胜率{winRate}，KDA {kda}，战力{score}{title}{quip}"
+            } },
+        });
+        fs::write(&path, file.to_string()).unwrap();
+        let callout = SettingsStore::open(&path).get().automation.callout;
+        assert_eq!(
+            (
+                callout.template.as_str(),
+                callout.watch_template.as_str(),
+                callout.target_template.as_str(),
+                callout.ally_template.as_str(),
+            ),
+            ("", "", "", ""),
+            "saved defaults move with the app; user-written templates stay untouched"
+        );
     }
 
     /// The in-game lines' first defaults, as a window could have saved them: the champion and the

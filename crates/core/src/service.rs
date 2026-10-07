@@ -93,8 +93,6 @@ const FRIENDS_REFRESH: Duration = Duration::from_secs(60);
 /// Sooner until it has been read once: chat can still be signing in when the client connects.
 const FRIENDS_RETRY: Duration = Duration::from_secs(5);
 
-/// Between two callout lines: the chat service throttles a burst from one client.
-const MESSAGE_GAP: Duration = Duration::from_millis(350);
 /// Champ select's chat room opens a moment after champ select itself.
 const CHAT_WAIT_ATTEMPTS: u32 = 10;
 
@@ -2632,22 +2630,21 @@ async fn champ_select_chat(lcu: &Lcu) -> Result<Option<String>, CoreError> {
         .map(|conversation| conversation.id))
 }
 
-/// Posts `lines` to the chat room `chat`. `Me` uses a message type the client shows only locally
-/// (`celebration`), so nobody else in the room sees it.
+/// Posts one multi-line message, as Sona does: fewer chat requests, no artificial burst and one
+/// coherent block in the client. `Me` uses a type shown only locally (`celebration`).
 async fn say(lcu: &Lcu, chat: &str, lines: &[String], audience: Audience) -> Result<(), CoreError> {
     let path = format!("/lol-chat/v1/conversations/{}/messages", query_value(chat));
     let kind = match audience {
         Audience::Team => "chat",
         Audience::Me => "celebration",
     };
-    for (index, line) in lines.iter().enumerate() {
-        if index > 0 {
-            sleep(MESSAGE_GAP).await;
-        }
-        lcu.post(&path, &json!({ "body": line, "type": kind }))
-            .await?;
-    }
+    lcu.post(&path, &json!({ "body": callout_body(lines), "type": kind }))
+        .await?;
     Ok(())
+}
+
+fn callout_body(lines: &[String]) -> String {
+    lines.join("\n")
 }
 
 async fn execute(lcu: &Lcu, action: ChampAction) -> Result<(), lcu::Error> {
@@ -3052,6 +3049,17 @@ fn query_value(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_callout_is_one_multiline_chat_message() {
+        assert_eq!(
+            callout_body(&[
+                "winer 战绩鉴定".into(),
+                "1L: 🦄 独角马|胜率55%|KDA3.5|战力7.2".into(),
+            ]),
+            "winer 战绩鉴定\n1L: 🦄 独角马|胜率55%|KDA3.5|战力7.2"
+        );
+    }
 
     #[test]
     fn a_queue_says_what_kind_of_game_it_is_once_it_names_a_mode() {
@@ -3677,18 +3685,18 @@ mod tests {
             lines,
             [
                 "【敌方·红色方】winer 战绩鉴定",
-                "小心【Strong】：人形防御塔，近20场胜率80%，KDA 2.0【常胜将军】",
-                "对面【Weak】：移动眼位，近20场胜率20%，可以多抓",
+                "小心【Strong】|档位人形防御塔|近20场胜率80%|KDA2.0",
+                "对面【Weak】|档位移动眼位|近20场胜率20%|可以多抓",
             ],
             "two rated of three, second and fourth of five tiers; no catalog, so the name stands \
-             in for the champion; the title is the one Strong's twenty games earn"
+             in for the champion; free-form titles stay out of the safe chat format"
         );
         // Callout: the team's own lines, by champion (here the name, for want of a catalog).
         let allies = game.ally_callout;
         assert_eq!(allies.len(), 2, "{allies:?}");
         assert_eq!(allies[0], "【我方·蓝色方】winer 战绩鉴定");
         assert!(
-            allies[1].starts_with("峡谷公务员【Me】，近20场胜率50%，KDA 2.0，战力"),
+            allies[1].starts_with("【Me】|档位峡谷公务员|近20场胜率50%|KDA2.0|战力"),
             "rated alone, the middle of five: {allies:?}"
         );
         assert_eq!(

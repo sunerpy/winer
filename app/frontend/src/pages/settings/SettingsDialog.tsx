@@ -442,8 +442,9 @@ function AboutSection({ onOpenUpdate }: { onOpenUpdate: () => void }) {
   const store = useStore();
   const info = useAsync(() => store.backend.call("get_app_info"), []);
   const update = useUpdateStatus();
-  const busy =
-    update.state === "checking" || update.state === "downloading" || update.state === "installing";
+  const busy = update.state === "checking" || update.state === "installing";
+  const hasUpdate =
+    update.state === "available" || update.state === "downloading" || update.state === "ready";
   const call = (command: "reveal_logs" | "open_releases") =>
     void store.backend
       .call(command)
@@ -474,9 +475,9 @@ function AboutSection({ onOpenUpdate }: { onOpenUpdate: () => void }) {
       </Row>
       <StorageRows />
       <Row label={t("settings.update")} help={updateLine(update, t)}>
-        {update.state === "available" ? (
+        {hasUpdate ? (
           <Button size="sm" variant="accent" onClick={onOpenUpdate}>
-            {t("update.install")}
+            {update.state === "ready" ? t("update.restart") : t("update.view")}
           </Button>
         ) : (
           <Button

@@ -42,6 +42,16 @@ pub fn run() {
     elevation::wait_for_replaced_instance();
     // Autostart passes `--minimized`: come up in the tray, not in the user's face.
     let start_hidden = std::env::args().any(|arg| arg == "--minimized");
+    let context = tauri::generate_context!();
+    #[cfg(windows)]
+    let context = {
+        let mut context = context;
+        updater::set_windows_install_mode(
+            &mut context.config_mut().plugins,
+            updater::windows_install_mode(tauri::utils::platform::bundle_type()),
+        );
+        context
+    };
     tauri::Builder::default()
         // First, so a second launch hands over to the running one before anything else starts.
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
@@ -62,7 +72,7 @@ pub fn run() {
         .invoke_handler(commands::handler())
         .on_window_event(window::on_event)
         .setup(move |app| setup(app, start_hidden))
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("winer failed to start");
 }
 

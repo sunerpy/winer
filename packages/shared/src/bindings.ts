@@ -338,7 +338,7 @@ elevated: boolean, logDir: string, settingsPath: string,
  */
 notices: string, };
 
-export type UpdateStatus = { "state": "idle" } | { "state": "checking" } | { "state": "upToDate", version: string, checkedAt: number, } | { "state": "available", version: string, current: string, notes: string | null, date: string | null, } | { "state": "downloading", version: string, received: number, total: number | null, } | { "state": "installing", version: string, } | { "state": "failed", message: string, };
+export type UpdateStatus = { "state": "idle" } | { "state": "checking" } | { "state": "upToDate", version: string, checkedAt: number, } | { "state": "available", version: string, current: string, notes: string | null, date: string | null, } | { "state": "downloading", version: string, received: number, total: number | null, } | { "state": "ready", version: string, } | { "state": "installing", version: string, } | { "state": "failed", message: string, };
 
 export type ExportFormat = "csv" | "json";
 
@@ -566,7 +566,8 @@ header: string,
  * One line per player, with `{standing}`, `{seat}` (the place in champ select's list: `1L`,
  * `P1`), `{name}`, `{champion}`, `{games}`, `{winRate}`, `{kda}`, `{score}`, `{title}` and
  * `{quip}`; a value left blank (a hidden name) takes the brackets around it with it. Empty
- * means the language's default (`callout::template`).
+ * means the language's default (`callout::template`); the Chinese default follows Sona's
+ * seat → tier → data columns and omits free-form names, titles and quips.
  */
 template: string, 
 /**
