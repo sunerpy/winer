@@ -71,7 +71,8 @@ function Readout() {
 function UpdateBadge({ onOpen }: { onOpen: () => void }) {
   const t = useT();
   const status = useUpdateStatus();
-  if (status.state !== "available" && status.state !== "downloading") return null;
+  if (status.state !== "available" && status.state !== "downloading" && status.state !== "ready")
+    return null;
   return (
     <button
       type="button"
@@ -81,7 +82,9 @@ function UpdateBadge({ onOpen }: { onOpen: () => void }) {
       <ArrowUpCircle size={14} strokeWidth={2} aria-hidden />
       {status.state === "available"
         ? t("update.available", { version: status.version })
-        : t("update.downloading", { version: status.version })}
+        : status.state === "downloading"
+          ? t("update.downloading", { version: status.version })
+          : t("update.restartBadge", { version: status.version })}
     </button>
   );
 }

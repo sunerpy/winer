@@ -830,6 +830,10 @@ pub enum UpdateStatus {
         received: u64,
         total: Option<u64>,
     },
+    /// Downloaded and signature-verified; installation waits for an explicit restart action.
+    Ready {
+        version: String,
+    },
     Installing {
         version: String,
     },
