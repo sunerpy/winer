@@ -329,8 +329,9 @@ Linux build host the same day; each answers a plain GET with no key, cookie or u
   `Debugger` = `rundll32 "<its folder>\core.dll", #6000`. It leaves an existing `version.dll` link
   alone, so with one in place both loaders would start with the client, and it creates no data
   folder at install time. `--uninstall` exits 0 and removes the value but leaves the key, empty.
-  winer reads the value (`plugin_host::read_ifeo`, shown as `rundll32 core.dll`), links nothing
-  of its own while it is there, and keeps up only a loader the client links already.
+  winer reads the value (`plugin_host::read_ifeo`, shown as `rundll32 core.dll`) and reports it;
+  with the experimental `plugin.penguIfeo` on, it links nothing of its own while the value is there
+  and keeps up only a loader the client links already (both verified on windows-local).
 - For QA only, Pengu's `config` takes `RemoteDebuggingPort=<n>`: after a UI reload the client
   page is reachable over CDP (`scripts/windows/cdp.mjs` with `WINER_CDP_PORT` and
   `WINER_CDP_MATCH=/index.html`). Put it back to `0` and reload again afterwards: while it is

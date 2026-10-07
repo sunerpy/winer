@@ -64,8 +64,10 @@ pub(crate) struct Outcome {
     pub linked: bool,
     /// The link was refused for want of administrator rights, which winer runs without.
     pub needs_elevation: bool,
-    /// Another program launches the client's interface, so no loader was linked ([`Env`]).
+    /// Another program launches the client's interface ([`Env`]).
     pub foreign: Option<String>,
+    /// And winer stepped aside for it: the experimental switch is on, so no loader was linked.
+    pub yielded: bool,
 }
 
 impl Host {
@@ -112,13 +114,18 @@ impl Host {
     }
 }
 
+/// Whether winer steps aside for another program launching the client: one does, and the
+/// experimental switch for it is on. Off, the program is only reported.
+fn yields(service: &Service, env: &Env) -> bool {
+    env.foreign.is_some() && service.settings().plugin.pengu_ifeo
+}
+
 /// The loader to keep up: the configured folder if it holds one, else wherever the client's
-/// `version.dll` link points. While another program launches the client, only the linked one: the
-/// configured folder may well be that program's, and nothing of winer's goes there.
+/// `version.dll` link points. While winer steps aside for another program launching the client,
+/// only the linked one: the configured folder may well be that program's, and nothing of winer's
+/// goes there.
 fn loader(service: &Service, env: &Env) -> Option<Loader> {
-    let configured = env
-        .foreign
-        .is_none()
+    let configured = (!yields(service, env))
         .then(|| service.settings().plugin.loader_dir)
         .flatten();
     plugin::find_loader(
@@ -326,18 +333,21 @@ pub(crate) fn disable(
 /// Returns whether a loader was newly linked, which the client loads only when its interface
 /// starts again, and whether linking one needs winer restarted elevated.
 ///
-/// While another program launches the client (Pengu Loader 1.2 through IFEO), a loader of winer's
-/// on top would load twice: none is linked, the configured folder is left alone, and only a loader
-/// the client links already is kept up.
+/// While another program launches the client (Pengu Loader 1.2 through IFEO) and the experimental
+/// switch for it is on, a loader of winer's on top would load twice: none is linked, the configured
+/// folder is left alone, and only a loader the client links already is kept up. With the switch
+/// off, setup goes on as before and the program is only reported.
 pub(crate) fn refresh(service: &Service, bridge: &Bridge, host: &Host) -> Outcome {
     let env = host.env(service);
     let auto = service.settings().plugin.auto;
+    let yielded = yields(service, &env);
     let mut outcome = Outcome {
         foreign: env.foreign.clone(),
+        yielded,
         ..Outcome::default()
     };
-    if let Some(program) = &env.foreign {
-        info!(%program, "another program launches the client; winer links no loader");
+    if yielded {
+        info!(program = ?env.foreign, "another program launches the client; winer links no loader");
         host.set_failure(None);
     } else if auto && let Some(client_dir) = env.client_dir.as_deref() {
         match activate(service, host, &env, client_dir) {
@@ -474,13 +484,15 @@ mod tests {
         dir.to_path_buf()
     }
 
-    fn service_with_loader_dir(root: &Path, loader_dir: &Path) -> (Service, Bridge) {
+    /// A service whose settings name `loader_dir`, with the experimental IFEO switch as `ifeo`.
+    fn service_with(root: &Path, loader_dir: &Path, ifeo: bool) -> (Service, Bridge) {
         let service = Service::new(
             root.join("settings.json"),
             tauri::async_runtime::handle().inner().clone(),
         );
         let mut settings = service.settings();
         settings.plugin.loader_dir = Some(loader_dir.display().to_string());
+        settings.plugin.pengu_ifeo = ifeo;
         service.set_settings(settings).unwrap();
         let bridge =
             tauri::async_runtime::block_on(Bridge::start(service.clone(), "0.0.0")).unwrap();
@@ -519,7 +531,7 @@ mod tests {
     fn a_configured_loader_gets_the_plugin_when_nothing_else_launches_the_client() {
         let root = tempfile::tempdir().unwrap();
         let configured = loader_folder(&root.path().join("own"));
-        let (service, bridge) = service_with_loader_dir(root.path(), &configured);
+        let (service, bridge) = service_with(root.path(), &configured, false);
         let host = Host::with_env(root.path().join("pengu"), Env::default());
         let outcome = refresh(&service, &bridge, &host);
         assert_eq!(outcome.foreign, None);
@@ -532,14 +544,40 @@ mod tests {
         assert_eq!(shown.foreign_activation, None);
     }
 
-    /// Pengu Loader 1.2 launches the client through IFEO; a configured folder that may be its own
-    /// is never written, whichever way the setup is reached.
+    /// With the experimental switch off, the default, another program launching the client is
+    /// reported and changes nothing: the configured folder gets the plugin as before.
+    #[test]
+    fn another_launcher_is_only_reported_while_the_experimental_switch_is_off() {
+        let root = tempfile::tempdir().unwrap();
+        let configured = loader_folder(&root.path().join("own"));
+        let (service, bridge) = service_with(root.path(), &configured, false);
+        let host = Host::with_env(
+            root.path().join("pengu"),
+            Env {
+                client_dir: None,
+                foreign: Some(PENGU.into()),
+            },
+        );
+        let outcome = refresh(&service, &bridge, &host);
+        assert_eq!(outcome.foreign.as_deref(), Some(PENGU));
+        assert!(!outcome.yielded);
+        assert!(plugin::installed_version(&configured).is_some());
+        let shown = status(&service, &bridge, &host);
+        assert_eq!(
+            shown.loader_dir.as_deref(),
+            Some(configured.display().to_string().as_str())
+        );
+        assert_eq!(shown.foreign_activation.as_deref(), Some(PENGU));
+    }
+
+    /// Pengu Loader 1.2 launches the client through IFEO; with the experimental switch on, a
+    /// configured folder that may be its own is never written, whichever way the setup is reached.
     #[test]
     fn under_another_launcher_the_configured_folder_is_left_alone_by_every_entry() {
         let root = tempfile::tempdir().unwrap();
         let configured = loader_folder(&root.path().join("pengu-1.2"));
         let before = tree(&configured);
-        let (service, bridge) = service_with_loader_dir(root.path(), &configured);
+        let (service, bridge) = service_with(root.path(), &configured, true);
         let env = Env {
             client_dir: None,
             foreign: Some(PENGU.into()),
@@ -548,7 +586,7 @@ mod tests {
 
         let outcome = refresh(&service, &bridge, &host);
         assert_eq!(outcome.foreign.as_deref(), Some(PENGU));
-        assert!(!outcome.linked);
+        assert!(outcome.yielded && !outcome.linked);
         assert_eq!(tree(&configured), before, "refresh wrote nothing there");
 
         let (shown, outcome) = enable(&service, &bridge, &host).unwrap();
@@ -581,7 +619,7 @@ mod tests {
         let client = root.path().join("LeagueClient");
         fs::create_dir_all(&client).unwrap();
         std::os::unix::fs::symlink(old.join("core.dll"), client.join("version.dll")).unwrap();
-        let (service, bridge) = service_with_loader_dir(root.path(), &configured);
+        let (service, bridge) = service_with(root.path(), &configured, true);
         let host = Host::with_env(
             root.path().join("pengu"),
             Env {

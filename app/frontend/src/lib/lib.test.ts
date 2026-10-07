@@ -77,6 +77,7 @@ const SETTINGS = {
     hidePromotions: false,
     benchNoCooldown: true,
     loaderDir: null,
+    penguIfeo: false,
     friendStatus: true,
     lobbyPanel: true,
     // The history panel in the client.

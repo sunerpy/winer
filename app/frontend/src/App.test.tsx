@@ -370,9 +370,13 @@ describe("App", () => {
   });
 
   it("says another program launches the client, and what that leaves of winer's loader", async () => {
-    const status = await demoBackend().call("get_plugin_status");
+    const base = demoBackend();
+    const [status, settings] = await Promise.all([
+      base.call("get_plugin_status"),
+      base.call("get_settings"),
+    ]);
     const program = "Pengu Loader.exe";
-    const view = async (linked: boolean) => {
+    const view = async (linked: boolean, penguIfeo: boolean) => {
       const backend = demoWith({
         get_plugin_status: () => ({
           ...status,
@@ -383,19 +387,34 @@ describe("App", () => {
           // An earlier refusal is not what the page leads with now.
           needsElevation: true,
         }),
+        get_settings: () => ({ ...settings, plugin: { ...settings.plugin, penguIfeo } }),
       });
+      const call = vi.spyOn(backend, "call");
       const { user, nav } = await renderApp(backend);
       await user.click(within(nav).getByRole("button", { name: zhCN["nav.plugin"] }));
-      return backend;
+      return { user, call };
     };
-    await view(false);
+    // Off, the default: the other program is reported, and winer's loader stays as it was.
+    const { user, call } = await view(true, false);
     expect(
       await screen.findByText(translate("zh-CN", "plugin.loaderForeign", { program })),
     ).toBeInTheDocument();
-    expect(screen.getByText(zhCN["plugin.loaderForeignHint"])).toBeInTheDocument();
+    expect(screen.getByText(zhCN["plugin.loaderForeignOff"])).toBeInTheDocument();
     expect(screen.queryByText(zhCN["plugin.needsAdmin"])).toBeNull();
+    await user.click(screen.getByRole("switch", { name: zhCN["plugin.penguIfeo"] }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          plugin: expect.objectContaining({ penguIfeo: true }),
+        }),
+      }),
+    );
     cleanup();
-    await view(true);
+    // On: no link of winer's, or one left from before.
+    await view(false, true);
+    expect(await screen.findByText(zhCN["plugin.loaderForeignHint"])).toBeInTheDocument();
+    cleanup();
+    await view(true, true);
     expect(await screen.findByText(zhCN["plugin.loaderForeignBoth"])).toBeInTheDocument();
   });
 

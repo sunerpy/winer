@@ -41,7 +41,7 @@ function StatusPanel({
 }) {
   const t = useT();
   const store = useStore();
-  const auto = useSettings().plugin.auto;
+  const { auto, penguIfeo } = useSettings().plugin;
   const connected = useLive((snapshot) => snapshot.connection.status === "connected");
   const [busy, setBusy] = useState<"enable" | "disable" | "reload" | null>(null);
 
@@ -90,9 +90,11 @@ function StatusPanel({
     ? ([
         "warn",
         t("plugin.loaderForeign", { program: foreign }),
-        status.active && status.managed
-          ? t("plugin.loaderForeignBoth")
-          : t("plugin.loaderForeignHint"),
+        !penguIfeo
+          ? t("plugin.loaderForeignOff")
+          : status.active && status.managed
+            ? t("plugin.loaderForeignBoth")
+            : t("plugin.loaderForeignHint"),
       ] as const)
     : status.active
       ? ([
@@ -245,6 +247,21 @@ function FeaturesPanel() {
           label={t("plugin.hidePromotions")}
         />
       </Row>
+      <Row
+        label={
+          <span className="inline-flex items-center gap-2">
+            {t("plugin.penguIfeo")}
+            <Badge tone="warning">{t("loadout.experimental")}</Badge>
+          </span>
+        }
+        help={t("plugin.penguIfeoHint")}
+      >
+        <Toggle
+          checked={plugin.penguIfeo}
+          onChange={(penguIfeo) => save((value) => ({ ...value, penguIfeo }))}
+          label={t("plugin.penguIfeo")}
+        />
+      </Row>
       <Row label={t("plugin.dir")} help={t("plugin.dirHint")} htmlFor="loader-dir">
         <Input
           id="loader-dir"
@@ -270,7 +287,7 @@ export function PluginPage() {
   const settings = useSettings();
   const query = useAsync(
     () => store.backend.call("get_plugin_status"),
-    [settings.plugin.loaderDir],
+    [settings.plugin.loaderDir, settings.plugin.penguIfeo],
   );
   const [override, setOverride] = useState<PluginStatus | undefined>();
   const status = override ?? query.data;

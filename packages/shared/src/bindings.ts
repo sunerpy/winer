@@ -306,7 +306,7 @@ export type Notice = {
  */
 at: number, kind: NoticeKind, };
 
-export type NoticeKind = { "kind": "accepted" } | { "kind": "declared", championId: number, } | { "kind": "picked", championId: number, locked: boolean, } | { "kind": "banned", championId: number, } | { "kind": "playedAgain" } | { "kind": "swapped", championId: number, } | { "kind": "calledOut", lines: number, } | { "kind": "presenceRestored", availability: string, } | { "kind": "presenceRefused" } | { "kind": "foreignLoader", program: string, } | { "kind": "diagnosticsFailed", version: string, failed: number, } | { "kind": "failed", action: string, message: string, } | { "kind": "loadoutApplied", championId: number, 
+export type NoticeKind = { "kind": "accepted" } | { "kind": "declared", championId: number, } | { "kind": "picked", championId: number, locked: boolean, } | { "kind": "banned", championId: number, } | { "kind": "playedAgain" } | { "kind": "swapped", championId: number, } | { "kind": "calledOut", lines: number, } | { "kind": "presenceRestored", availability: string, } | { "kind": "presenceRefused" } | { "kind": "foreignLoader", program: string, yielded: boolean, } | { "kind": "diagnosticsFailed", version: string, failed: number, } | { "kind": "failed", action: string, message: string, } | { "kind": "loadoutApplied", championId: number, 
 /**
  * The client's own recommendation: nothing was remembered for the champion.
  */
@@ -659,6 +659,13 @@ benchNoCooldown: boolean,
  * Pengu Loader's directory, when it cannot be found from the client.
  */
 loaderDir: string | null, 
+/**
+ * Experimental, off by default: while another program launches the client through IFEO (Pengu
+ * Loader 1.2, still a test build), link no loader of winer's own, write nothing into the
+ * configured folder and keep up only a loader the client links already. Off, such a program
+ * is only reported.
+ */
+penguIfeo: boolean, 
 /**
  * In the client's friends list: the mode and running time of a friend's game, and one colour
  * for the friends playing together.

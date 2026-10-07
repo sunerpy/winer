@@ -465,6 +465,13 @@ export const zhCN = {
   "plugin.loaderForeignBoth":
     "可能是 Pengu Loader 1.2。winer 自带的 loader 也还链接在客户端里，两者会同时加载；关闭本页的自动设置后，winer 会移除自己的链接。",
   "plugin.notice.foreign": "{program} 接管了客户端启动，winer 没有链接自带的 loader",
+  "plugin.notice.foreignOff":
+    "{program} 通过 IFEO 接管了客户端启动（可能是 Pengu Loader 1.2 测试版），两个 loader 可能同时加载",
+  "plugin.loaderForeignOff":
+    "可能是 Pengu Loader 1.2（测试版）。winer 仍链接自带的 loader，两者可能同时加载；在用 1.2 的话，可以打开下方的实验开关。",
+  "plugin.penguIfeo": "兼容 Pengu Loader 1.2",
+  "plugin.penguIfeoHint":
+    "Pengu Loader 1.2 还是测试版，改用注册表 IFEO 接管客户端启动。打开后，检测到这种接管时 winer 不再链接自带的 loader，也不往配置的目录写东西，只维护客户端里原有的链接；客户端内插件这时可能不可用。默认关闭。",
   "plugin.loaderFailed": "没有装好：{error}",
   "plugin.loaderFailedHint": "这是 Windows 给出的原因；winer 每次连上客户端都会再试一次。",
   "plugin.loaderNeedsAdmin": "需要管理员权限才能激活",

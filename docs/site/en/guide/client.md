@@ -24,10 +24,11 @@ installed, winer keeps using yours and only installs the plugin. If the client f
 different `version.dll`, winer leaves it alone and the **In-client** page says so.
 
 Pengu Loader 1.2 (still a test build) takes over the client's start through the registry's IFEO
-instead. When winer finds another program launching the client that way, it links no loader of its
-own and writes nothing into that program's folder, so that two loaders never load at once; the
-**In-client** page names the program, and the in-client features are off meanwhile. A loader linked
-before keeps its plugin up to date.
+instead. When winer finds another program launching the client that way, the **In-client** page
+names it and warns that both loaders may load; by default winer still links its own. If you use
+1.2, turn on **Work with Pengu Loader 1.2** (experimental, off by default): winer then links no
+loader of its own, writes nothing into the configured folder and keeps up only a link the client
+has already, and the in-client features may be off meanwhile.
 
 ## The first activation needs administrator rights
 

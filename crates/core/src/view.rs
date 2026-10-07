@@ -754,10 +754,11 @@ pub enum NoticeKind {
     /// The client kept undoing the remembered status or the disguised rank; winer stopped trying
     /// until the rule changes or the client reconnects.
     PresenceRefused,
-    /// Another program launches the client's interface (IFEO), so winer linked no loader of its
-    /// own. Once a run.
+    /// Another program launches the client's interface (IFEO). With the experimental switch on
+    /// (`yielded`) winer linked no loader of its own; off, both may load. Once a run.
     ForeignLoader {
         program: String,
+        yielded: bool,
     },
     /// The client came back on a new version and the self-check found `failed` checks failing.
     DiagnosticsFailed {

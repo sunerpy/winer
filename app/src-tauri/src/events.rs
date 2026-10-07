@@ -120,7 +120,10 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
                 if let Some(program) = outcome.foreign
                     && !FOREIGN_TOLD.swap(true, Ordering::Relaxed)
                 {
-                    service.report(NoticeKind::ForeignLoader { program });
+                    service.report(NoticeKind::ForeignLoader {
+                        program,
+                        yielded: outcome.yielded,
+                    });
                 }
                 self_check_after_update(&app, &service, &bridge).await;
             });

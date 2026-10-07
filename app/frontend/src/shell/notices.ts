@@ -36,7 +36,9 @@ export function noticeText(kind: NoticeKind, t: Translate, catalog: Catalog | nu
     case "presenceRefused":
       return t("profile.notice.refused");
     case "foreignLoader":
-      return t("plugin.notice.foreign", { program: kind.program });
+      return t(kind.yielded ? "plugin.notice.foreign" : "plugin.notice.foreignOff", {
+        program: kind.program,
+      });
     case "diagnosticsFailed":
       return t("diag.notice.failed", { version: kind.version, failed: kind.failed });
     case "failed":

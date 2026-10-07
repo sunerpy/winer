@@ -484,6 +484,13 @@ export const en: Record<MessageKey, string> = {
   "plugin.loaderForeignBoth":
     "Likely Pengu Loader 1.2. winer's own loader is still linked into the client too, so both load; turning automatic setup off on this page removes winer's link.",
   "plugin.notice.foreign": "{program} launches the client; winer linked no loader of its own",
+  "plugin.notice.foreignOff":
+    "{program} launches the client through IFEO (likely Pengu Loader 1.2, a test build); both loaders may load",
+  "plugin.loaderForeignOff":
+    "Likely Pengu Loader 1.2 (a test build). winer still links its own loader, so both may load; if you use 1.2, turn on the experimental switch below.",
+  "plugin.penguIfeo": "Work with Pengu Loader 1.2",
+  "plugin.penguIfeoHint":
+    "Pengu Loader 1.2 is still a test build and takes over the client's start through the registry's IFEO. On, winer then links no loader of its own, writes nothing into the configured folder and keeps up only a link the client has already; the in-client features may be off meanwhile. Off by default.",
   "plugin.loaderFailed": "Not set up: {error}",
   "plugin.loaderFailedHint":
     "That is the reason Windows gave; winer tries again each time it connects to the client.",

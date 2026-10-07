@@ -722,6 +722,11 @@ pub struct PluginSettings {
     pub bench_no_cooldown: bool,
     /// Pengu Loader's directory, when it cannot be found from the client.
     pub loader_dir: Option<String>,
+    /// Experimental, off by default: while another program launches the client through IFEO (Pengu
+    /// Loader 1.2, still a test build), link no loader of winer's own, write nothing into the
+    /// configured folder and keep up only a loader the client links already. Off, such a program
+    /// is only reported.
+    pub pengu_ifeo: bool,
     // Social.
     /// In the client's friends list: the mode and running time of a friend's game, and one colour
     /// for the friends playing together.
@@ -743,6 +748,7 @@ impl Default for PluginSettings {
             hide_promotions: false,
             bench_no_cooldown: true,
             loader_dir: None,
+            pengu_ifeo: false,
             friend_status: true,
             lobby_panel: true,
             // The history panel in the client.
