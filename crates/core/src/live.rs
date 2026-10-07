@@ -132,6 +132,7 @@ pub fn champ_select_view(
             is_self: player.cell_id == session.local_player_cell_id,
             premade: None,
             premade_inferred: false,
+            note: None,
             rating: None,
         }
     };
@@ -235,6 +236,7 @@ pub fn game_view(
                         is_self: !me.is_empty() && player.puuid == me,
                         premade: parties.get(&player.team_participant_id).copied(),
                         premade_inferred: false,
+                        note: None,
                         puuid,
                         rating: None,
                     }
@@ -321,6 +323,7 @@ pub fn lobby_view(lobby: &Lobby, me: &str, stats: impl Fn(&str) -> PlayerStats) 
                 score: summary.and_then(|summary| rating::form_score(&summary.recent)),
                 puuid: member.puuid.clone(),
                 stats,
+                note: None,
             }
         })
         .collect();
@@ -737,6 +740,7 @@ mod tests {
             is_self: false,
             premade: None,
             premade_inferred: false,
+            note: None,
             stats: PlayerStats::Loading,
             rating: None,
         };

@@ -23,6 +23,14 @@ that form earns.
 The overview's Recent form reads the same numbers and says "Last N · all modes" as well; the wins
 and losses on its rank cards are ranked games, not recent form.
 
+### My note
+
+On someone else's history, under their profile, you can write a note on the player: a tag
+(Reliable, Weak, Toxic, Troll, or none) and a line of up to 200 characters, then **Save**. From then
+on their name carries the tag in champ select, in the game and in the lobby, with the note on hover,
+and the in-client teammate stats show it too. Notes stay on this PC, follow the other player across
+your accounts and never go into a callout. **Tools › My notes** lists, searches and deletes them all.
+
 ## Pages and filters
 
 Games come in pages of 10, 15, 25 or 50, and the choice is remembered. Filter by **All, Ranked,

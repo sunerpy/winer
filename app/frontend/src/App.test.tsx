@@ -203,6 +203,7 @@ describe("App", () => {
       isSelf,
       premade: null,
       premadeInferred: false,
+      note: null,
       rating: null,
       stats: { state: "loading" },
     });
@@ -958,6 +959,12 @@ describe("social", () => {
     expect(within(me).getByText("中单")).toBeInTheDocument();
     expect(within(me).getByText(zhCN["social.fill"])).toBeInTheDocument();
     expect(within(me).getByText("战力 7.4")).toBeInTheDocument();
+    // The user's own note on a member: its tag, the text on hover.
+    const noted = screen.getByRole("button", { name: "查看 峡谷清道夫#10004 的战绩" });
+    expect(within(noted).getByText(zhCN["note.tag.reliable"]).closest("[title]")).toHaveAttribute(
+      "title",
+      "上次一起打团很靠谱",
+    );
     await user.click(screen.getByRole("button", { name: "查看 新来的队友#10009 的战绩" }));
     expect(navigate).toHaveBeenCalledWith({ page: "history", puuid: "demo-6" });
   });
@@ -976,6 +983,47 @@ describe("social", () => {
       expect(badge).toHaveAttribute("title", zhCN["live.premadeInferredHint"]);
       expect(badge.querySelector("[data-group]")).toHaveClass("border-dashed", "border-group-2");
     }
+  });
+
+  it("writes, lists and deletes a note on another player, never on the user", async () => {
+    const { backend, push } = demoWithEvents();
+    const call = vi.spyOn(backend, "call");
+    const { user, nav } = await renderApp(backend);
+    await push({ type: "openHistory", data: { puuid: "demo-3" } });
+    expect(await screen.findByText("野区观光客#10005")).toBeInTheDocument();
+    const tags = await screen.findByRole("radiogroup", { name: zhCN["note.tag"] });
+    await user.click(within(tags).getByRole("radio", { name: zhCN["note.tag.toxic"] }));
+    await user.type(screen.getByRole("textbox", { name: zhCN["note.text"] }), "  打字很凶 ");
+    await user.click(screen.getByRole("button", { name: zhCN["note.save"] }));
+    expect(call).toHaveBeenCalledWith("set_player_note", {
+      puuid: "demo-3",
+      tag: "toxic",
+      text: "  打字很凶 ",
+      name: { gameName: "野区观光客", tagLine: "10005" },
+    });
+    expect(await screen.findByText(zhCN["note.saved"])).toBeInTheDocument();
+
+    // The list on the Tools page: the newest first, searchable, a name opening the history.
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.tools"] }));
+    const list = await screen.findByRole("list", { name: zhCN["note.list"] });
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0] as HTMLElement).getByText("野区观光客#10005")).toBeInTheDocument();
+    expect(within(rows[0] as HTMLElement).getByText(zhCN["note.tag.toxic"])).toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: zhCN["note.search"] }), "投降");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(1);
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("zh-CN", "note.deleteOf", { name: "上等马#10010" }),
+      }),
+    );
+    expect(call).toHaveBeenCalledWith("delete_player_note", { puuid: "demo-7" });
+    expect(await screen.findByText(zhCN["note.noMatch"])).toBeInTheDocument();
+
+    // On the user's own history there is nothing to note.
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.history"] }));
+    expect((await screen.findAllByText("暗夜里的光#10003")).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("radiogroup", { name: zhCN["note.tag"] })).toBeNull();
   });
 
   it("opens the history the client asked for, over whatever was open", async () => {
@@ -1081,6 +1129,7 @@ describe("loadout", () => {
     isSelf,
     premade: null,
     premadeInferred: false,
+    note: null,
     rating: null,
     stats: { state: "loading" },
   });

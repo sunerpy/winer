@@ -364,6 +364,7 @@ function rated(puuid: string, matches: RecentMatch[], isSelf = false): Seat {
     isSelf,
     premade: null,
     premadeInferred: false,
+    note: null,
     rating: null,
     stats: {
       state: "ready",

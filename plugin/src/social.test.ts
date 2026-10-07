@@ -244,6 +244,7 @@ function member(
     positions: ["middle"],
     stats,
     score,
+    note: null,
   };
 }
 
@@ -392,6 +393,7 @@ describe("premade groups", () => {
     isSelf: false,
     premade,
     premadeInferred: false,
+    note: null,
     stats: { state: "loading" },
     rating: null,
   });
@@ -410,6 +412,18 @@ describe("premade groups", () => {
     expect(inferred?.textContent).toBe("疑似开黑 3");
     expect(inferred?.classList.contains("winer-group--inferred")).toBe(true);
     expect(lineKey(guessed, "zh-CN")).not.toBe(lineKey(seat(3), "zh-CN"));
+
+    // The user's own note: its tag, the text on hover; a note of text only reads 备注.
+    const noted = {
+      ...seat(null),
+      note: { tag: "weak" as const, text: "不看小地图", name: null, updatedAt: 1 },
+    };
+    const noteChip = statsLine(noted, "zh-CN").querySelector(".winer-note");
+    expect(noteChip?.textContent).toBe("坑");
+    expect(noteChip?.getAttribute("title")).toBe("不看小地图");
+    const plain = { ...noted, note: { ...noted.note, tag: null } };
+    expect(statsLine(plain, "zh-CN").querySelector(".winer-note")?.textContent).toBe("备注");
+    expect(lineKey(noted, "zh-CN")).not.toBe(lineKey(plain, "zh-CN"));
   });
 });
 

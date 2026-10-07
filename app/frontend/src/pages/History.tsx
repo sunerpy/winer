@@ -7,6 +7,7 @@ import { MatchDetailView } from "../game/MatchDetailView";
 import { MatchRow } from "../game/MatchRow";
 import { ProfileIcon } from "../game/icons";
 import { FormLine, RankBadge, ResultStrip, StreakBadge, TierBadge, TitleChip } from "../game/stats";
+import { NoteEditor } from "../game/notes";
 import { errorCode, errorMessage } from "../lib/backend";
 import { useCached } from "../lib/historyCache";
 import { useT } from "../lib/i18n";
@@ -100,79 +101,82 @@ function PlayerHeader({
   const player = summary.data;
   const rating = standing.data?.rating ?? null;
   return (
-    <Card className="flex flex-wrap items-center gap-x-6 gap-y-3">
-      {player ? (
-        <>
-          <span className="flex items-center gap-3">
-            <ProfileIcon id={player.iconId} size={48} />
-            <span className="flex flex-col">
-              <span className="text-[16px] font-semibold text-fg">{riotId(player.name)}</span>
-              <span className="mono text-[11.5px] text-fg-subtle">
-                {t("common.level", { level: player.level })}
-                {player.private && ` · ${t("common.private")}`}
-              </span>
-            </span>
-          </span>
-          <span className="flex flex-col gap-1">
-            <span className="text-[11px] text-fg-subtle">{t("common.solo")}</span>
-            <RankBadge rank={player.ranked.solo} />
-          </span>
-          <span className="flex flex-col gap-1">
-            <span className="text-[11px] text-fg-subtle">{t("common.flex")}</span>
-            <RankBadge rank={player.ranked.flex} />
-          </span>
-          {player.recent.games > 0 && (
-            <span className="flex flex-col gap-1">
-              <span className="text-[11px] text-fg-subtle">
-                <FormLabel form={player.recent} scope={standing.data?.scope ?? null} />
-              </span>
-              <span className="flex items-center gap-2">
-                <FormLine form={player.recent} />
-                <StreakBadge streak={player.recent.streak} />
-              </span>
-              <ResultStrip matches={player.recent.matches} limit={20} />
-            </span>
-          )}
-          {standing.data && rating && (
-            <span className="flex min-w-0 flex-col gap-1">
-              <span className="inline-flex items-center gap-1 text-[11px] text-fg-subtle">
-                {t("history.standing")}
-                <StandingRule standing={standing.data} form={player.recent} />
-              </span>
-              <span className="flex min-w-0 items-center gap-1.5">
-                <TierBadge rating={rating} />
-                {rating.title && <TitleChip name={rating.title} />}
-              </span>
-              {rating.quip && (
-                <span title={rating.quip} className="truncate text-[11px] text-fg-subtle">
-                  {t("live.quip", { quip: rating.quip })}
+    <>
+      <Card className="flex flex-wrap items-center gap-x-6 gap-y-3">
+        {player ? (
+          <>
+            <span className="flex items-center gap-3">
+              <ProfileIcon id={player.iconId} size={48} />
+              <span className="flex flex-col">
+                <span className="text-[16px] font-semibold text-fg">{riotId(player.name)}</span>
+                <span className="mono text-[11.5px] text-fg-subtle">
+                  {t("common.level", { level: player.level })}
+                  {player.private && ` · ${t("common.private")}`}
                 </span>
-              )}
+              </span>
             </span>
-          )}
-        </>
-      ) : summary.loading ? (
-        <span className="flex items-center gap-3">
-          <Skeleton className="size-12 rounded-full!" />
-          <span className="flex flex-col gap-2">
-            <Skeleton className="h-4 w-40" />
-            <Skeleton className="h-3 w-24" />
+            <span className="flex flex-col gap-1">
+              <span className="text-[11px] text-fg-subtle">{t("common.solo")}</span>
+              <RankBadge rank={player.ranked.solo} />
+            </span>
+            <span className="flex flex-col gap-1">
+              <span className="text-[11px] text-fg-subtle">{t("common.flex")}</span>
+              <RankBadge rank={player.ranked.flex} />
+            </span>
+            {player.recent.games > 0 && (
+              <span className="flex flex-col gap-1">
+                <span className="text-[11px] text-fg-subtle">
+                  <FormLabel form={player.recent} scope={standing.data?.scope ?? null} />
+                </span>
+                <span className="flex items-center gap-2">
+                  <FormLine form={player.recent} />
+                  <StreakBadge streak={player.recent.streak} />
+                </span>
+                <ResultStrip matches={player.recent.matches} limit={20} />
+              </span>
+            )}
+            {standing.data && rating && (
+              <span className="flex min-w-0 flex-col gap-1">
+                <span className="inline-flex items-center gap-1 text-[11px] text-fg-subtle">
+                  {t("history.standing")}
+                  <StandingRule standing={standing.data} form={player.recent} />
+                </span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <TierBadge rating={rating} />
+                  {rating.title && <TitleChip name={rating.title} />}
+                </span>
+                {rating.quip && (
+                  <span title={rating.quip} className="truncate text-[11px] text-fg-subtle">
+                    {t("live.quip", { quip: rating.quip })}
+                  </span>
+                )}
+              </span>
+            )}
+          </>
+        ) : summary.loading ? (
+          <span className="flex items-center gap-3">
+            <Skeleton className="size-12 rounded-full!" />
+            <span className="flex flex-col gap-2">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-3 w-24" />
+            </span>
           </span>
-        </span>
-      ) : (
-        <ErrorNote
-          title={t("common.loadFailed")}
-          detail={errorMessage(summary.error)}
-          retryLabel={t("common.retry")}
-          onRetry={summary.reload}
-        />
-      )}
-      {!isMe && (
-        <Button size="sm" icon={UserRound} className="ml-auto" onClick={onMine}>
-          {t("history.mine")}
-        </Button>
-      )}
-    </Card>
+        ) : (
+          <ErrorNote
+            title={t("common.loadFailed")}
+            detail={errorMessage(summary.error)}
+            retryLabel={t("common.retry")}
+            onRetry={summary.reload}
+          />
+        )}
+        {!isMe && (
+          <Button size="sm" icon={UserRound} className="ml-auto" onClick={onMine}>
+            {t("history.mine")}
+          </Button>
+        )}
+      </Card>
+      {!isMe && player && <NoteEditor puuid={puuid} name={player.name} />}
+    </>
   );
 }
 

@@ -18,6 +18,7 @@ import { useCatalog } from "../lib/store";
 import { useNow } from "../lib/useNow";
 import { Skeleton } from "../ui";
 import { GroupBadge } from "./groups";
+import { NoteChip } from "./notes";
 import { ChampionIcon } from "./icons";
 import { KdaValue, RankBadge, StreakBadge, TierBadge, TitleChip, WinRate, bestRank } from "./stats";
 
@@ -97,6 +98,7 @@ function Summary({ seat, summary }: { seat: Seat; summary: PlayerSummary | null 
           ) : (
             <GroupBadge group={seat.premade} label={t("live.premade", { n: seat.premade })} />
           ))}
+        {seat.note && <NoteChip note={seat.note} />}
       </span>
       {/* The tier and its title get a line of their own: beside the name they squeezed it away. */}
       {rating && (

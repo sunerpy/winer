@@ -20,6 +20,12 @@ const STRINGS = {
   lobby: ["房间成员", "Lobby"],
   premade: ["开黑", "Party"],
   premadeInferred: ["疑似开黑", "Likely party"],
+  // The user's own note on a player, from winer.
+  note: ["备注", "Note"],
+  noteReliable: ["靠谱", "Reliable"],
+  noteWeak: ["坑", "Weak"],
+  noteToxic: ["喷子", "Toxic"],
+  noteTroll: ["演员", "Troll"],
   // The home page while 隐藏首页推广 is on.
   homeHidden: [
     "首页推广已按 winer 的“隐藏首页推广”选项隐藏。",

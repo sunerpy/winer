@@ -4,6 +4,8 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::notes::PlayerNote;
+
 use crate::{loadout::PageOutcome, settings::Settings};
 
 /// Everything live, in one document. Changes after it arrive as [`Update`]s.
@@ -107,7 +109,7 @@ impl Phase {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, TS)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct RiotId {
     pub game_name: String,
@@ -289,6 +291,8 @@ pub struct Seat {
     /// The party was read from the players' recent games together (`analysis::infer_parties`),
     /// not from the lobby or the game: likely, not certain.
     pub premade_inferred: bool,
+    /// The user's own note on the player (`notes`).
+    pub note: Option<PlayerNote>,
     pub stats: PlayerStats,
     /// Recent form and the tier it earns within the team; absent until stats arrive.
     pub rating: Option<SeatRating>,
@@ -1024,6 +1028,8 @@ pub struct LobbyMember {
     pub stats: PlayerStats,
     /// Recent form, 0–10 (`rating::form_score`), once the stats are in.
     pub score: Option<f64>,
+    /// The user's own note on the player (`notes`).
+    pub note: Option<PlayerNote>,
 }
 
 /// A lane a lobby member asked for: one of the five, or any (补位).

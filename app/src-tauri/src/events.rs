@@ -59,7 +59,7 @@ async fn self_check_after_update<R: Runtime>(
     if failed.is_empty() {
         info!(%version, "self-check passed after the client updated");
     } else {
-        service.announce(NoticeKind::DiagnosticsFailed {
+        service.report(NoticeKind::DiagnosticsFailed {
             version,
             failed: u32::try_from(failed.len()).unwrap_or(u32::MAX),
         });
@@ -120,7 +120,7 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
                 if let Some(program) = outcome.foreign
                     && !FOREIGN_TOLD.swap(true, Ordering::Relaxed)
                 {
-                    service.announce(NoticeKind::ForeignLoader { program });
+                    service.report(NoticeKind::ForeignLoader { program });
                 }
                 self_check_after_update(&app, &service, &bridge).await;
             });

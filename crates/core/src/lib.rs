@@ -18,6 +18,7 @@ pub mod live;
 pub mod loadout;
 pub mod model;
 pub mod net;
+pub mod notes;
 pub mod plugin;
 pub mod profile;
 pub mod rating;

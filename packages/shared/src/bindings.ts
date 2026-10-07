@@ -97,7 +97,11 @@ premade: number | null,
  * The party was read from the players' recent games together (`analysis::infer_parties`),
  * not from the lobby or the game: likely, not certain.
  */
-premadeInferred: boolean, stats: PlayerStats, 
+premadeInferred: boolean, 
+/**
+ * The user's own note on the player (`notes`).
+ */
+note: PlayerNote | null, stats: PlayerStats, 
 /**
  * Recent form and the tier it earns within the team; absent until stats arrive.
  */
@@ -327,6 +331,20 @@ notices: string, };
 
 export type UpdateStatus = { "state": "idle" } | { "state": "checking" } | { "state": "upToDate", version: string, checkedAt: number, } | { "state": "available", version: string, current: string, notes: string | null, date: string | null, } | { "state": "downloading", version: string, received: number, total: number | null, } | { "state": "installing", version: string, } | { "state": "failed", message: string, };
 
+export type NoteTag = "reliable" | "weak" | "toxic" | "troll";
+
+export type PlayerNote = { tag: NoteTag | null, text: string, 
+/**
+ * The Riot ID the player had when the note was last saved, for the list of notes.
+ */
+name: RiotId | null, 
+/**
+ * Epoch milliseconds.
+ */
+updatedAt: number, };
+
+export type NoteEntry = { puuid: string, note: PlayerNote, };
+
 export type DiagnosticsReport = { 
 /**
  * Epoch milliseconds.
@@ -402,7 +420,11 @@ positions: Array<LanePreference>, stats: PlayerStats,
 /**
  * Recent form, 0–10 (`rating::form_score`), once the stats are in.
  */
-score: number | null, };
+score: number | null, 
+/**
+ * The user's own note on the player (`notes`).
+ */
+note: PlayerNote | null, };
 
 export type LanePreference = "top" | "jungle" | "middle" | "bottom" | "utility" | "fill";
 

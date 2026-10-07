@@ -21,6 +21,12 @@ The actions on the **Tools** page act on the client directly:
 - **Restart the client UI**: restarts only the client's interface process; your sign-in and a
   running game are not affected. Useful when the client's interface hangs, or after a plugin update.
 
+### My notes
+
+The [notes](/en/guide/history#my-note) you wrote on other players, newest first. Search them by
+name or text; a name opens that player's history, where the note is edited, and the bin beside a
+note deletes it.
+
 ### Profile background
 
 The current background is at the top. Below it are all skins of all champions, owned or not: search

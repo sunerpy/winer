@@ -13,6 +13,8 @@ import type {
   ChallengeProfile,
   CleanupReport,
   DiagnosticsReport,
+  NoteEntry,
+  NoteTag,
   Event,
   GameData,
   General,
@@ -26,9 +28,11 @@ import type {
   PlayerProfile,
   PlayerStanding,
   PlayerSummary,
+  PlayerNote,
   PluginStatus,
   Position,
   Presence,
+  RiotId,
   RunePage,
   Settings,
   SkinChoice,
@@ -114,6 +118,15 @@ export interface Commands {
   // History.
   /** What a player's form counts, and the tier, title and quip it earns on its own. */
   get_player_standing: Command<{ puuid: string }, PlayerStanding>;
+  // The user's notes on other players.
+  get_player_note: Command<{ puuid: string }, PlayerNote | null>;
+  /** Neither a tag nor text removes the note, and answers null. */
+  set_player_note: Command<
+    { puuid: string; tag: NoteTag | null; text: string; name: RiotId | null },
+    PlayerNote | null
+  >;
+  list_player_notes: Command<undefined, NoteEntry[]>;
+  delete_player_note: Command<{ puuid: string }, boolean>;
 }
 
 export type CommandName = keyof Commands;

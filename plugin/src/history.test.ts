@@ -65,6 +65,7 @@ function member(puuid: string, name: string, stats: LobbyMember["stats"]): Lobby
     positions: [],
     stats,
     score: stats.state === "ready" ? 7.4 : null,
+    note: null,
   };
 }
 
@@ -397,6 +398,7 @@ function seat(puuid: string | null, stats: Seat["stats"], rating: Seat["rating"]
     isSelf: false,
     premade: null,
     premadeInferred: false,
+    note: null,
     stats,
     rating,
   };

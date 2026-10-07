@@ -39,6 +39,7 @@ use crate::{
         ChampSelectSession, ChatMe, Conversation, Entitlements, Game, GameQueue, GameflowSession,
         Lobby, MatchList, RankedStats, ReadyCheck, Summoner,
     },
+    notes::{NoteEntry, NoteError, NoteStore, NoteTag, PlayerNote},
     profile::{
         self, Admit, ChallengeProfile, ChallengeSummary, ClientBanner, ClientChallenge,
         ClientTitle, Fix, Regalia, SkinChoice, SummonerProfile,
@@ -52,7 +53,7 @@ use crate::{
         AugmentDetail, Check, CheckFailure, CheckId, CheckReason, Connection, ErrorCode, Event,
         GameData, HistorySource, IpcError, MatchDetail, MatchPage, Me, Notice, NoticeKind, Patch,
         Phase, PlayerProfile, PlayerStanding, PlayerStats, PlayerSummary, Presence, QueueInfo,
-        Seat, Snapshot, Update,
+        RiotId, Seat, Snapshot, Update,
     },
 };
 
@@ -176,6 +177,8 @@ struct Inner {
     plugin_hellos: watch::Sender<u64>,
     /// The client version the last connection saw, for the self-check after an update.
     versions: diagnose::VersionStore,
+    /// The user's notes on other players (`notes`).
+    notes: NoteStore,
 }
 
 /// Augment descriptions per language, with when they were fetched.
@@ -306,6 +309,7 @@ impl Service {
         let loadouts = settings_path.with_file_name("loadouts.json");
         let versions =
             diagnose::VersionStore::new(settings_path.with_file_name("diagnostics.json"));
+        let notes = NoteStore::open(settings_path.with_file_name("notes.json"));
         Self {
             inner: Arc::new(Inner {
                 settings: SettingsStore::open(settings_path),
@@ -322,6 +326,7 @@ impl Service {
                 history: Mutex::new(HistoryCache::default()),
                 plugin_hellos: watch::Sender::new(0),
                 versions,
+                notes,
             }),
         }
     }
@@ -708,6 +713,55 @@ impl Service {
         self.inner.runtime.spawn(task);
     }
 
+    /// The user's note on `puuid`, if any.
+    pub fn player_note(&self, puuid: &str) -> Result<Option<PlayerNote>, CoreError> {
+        segment(puuid)?;
+        Ok(self.inner.notes.get(puuid))
+    }
+
+    /// Saves the user's note on `puuid`; neither a tag nor text removes it. The views that show
+    /// the player are drawn again. Writes a file: call it off the runtime.
+    pub fn set_player_note(
+        &self,
+        puuid: &str,
+        tag: Option<NoteTag>,
+        text: &str,
+        name: Option<RiotId>,
+    ) -> Result<Option<PlayerNote>, CoreError> {
+        segment(puuid)?;
+        let note = self
+            .inner
+            .notes
+            .set(puuid, tag, text, name, now_ms())
+            .map_err(|error| match error {
+                NoteError::Io(error) => CoreError::Io(error),
+                other => CoreError::Invalid(other.to_string()),
+            })?;
+        self.redraw();
+        Ok(note)
+    }
+
+    pub fn player_notes(&self) -> Vec<NoteEntry> {
+        self.inner.notes.list()
+    }
+
+    /// Removes the user's note on `puuid`; returns whether there was one. Writes a file.
+    pub fn delete_player_note(&self, puuid: &str) -> Result<bool, CoreError> {
+        segment(puuid)?;
+        let removed = self.inner.notes.delete(puuid)?;
+        if removed {
+            self.redraw();
+        }
+        Ok(removed)
+    }
+
+    /// The live views again, with the connected client's state as it is.
+    fn redraw(&self) {
+        if let Ok(client) = self.client() {
+            self.render(&client);
+        }
+    }
+
     /// The core's half of the self-check: the client, its routes, the shard's match-history
     /// server and the data sources the settings use. The checks run at once, each within its own
     /// time limit, and write nothing anywhere (`diagnose`).
@@ -750,11 +804,6 @@ impl Service {
         let client = self.client()?;
         let version: String = client.lcu.get("/lol-patch/v1/game-version").await?;
         Ok(self.inner.versions.note(&version)?)
-    }
-
-    /// A notice from the shell's side of things, for the window like the core's own.
-    pub fn announce(&self, kind: NoticeKind) {
-        self.notice(kind);
     }
 
     fn notice(&self, kind: NoticeKind) {
@@ -1150,6 +1199,7 @@ impl Service {
             let mut view = live::champ_select_view(&session, stats(focus), &ranking, game_mode);
             live::mark_party(&mut view.my_team, &party);
             self.mark_inferred_parties(&mut view.my_team, &party);
+            self.attach_notes(view.my_team.iter_mut().chain(view.their_team.iter_mut()));
             let champion = |id: i64| {
                 data.as_ref()?
                     .champions
@@ -1178,6 +1228,7 @@ impl Service {
             let mut view = live::game_view(&session, &me, stats(focus), &ranking);
             // Callout: the lines the shortcut types into the game's chat, both teams by champion.
             if let Some(view) = view.as_mut() {
+                self.attach_notes(view.teams.iter_mut().flatten());
                 let data = lock(&client.data).clone();
                 let champion = |id: i64| {
                     data.as_ref()?
@@ -1241,6 +1292,16 @@ impl Service {
             Some(PlayerEntry::Loading) | None => return PlayerStats::Loading,
         };
         PlayerStats::Ready(Box::new(self.summarize(&record, focus)))
+    }
+
+    /// The user's notes on the seated players.
+    fn attach_notes<'a>(&self, seats: impl Iterator<Item = &'a mut Seat>) {
+        for seat in seats {
+            seat.note = seat
+                .puuid
+                .as_deref()
+                .and_then(|puuid| self.inner.notes.get(puuid));
+        }
     }
 
     /// The parties champ select does not show, read from the records loaded for the team.
@@ -2152,9 +2213,13 @@ impl Service {
                 config.queue_id,
                 &config.game_mode,
             );
-            live::lobby_view(&lobby, &me, |puuid| {
+            let mut view = live::lobby_view(&lobby, &me, |puuid| {
                 self.player_stats(puuid, focus.as_ref())
-            })
+            });
+            for member in &mut view.members {
+                member.note = self.inner.notes.get(&member.puuid);
+            }
+            view
         });
         self.patch(Patch::Lobby(view));
     }

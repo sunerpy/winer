@@ -4,7 +4,7 @@
 
 use ts_rs::{Config, TS};
 
-use crate::{backup, bridge, builds, loadout, plugin, profile, settings, view};
+use crate::{backup, bridge, builds, loadout, notes, plugin, profile, settings, view};
 
 pub fn typescript() -> String {
     let config = Config::new().with_large_int("number");
@@ -65,6 +65,9 @@ pub fn typescript() -> String {
         view::Presence,
         view::AppInfo,
         view::UpdateStatus,
+        notes::NoteTag,
+        notes::PlayerNote,
+        notes::NoteEntry,
         view::DiagnosticsReport,
         view::Check,
         view::CheckId,
