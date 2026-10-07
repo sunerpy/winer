@@ -180,7 +180,7 @@ and F 💀. Emoji show in the client's chat only; lines typed in a game have non
 
 - The first line names your side and "winer rating", followed by the opening line if you wrote one;
   the rich style puts 📢 before it.
-- The Chinese default follows Sona's `seat: tier|win rate|KDA|strength` format and omits player
+- The Chinese default uses the `seat: tier|win rate|KDA|strength` format and omits player
   names, titles and quips. Champ-select seats already identify the players, and removing free-form
   text prevents the client filter from joining 上等马 with a name such as 会跑路的防御塔. The window
   and in-client panel still show those details; a custom template may still include them.

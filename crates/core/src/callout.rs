@@ -36,7 +36,7 @@ pub fn side_tag(side: Side, language: Language) -> &'static str {
 /// the seat, not the champion: champions change during champ select, seats do not. The score is
 /// called what the window calls it, 战力 (the form score), not 评分, which is a game's.
 ///
-/// - Compact follows Sona's proven scan order: seat, tier, win rate, KDA and strength.
+/// - Compact uses a seat-first scan order: seat, tier, win rate, KDA and strength.
 /// - Rich adds the tier's emoji and the sample size, but keeps those columns in the same order.
 ///
 /// Chinese defaults omit free-form player names, titles and quips. The seat already identifies a
@@ -832,7 +832,7 @@ pub fn target_template(language: Language) -> &'static str {
 }
 
 /// The line about each teammate in the game, when the user has not written their own, in `style`:
-/// champion, tier and the same Sona-style data columns. The game's chat shows no emoji; titles and
+/// champion, tier and the same seat-first data columns. The game's chat shows no emoji; titles and
 /// free-form quips stay out of the safe default. A custom template may still include them.
 pub fn ally_template(style: CalloutStyle, language: Language) -> &'static str {
     match (style, language) {
@@ -1362,7 +1362,7 @@ mod tests {
                     && !chinese.contains("{champion}")
                     && !chinese.contains("{title}")
                     && !chinese.contains("{quip}"),
-                "the team-safe Chinese default follows Sona: {chinese}"
+                "the team-safe Chinese default omits free text: {chinese}"
             );
             let english = template(style, Language::En);
             assert!(
@@ -1722,7 +1722,7 @@ mod tests {
     }
 
     #[test]
-    fn sona_style_chinese_defaults_keep_free_text_out_of_the_team_columns() {
+    fn team_safe_chinese_defaults_keep_free_text_out_of_the_team_columns() {
         let mut player = seat("会跑路的防御塔", 0, false, Some((7.2, 0)));
         if let Some(rating) = player.rating.as_mut() {
             rating.title = Some("版本答案".into());
@@ -1807,7 +1807,7 @@ mod tests {
     }
 
     #[test]
-    fn the_default_ranks_five_players_into_sona_style_safe_columns() {
+    fn the_default_ranks_five_players_into_seat_first_safe_columns() {
         use crate::{live, model::ChampSelectSession};
         let session: ChampSelectSession = serde_json::from_value(serde_json::json!({
             "gameId": 42,
