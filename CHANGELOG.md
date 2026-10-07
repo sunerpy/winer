@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.13](https://github.com/sunerpy/winer/compare/v0.0.12...v0.0.13) (2026-10-07)
+
+
+### Bug Fixes
+
+* keep callouts, bench swaps and history views reliable ([#27](https://github.com/sunerpy/winer/issues/27)) ([5ace97e](https://github.com/sunerpy/winer/commit/5ace97e321e42e72b6b9725616fc92781f5afa4e))
+
 ## [0.0.12](https://github.com/sunerpy/winer/compare/v0.0.11...v0.0.12) (2026-10-07)
 
 
