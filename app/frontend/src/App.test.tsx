@@ -204,6 +204,7 @@ describe("App", () => {
       premade: null,
       premadeInferred: false,
       note: null,
+      autofilled: false,
       rating: null,
       stats: { state: "loading" },
     });
@@ -1130,6 +1131,7 @@ describe("loadout", () => {
     premade: null,
     premadeInferred: false,
     note: null,
+    autofilled: false,
     rating: null,
     stats: { state: "loading" },
   });
@@ -1430,6 +1432,25 @@ describe("loadout", () => {
     await user.click(within(dialog).getByRole("button", { name: zhCN["diag.copy"] }));
     const text = await within(dialog).findByRole("textbox", { name: zhCN["diag.copyText"] });
     expect((text as HTMLTextAreaElement).value).toContain("winer 0.2.0 · 诊断");
+  });
+
+  it("turns the autofilled pick rule off on the Automation page", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.automation"] }));
+    const toggle = await screen.findByRole("switch", { name: zhCN["auto.skipWhenFilled"] });
+    expect(toggle).toBeChecked();
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          automation: expect.objectContaining({
+            pick: expect.objectContaining({ skipWhenFilled: false }),
+          }),
+        }),
+      }),
+    );
   });
 
   it("switches builds and each mode's data source in settings", async () => {

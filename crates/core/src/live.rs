@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use crate::{
+    automation,
     callout::{self, Ranking},
     model::{ChampSelectPlayer, ChampSelectSession, GamePlayer, GameflowSession, Lobby},
     rating,
@@ -132,6 +133,7 @@ pub fn champ_select_view(
             is_self: player.cell_id == session.local_player_cell_id,
             premade: None,
             premade_inferred: false,
+            autofilled: false,
             note: None,
             rating: None,
         }
@@ -236,6 +238,7 @@ pub fn game_view(
                         is_self: !me.is_empty() && player.puuid == me,
                         premade: parties.get(&player.team_participant_id).copied(),
                         premade_inferred: false,
+                        autofilled: false,
                         note: None,
                         puuid,
                         rating: None,
@@ -264,6 +267,32 @@ pub fn game_view(
 /// over it.
 pub fn shows_lobby(phase: Phase) -> bool {
     matches!(phase, Phase::Lobby | Phase::Matchmaking | Phase::ReadyCheck)
+}
+
+/// The lanes the local player (`me`) asked for in `lobby`, for the champ select that follows.
+pub fn preferences_of(lobby: &Lobby, me: &str) -> automation::LanePreferences {
+    let mut lanes = Vec::new();
+    if let Some(member) = lobby
+        .members
+        .iter()
+        .find(|member| !me.is_empty() && member.puuid == me)
+    {
+        for lane in [
+            &member.first_position_preference,
+            &member.second_position_preference,
+        ]
+        .into_iter()
+        .filter_map(|preference| LanePreference::parse(preference))
+        {
+            if !lanes.contains(&lane) {
+                lanes.push(lane);
+            }
+        }
+    }
+    automation::LanePreferences {
+        queue_id: lobby.game_config.queue_id,
+        lanes,
+    }
 }
 
 /// The members of `lobby` whose stats the lobby view needs; bots have none.
@@ -680,6 +709,27 @@ mod tests {
     }
 
     #[test]
+    fn the_local_players_lanes_are_kept_from_the_lobby() {
+        assert_eq!(
+            preferences_of(&lobby(false), "me"),
+            automation::LanePreferences {
+                queue_id: 420,
+                lanes: vec![LanePreference::Middle, LanePreference::Fill],
+            }
+        );
+        assert!(
+            preferences_of(&lobby(false), "late").lanes.is_empty(),
+            "UNSELECTED is no lane"
+        );
+        assert!(preferences_of(&lobby(false), "").lanes.is_empty());
+        assert_eq!(
+            preferences_of(&lobby(false), "mate").lanes,
+            [LanePreference::Utility],
+            "one lane asked twice"
+        );
+    }
+
+    #[test]
     fn a_lobby_shows_its_members_with_their_lanes_form_and_score() {
         let stats = |puuid: &str| match puuid {
             "me" => ready("me", 15),
@@ -740,6 +790,7 @@ mod tests {
             is_self: false,
             premade: None,
             premade_inferred: false,
+            autofilled: false,
             note: None,
             stats: PlayerStats::Loading,
             rating: None,

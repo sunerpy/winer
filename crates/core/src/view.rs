@@ -293,6 +293,8 @@ pub struct Seat {
     pub premade_inferred: bool,
     /// The user's own note on the player (`notes`).
     pub note: Option<PlayerNote>,
+    /// The local player was sent to a lane they did not ask for (`automation::autofilled`).
+    pub autofilled: bool,
     pub stats: PlayerStats,
     /// Recent form and the tier it earns within the team; absent until stats arrive.
     pub rating: Option<SeatRating>,
@@ -1045,6 +1047,18 @@ pub enum LanePreference {
 }
 
 impl LanePreference {
+    /// The lane itself; `None` for any lane (补位).
+    pub fn position(self) -> Option<Position> {
+        Some(match self {
+            Self::Top => Position::Top,
+            Self::Jungle => Position::Jungle,
+            Self::Middle => Position::Middle,
+            Self::Bottom => Position::Bottom,
+            Self::Utility => Position::Utility,
+            Self::Fill => return None,
+        })
+    }
+
     /// The lobby's `firstPositionPreference` words: `TOP` … `UTILITY`, `FILL`; `UNSELECTED` and
     /// anything else is no preference.
     pub fn parse(value: &str) -> Option<Self> {

@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use crate::{
     model::{ChampSelectSession, ReadyCheck},
     settings::Automation,
-    view::Position,
+    view::{LanePreference, Position},
 };
 
 /// Accept while the dialog is up and the user has not answered. A decline stays a decline.
@@ -81,13 +81,49 @@ pub fn bench_pick(session: &ChampSelectSession, wishlist: &[i64]) -> Option<i64>
         .map(|(_, champion)| champion)
 }
 
+/// The lanes the local player asked for in the lobby, kept for the champ select it leads to.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LanePreferences {
+    /// The queue the lobby was set up for.
+    pub queue_id: i64,
+    /// First choice first; FILL included, nothing for `UNSELECTED`.
+    pub lanes: Vec<LanePreference>,
+}
+
+/// Whether champ select sent the local player to a lane they did not ask for (补位): the lobby's
+/// preferences are for this queue, the assigned lane is one of the five, at least one preference
+/// is a lane, none of them is FILL, and the assigned lane is not among them. No preferences, none
+/// set, FILL, no lane assigned or another queue's lobby are never counted.
+pub fn autofilled(preferences: Option<&LanePreferences>, queue_id: i64, assigned: &str) -> bool {
+    let Some(preferences) = preferences.filter(|preferences| preferences.queue_id == queue_id)
+    else {
+        return false;
+    };
+    let Some(lane) = Position::parse(assigned) else {
+        return false;
+    };
+    if preferences.lanes.contains(&LanePreference::Fill) {
+        return false;
+    }
+    let asked: Vec<Position> = preferences
+        .lanes
+        .iter()
+        .filter_map(|preference| preference.position())
+        .collect();
+    !asked.is_empty() && !asked.contains(&lane)
+}
+
+/// `filled`: the player was sent to a lane they did not ask for ([`autofilled`]); with
+/// `skip_when_filled` on, only that lane's own list is picked from then.
 pub fn decide(
     session: &ChampSelectSession,
     rules: &Automation,
     available: &Availability,
+    filled: bool,
 ) -> Option<ChampAction> {
     let me = session.local_player()?;
     let position = Position::parse(&me.assigned_position);
+    let own_only = filled && rules.pick.skip_when_filled;
     let mine = || {
         session
             .all_actions()
@@ -124,10 +160,13 @@ pub fn decide(
         if free(hovered) && available.can_pick(hovered) {
             return Some(hovered);
         }
-        rules
-            .pick
-            .champions
-            .candidates(position)
+        let pool = &rules.pick.champions;
+        let candidates = if own_only {
+            pool.own_candidates(position)
+        } else {
+            pool.candidates(position)
+        };
+        candidates
             .into_iter()
             .find(|&id| free(id) && available.can_pick(id))
     };
@@ -199,6 +238,35 @@ pub fn decide(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_lane_the_player_did_not_ask_for_is_autofilled() {
+        use crate::view::LanePreference::{Fill, Middle, Top};
+        let asked = |lanes: Vec<LanePreference>| LanePreferences {
+            queue_id: 420,
+            lanes,
+        };
+        let mid_top = asked(vec![Middle, Top]);
+        assert!(autofilled(Some(&mid_top), 420, "utility"));
+        assert!(!autofilled(Some(&mid_top), 420, "top"), "the second choice");
+        assert!(
+            !autofilled(Some(&mid_top), 440, "utility"),
+            "another queue's lobby"
+        );
+        assert!(!autofilled(Some(&mid_top), 420, ""), "no lane assigned");
+        assert!(!autofilled(Some(&mid_top), 420, "NONE"));
+        assert!(
+            !autofilled(Some(&asked(vec![Middle, Fill])), 420, "jungle"),
+            "FILL asked"
+        );
+        assert!(!autofilled(Some(&asked(vec![Fill])), 420, "jungle"));
+        assert!(
+            !autofilled(Some(&asked(vec![])), 420, "jungle"),
+            "nothing asked"
+        );
+        assert!(!autofilled(None, 420, "jungle"), "no lobby seen");
+        assert!(autofilled(Some(&asked(vec![Middle])), 420, "jungle"));
+    }
     use crate::{settings::ChampionPool, test_support::fixture};
 
     fn rules(pick: &[i64], ban: &[i64]) -> Automation {
@@ -238,7 +306,12 @@ mod tests {
     #[test]
     fn planning_declares_an_intent_and_never_completes_the_ban_it_shows_in_progress() {
         let planning = session("planning");
-        let action = decide(&planning, &rules(&[86], &[157]), &Availability::default());
+        let action = decide(
+            &planning,
+            &rules(&[86], &[157]),
+            &Availability::default(),
+            false,
+        );
         assert_eq!(
             action,
             Some(ChampAction {
@@ -251,7 +324,7 @@ mod tests {
         let mut no_intent = rules(&[86], &[157]);
         no_intent.pick.declare_intent = false;
         assert_eq!(
-            decide(&planning, &no_intent, &Availability::default()),
+            decide(&planning, &no_intent, &Availability::default(), false),
             None
         );
     }
@@ -263,6 +336,7 @@ mod tests {
             &ban_pick,
             &rules(&[86], &[157, 238]),
             &Availability::default(),
+            false,
         );
         assert_eq!(
             action,
@@ -278,14 +352,17 @@ mod tests {
             ..Availability::default()
         };
         assert_eq!(
-            decide(&ban_pick, &rules(&[], &[157, 238]), &not_bannable)
+            decide(&ban_pick, &rules(&[], &[157, 238]), &not_bannable, false)
                 .map(|action| action.champion_id),
             Some(238)
         );
 
         let mut off = rules(&[86], &[157]);
         off.ban.enabled = false;
-        assert_eq!(decide(&ban_pick, &off, &Availability::default()), None);
+        assert_eq!(
+            decide(&ban_pick, &off, &Availability::default(), false),
+            None
+        );
     }
 
     fn pick_turn(my_team: serde_json::Value, actions: serde_json::Value) -> ChampSelectSession {
@@ -297,6 +374,50 @@ mod tests {
             "bans": {"myTeamBans": [11], "theirTeamBans": [22]}
         }))
         .unwrap()
+    }
+
+    /// Sent to a lane the player did not ask for, the pick comes from that lane's own list only;
+    /// without one there is no pick, and a champion the player hovered is still theirs.
+    #[test]
+    fn an_autofilled_player_picks_from_the_lanes_own_list_only() {
+        let session = pick_turn(
+            serde_json::json!([{"cellId": 0, "assignedPosition": "utility"}]),
+            serde_json::json!([[{"id": 7, "actorCellId": 0, "type": "pick", "isInProgress": true}]]),
+        );
+        let mut rules = rules(&[86], &[]);
+        rules.pick.lock_in = true;
+        let pick = |rules: &Automation, filled: bool| {
+            decide(&session, rules, &Availability::default(), filled)
+                .map(|action| action.champion_id)
+        };
+        assert_eq!(pick(&rules, false), Some(86), "not filled: the any list");
+        assert_eq!(pick(&rules, true), None, "filled, no support list: nothing");
+        rules.pick.champions.utility = vec![412];
+        assert_eq!(pick(&rules, true), Some(412));
+        rules.pick.skip_when_filled = false;
+        assert_eq!(
+            pick(&rules, true),
+            Some(412),
+            "the lane's list comes first anyway"
+        );
+        rules.pick.champions.utility.clear();
+        assert_eq!(
+            pick(&rules, true),
+            Some(86),
+            "switched off: the any list again"
+        );
+
+        let hovered = pick_turn(
+            serde_json::json!([{"cellId": 0, "assignedPosition": "utility"}]),
+            serde_json::json!([[{"id": 7, "actorCellId": 0, "type": "pick", "isInProgress": true, "championId": 99}]]),
+        );
+        rules.pick.skip_when_filled = true;
+        assert_eq!(
+            decide(&hovered, &rules, &Availability::default(), true)
+                .map(|action| action.champion_id),
+            Some(99),
+            "the user's own hover is still locked"
+        );
     }
 
     #[test]
@@ -320,6 +441,7 @@ mod tests {
                 pickable: Some(HashSet::from([55, 66])),
                 ..Availability::default()
             },
+            false,
         );
         assert_eq!(
             action,
@@ -335,7 +457,7 @@ mod tests {
             ..Availability::default()
         };
         assert_eq!(
-            decide(&session, &rules, &unowned).map(|action| action.champion_id),
+            decide(&session, &rules, &unowned, false).map(|action| action.champion_id),
             Some(55)
         );
     }
@@ -348,7 +470,7 @@ mod tests {
         );
         let rules_lock = rules(&[55], &[]);
         assert_eq!(
-            decide(&session, &rules_lock, &Availability::default())
+            decide(&session, &rules_lock, &Availability::default(), false)
                 .map(|action| action.champion_id),
             Some(77)
         );
@@ -356,7 +478,7 @@ mod tests {
         let mut hover_only = rules(&[55], &[]);
         hover_only.pick.lock_in = false;
         assert_eq!(
-            decide(&session, &hover_only, &Availability::default()),
+            decide(&session, &hover_only, &Availability::default(), false),
             None,
             "an intent is already showing"
         );
@@ -366,7 +488,7 @@ mod tests {
             serde_json::json!([[{"id": 9, "actorCellId": 0, "type": "pick", "isInProgress": true}]]),
         );
         assert_eq!(
-            decide(&empty, &hover_only, &Availability::default()),
+            decide(&empty, &hover_only, &Availability::default(), false),
             Some(ChampAction {
                 action_id: 9,
                 champion_id: 55,
@@ -419,7 +541,8 @@ mod tests {
             decide(
                 &finalization,
                 &rules(&[86], &[157]),
-                &Availability::default()
+                &Availability::default(),
+                false
             ),
             None
         );

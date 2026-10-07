@@ -98,6 +98,9 @@ export const en: Record<MessageKey, string> = {
   "auto.lockIn": "Pick mode",
   "auto.lockInLock": "Lock in",
   "auto.lockInHover": "Hover only",
+  "auto.skipWhenFilled": "When autofilled, use only that lane's list",
+  "auto.skipWhenFilledHint":
+    "Sent to a lane you did not ask for in the lobby, the pick comes from that lane's own list only, not from Any lane; with no list for it, nothing is picked. A champion you hovered yourself is still locked.",
   "auto.declare": "Show an intent while planning",
   "auto.declareHint": "Shows your first choice to the team before bans start.",
   "auto.ban": "Auto-ban a champion",
@@ -201,6 +204,9 @@ export const en: Record<MessageKey, string> = {
   "live.intent": "Intent",
   "live.premade": "Party {n}",
   "live.premadeInferred": "Likely party {n}",
+  "live.autofilled": "Autofilled",
+  "live.autofilledHint": "You were sent to a lane you did not ask for in the lobby",
+  "live.retryStats": "Retry",
   "live.premadeInferredHint":
     "Read from recent games: at least two lately on one team together. It can be wrong.",
   "live.statsFailed": "Stats unavailable",

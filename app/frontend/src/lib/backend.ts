@@ -130,6 +130,8 @@ export interface Commands {
   delete_player_note: Command<{ puuid: string }, boolean>;
   /** Into Downloads under a new name when the one asked for is taken; answers the file's name. */
   save_export: Command<{ stem: string; format: ExportFormat; contents: string }, string>;
+  /** Asks again for a player whose record failed to load; nothing for one that loaded. */
+  retry_player: Command<{ puuid: string }, null>;
 }
 
 export type CommandName = keyof Commands;

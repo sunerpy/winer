@@ -101,7 +101,11 @@ premadeInferred: boolean,
 /**
  * The user's own note on the player (`notes`).
  */
-note: PlayerNote | null, stats: PlayerStats, 
+note: PlayerNote | null, 
+/**
+ * The local player was sent to a lane they did not ask for (`automation::autofilled`).
+ */
+autofilled: boolean, stats: PlayerStats, 
 /**
  * Recent form and the tier it earns within the team; absent until stats arrive.
  */
@@ -527,7 +531,12 @@ lockIn: boolean,
 /**
  * Show the first choice as an intent during the planning phase.
  */
-declareIntent: boolean, champions: ChampionPool, };
+declareIntent: boolean, champions: ChampionPool, 
+/**
+ * Sent to a lane the player did not ask for (补位), pick from that lane's own list only, never
+ * from `any`: a list for any lane was chosen for the lanes the player plays.
+ */
+skipWhenFilled: boolean, };
 
 export type BanRule = { enabled: boolean, champions: ChampionPool, };
 

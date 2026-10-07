@@ -101,6 +101,8 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         delete_player_note,
         // History: the games as a file.
         save_export,
+        // A player's record that failed to load, asked for again.
+        retry_player,
     ]
 }
 
@@ -816,4 +818,10 @@ async fn save_export<R: Runtime>(
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default())
+}
+
+/// Asks again for a player whose record failed to load; nothing for one that loaded.
+#[tauri::command]
+async fn retry_player<R: Runtime>(app: AppHandle<R>, puuid: String) -> Result<()> {
+    Ok(service(&app).retry_player(&puuid)?)
 }

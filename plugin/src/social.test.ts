@@ -394,6 +394,7 @@ describe("premade groups", () => {
     premade,
     premadeInferred: false,
     note: null,
+    autofilled: false,
     stats: { state: "loading" },
     rating: null,
   });

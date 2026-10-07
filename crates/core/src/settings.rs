@@ -615,6 +615,9 @@ pub struct PickRule {
     /// Show the first choice as an intent during the planning phase.
     pub declare_intent: bool,
     pub champions: ChampionPool,
+    /// Sent to a lane the player did not ask for (补位), pick from that lane's own list only, never
+    /// from `any`: a list for any lane was chosen for the lanes the player plays.
+    pub skip_when_filled: bool,
 }
 
 impl Default for PickRule {
@@ -624,6 +627,7 @@ impl Default for PickRule {
             lock_in: true,
             declare_intent: true,
             champions: ChampionPool::default(),
+            skip_when_filled: true,
         }
     }
 }
@@ -661,6 +665,14 @@ impl ChampionPool {
     }
 
     /// The position's own list, then `any`, without repeats.
+    /// The position's own list alone, without `any`: for a player sent to a lane they did not ask
+    /// for.
+    pub fn own_candidates(&self, position: Option<Position>) -> Vec<i64> {
+        position
+            .map(|position| self.list(position).to_vec())
+            .unwrap_or_default()
+    }
+
     pub fn candidates(&self, position: Option<Position>) -> Vec<i64> {
         let own = position
             .map(|position| self.list(position))

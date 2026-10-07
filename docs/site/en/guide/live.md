@@ -10,7 +10,7 @@ One row per player:
   its quip. A player whose history is hidden shows as "Hidden player" and gets no tier.
 - **Right**: the latest 6 to 12 games (more on a wider window), one tile each: champion,
   kills/deaths/assists and mode; a win is green, a loss red, a remake grey. Hover a tile for its
-  queue, result and age.
+  queue, result and age. When a player's history could not be read, **Retry** here reads it again.
 
 Choose a name to open that player's history. When both teams are known, a switch at the top right
 moves between them.

@@ -223,6 +223,9 @@ struct Live {
     lobby: Option<Lobby>,
     /// The local player's party as the last lobby had it, for champ select's premade marks.
     party: Vec<String>,
+    /// The lanes the local player asked for in the last lobby, kept like `party` for the champ
+    /// select it leads to (`automation::autofilled`).
+    preferences: Option<automation::LanePreferences>,
     /// What was set up for the champion in hand, and the champ select to remember (`loadout`).
     loadout: loadout::LoadoutLive,
 }
@@ -755,6 +758,49 @@ impl Service {
         Ok(removed)
     }
 
+    /// Asks again for `puuid`'s record when the last try failed, within the kind of game the view
+    /// showing the player is of; a record that loaded, or is loading, is left as it is.
+    pub fn retry_player(&self, puuid: &str) -> Result<(), CoreError> {
+        segment(puuid)?;
+        let client = self.client()?;
+        {
+            let mut players = lock(&self.inner.players);
+            if !matches!(players.get(puuid), Some(PlayerEntry::Failed(..))) {
+                return Ok(());
+            }
+            players.remove(puuid);
+        }
+        let focus = self.current_focus(&client);
+        self.ensure_player(&client, puuid.to_owned(), focus);
+        self.render(&client);
+        Ok(())
+    }
+
+    /// The kind of game the live views are reading players in: champ select's queue, the game's,
+    /// else the lobby's.
+    fn current_focus(&self, client: &Client) -> Option<analysis::Focus> {
+        let (champ_select, gameflow, lobby) = {
+            let live = lock(&client.live);
+            (
+                live.champ_select.as_ref().map(|session| session.queue_id),
+                live.gameflow.as_ref().map(|session| {
+                    let queue = &session.game_data.queue;
+                    (queue.id, queue.game_mode.clone())
+                }),
+                live.lobby.as_ref().map(|lobby| {
+                    let config = &lobby.game_config;
+                    (config.queue_id, config.game_mode.clone())
+                }),
+            )
+        };
+        let data = lock(&client.data).clone();
+        if let Some(queue_id) = champ_select {
+            return queue_focus(data.as_deref(), queue_id, "");
+        }
+        let (queue_id, game_mode) = gameflow.or(lobby)?;
+        queue_focus(data.as_deref(), queue_id, &game_mode)
+    }
+
     /// The live views again, with the connected client's state as it is.
     fn redraw(&self) {
         if let Ok(client) = self.client() {
@@ -1172,13 +1218,14 @@ impl Service {
     /// Rebuilds the champ select and game views from the last sessions and the stats known now,
     /// and sends the automatic callout once its lines are final.
     fn render(&self, client: &Client) {
-        let (champ_select, gameflow, me, party) = {
+        let (champ_select, gameflow, me, party, preferences) = {
             let live = lock(&client.live);
             (
                 live.champ_select.clone(),
                 live.gameflow.clone(),
                 live.me.clone(),
                 live.party.clone(),
+                live.preferences.clone(),
             )
         };
         let settings = self.settings();
@@ -1200,6 +1247,16 @@ impl Service {
             live::mark_party(&mut view.my_team, &party);
             self.mark_inferred_parties(&mut view.my_team, &party);
             self.attach_notes(view.my_team.iter_mut().chain(view.their_team.iter_mut()));
+            let filled = session.local_player().is_some_and(|me| {
+                automation::autofilled(
+                    preferences.as_ref(),
+                    session.queue_id,
+                    &me.assigned_position,
+                )
+            });
+            for seat in view.my_team.iter_mut().filter(|seat| seat.is_self) {
+                seat.autofilled = filled;
+            }
             let champion = |id: i64| {
                 data.as_ref()?
                     .champions
@@ -1405,7 +1462,14 @@ impl Service {
         if live.acting {
             return;
         }
-        let Some(action) = automation::decide(&session, &rules, &available) else {
+        let filled = session.local_player().is_some_and(|me| {
+            automation::autofilled(
+                live.preferences.as_ref(),
+                session.queue_id,
+                &me.assigned_position,
+            )
+        });
+        let Some(action) = automation::decide(&session, &rules, &available, filled) else {
             return;
         };
         let attempts = live
@@ -2173,6 +2237,7 @@ impl Service {
             // A lobby gone keeps its party: champ select, which follows it, still needs it.
             if let Some(lobby) = &lobby {
                 live.party = live::party_of(lobby);
+                live.preferences = Some(live::preferences_of(lobby, &live.me));
             }
             live.lobby = lobby.clone();
         }
@@ -2982,6 +3047,37 @@ mod tests {
                 ..Live::default()
             })),
         }
+    }
+
+    /// A retry asks again only for a record that failed; one that loaded is left alone.
+    #[tokio::test]
+    async fn only_a_failed_record_is_asked_for_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        assert!(matches!(
+            service.retry_player("p"),
+            Err(CoreError::NotConnected)
+        ));
+        *service
+            .inner
+            .client
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(quiet_client(Phase::Lobby));
+        assert!(service.retry_player("../x").is_err());
+        lock(&service.inner.players).insert(
+            "failed".into(),
+            PlayerEntry::Failed("no".into(), Instant::now()),
+        );
+        service.retry_player("failed").unwrap();
+        assert!(matches!(
+            lock(&service.inner.players).get("failed"),
+            Some(PlayerEntry::Loading)
+        ));
+        service.retry_player("unknown").unwrap();
+        assert!(
+            lock(&service.inner.players).get("unknown").is_none(),
+            "nothing was asked for a player never read"
+        );
     }
 
     #[tokio::test]

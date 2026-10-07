@@ -711,6 +711,7 @@ fn sample(me: &PlayerSummary, ranking: &Ranking, tier: usize, is_self: bool) -> 
         is_self,
         premade: None,
         premade_inferred: false,
+        autofilled: false,
         note: None,
         stats: PlayerStats::Ready(Box::new(me.clone())),
         rating: Some(SeatRating {
@@ -1162,6 +1163,7 @@ mod tests {
             is_self,
             premade: None,
             premade_inferred: false,
+            autofilled: false,
             note: None,
             stats: PlayerStats::Ready(Box::new(summary)),
             rating: rating.map(|(score, tier)| SeatRating {

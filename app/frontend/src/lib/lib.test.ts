@@ -42,6 +42,7 @@ const SETTINGS = {
       enabled: false,
       lockIn: true,
       declareIntent: true,
+      skipWhenFilled: true,
       champions: { any: [], top: [], jungle: [], middle: [], bottom: [], utility: [] },
     },
     ban: {

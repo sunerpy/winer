@@ -631,6 +631,7 @@ function seats(): Seat[] {
       premade: index === 3 || index === 4 ? 1 : index === 1 || index === 2 ? 2 : null,
       premadeInferred: index === 1 || index === 2,
       note: null,
+      autofilled: false,
       stats: stats ? { state: "ready", ...stats } : { state: "loading" },
       rating: RATINGS[index] ?? null,
     };
@@ -688,6 +689,7 @@ export function demoGame(): GameView {
     premade: null,
     premadeInferred: false,
     note: null,
+    autofilled: false,
     stats: { state: "ready", ...summary(puuid, name, championId % 7, null) },
     rating: { score, tier, tiers: 5, label, grade: null, title: null, quip: null },
   }));
@@ -929,6 +931,7 @@ const DEFAULT_SETTINGS: Settings = {
       enabled: true,
       lockIn: true,
       declareIntent: true,
+      skipWhenFilled: true,
       champions: {
         any: [103, 1],
         top: [],
@@ -1246,6 +1249,7 @@ export function demoBackend(): Backend {
         .sort((a, b) => b.note.updatedAt - a.note.updatedAt),
     delete_player_note: ({ puuid }) => notes.delete(puuid),
     save_export: ({ stem, format }) => `${stem}.${format}`,
+    retry_player: () => null,
     run_diagnostics: () => ({
       at: Date.now(),
       clientVersion: "16.19.8217343",

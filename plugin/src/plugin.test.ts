@@ -45,6 +45,7 @@ function seat(stats: Seat["stats"], championId = 103, rating: Seat["rating"] = n
     premade: null,
     premadeInferred: false,
     note: null,
+    autofilled: false,
     stats,
     rating,
   };

@@ -108,7 +108,7 @@ function MemberRow({
           className="ml-auto shrink-0 text-fg-subtle opacity-0 transition-opacity duration-150 group-hover:opacity-100"
         />
       </button>
-      <RecentTiles stats={member.stats} />
+      <RecentTiles stats={member.stats} puuid={member.puuid} />
     </li>
   );
 }

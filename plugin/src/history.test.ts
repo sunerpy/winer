@@ -399,6 +399,7 @@ function seat(puuid: string | null, stats: Seat["stats"], rating: Seat["rating"]
     premade: null,
     premadeInferred: false,
     note: null,
+    autofilled: false,
     stats,
     rating,
   };

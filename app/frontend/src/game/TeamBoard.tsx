@@ -9,14 +9,16 @@ import {
   type RecentMatch,
   type Seat,
 } from "@winer/shared";
-import { ChevronRight, EyeOff, TriangleAlert } from "lucide-react";
+import { ChevronRight, EyeOff, RotateCcw, TriangleAlert } from "lucide-react";
+import { useState } from "react";
 
+import { errorMessage } from "../lib/backend";
 import { cx } from "../lib/cx";
 import { useLanguage, useT } from "../lib/i18n";
 import { MODE_SHORT, modeOf } from "../lib/modes";
-import { useCatalog } from "../lib/store";
+import { useCatalog, useStore } from "../lib/store";
 import { useNow } from "../lib/useNow";
-import { Skeleton } from "../ui";
+import { Badge, Button, Skeleton, toast } from "../ui";
 import { GroupBadge } from "./groups";
 import { NoteChip } from "./notes";
 import { ChampionIcon } from "./icons";
@@ -99,6 +101,11 @@ function Summary({ seat, summary }: { seat: Seat; summary: PlayerSummary | null 
             <GroupBadge group={seat.premade} label={t("live.premade", { n: seat.premade })} />
           ))}
         {seat.note && <NoteChip note={seat.note} />}
+        {seat.autofilled && (
+          <Badge tone="warning" title={t("live.autofilledHint")}>
+            {t("live.autofilled")}
+          </Badge>
+        )}
       </span>
       {/* The tier and its title get a line of their own: beside the name they squeezed it away. */}
       {rating && (
@@ -147,9 +154,22 @@ function Summary({ seat, summary }: { seat: Seat; summary: PlayerSummary | null 
   );
 }
 
-/** A row's right half: the latest games as tiles, skeletons while the stats load. */
-export function RecentTiles({ stats }: { stats: Seat["stats"] }) {
+/** A row's right half: the latest games as tiles, skeletons while the stats load, and a retry
+ *  when they failed. */
+export function RecentTiles({ stats, puuid }: { stats: Seat["stats"]; puuid?: string | null }) {
   const t = useT();
+  const store = useStore();
+  const [retrying, setRetrying] = useState(false);
+  const retry = async (puuid: string) => {
+    setRetrying(true);
+    try {
+      await store.backend.call("retry_player", { puuid });
+    } catch (error) {
+      toast(errorMessage(error), "danger");
+    } finally {
+      setRetrying(false);
+    }
+  };
   const summary = stats.state === "ready" ? stats : null;
   const games = summary?.recent.matches.slice(0, TILE_ROOM.length) ?? [];
   return (
@@ -168,6 +188,10 @@ export function RecentTiles({ stats }: { stats: Seat["stats"] }) {
         </span>
       ) : summary ? (
         <span className="text-[11.5px] text-fg-subtle">{t("live.noGames")}</span>
+      ) : stats.state === "failed" && puuid ? (
+        <Button size="sm" icon={RotateCcw} loading={retrying} onClick={() => void retry(puuid)}>
+          {t("live.retryStats")}
+        </Button>
       ) : null}
     </div>
   );
@@ -209,7 +233,7 @@ function PlayerRow({ seat, onPlayer }: { seat: Seat; onPlayer: (puuid: string) =
       ) : (
         <span className="flex min-w-0 items-center gap-3 p-1">{who}</span>
       )}
-      <RecentTiles stats={seat.stats} />
+      <RecentTiles stats={seat.stats} puuid={seat.puuid} />
     </li>
   );
 }
