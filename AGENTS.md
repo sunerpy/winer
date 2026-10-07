@@ -7,7 +7,7 @@ host facts in `docs/platform-notes.md`.
 ## Baseline commands
 
 ```bash
-cargo test --workspace        # lcu 12, winer (shell) 39, winer-core 280 — all pass
+cargo test --workspace        # lcu 12, winer (shell) 40, winer-core 281 — all pass
 pnpm test                     # shared 7, plugin 71, desktop 130 — all pass
 cargo clippy --workspace --all-targets -- -D warnings
 pnpm lint && pnpm typecheck && pnpm format:check && cargo fmt --all --check
