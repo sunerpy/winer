@@ -35,6 +35,8 @@ export function noticeText(kind: NoticeKind, t: Translate, catalog: Catalog | nu
     }
     case "presenceRefused":
       return t("profile.notice.refused");
+    case "foreignLoader":
+      return t("plugin.notice.foreign", { program: kind.program });
     case "failed":
       return t("notice.failed", { message: kind.message });
     // Runes, spells and item sets.

@@ -1007,6 +1007,7 @@ export function demoBackend(): Backend {
     bundledVersion: "0.2.0",
     current: true,
     connected: 2,
+    foreignActivation: null,
   };
 
   const snapshot: Snapshot = {

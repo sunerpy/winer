@@ -21,6 +21,7 @@ import { demoBackend, demoGame, demoLobby } from "./lib/demo";
 import { AppStore, EMPTY_SNAPSHOT, StoreContext } from "./lib/store";
 import { LivePage } from "./pages/Live";
 import { ShellContext } from "./shell/navigation";
+import { translate } from "./lib/i18n";
 import { en } from "./lib/i18n/en";
 import { zhCN } from "./lib/i18n/zh-CN";
 
@@ -362,6 +363,36 @@ describe("App", () => {
     expect(screen.getByText(zhCN["plugin.loaderFailedHint"])).toBeInTheDocument();
     expect(screen.queryByText(zhCN["plugin.needsAdmin"])).toBeNull();
     expect(screen.queryByRole("button", { name: zhCN["connection.relaunch"] })).toBeNull();
+  });
+
+  it("says another program launches the client, and what that leaves of winer's loader", async () => {
+    const status = await demoBackend().call("get_plugin_status");
+    const program = "Pengu Loader.exe";
+    const view = async (linked: boolean) => {
+      const backend = demoWith({
+        get_plugin_status: () => ({
+          ...status,
+          active: linked,
+          managed: linked,
+          loaderDir: linked ? status.loaderDir : null,
+          foreignActivation: program,
+          // An earlier refusal is not what the page leads with now.
+          needsElevation: true,
+        }),
+      });
+      const { user, nav } = await renderApp(backend);
+      await user.click(within(nav).getByRole("button", { name: zhCN["nav.plugin"] }));
+      return backend;
+    };
+    await view(false);
+    expect(
+      await screen.findByText(translate("zh-CN", "plugin.loaderForeign", { program })),
+    ).toBeInTheDocument();
+    expect(screen.getByText(zhCN["plugin.loaderForeignHint"])).toBeInTheDocument();
+    expect(screen.queryByText(zhCN["plugin.needsAdmin"])).toBeNull();
+    cleanup();
+    await view(true);
+    expect(await screen.findByText(zhCN["plugin.loaderForeignBoth"])).toBeInTheDocument();
   });
 
   it("previews the callout as it is written: opening line, scheme and own tiers", async () => {

@@ -16,12 +16,26 @@ use winer_core::{
 
 use crate::{PENGU_CORE, PENGU_VERSION, PLUGIN_BUNDLE, elevation};
 
+/// What every setup and status reads about the machine: where the client is, and which program,
+/// if any, Windows starts in place of its interface.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Env {
+    pub client_dir: Option<PathBuf>,
+    /// The file name of the program IFEO's `Debugger` names for `LeagueClientUx.exe`, the way
+    /// Pengu Loader 1.2 loads itself (`read_ifeo`).
+    pub foreign: Option<String>,
+}
+
+type Probe = Box<dyn Fn(&Service) -> Env + Send + Sync>;
+
 /// Where the loader winer ships lives, and what went wrong the last time it was set up.
 pub(crate) struct Host {
     /// winer's own data folder for it: outside the install directory, so updating winer never
     /// has to replace a DLL the client holds open.
     pub dir: PathBuf,
     failure: Mutex<Option<Failure>>,
+    /// Read anew by every setup and status, so that all of them see the same machine.
+    probe: Probe,
 }
 
 /// Why the last setup did not finish.
@@ -44,20 +58,43 @@ impl Failure {
 }
 
 /// What a setup came to, for its caller to act on.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Outcome {
     /// A loader was linked just now; the client loads it when its interface starts again.
     pub linked: bool,
     /// The link was refused for want of administrator rights, which winer runs without.
     pub needs_elevation: bool,
+    /// Another program launches the client's interface, so no loader was linked ([`Env`]).
+    pub foreign: Option<String>,
 }
 
 impl Host {
     pub(crate) fn new(dir: PathBuf) -> Self {
+        Self::probing(
+            dir,
+            Box::new(|service: &Service| Env {
+                client_dir: service.client_dir(),
+                foreign: read_ifeo(),
+            }),
+        )
+    }
+
+    fn probing(dir: PathBuf, probe: Probe) -> Self {
         Self {
             dir,
             failure: Mutex::new(None),
+            probe,
         }
+    }
+
+    /// A host that always sees `env`.
+    #[cfg(test)]
+    fn with_env(dir: PathBuf, env: Env) -> Self {
+        Self::probing(dir, Box::new(move |_: &Service| env.clone()))
+    }
+
+    fn env(&self, service: &Service) -> Env {
+        (self.probe)(service)
     }
 
     fn set_failure(&self, failure: Option<Failure>) {
@@ -75,17 +112,119 @@ impl Host {
     }
 }
 
-fn loader(service: &Service) -> Option<Loader> {
-    let configured = service.settings().plugin.loader_dir;
+/// The loader to keep up: the configured folder if it holds one, else wherever the client's
+/// `version.dll` link points. While another program launches the client, only the linked one: the
+/// configured folder may well be that program's, and nothing of winer's goes there.
+fn loader(service: &Service, env: &Env) -> Option<Loader> {
+    let configured = env
+        .foreign
+        .is_none()
+        .then(|| service.settings().plugin.loader_dir)
+        .flatten();
     plugin::find_loader(
-        service.client_dir().as_deref(),
+        env.client_dir.as_deref(),
         configured.as_deref().map(Path::new),
     )
 }
 
+/// The program Windows starts in place of the client's interface: the file name in the IFEO
+/// `Debugger` value of `LeagueClientUx.exe`, `None` when there is none. winer reads the key and
+/// never writes it.
+pub(crate) fn read_ifeo() -> Option<String> {
+    #[cfg(windows)]
+    {
+        ifeo::debugger().as_deref().and_then(program_name)
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+/// The file name of the program a `Debugger` command line starts: the quoted path, else up to and
+/// including the first `.exe`, else up to the first space.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn program_name(command: &str) -> Option<String> {
+    let command = command.trim();
+    let path = match command.strip_prefix('"') {
+        Some(rest) => rest.split('"').next().unwrap_or(rest),
+        None => match command.to_ascii_lowercase().find(".exe") {
+            Some(at) => &command[..at + 4],
+            None => command.split(' ').next().unwrap_or(command),
+        },
+    };
+    let name = path.rsplit(['\\', '/']).next().unwrap_or(path).trim();
+    (!name.is_empty()).then(|| name.to_owned())
+}
+
+#[cfg(windows)]
+mod ifeo {
+    #![allow(unsafe_code)]
+
+    use std::{ffi::OsStr, os::windows::ffi::OsStrExt as _, ptr};
+
+    use windows_sys::Win32::{
+        Foundation::ERROR_SUCCESS,
+        System::Registry::{
+            HKEY_LOCAL_MACHINE, RRF_NOEXPAND, RRF_RT_REG_EXPAND_SZ, RRF_RT_REG_SZ,
+            RRF_SUBKEY_WOW6464KEY, RegGetValueW,
+        },
+    };
+
+    const KEY: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\LeagueClientUx.exe";
+
+    fn wide(value: &str) -> Vec<u16> {
+        OsStr::new(value).encode_wide().chain([0]).collect()
+    }
+
+    /// The key's `Debugger` value as written, from the 64-bit view.
+    pub(super) fn debugger() -> Option<String> {
+        let (key, value) = (wide(KEY), wide("Debugger"));
+        let flags = RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND | RRF_SUBKEY_WOW6464KEY;
+        let mut size = 0u32;
+        // SAFETY: both names end in NUL; a null buffer asks for the size alone.
+        let status = unsafe {
+            RegGetValueW(
+                HKEY_LOCAL_MACHINE,
+                key.as_ptr(),
+                value.as_ptr(),
+                flags,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                &mut size,
+            )
+        };
+        if status != ERROR_SUCCESS || size < 2 {
+            return None;
+        }
+        let mut buffer = vec![0u16; (size as usize).div_ceil(2)];
+        // SAFETY: `buffer` holds at least `size` bytes, the size passed with it.
+        let status = unsafe {
+            RegGetValueW(
+                HKEY_LOCAL_MACHINE,
+                key.as_ptr(),
+                value.as_ptr(),
+                flags,
+                ptr::null_mut(),
+                buffer.as_mut_ptr().cast(),
+                &mut size,
+            )
+        };
+        if status != ERROR_SUCCESS {
+            return None;
+        }
+        let end = buffer
+            .iter()
+            .position(|&unit| unit == 0)
+            .unwrap_or(buffer.len());
+        Some(String::from_utf16_lossy(&buffer[..end]))
+    }
+}
+
 pub(crate) fn status(service: &Service, bridge: &Bridge, host: &Host) -> PluginStatus {
-    let loader = loader(service);
-    let client_dir = service.client_dir();
+    let env = host.env(service);
+    let loader = loader(service, &env);
+    let client_dir = env.client_dir;
     let failure = host.failure();
     PluginStatus {
         loader_dir: loader
@@ -108,6 +247,7 @@ pub(crate) fn status(service: &Service, bridge: &Bridge, host: &Host) -> PluginS
             .and_then(|loader| plugin::is_current(&loader.dir, PLUGIN_BUNDLE))
             .unwrap_or(false),
         connected: bridge.connected(),
+        foreign_activation: env.foreign,
     }
 }
 
@@ -143,12 +283,13 @@ pub(crate) fn disable(
     let mut settings = service.settings();
     settings.plugin.auto = false;
     service.set_settings(settings)?;
-    if let Some(loader) = loader(service) {
+    let env = host.env(service);
+    if let Some(loader) = loader(service, &env) {
         plugin::uninstall(&loader.dir)?;
         info!(dir = %loader.dir.display(), "plugin removed");
     }
-    if let Some(client_dir) = service.client_dir()
-        && plugin::unlink(&client_dir, &host.dir)?
+    if let Some(client_dir) = env.client_dir.as_deref()
+        && plugin::unlink(client_dir, &host.dir)?
     {
         info!(client = %client_dir.display(), "winer's loader unlinked from the client");
     }
@@ -162,11 +303,22 @@ pub(crate) fn disable(
 /// installed plugin is brought to this build. Either way the plugin learns this session's bridge.
 /// Returns whether a loader was newly linked, which the client loads only when its interface
 /// starts again, and whether linking one needs winer restarted elevated.
+///
+/// While another program launches the client (Pengu Loader 1.2 through IFEO), a loader of winer's
+/// on top would load twice: none is linked, the configured folder is left alone, and only a loader
+/// the client links already is kept up.
 pub(crate) fn refresh(service: &Service, bridge: &Bridge, host: &Host) -> Outcome {
+    let env = host.env(service);
     let auto = service.settings().plugin.auto;
-    let mut outcome = Outcome::default();
-    if auto && let Some(client_dir) = service.client_dir() {
-        match activate(service, host, &client_dir) {
+    let mut outcome = Outcome {
+        foreign: env.foreign.clone(),
+        ..Outcome::default()
+    };
+    if let Some(program) = &env.foreign {
+        info!(%program, "another program launches the client; winer links no loader");
+        host.set_failure(None);
+    } else if auto && let Some(client_dir) = env.client_dir.as_deref() {
+        match activate(service, host, &env, client_dir) {
             Ok(created) => {
                 outcome.linked = created;
                 host.set_failure(None);
@@ -182,7 +334,7 @@ pub(crate) fn refresh(service: &Service, bridge: &Bridge, host: &Host) -> Outcom
             }
         }
     }
-    let Some(loader) = loader(service) else {
+    let Some(loader) = loader(service, &env) else {
         return outcome;
     };
     let bundled = plugin::bundle_version(PLUGIN_BUNDLE);
@@ -226,8 +378,8 @@ pub(crate) fn start_loader(service: &Service) {
 
 /// Links a loader into the client unless one already is: the configured folder's, or the one
 /// winer ships, written to its data folder first. Returns whether it created the link.
-fn activate(service: &Service, host: &Host, client_dir: &Path) -> Result<bool, Failure> {
-    if let Some(active) = loader(service).filter(|loader| loader.active) {
+fn activate(service: &Service, host: &Host, env: &Env, client_dir: &Path) -> Result<bool, Failure> {
+    if let Some(active) = loader(service, env).filter(|loader| loader.active) {
         // Ours is kept current; a loader the user installed is theirs to update.
         if same_dir(&active.dir, &host.dir)
             && let Err(error) = plugin::place_loader(&host.dir, PENGU_CORE)
@@ -265,10 +417,167 @@ fn activate(service: &Service, host: &Host, client_dir: &Path) -> Result<bool, F
 
 #[cfg(test)]
 mod tests {
-    use sha2::{Digest as _, Sha256};
-    use winer_core::{Service, bridge::Bridge};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+    };
 
-    use super::{Failure, Host, PENGU_CORE, disable, status};
+    use sha2::{Digest as _, Sha256};
+    use winer_core::{Service, bridge::Bridge, plugin};
+
+    use super::{Env, Failure, Host, PENGU_CORE, disable, enable, program_name, refresh, status};
+
+    /// Every file under `dir` with its bytes, to tell that nothing there changed.
+    fn tree(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+        let mut files = Vec::new();
+        let mut pending = vec![dir.to_path_buf()];
+        while let Some(next) = pending.pop() {
+            for entry in fs::read_dir(&next).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    pending.push(path);
+                } else {
+                    files.push((path.clone(), fs::read(&path).unwrap()));
+                }
+            }
+        }
+        files.sort();
+        files
+    }
+
+    /// A folder that looks like a loader's: its DLL and a plugins folder.
+    fn loader_folder(dir: &Path) -> PathBuf {
+        fs::create_dir_all(dir.join("plugins")).unwrap();
+        fs::write(dir.join("core.dll"), b"core").unwrap();
+        dir.to_path_buf()
+    }
+
+    fn service_with_loader_dir(root: &Path, loader_dir: &Path) -> (Service, Bridge) {
+        let service = Service::new(
+            root.join("settings.json"),
+            tauri::async_runtime::handle().inner().clone(),
+        );
+        let mut settings = service.settings();
+        settings.plugin.loader_dir = Some(loader_dir.display().to_string());
+        service.set_settings(settings).unwrap();
+        let bridge =
+            tauri::async_runtime::block_on(Bridge::start(service.clone(), "0.0.0")).unwrap();
+        (service, bridge)
+    }
+
+    const PENGU: &str = "Pengu Loader.exe";
+
+    #[test]
+    fn the_program_a_debugger_value_starts_is_named_by_its_file() {
+        assert_eq!(
+            program_name(r#""C:\Program Files\Pengu Loader\Pengu Loader.exe" --boot"#).as_deref(),
+            Some(PENGU)
+        );
+        assert_eq!(
+            program_name(r"C:\Program Files\Pengu Loader\Pengu Loader.EXE --boot").as_deref(),
+            Some("Pengu Loader.EXE")
+        );
+        assert_eq!(program_name("loader --x").as_deref(), Some("loader"));
+        assert_eq!(program_name("   "), None);
+        assert_eq!(program_name(r#""""#), None);
+    }
+
+    /// Without another program launching the client, the configured folder is kept up as before.
+    #[test]
+    fn a_configured_loader_gets_the_plugin_when_nothing_else_launches_the_client() {
+        let root = tempfile::tempdir().unwrap();
+        let configured = loader_folder(&root.path().join("own"));
+        let (service, bridge) = service_with_loader_dir(root.path(), &configured);
+        let host = Host::with_env(root.path().join("pengu"), Env::default());
+        let outcome = refresh(&service, &bridge, &host);
+        assert_eq!(outcome.foreign, None);
+        assert!(plugin::installed_version(&configured).is_some());
+        let shown = status(&service, &bridge, &host);
+        assert_eq!(
+            shown.loader_dir.as_deref(),
+            Some(configured.display().to_string().as_str())
+        );
+        assert_eq!(shown.foreign_activation, None);
+    }
+
+    /// Pengu Loader 1.2 launches the client through IFEO; a configured folder that may be its own
+    /// is never written, whichever way the setup is reached.
+    #[test]
+    fn under_another_launcher_the_configured_folder_is_left_alone_by_every_entry() {
+        let root = tempfile::tempdir().unwrap();
+        let configured = loader_folder(&root.path().join("pengu-1.2"));
+        let before = tree(&configured);
+        let (service, bridge) = service_with_loader_dir(root.path(), &configured);
+        let env = Env {
+            client_dir: None,
+            foreign: Some(PENGU.into()),
+        };
+        let host = Host::with_env(root.path().join("pengu"), env);
+
+        let outcome = refresh(&service, &bridge, &host);
+        assert_eq!(outcome.foreign.as_deref(), Some(PENGU));
+        assert!(!outcome.linked);
+        assert_eq!(tree(&configured), before, "refresh wrote nothing there");
+
+        let (shown, outcome) = enable(&service, &bridge, &host).unwrap();
+        assert!(!outcome.linked);
+        assert_eq!(tree(&configured), before, "nor did turning the features on");
+        assert_eq!(
+            shown.loader_dir, None,
+            "the configured folder is not the loader"
+        );
+        assert_eq!(shown.foreign_activation.as_deref(), Some(PENGU));
+        assert!(
+            !host.dir.exists(),
+            "winer's own loader was not placed either"
+        );
+
+        let shown = disable(&service, &bridge, &host).unwrap();
+        assert_eq!(tree(&configured), before, "nor did turning them off");
+        assert_eq!(shown.foreign_activation.as_deref(), Some(PENGU));
+    }
+
+    /// A loader the client linked before Pengu Loader 1.2 came is still kept up, and it is the one
+    /// the status reports; no new link is made, and the configured folder stays as it was.
+    #[cfg(unix)]
+    #[test]
+    fn under_another_launcher_only_the_linked_loader_is_kept_up() {
+        let root = tempfile::tempdir().unwrap();
+        let configured = loader_folder(&root.path().join("pengu-1.2"));
+        let before = tree(&configured);
+        let old = loader_folder(&root.path().join("old"));
+        let client = root.path().join("LeagueClient");
+        fs::create_dir_all(&client).unwrap();
+        std::os::unix::fs::symlink(old.join("core.dll"), client.join("version.dll")).unwrap();
+        let (service, bridge) = service_with_loader_dir(root.path(), &configured);
+        let host = Host::with_env(
+            root.path().join("pengu"),
+            Env {
+                client_dir: Some(client.clone()),
+                foreign: Some(PENGU.into()),
+            },
+        );
+
+        let outcome = refresh(&service, &bridge, &host);
+        assert!(!outcome.linked);
+        assert!(
+            plugin::installed_version(&old).is_some(),
+            "the linked loader is kept up"
+        );
+        assert_eq!(tree(&configured), before);
+        assert_eq!(
+            fs::read_link(client.join("version.dll")).unwrap(),
+            old.join("core.dll"),
+            "the link is left as it was"
+        );
+        let shown = status(&service, &bridge, &host);
+        assert_eq!(
+            shown.loader_dir.as_deref(),
+            Some(old.display().to_string().as_str())
+        );
+        assert!(shown.active && !shown.managed);
+        assert_eq!(shown.foreign_activation.as_deref(), Some(PENGU));
+    }
 
     /// A refused link reaches the window as a request for administrator rights, beside the
     /// system's own words for it, until turning the features off clears it.

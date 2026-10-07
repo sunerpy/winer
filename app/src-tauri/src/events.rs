@@ -1,12 +1,14 @@
 //! Core events to the window, and the few things the shell does itself when they arrive.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tauri::{AppHandle, Emitter as _, Manager as _, Runtime};
 use tokio::sync::broadcast::error::RecvError;
 use tracing::warn;
 use winer_core::{
     Service,
     bridge::Bridge,
-    view::{Connection, Event, Patch},
+    view::{Connection, Event, NoticeKind, Patch},
 };
 
 use crate::{elevation, hotkey, plugin_host, tray, window};
@@ -19,6 +21,9 @@ pub(crate) const RESYNC: &str = "winer://resync";
 pub(crate) const UPDATE: &str = "winer://update";
 /// A new [`winer_core::view::HotkeyStatus`].
 pub(crate) const HOTKEY: &str = "winer://hotkey";
+
+/// Whether this run has told the window that another program launches the client.
+static FOREIGN_TOLD: AtomicBool = AtomicBool::new(false);
 
 pub(crate) fn forward<R: Runtime>(app: AppHandle<R>, service: Service, bridge: Bridge) {
     let mut events = service.subscribe();
@@ -70,6 +75,11 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
                 }
                 if outcome.linked {
                     plugin_host::start_loader(&service);
+                }
+                if let Some(program) = outcome.foreign
+                    && !FOREIGN_TOLD.swap(true, Ordering::Relaxed)
+                {
+                    service.announce(NoticeKind::ForeignLoader { program });
                 }
             });
         }

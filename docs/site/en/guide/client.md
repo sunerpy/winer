@@ -23,6 +23,12 @@ Pengu Loader's own welcome window and start-up notices do not appear. If Pengu L
 installed, winer keeps using yours and only installs the plugin. If the client folder already has a
 different `version.dll`, winer leaves it alone and the **In-client** page says so.
 
+Pengu Loader 1.2 (still a test build) takes over the client's start through the registry's IFEO
+instead. When winer finds another program launching the client that way, it links no loader of its
+own and writes nothing into that program's folder, so that two loaders never load at once; the
+**In-client** page names the program, and the in-client features are off meanwhile. A loader linked
+before keeps its plugin up to date.
+
 ## The first activation needs administrator rights
 
 Activating Pengu Loader creates a link in the client folder, and Windows lets only a program running

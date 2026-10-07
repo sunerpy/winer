@@ -711,6 +711,11 @@ pub enum NoticeKind {
     /// The client kept undoing the remembered status or the disguised rank; winer stopped trying
     /// until the rule changes or the client reconnects.
     PresenceRefused,
+    /// Another program launches the client's interface (IFEO), so winer linked no loader of its
+    /// own. Once a run.
+    ForeignLoader {
+        program: String,
+    },
     Failed {
         action: String,
         message: String,

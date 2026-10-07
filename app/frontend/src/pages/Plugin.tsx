@@ -79,31 +79,42 @@ function StatusPanel({
     );
   }
 
-  // What the loader row says, worst first: a stated problem, then off, then not there yet. A
-  // refusal for want of administrator rights is explained in a note above the rows rather than in
-  // the system's words, which call winer "the client"; any other failure keeps them, with context.
-  const needsAdmin = auto && !status.active && !status.occupied && status.needsElevation;
-  const [tone, state, note] = status.active
+  // What the loader row says, worst first: another program launching the client, a stated
+  // problem, then off, then not there yet. A refusal for want of administrator rights is explained
+  // in a note above the rows rather than in the system's words, which call winer "the client"; any
+  // other failure keeps them, with context.
+  const foreign = status.foreignActivation;
+  const needsAdmin =
+    !foreign && auto && !status.active && !status.occupied && status.needsElevation;
+  const [tone, state, note] = foreign
     ? ([
-        "ok",
-        status.managed
-          ? t("plugin.loaderManaged", { version: status.bundledLoader })
-          : t("plugin.loaderOwn"),
-        null,
+        "warn",
+        t("plugin.loaderForeign", { program: foreign }),
+        status.active && status.managed
+          ? t("plugin.loaderForeignBoth")
+          : t("plugin.loaderForeignHint"),
       ] as const)
-    : !auto
-      ? (["off", t("plugin.loaderOff"), null] as const)
-      : status.occupied
-        ? (["warn", t("plugin.loaderOccupied"), null] as const)
-        : status.needsElevation
-          ? (["warn", t("plugin.loaderNeedsAdmin"), null] as const)
-          : status.setupError
-            ? ([
-                "danger",
-                t("plugin.loaderFailed", { error: status.setupError }),
-                t("plugin.loaderFailedHint"),
-              ] as const)
-            : (["idle", t("plugin.loaderWaiting"), null] as const);
+    : status.active
+      ? ([
+          "ok",
+          status.managed
+            ? t("plugin.loaderManaged", { version: status.bundledLoader })
+            : t("plugin.loaderOwn"),
+          null,
+        ] as const)
+      : !auto
+        ? (["off", t("plugin.loaderOff"), null] as const)
+        : status.occupied
+          ? (["warn", t("plugin.loaderOccupied"), null] as const)
+          : status.needsElevation
+            ? (["warn", t("plugin.loaderNeedsAdmin"), null] as const)
+            : status.setupError
+              ? ([
+                  "danger",
+                  t("plugin.loaderFailed", { error: status.setupError }),
+                  t("plugin.loaderFailedHint"),
+                ] as const)
+              : (["idle", t("plugin.loaderWaiting"), null] as const);
   return (
     <Panel
       eyebrow={t("plugin.setup")}

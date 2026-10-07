@@ -700,6 +700,11 @@ impl Service {
         self.inner.runtime.spawn(task);
     }
 
+    /// A notice from the shell's side of things, for the window like the core's own.
+    pub fn announce(&self, kind: NoticeKind) {
+        self.notice(kind);
+    }
+
     fn notice(&self, kind: NoticeKind) {
         info!(?kind, "notice");
         let _ = self

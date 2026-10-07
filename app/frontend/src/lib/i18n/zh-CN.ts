@@ -451,6 +451,12 @@ export const zhCN = {
   "plugin.loaderOwn": "你安装的 Pengu Loader，已为当前客户端激活",
   "plugin.loaderWaiting": "连上客户端后自动安装",
   "plugin.loaderOccupied": "客户端目录里已有别的 version.dll，winer 没有改动它",
+  "plugin.loaderForeign": "{program} 通过 IFEO 接管了客户端启动",
+  "plugin.loaderForeignHint":
+    "可能是 Pengu Loader 1.2。winer 没有链接自带的 loader，也不会往它的目录里写东西，所以客户端内插件这次不可用。",
+  "plugin.loaderForeignBoth":
+    "可能是 Pengu Loader 1.2。winer 自带的 loader 也还链接在客户端里，两者会同时加载；关闭本页的自动设置后，winer 会移除自己的链接。",
+  "plugin.notice.foreign": "{program} 接管了客户端启动，winer 没有链接自带的 loader",
   "plugin.loaderFailed": "没有装好：{error}",
   "plugin.loaderFailedHint": "这是 Windows 给出的原因；winer 每次连上客户端都会再试一次。",
   "plugin.loaderNeedsAdmin": "需要管理员权限才能激活",

@@ -288,7 +288,7 @@ export type Notice = {
  */
 at: number, kind: NoticeKind, };
 
-export type NoticeKind = { "kind": "accepted" } | { "kind": "declared", championId: number, } | { "kind": "picked", championId: number, locked: boolean, } | { "kind": "banned", championId: number, } | { "kind": "playedAgain" } | { "kind": "swapped", championId: number, } | { "kind": "calledOut", lines: number, } | { "kind": "presenceRestored", availability: string, } | { "kind": "presenceRefused" } | { "kind": "failed", action: string, message: string, } | { "kind": "loadoutApplied", championId: number, 
+export type NoticeKind = { "kind": "accepted" } | { "kind": "declared", championId: number, } | { "kind": "picked", championId: number, locked: boolean, } | { "kind": "banned", championId: number, } | { "kind": "playedAgain" } | { "kind": "swapped", championId: number, } | { "kind": "calledOut", lines: number, } | { "kind": "presenceRestored", availability: string, } | { "kind": "presenceRefused" } | { "kind": "foreignLoader", program: string, } | { "kind": "failed", action: string, message: string, } | { "kind": "loadoutApplied", championId: number, 
 /**
  * The client's own recommendation: nothing was remembered for the champion.
  */
@@ -737,7 +737,13 @@ current: boolean,
 /**
  * Plugin contexts connected to the bridge right now.
  */
-connected: number, };
+connected: number, 
+/**
+ * The file name of a program Windows starts in place of the client's interface (IFEO's
+ * `Debugger`, the way Pengu Loader 1.2 loads itself). While one does, winer links no loader
+ * of its own and keeps up only one the client links already.
+ */
+foreignActivation: string | null, };
 
 export type BridgeMessage = { "type": "hello", version: string, snapshot: Snapshot, settings: Settings, } | { "type": "event", event: Event, } | { "type": "historyResult", requestId: number, page: PanelHistory | null, error: IpcError | null, };
 

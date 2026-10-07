@@ -49,6 +49,10 @@ pub struct PluginStatus {
     pub current: bool,
     /// Plugin contexts connected to the bridge right now.
     pub connected: u32,
+    /// The file name of a program Windows starts in place of the client's interface (IFEO's
+    /// `Debugger`, the way Pengu Loader 1.2 loads itself). While one does, winer links no loader
+    /// of its own and keeps up only one the client links already.
+    pub foreign_activation: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
