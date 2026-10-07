@@ -7,8 +7,8 @@ host facts in `docs/platform-notes.md`.
 ## Baseline commands
 
 ```bash
-cargo test --workspace        # lcu 12, winer (shell) 30, winer-core 254 — all pass
-pnpm test                     # shared 7, plugin 71, desktop 116 — all pass
+cargo test --workspace        # lcu 12, winer (shell) 37, winer-core 278 — all pass
+pnpm test                     # shared 7, plugin 71, desktop 128 — all pass
 cargo clippy --workspace --all-targets -- -D warnings
 pnpm lint && pnpm typecheck && pnpm format:check && cargo fmt --all --check
 scripts/evidence.sh           # all of the above plus the Windows check, logged with the tree's hash
