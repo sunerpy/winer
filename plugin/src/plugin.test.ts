@@ -1,7 +1,7 @@
 import type { ChampSelectView, PlayerSummary, Seat, Settings, Snapshot } from "@winer/shared";
 import { describe, expect, it } from "vitest";
 
-import { benchChampion, interceptBenchClicks, liftBenchCooldown } from "./bench";
+import { benchChampion, hijackBenchItems, interceptBenchClicks, liftBenchCooldown } from "./bench";
 import { backoff, parseBootstrap } from "./bridge";
 import { Controller } from "./index";
 import { hidePenguToasts, quietPengu } from "./pengu";
@@ -280,6 +280,33 @@ describe("bench", () => {
       </div>`;
     const id = (name: string) => benchChampion(document.getElementById(name) as Element);
     expect([id("a"), id("b"), id("c")]).toEqual([22, 157, null]);
+  });
+
+  it("hijacks each new usable bench item and leaves locked items to the client", () => {
+    document.body.innerHTML = `<div class="bench-container">
+      <div class="champion-bench-item" id="usable"><img src="/x/champion-icons/22.png"></div>
+      <div class="champion-bench-item locked-out" id="locked"><img src="/x/champion-icons/33.png"></div>
+    </div>`;
+    const swapped: number[] = [];
+    let client = 0;
+    document.getElementById("usable")?.addEventListener("click", () => (client += 1));
+    document.getElementById("locked")?.addEventListener("click", () => (client += 1));
+
+    expect(hijackBenchItems(document, (champion) => swapped.push(champion) > 0)).toBe(1);
+    (document.querySelector("#usable img") as HTMLElement).click();
+    (document.querySelector("#locked img") as HTMLElement).click();
+    expect([swapped, client]).toEqual([[22], 1]);
+    expect(hijackBenchItems(document, () => true)).toBe(0);
+
+    document
+      .querySelector(".bench-container")
+      ?.insertAdjacentHTML(
+        "beforeend",
+        `<div class="champion-bench-item" id="new"><img src="/x/champion-icons/44.png"></div>`,
+      );
+    expect(hijackBenchItems(document, (champion) => swapped.push(champion) > 0)).toBe(1);
+    (document.querySelector("#new img") as HTMLElement).click();
+    expect(swapped).toEqual([22, 44]);
   });
 
   it("takes a bench click away from the client only when winer carries it out", () => {

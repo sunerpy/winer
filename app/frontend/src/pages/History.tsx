@@ -27,7 +27,7 @@ import {
   Toggle,
   toast,
 } from "../ui";
-import { ConnectionGate, PageBody } from "./common";
+import { PageBody } from "./common";
 import { ChampionTable } from "./history/ChampionTable";
 import { type ExportWords, championRows, exportStem, gamesCsv, gamesJson } from "./history/records";
 
@@ -54,6 +54,80 @@ function savePageSize(size: PageSize): void {
   }
 }
 
+function HistoryPager({
+  page,
+  pages,
+  more,
+  onPage,
+}: {
+  page: number;
+  pages: number;
+  more: boolean;
+  onPage: (page: number) => void;
+}) {
+  const t = useT();
+  const last = Math.max(1, pages);
+  const [draft, setDraft] = useState(String(page));
+  useEffect(() => setDraft(String(page)), [page]);
+  const jump = () => {
+    const wanted = Number.parseInt(draft, 10);
+    if (Number.isFinite(wanted)) onPage(Math.min(last, Math.max(1, wanted)));
+  };
+  return (
+    <div
+      role="navigation"
+      aria-label={t("history.pages")}
+      className="flex flex-wrap items-center gap-1.5"
+    >
+      <Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => onPage(1)}>
+        {t("history.first")}
+      </Button>
+      <Pager
+        page={page}
+        known={pages}
+        more={more}
+        onPage={onPage}
+        labels={{
+          nav: t("history.pageNumbers"),
+          previous: t("history.previous"),
+          next: t("history.next"),
+          page: (n) => t("history.page", { n }),
+        }}
+      />
+      <Button
+        size="sm"
+        variant="ghost"
+        disabled={more || page >= last}
+        onClick={() => onPage(last)}
+      >
+        {t("history.last")}
+      </Button>
+      <form
+        className="ml-1 flex items-center gap-1"
+        onSubmit={(event) => {
+          event.preventDefault();
+          jump();
+        }}
+      >
+        <Input
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={last}
+          value={draft}
+          disabled={more}
+          aria-label={t("history.jump")}
+          className="w-16"
+          onChange={(event) => setDraft(event.target.value)}
+        />
+        <Button type="submit" size="sm" disabled={more}>
+          {t("history.go")}
+        </Button>
+      </form>
+    </div>
+  );
+}
+
 const FILTERS = ["all", "ranked", "normal", "aram", "other"] as const;
 type Filter = (typeof FILTERS)[number];
 
@@ -72,12 +146,14 @@ function matches(filter: Filter, game: MatchSummary): boolean {
 function PlayerHeader({
   puuid,
   viewer,
+  connected,
   isMe,
   onMine,
 }: {
   puuid: string;
   /** The signed-in account, whose cache this is. */
   viewer: string;
+  connected: boolean;
   isMe: boolean;
   onMine: () => void;
 }) {
@@ -89,7 +165,7 @@ function PlayerHeader({
     store.history.summary(viewer, puuid),
     () => store.backend.call("get_player_summary", { puuid }),
     (value) => store.history.putSummary(viewer, value),
-    { refresh: true, deps: [puuid] },
+    { refresh: connected, deps: [puuid], enabled: connected },
   );
   // The tier and its words follow the rating settings; asked once the record is in, so the core
   // reads the player once.
@@ -98,7 +174,7 @@ function PlayerHeader({
   const standing = useAsync(
     () => store.backend.call("get_player_standing", { puuid }),
     [puuid, tiers, customTiers.join("\n"), language, titles],
-    summary.data !== undefined,
+    connected && summary.data !== undefined,
   );
   const player = summary.data;
   const rating = standing.data?.rating ?? null;
@@ -177,12 +253,20 @@ function PlayerHeader({
           </Button>
         )}
       </Card>
-      {!isMe && player && <NoteEditor puuid={puuid} name={player.name} />}
+      {connected && !isMe && player && <NoteEditor puuid={puuid} name={player.name} />}
     </>
   );
 }
 
-function SearchBar({ onFound }: { onFound: (puuid: string) => void }) {
+function SearchBar({
+  viewer,
+  connected,
+  onFound,
+}: {
+  viewer: string;
+  connected: boolean;
+  onFound: (puuid: string) => void;
+}) {
   const t = useT();
   const store = useStore();
   const [query, setQuery] = useState("");
@@ -194,12 +278,28 @@ function SearchBar({ onFound }: { onFound: (puuid: string) => void }) {
     setBusy(true);
     setInvalid(false);
     try {
+      if (!connected) {
+        const cached = store.history.find(viewer, query);
+        if (!cached) throw new Error(t("history.offlineMissing"));
+        onFound(cached);
+        return;
+      }
       const player = await store.backend.call("find_player", { riotId: query });
+      store.history.remember(viewer, player);
       onFound(player.puuid);
     } catch (error) {
+      const cached = store.history.find(viewer, query);
+      if (cached) {
+        onFound(cached);
+        return;
+      }
       setInvalid(true);
       toast(
-        errorCode(error) === "notFound" ? t("history.notFound") : errorMessage(error),
+        !connected
+          ? t("history.offlineMissing")
+          : errorCode(error) === "notFound"
+            ? t("history.notFound")
+            : errorMessage(error),
         "danger",
       );
     } finally {
@@ -258,7 +358,15 @@ const NOTHING_YET: Loaded = {
   stale: false,
 };
 
-function GameList({ puuid, viewer }: { puuid: string; viewer: string }) {
+function GameList({
+  puuid,
+  viewer,
+  connected,
+}: {
+  puuid: string;
+  viewer: string;
+  connected: boolean;
+}) {
   const t = useT();
   const store = useStore();
   const { navigate } = useShell();
@@ -273,9 +381,7 @@ function GameList({ puuid, viewer }: { puuid: string; viewer: string }) {
   );
   const [size, setSize] = useState<PageSize>(readPageSize);
   const [page, setPage] = useState(kept?.page ?? 1);
-  // The champions' sums read the games loaded so far; asking for more reads on to this many.
   const [view, setView] = useState<"games" | "champions">("games");
-  const [wanted, setWanted] = useState(0);
   const catalog = useCatalog();
   const [selected, setSelected] = useState<number | null>(null);
   const top = useRef<HTMLDivElement>(null);
@@ -304,10 +410,8 @@ function GameList({ puuid, viewer }: { puuid: string; viewer: string }) {
   // Past the last page there is nothing to show; the last one stands in.
   const current = loaded.more ? page : Math.min(page, Math.max(1, known));
   const visible = shown.slice((current - 1) * perPage, current * perPage);
-  const filling =
-    (view === "games" ? shown.length < current * perPage : loaded.games.length < wanted) &&
-    loaded.more;
-  const champions = useMemo(() => championRows(shown), [shown]);
+  const filling = connected && loaded.more;
+  const champions = useMemo(() => (loaded.more ? [] : championRows(shown)), [loaded.more, shown]);
 
   // The games as shown (filter, custom games) into a file in Downloads, the player's own lines.
   const exportGames = async (format: ExportFormat) => {
@@ -351,10 +455,10 @@ function GameList({ puuid, viewer }: { puuid: string; viewer: string }) {
 
   // One request at a time. A list drawn from the cache asks for the newest games first: the same
   // ones keep it as it was, new ones start it over from them (the older games have moved down).
-  // Then it reads on while the page asked for is not full and the server may have more: a filter
-  // that few games match fills its page from as many requests as it takes.
+  // Then it reads every available page in the background. This establishes the total, makes the
+  // last page addressable and gives the champion view one complete, stable data source.
   useEffect(() => {
-    if (loaded.error || inFlight.current || !(loaded.stale || filling)) return;
+    if (!connected || loaded.error || inFlight.current || !(loaded.stale || loaded.more)) return;
     inFlight.current = true;
     const revalidating = loaded.stale;
     const begin = revalidating ? 0 : loaded.next;
@@ -402,7 +506,7 @@ function GameList({ puuid, viewer }: { puuid: string; viewer: string }) {
       .finally(() => {
         inFlight.current = false;
       });
-  }, [filling, loaded.error, loaded.next, loaded.stale, loaded.games, puuid, store]);
+  }, [connected, loaded.error, loaded.next, loaded.stale, loaded.games, loaded.more, puuid, store]);
 
   const turnTo = (next: number) => {
     setPage(next);
@@ -430,7 +534,9 @@ function GameList({ puuid, viewer }: { puuid: string; viewer: string }) {
   const range =
     visible.length > 0
       ? t("history.range", { from, to: from + visible.length - 1 }) +
-        (loaded.more ? "" : ` · ${t("history.total", { n: shown.length })}`)
+        (loaded.more
+          ? ` · ${t("history.loadingAll", { n: loaded.games.length })}`
+          : ` · ${t("history.total", { n: shown.length })}`)
       : "";
 
   return (
@@ -463,7 +569,9 @@ function GameList({ puuid, viewer }: { puuid: string; viewer: string }) {
           <span className="mono text-[11px] text-fg-subtle">
             {view === "games"
               ? range
-              : t("history.counted", { n: shown.filter((game) => !game.line.remake).length })}
+              : loaded.more
+                ? t("history.loadingAll", { n: loaded.games.length })
+                : t("history.counted", { n: shown.filter((game) => !game.line.remake).length })}
           </span>
           <Segmented<"games" | "champions">
             size="sm"
@@ -479,7 +587,7 @@ function GameList({ puuid, viewer }: { puuid: string; viewer: string }) {
             size="sm"
             variant="ghost"
             icon={Download}
-            disabled={shown.length === 0}
+            disabled={shown.length === 0 || loaded.more}
             onClick={() => void exportGames("csv")}
           >
             {t("history.exportCsv")}
@@ -488,7 +596,7 @@ function GameList({ puuid, viewer }: { puuid: string; viewer: string }) {
             size="sm"
             variant="ghost"
             icon={Download}
-            disabled={shown.length === 0}
+            disabled={shown.length === 0 || loaded.more}
             onClick={() => void exportGames("json")}
           >
             {t("history.exportJson")}
@@ -498,7 +606,25 @@ function GameList({ puuid, viewer }: { puuid: string; viewer: string }) {
 
       {view === "champions" ? (
         <>
-          {champions.length > 0 ? (
+          {loaded.more ? (
+            <Card>
+              {loaded.error ? (
+                <ErrorNote
+                  title={t("common.loadFailed")}
+                  detail={errorMessage(loaded.error)}
+                  retryLabel={t("common.retry")}
+                  onRetry={retry}
+                />
+              ) : connected ? (
+                <div className="flex items-center justify-center gap-2 py-3 text-[12px] text-fg-muted">
+                  <Spinner size={16} label={t("common.loading")} />
+                  {t("history.loadingAll", { n: loaded.games.length })}
+                </div>
+              ) : (
+                <EmptyState compact title={t("history.offlinePartial")} />
+              )}
+            </Card>
+          ) : champions.length > 0 ? (
             <ChampionTable rows={champions} />
           ) : (
             <Card>
@@ -508,16 +634,6 @@ function GameList({ puuid, viewer }: { puuid: string; viewer: string }) {
                 <EmptyState compact title={t("history.emptyFilter")} />
               )}
             </Card>
-          )}
-          {loaded.more && (
-            <Button
-              size="sm"
-              className="self-center"
-              loading={filling}
-              onClick={() => setWanted(loaded.games.length + CHUNK)}
-            >
-              {t("history.loadMore", { n: CHUNK })}
-            </Button>
           )}
         </>
       ) : null}
@@ -571,6 +687,7 @@ function GameList({ puuid, viewer }: { puuid: string; viewer: string }) {
                       gameId={game.gameId}
                       puuid={puuid}
                       viewer={viewer}
+                      connected={connected}
                       onPlayer={(other) => navigate({ page: "history", puuid: other })}
                     />
                   )}
@@ -596,18 +713,7 @@ function GameList({ puuid, viewer }: { puuid: string; viewer: string }) {
 
           {loaded.games.length > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-              <Pager
-                page={current}
-                known={known}
-                more={loaded.more}
-                onPage={turnTo}
-                labels={{
-                  nav: t("history.pages"),
-                  previous: t("history.previous"),
-                  next: t("history.next"),
-                  page: (n) => t("history.page", { n }),
-                }}
-              />
+              <HistoryPager page={current} pages={known} more={loaded.more} onPage={turnTo} />
               <span className="flex items-center gap-2">
                 <span className="text-[11.5px] text-fg-subtle">{t("history.pageSize")}</span>
                 <Segmented
@@ -638,11 +744,13 @@ function Detail({
   gameId,
   puuid,
   viewer,
+  connected,
   onPlayer,
 }: {
   gameId: number;
   puuid: string;
   viewer: string;
+  connected: boolean;
   onPlayer: (puuid: string) => void;
 }) {
   const t = useT();
@@ -653,7 +761,7 @@ function Detail({
     store.history.detail(viewer, gameId),
     () => store.backend.call("get_match_detail", { gameId }),
     (value) => store.history.putDetail(viewer, value),
-    { refresh: false, deps: [gameId] },
+    { refresh: false, deps: [gameId], enabled: connected },
   );
   return (
     <Card className="ml-1" aria-label={t("history.detail")}>
@@ -664,6 +772,8 @@ function Detail({
           titles={titles}
           onPlayer={(other) => other !== puuid && onPlayer(other)}
         />
+      ) : !connected ? (
+        <EmptyState compact title={t("history.offlinePartial")} />
       ) : detail.loading ? (
         <div className="flex flex-col gap-2">
           {[0, 1, 2, 3].map((key) => (
@@ -684,28 +794,46 @@ function Detail({
 
 export function HistoryPage({ puuid: requested }: { puuid?: string }) {
   const t = useT();
+  const store = useStore();
   const { navigate } = useShell();
   const me = useLive((snapshot) => snapshot.me?.puuid);
-  const puuid = requested ?? me;
+  const connected = useLive((snapshot) => snapshot.connection.status === "connected");
   // History: what is drawn belongs to the signed-in account; another one starts the page over.
-  const viewer = me ?? "";
+  const viewer = me ?? store.history.viewer ?? "";
+  const puuid = requested ?? me ?? (viewer || undefined);
+  const cached = Boolean(
+    puuid && viewer && (store.history.summary(viewer, puuid) || store.history.list(viewer, puuid)),
+  );
   return (
     <PageBody className="flex flex-col gap-3">
-      <ConnectionGate offline={t("history.offline")}>
-        <SearchBar onFound={(found) => navigate({ page: "history", puuid: found })} />
-        {puuid && (
-          <>
-            <PlayerHeader
-              key={`header:${viewer}:${puuid}`}
-              puuid={puuid}
-              viewer={viewer}
-              isMe={puuid === me}
-              onMine={() => navigate({ page: "history" })}
-            />
-            <GameList key={`list:${viewer}:${puuid}`} puuid={puuid} viewer={viewer} />
-          </>
-        )}
-      </ConnectionGate>
+      <SearchBar
+        viewer={viewer}
+        connected={connected}
+        onFound={(found) => navigate({ page: "history", puuid: found })}
+      />
+      {!connected && <p className="text-[12px] text-fg-muted">{t("history.offline")}</p>}
+      {puuid && (connected || cached) ? (
+        <>
+          <PlayerHeader
+            key={`header:${viewer}:${puuid}`}
+            puuid={puuid}
+            viewer={viewer}
+            connected={connected}
+            isMe={puuid === me || (!connected && puuid === viewer)}
+            onMine={() => navigate({ page: "history" })}
+          />
+          <GameList
+            key={`list:${viewer}:${puuid}`}
+            puuid={puuid}
+            viewer={viewer}
+            connected={connected}
+          />
+        </>
+      ) : !connected ? (
+        <Card>
+          <EmptyState compact title={t("history.offlineEmpty")} />
+        </Card>
+      ) : null}
     </PageBody>
   );
 }

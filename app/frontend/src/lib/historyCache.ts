@@ -57,6 +57,7 @@ export class HistoryCache {
   readonly #lists = new Lru<string, HistoryList>(12);
   readonly #details = new Lru<number, MatchDetail>(200);
   readonly #summaries = new Lru<string, PlayerSummary>(40);
+  readonly #aliases = new Lru<string, string>(80);
 
   /** The account signed in now; another than before empties the cache. While none is (the client
    *  closed), what there is stays for the same account to come back to. */
@@ -66,6 +67,7 @@ export class HistoryCache {
     this.#lists.clear();
     this.#details.clear();
     this.#summaries.clear();
+    this.#aliases.clear();
   }
 
   get viewer(): string | null {
@@ -77,6 +79,7 @@ export class HistoryCache {
     this.#lists.clear();
     this.#details.clear();
     this.#summaries.clear();
+    this.#aliases.clear();
   }
 
   list(viewer: string, puuid: string): HistoryList | undefined {
@@ -101,8 +104,33 @@ export class HistoryCache {
   }
 
   putSummary(viewer: string, summary: PlayerSummary): void {
-    if (viewer === this.#viewer) this.#summaries.set(summary.puuid, summary);
+    if (viewer !== this.#viewer) return;
+    this.#summaries.set(summary.puuid, summary);
+    this.remember(viewer, summary);
   }
+
+  /** Remembers how a Riot ID resolved during this run, without persisting account data to disk. */
+  remember(
+    viewer: string,
+    player: { puuid: string; name: { gameName: string; tagLine: string } | null },
+  ): void {
+    if (viewer !== this.#viewer || !player.name) return;
+    this.#aliases.set(alias(player.name.gameName, player.name.tagLine), player.puuid);
+  }
+
+  /** A player already resolved during this run, usable while the League client is signed out. */
+  find(viewer: string, riotId: string): string | undefined {
+    return viewer === this.#viewer ? this.#aliases.get(aliasOf(riotId)) : undefined;
+  }
+}
+
+function alias(gameName: string, tagLine: string): string {
+  return `${gameName.trim().toLowerCase()}#${tagLine.trim().toLowerCase()}`;
+}
+
+function aliasOf(riotId: string): string {
+  const [gameName, tagLine = ""] = riotId.trim().split(/\s*#\s*/, 2);
+  return alias(gameName ?? "", tagLine);
 }
 
 /** `load`'s answer, drawn from `cached` at once where there is one. With `refresh` it is still

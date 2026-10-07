@@ -57,7 +57,8 @@ default, rich style adds the tier's emoji, the title and the quip, for example:
 ```
 
 With **Callout style** set to compact in **Automation › Callout**, each player gets one short line,
-the same fields in the same order, to compare at a glance:
+the same fields in the same order, to compare at a glance. Team delivery sends each line as a short
+message with a small gap so the remote chat keeps it; **Only me** remains one local multi-line message:
 
 ```text
 [Blue side] winer rating

@@ -3,7 +3,7 @@
 // connects to the desktop app, but only one at a time draws, chosen by a heartbeat on <html>.
 import type { ChampSelectView, Language, LobbyView, Settings, Snapshot } from "@winer/shared";
 
-import { BENCH_STYLE, interceptBenchClicks, liftBenchCooldown } from "./bench";
+import { BENCH_STYLE, hijackBenchItems, interceptBenchClicks, liftBenchCooldown } from "./bench";
 import { Bridge, type HistoryResult } from "./bridge";
 import { h } from "./dom";
 import { decorateFriends } from "./friends";
@@ -279,9 +279,13 @@ export class Controller {
       return;
     }
     const lifted = liftBenchCooldown(this.doc);
-    if (lifted > 0 && this.#lifted === 0 && this.state.connected)
-      this.bridge.log("info", `bench: lifted the cooldown on ${lifted} champions`);
-    this.#lifted += lifted;
+    const hijacked = hijackBenchItems(this.doc, (championId) => this.swap(championId));
+    if ((lifted > 0 || hijacked > 0) && this.#lifted === 0 && this.state.connected)
+      this.bridge.log(
+        "info",
+        `bench: prepared ${Math.max(lifted, hijacked)} champions (${hijacked} click handlers)`,
+      );
+    this.#lifted += lifted + hijacked;
   }
 
   #showPanel(view: ChampSelectView, language: Language): void {
