@@ -116,6 +116,10 @@ export const en: Record<MessageKey, string> = {
   "auto.calloutAuto": "Send in champ select automatically",
   "auto.calloutAutoHint":
     "Sent once, when every teammate's stats are in; the live page can send it any time.",
+  "auto.calloutDelay": "Send after a delay",
+  "auto.calloutDelayHint":
+    "Wait a moment after champ select opens; stats that take longer go out as soon as they are in.",
+  "auto.calloutDelayTime": "Wait after champ select opens",
   "auto.calloutAudience": "Send to",
   "auto.audience.team": "Team chat",
   "auto.audience.me": "Only me",
@@ -247,6 +251,9 @@ export const en: Record<MessageKey, string> = {
   "history.pageSize": "Per page",
   "history.clientOnly":
     "The match-history server is out of reach; these are the client's newest 20 games only.",
+  "history.serverBusy": "Tencent's match-history server is busy and not sending these games",
+  "history.serverBusyHint":
+    "The client's own history cannot read them either right now. Retry in a while.",
   "history.all": "All",
   "history.ranked": "Ranked",
   "history.normal": "Normal",

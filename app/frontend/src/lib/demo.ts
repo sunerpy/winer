@@ -942,6 +942,8 @@ const DEFAULT_SETTINGS: Settings = {
     playAgain: false,
     callout: {
       auto: false,
+      delay: true,
+      delayMs: 1500,
       audience: "team",
       includeSelf: true,
       header: "",
@@ -1132,10 +1134,12 @@ export function demoBackend(): Backend {
         puuid.length,
         historyLength(puuid),
       );
+      const games = all.slice(begin, begin + count);
       return {
         puuid,
         begin,
-        games: all.slice(begin, begin + count),
+        next: begin + games.length,
+        games,
         hasMore: begin + count < all.length,
         source: "server",
       };

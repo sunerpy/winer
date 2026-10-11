@@ -333,6 +333,26 @@ function CalloutPanel({
         />
       </Row>
       {scope}
+      <Row label={t("auto.calloutDelay")} help={t("auto.calloutDelayHint")}>
+        <Toggle
+          checked={rule.delay}
+          onChange={(delay) => onChange((value) => ({ ...value, delay }))}
+          label={t("auto.calloutDelay")}
+        />
+      </Row>
+      {rule.delay && (
+        <Row label={t("auto.calloutDelayTime")}>
+          <Slider
+            label={t("auto.calloutDelayTime")}
+            min={500}
+            max={10000}
+            step={500}
+            value={rule.delayMs}
+            format={(ms) => t("common.seconds", { n: (ms / 1000).toFixed(1) })}
+            onChange={(delayMs) => onChange((value) => ({ ...value, delayMs }))}
+          />
+        </Row>
+      )}
       <Row label={t("auto.calloutAudience")}>
         <Segmented<Audience>
           size="sm"

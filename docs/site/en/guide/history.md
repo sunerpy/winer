@@ -61,6 +61,11 @@ match-history server instead, with the client's own sign-in, so it pages through
 when that server cannot be reached it falls back to the client's 20 games and says so under the
 list.
 
+When the server is busy, a page of many games is the first to time out, so winer asks for fewer
+games at a time and the list fills more slowly. When it cannot send even one, the page says that
+Tencent's match-history server is busy: the client's own history usually cannot open then either,
+so retry in a while.
+
 Histories seen a moment ago stay in memory for this app run: going back to a player shows their
 profile and games at once, on the page you left, while winer checks for new games in the background,
 and a scoreboard opened before opens without being read again. They remain readable after the

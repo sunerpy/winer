@@ -52,6 +52,8 @@ const SETTINGS = {
     playAgain: false,
     callout: {
       auto: false,
+      delay: true,
+      delayMs: 1500,
       audience: "team",
       includeSelf: true,
       header: "",

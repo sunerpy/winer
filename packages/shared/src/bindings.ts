@@ -208,9 +208,14 @@ export type ModeFamily = "rift" | "aram" | "arena" | "other";
 
 export type ChampionForm = { championId: number, games: number, wins: number, };
 
-export type MatchPage = { puuid: string, begin: number, games: Array<MatchSummary>, 
+export type MatchPage = { puuid: string, begin: number, 
 /**
- * A full page came back, so there may be more.
+ * Where the next page starts: after the places this one holds, which are fewer than were
+ * asked for while the shard's server is too busy for that many.
+ */
+next: number, games: Array<MatchSummary>, 
+/**
+ * The page came back as full as it was asked of its source, so there may be more.
  */
 hasMore: boolean, source: HistorySource, };
 
@@ -390,7 +395,7 @@ export type CheckFailure = { "kind": "timeout" } | { "kind": "connect" } | { "ki
 
 export type IpcError = { code: ErrorCode, message: string, };
 
-export type ErrorCode = "notConnected" | "notFound" | "invalid" | "busy" | "client" | "internal";
+export type ErrorCode = "notConnected" | "notFound" | "invalid" | "busy" | "client" | "unavailable" | "internal";
 
 export type FriendsView = { 
 /**
@@ -557,7 +562,12 @@ export type CalloutRule = {
 /**
  * Send once per champ select, as soon as every teammate's stats are in.
  */
-auto: boolean, audience: Audience, includeSelf: boolean, 
+auto: boolean, 
+/**
+ * Hold the automatic callout until [`Self::delay_ms`] after champ select opened; lines ready
+ * only later go as soon as they are.
+ */
+delay: boolean, delayMs: number, audience: Audience, includeSelf: boolean, 
 /**
  * Sent before the players' lines, as written; empty sends none.
  */

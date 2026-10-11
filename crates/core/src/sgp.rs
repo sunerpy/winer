@@ -62,6 +62,17 @@ pub struct Page {
     pub entries: Vec<Option<Game>>,
 }
 
+/// Why a page did not come.
+#[derive(Debug, PartialEq)]
+pub enum Failure {
+    /// The server answered that it could not put the page together now (502, 503 or 504). Under
+    /// load it gives up on a page as soon as one of its games is slow to read, so a smaller page
+    /// may still come through (GZ100, 2026-10-11: ten games or more failed every time, single
+    /// games mostly came).
+    Busy(String),
+    Other(String),
+}
+
 /// `count` games of `puuid`'s from the `begin`-th newest, with the client's own access token.
 pub async fn history(
     base: &str,
@@ -70,14 +81,29 @@ pub async fn history(
     puuid: &str,
     begin: u32,
     count: u32,
-) -> Result<Page, String> {
-    let response = request(base, token, user_agent, puuid, begin, count)?
+) -> Result<Page, Failure> {
+    let response = request(base, token, user_agent, puuid, begin, count)
+        .map_err(Failure::Other)?
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|error| error.without_url().to_string())?;
-    let body = response.bytes().await.map_err(|error| error.to_string())?;
-    let history: History = serde_json::from_slice(&body).map_err(|error| error.to_string())?;
+        .map_err(|error| {
+            let busy = error
+                .status()
+                .is_some_and(|status| matches!(status.as_u16(), 502..=504));
+            let message = error.without_url().to_string();
+            if busy {
+                Failure::Busy(message)
+            } else {
+                Failure::Other(message)
+            }
+        })?;
+    let body = response
+        .bytes()
+        .await
+        .map_err(|error| Failure::Other(error.to_string()))?;
+    let history: History =
+        serde_json::from_slice(&body).map_err(|error| Failure::Other(error.to_string()))?;
     Ok(history.into_page())
 }
 
@@ -435,6 +461,44 @@ mod tests {
             "LeagueOfLegendsClient/16.19.8217343 (rcp-be-lol-match-history)"
         );
         assert!(user_agent("").contains("/14.13.596.7996 "));
+    }
+
+    /// What the server answers to one request, from a socket on this machine.
+    async fn answered(status: &str, body: &'static str) -> Result<Page, Failure> {
+        use std::io::{Read as _, Write as _};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let head = format!(
+            "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+            body.len()
+        );
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 2048];
+            let _ = stream.read(&mut request).unwrap();
+            stream.write_all(head.as_bytes()).unwrap();
+            stream.write_all(body.as_bytes()).unwrap();
+        });
+        let base = format!("http://127.0.0.1:{port}");
+        let answer = history(&base, "token", "agent", "PUUID", 0, 50).await;
+        server.join().unwrap();
+        answer
+    }
+
+    /// GZ100, 2026-10-11: under load the server gives up on a page as soon as one of its games is
+    /// slow to read, and says so with a 503.
+    #[tokio::test]
+    async fn a_server_too_busy_for_the_page_says_so_apart_from_other_failures() {
+        let busy = answered(
+            "503 Service Unavailable",
+            r#"{"status":{"message":"Service Unavailable - Connection retries limit exceeded. Response timed out.","status_code":503}}"#,
+        )
+        .await;
+        assert!(matches!(busy, Err(Failure::Busy(_))), "{busy:?}");
+        let refused = answered("401 Unauthorized", "{}").await;
+        assert!(matches!(refused, Err(Failure::Other(_))), "{refused:?}");
+        let empty = answered("200 OK", r#"{"games":[]}"#).await;
+        assert_eq!(empty, Ok(Page::default()));
     }
 
     #[test]

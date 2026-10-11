@@ -208,6 +208,15 @@ Measured on NJ100, 16.19, 2026-10-05.
   `/lol-match-history/v1/games/{id}` does for the analysis (the test
   `a_page_from_the_server_describes_its_game_as_the_client_does`, on both captures of one game).
   So a scoreboard opened from a server page is drawn from that page's game, with no request.
+- Under load (GZ100, 2026-10-11, 12:50–14:15Z) the server answered `503` with
+  `X-Riot-Error-Type: UPSTREAM_RESPONSE_TIMEOUT` and `Service Unavailable - Connection retries
+limit exceeded. Response timed out.` after 1–5 s to every page of ten games or more, for the
+  signed-in player and for most others sampled (challengers included). Pages of one or two games
+  often came: some places every time, others one try in four. A queue tag with no games in it
+  answered `200` with none at once. Meanwhile the client's own list answered `503 RPC_ERROR`
+  (`Error getting match list for summoner, begin 0, end: 20`) on both path forms, so its own
+  history page had nothing either. winer then asks for fewer games a page
+  (`server_history_page`).
 - The server compresses when asked (GZ100, 2026-10-07): a page of 20 games was 22,485 bytes as
   JSON and 4,067 on the wire with `Accept-Encoding: gzip` (`content-encoding: gzip`), the same
   bytes unpacked. winer's internet client asks for it; the LCU's does not.

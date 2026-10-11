@@ -249,7 +249,19 @@ describe("the panel", () => {
     );
 
     body()?.querySelector<HTMLElement>(".winer-history-retry")?.click();
-    panel.answer(answer(3, page("mate", [])));
+    panel.answer(
+      answer(3, {
+        code: "unavailable",
+        message: "the match-history server is busy: HTTP status server error (503)",
+      }),
+    );
+    expect(body()?.querySelector(".winer-history-message")?.textContent).toBe(
+      "腾讯战绩服务器繁忙，暂时读不到，稍后再试",
+    );
+    expect(body()?.querySelector(".winer-history-detail"), "no request line to read").toBeNull();
+
+    body()?.querySelector<HTMLElement>(".winer-history-retry")?.click();
+    panel.answer(answer(4, page("mate", [])));
     expect(body()?.textContent).toBe("近期没有对局");
   });
 

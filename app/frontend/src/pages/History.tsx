@@ -29,6 +29,7 @@ import {
 } from "../ui";
 import { PageBody } from "./common";
 import { ChampionTable } from "./history/ChampionTable";
+import { historyFailure } from "./history/failure";
 import { type ExportWords, championRows, exportStem, gamesCsv, gamesJson } from "./history/records";
 
 const PAGE_SIZES = ["10", "15", "25", "50"] as const;
@@ -476,7 +477,7 @@ function GameList({
           }
           setLoaded({
             games: result.games,
-            next: CHUNK,
+            next: result.next,
             more: result.hasMore,
             loading: false,
             error: null,
@@ -491,7 +492,7 @@ function GameList({
           const seen = new Set(previous.games.map((game) => game.gameId));
           return {
             games: [...previous.games, ...result.games.filter((game) => !seen.has(game.gameId))],
-            next: begin + CHUNK,
+            next: result.next,
             more: result.hasMore,
             loading: false,
             error: null,
@@ -610,8 +611,7 @@ function GameList({
             <Card>
               {loaded.error ? (
                 <ErrorNote
-                  title={t("common.loadFailed")}
-                  detail={errorMessage(loaded.error)}
+                  {...historyFailure(loaded.error, t)}
                   retryLabel={t("common.retry")}
                   onRetry={retry}
                 />
@@ -641,7 +641,8 @@ function GameList({
         <>
           {visible.length === 0 ? (
             <Card>
-              {filling || loaded.loading ? (
+              {/* A page that failed stops the filling until a retry: its note shows meanwhile. */}
+              {(filling && !loaded.error) || loaded.loading ? (
                 <div className="flex flex-col gap-2" aria-busy>
                   {[0, 1, 2].map((key) => (
                     <Skeleton key={key} className="h-12 w-full" />
@@ -649,8 +650,7 @@ function GameList({
                 </div>
               ) : loaded.error ? (
                 <ErrorNote
-                  title={t("common.loadFailed")}
-                  detail={errorMessage(loaded.error)}
+                  {...historyFailure(loaded.error, t)}
                   retryLabel={t("common.retry")}
                   onRetry={retry}
                 />
@@ -700,8 +700,11 @@ function GameList({
             <div className="flex justify-center py-1">
               {loaded.error ? (
                 <ErrorNote
-                  title={loaded.stale ? t("history.refreshFailed") : t("common.loadFailed")}
-                  detail={errorMessage(loaded.error)}
+                  {...historyFailure(
+                    loaded.error,
+                    t,
+                    loaded.stale ? t("history.refreshFailed") : t("common.loadFailed"),
+                  )}
                   retryLabel={t("common.retry")}
                   onRetry={retry}
                 />
