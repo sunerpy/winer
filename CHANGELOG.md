@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.15](https://github.com/sunerpy/winer/compare/v0.0.14...v0.0.15) (2026-10-11)
+
+
+### Bug Fixes
+
+* read history past a busy server and delay the champ-select callout ([#31](https://github.com/sunerpy/winer/issues/31)) ([98035e5](https://github.com/sunerpy/winer/commit/98035e5423ac6856bf56119e056c6b1cd746d70f))
+
 ## [0.0.14](https://github.com/sunerpy/winer/compare/v0.0.13...v0.0.14) (2026-10-07)
 
 
