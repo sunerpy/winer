@@ -301,6 +301,8 @@ function failure(
       return { message: text(language, "historyInvalid"), detail: null };
     case "busy":
       return { message: text(language, "historyBusy"), detail: null };
+    case "unavailable":
+      return { message: text(language, "historyServerBusy"), detail: null };
     default:
       return { message: text(language, "historyFailed"), detail: error.message || null };
   }

@@ -70,6 +70,10 @@ summoner spells for Jhin"; a failure says why. Nothing is posted to chat.
 
 - **Send in champ select automatically**: sends the callout from
   [the game analysis](/en/guide/live#callout) once every teammate's history has loaded.
+- **Send after a delay** (on by default): waits **Wait after champ select opens** (1.5 s by default,
+  10 s at most) after champ select opens before sending; when the history takes longer, the callout
+  goes as soon as it is in. Leaving champ select, or switching the callout off, during the wait
+  cancels it for that champ select.
 - **Send to**: the team chat, or only you.
 - **Include myself**: whether your own line is in it.
 - **Callout style**: **Rich** (the default) puts the tier's emoji first (👑 for the best tier, 💀 for

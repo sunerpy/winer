@@ -43,6 +43,10 @@ const STRINGS = {
     "winer 正在读取其他玩家的战绩，请稍后再试",
     "winer is still reading other games; try again shortly",
   ],
+  historyServerBusy: [
+    "腾讯战绩服务器繁忙，暂时读不到，稍后再试",
+    "The match-history server is busy; try again in a while",
+  ],
   historyTimeout: ["winer 没有及时回应", "winer did not answer in time"],
   historyRetry: ["重试", "Retry"],
   historyClose: ["关闭", "Close"],

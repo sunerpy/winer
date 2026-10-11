@@ -1812,6 +1812,34 @@ describe("callout", () => {
     );
   });
 
+  it("holds the automatic callout 1.5 s after champ select opens, as long as chosen or not at all", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.automation"] }));
+    const delay = await screen.findByRole("switch", { name: zhCN["auto.calloutDelay"] });
+    expect(delay, "on by default").toHaveAttribute("aria-checked", "true");
+    const wait = screen.getByRole("slider", { name: zhCN["auto.calloutDelayTime"] });
+    expect(wait).toHaveAttribute("aria-valuetext", "1.5 秒");
+    const saved = (change: Partial<CalloutRule>) =>
+      waitFor(() =>
+        expect(call).toHaveBeenCalledWith("set_settings", {
+          settings: expect.objectContaining({
+            automation: expect.objectContaining({ callout: expect.objectContaining(change) }),
+          }),
+        }),
+      );
+
+    fireEvent.change(wait, { target: { value: "3000" } });
+    await saved({ delay: true, delayMs: 3000 });
+    await user.click(delay);
+    await saved({ delay: false });
+    expect(
+      screen.queryByRole("slider", { name: zhCN["auto.calloutDelayTime"] }),
+      "no time to set while it does not wait",
+    ).toBeNull();
+  });
+
   it("chooses whose lines a press types in the game, six at most, and takes the team's own line", async () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");
@@ -1917,6 +1945,54 @@ describe("history", () => {
     expect(args.stem).toMatch(/^winer 战绩 暗夜里的光#10003 \d{4}-\d{2}-\d{2}$/);
     expect(args.contents.split("\r\n")[0]).toBe(zhCN["history.exportHeader"]);
     expect(await screen.findByText(/已保存到下载文件夹/)).toBeInTheDocument();
+  });
+
+  it("reads on from where a short page ended while the server sends few games a page", async () => {
+    const demo = demoBackend();
+    // A busy server: ten games a page, whatever was asked.
+    const backend = demoWith({
+      get_match_history: (args: { puuid: string; begin: number; count: number }) =>
+        demo.call("get_match_history", { ...args, count: Math.min(args.count, 10) }),
+    });
+    const call = vi.spyOn(backend, "call");
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.history"] }));
+    expect(
+      await screen.findByText("第 1–10 场 · 共 60 场", {}, { timeout: 5000 }),
+    ).toBeInTheDocument();
+    const begins = call.mock.calls
+      .filter(([name]) => name === "get_match_history")
+      .map(([, args]) => args as { begin: number; count: number })
+      .filter((args) => args.count === 50)
+      .map((args) => args.begin);
+    expect(begins, "each page starts where the last one ended").toEqual([
+      0, 10, 20, 30, 40, 50, 60,
+    ]);
+  });
+
+  it("says plainly that the match-history server is busy, and asks again on retry", async () => {
+    let busy = true;
+    const demo = demoBackend();
+    const backend = demoWith({
+      get_match_history: (args: { puuid: string; begin: number; count: number }) => {
+        if (busy) {
+          throw {
+            code: "unavailable",
+            message: "the match-history server is busy: HTTP status server error (503)",
+          };
+        }
+        return demo.call("get_match_history", args);
+      },
+    });
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.history"] }));
+    expect(await screen.findByText(zhCN["history.serverBusy"])).toBeInTheDocument();
+    expect(screen.getByText(zhCN["history.serverBusyHint"])).toBeInTheDocument();
+    expect(screen.queryByText(/HTTP status server error/), "no request line to read").toBeNull();
+
+    busy = false;
+    await user.click(screen.getByRole("button", { name: zhCN["common.retry"] }));
+    expect(await screen.findByText("第 1–10 场 · 共 60 场")).toBeInTheDocument();
   });
 
   it("keeps the history search available offline and explains the live credential boundary", async () => {

@@ -19,6 +19,7 @@ import { useShell } from "../shell/navigation";
 import { isFailure, noticeText } from "../shell/notices";
 import { Button, Card, EmptyState, ErrorNote, Panel, Skeleton, Toggle, toast } from "../ui";
 import { ConnectionBanner, PageBody } from "./common";
+import { historyFailure } from "./history/failure";
 
 function MeCard() {
   const t = useT();
@@ -476,8 +477,7 @@ function RecentMatches() {
         </div>
       ) : page.error ? (
         <ErrorNote
-          title={t("common.loadFailed")}
-          detail={errorMessage(page.error)}
+          {...historyFailure(page.error, t)}
           retryLabel={t("common.retry")}
           onRetry={page.reload}
         />

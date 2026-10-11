@@ -484,8 +484,11 @@ pub struct ChampionForm {
 pub struct MatchPage {
     pub puuid: String,
     pub begin: u32,
+    /// Where the next page starts: after the places this one holds, which are fewer than were
+    /// asked for while the shard's server is too busy for that many.
+    pub next: u32,
     pub games: Vec<MatchSummary>,
-    /// A full page came back, so there may be more.
+    /// The page came back as full as it was asked of its source, so there may be more.
     pub has_more: bool,
     pub source: HistorySource,
 }
@@ -912,6 +915,9 @@ pub enum ErrorCode {
     Invalid,
     Busy,
     Client,
+    /// A server answered that it cannot serve the request now (the shard's match-history server
+    /// while it is overloaded): asking again later may work.
+    Unavailable,
     Internal,
 }
 

@@ -445,6 +445,10 @@ impl Scopes {
 pub struct CalloutRule {
     /// Send once per champ select, as soon as every teammate's stats are in.
     pub auto: bool,
+    /// Hold the automatic callout until [`Self::delay_ms`] after champ select opened; lines ready
+    /// only later go as soon as they are.
+    pub delay: bool,
+    pub delay_ms: u32,
     pub audience: Audience,
     pub include_self: bool,
     /// Sent before the players' lines, as written; empty sends none.
@@ -490,6 +494,8 @@ impl Default for CalloutRule {
     fn default() -> Self {
         Self {
             auto: false,
+            delay: true,
+            delay_ms: 1500,
             audience: Audience::Team,
             include_self: true,
             header: String::new(),
@@ -975,6 +981,7 @@ impl Settings {
         automation.pick.champions.normalize();
         automation.ban.champions.normalize();
         let callout = &mut automation.callout;
+        callout.delay_ms = callout.delay_ms.min(10_000);
         callout.header = clip(&callout.header, 200);
         callout.template = clip(&callout.template, 200);
         callout.custom_tiers.truncate(CalloutRule::MAX_TIERS);
@@ -1504,6 +1511,9 @@ mod tests {
                 .unwrap();
         assert!(settings.automation.accept.enabled);
         assert_eq!(settings.automation.accept.delay_ms, 1500);
+        // Settings saved before the callout could wait wait the default 1.5 s.
+        let callout = &settings.automation.callout;
+        assert_eq!((callout.delay, callout.delay_ms), (true, 1500));
     }
 
     #[test]
@@ -1511,6 +1521,7 @@ mod tests {
         let mut settings = Settings::default();
         settings.appearance.font_size = 40;
         settings.automation.accept.delay_ms = 60_000;
+        settings.automation.callout.delay_ms = 60_000;
         settings.automation.pick.champions.any = vec![1, 1, 0, -3, 2];
         settings.automation.ban.champions.top = (1..30).collect();
         settings.plugin.loader_dir = Some("   ".into());
@@ -1527,6 +1538,7 @@ mod tests {
         let settings = settings.normalized();
         assert_eq!(settings.appearance.font_size, 16);
         assert_eq!(settings.automation.accept.delay_ms, 10_000);
+        assert_eq!(settings.automation.callout.delay_ms, 10_000);
         assert_eq!(settings.automation.pick.champions.any, vec![1, 2]);
         assert_eq!(
             settings.automation.ban.champions.top.len(),

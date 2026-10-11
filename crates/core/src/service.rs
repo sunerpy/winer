@@ -13,7 +13,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, MutexGuard, OnceLock, RwLock,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU32, AtomicU64, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -105,6 +105,12 @@ const PLAYER_TTL: Duration = Duration::from_secs(600);
 /// the form's window (`analysis::window_filled`): twenty games, then forty at a time, a hundred at
 /// most. Twenty games are about 2.2 MB and 0.7 s (41 players measured, 2026-10-06).
 const RECORD_PAGES: [(u32, u32); 3] = [(0, 20), (20, 40), (60, 40)];
+/// The most games one page of a player's history holds.
+const HISTORY_PAGE: u32 = 50;
+/// The smaller pages the shard's server is asked for in turn while it answers that it is too busy
+/// for a larger one (`sgp::Failure::Busy`), down to a single game, which is asked for three times.
+const BUSY_PAGES: [u32; 3] = [10, 2, 1];
+const BUSY_SINGLE_TRIES: u32 = 3;
 const FAILED_PLAYER_TTL: Duration = Duration::from_secs(30);
 
 #[derive(Debug, thiserror::Error)]
@@ -125,6 +131,10 @@ pub enum CoreError {
     /// A host on the internet did not answer as expected.
     #[error("{0}")]
     Remote(String),
+    /// A server answered that it cannot serve the request now (the shard's match-history server
+    /// while it is overloaded); later it may.
+    #[error("{0}")]
+    Unavailable(String),
 }
 
 impl From<CoreError> for IpcError {
@@ -137,6 +147,7 @@ impl From<CoreError> for IpcError {
             CoreError::Lcu(error) if error.is_not_found() => ErrorCode::NotFound,
             CoreError::Lcu(error) if error.is_unreachable() => ErrorCode::NotConnected,
             CoreError::Lcu(_) | CoreError::Remote(_) => ErrorCode::Client,
+            CoreError::Unavailable(_) => ErrorCode::Unavailable,
             CoreError::Io(_) => ErrorCode::Internal,
         };
         Self {
@@ -179,6 +190,9 @@ struct Inner {
     loadout: loadout::LoadoutState,
     /// History: pages, whole games and Riot ID lookups, for the signed-in account (`history`).
     history: Mutex<HistoryCache>,
+    /// The largest page of history the shard's server is asked for first: smaller while it is too
+    /// busy for larger ones, back up as pages come (`server_history_page`).
+    history_window: AtomicU32,
     /// Counts the plugins' hellos on the bridge: a restarted interface is back once it changes
     /// (`ux`).
     plugin_hellos: watch::Sender<u64>,
@@ -216,8 +230,11 @@ struct Live {
     accepting: bool,
     /// Changes when a ReadyCheck starts or ends, so an old delayed accept cannot act on the next one.
     accept_generation: u64,
-    /// The automatic callout went out for this champ select.
+    /// The automatic callout went out for this champ select, or is waiting out its delay.
     callout_sent: bool,
+    /// When winer saw this champ select open; it stands for the champ select as well, since no two
+    /// open at the same instant.
+    champ_select_opened: Option<Instant>,
     /// Bench swaps tried per champion, and one in flight.
     swaps: HashMap<i64, u8>,
     swapping: bool,
@@ -247,6 +264,7 @@ impl Live {
         self.attempts.clear();
         self.available = None;
         self.callout_sent = false;
+        self.champ_select_opened = None;
         self.swaps.clear();
         self.recommend = None;
     }
@@ -399,6 +417,7 @@ impl Service {
                 backups: OnceLock::new(),
                 loadout: loadout::LoadoutState::new(loadouts),
                 history: Mutex::new(HistoryCache::default()),
+                history_window: AtomicU32::new(HISTORY_PAGE),
                 plugin_hellos: watch::Sender::new(0),
                 versions,
                 notes,
@@ -450,10 +469,10 @@ impl Service {
     }
 
     /// `count` of `puuid`'s games from the `begin`-th newest. On a Tencent shard they come from its
-    /// match-history server; the client's own history only stands in for the first page, because
-    /// it answers every page with the same newest twenty (`sgp`). Pages are kept for a while
-    /// (`history`), so going back to a player, paging back and the overview's short list ask for
-    /// nothing again.
+    /// match-history server, in fewer games a page while it is too busy for that many; the client's
+    /// own history only stands in for the first page, because it answers every page with the same
+    /// newest twenty (`sgp`). Pages are kept for a while (`history`), so going back to a player,
+    /// paging back and the overview's short list ask for nothing again.
     pub async fn match_history(
         &self,
         puuid: &str,
@@ -461,7 +480,7 @@ impl Service {
         count: u32,
     ) -> Result<MatchPage, CoreError> {
         segment(puuid)?;
-        let count = count.clamp(1, 50);
+        let count = count.clamp(1, HISTORY_PAGE);
         let client = self.client()?;
         let me = lock(&client.live).me.clone();
         self.scope_account(&me);
@@ -469,7 +488,13 @@ impl Service {
         let page = match kept {
             Some(page) => page,
             None => {
-                let (page, keep) = fetch_history(&client, puuid, &me, begin, count).await?;
+                let server = server_history_page(
+                    |size| server_history(&client, puuid, begin, size),
+                    count,
+                    &self.inner.history_window,
+                )
+                .await;
+                let (page, keep) = fetch_history(&client, server, puuid, &me, begin, count).await?;
                 if keep {
                     lock(&self.inner.history).put_page(
                         &me,
@@ -487,6 +512,7 @@ impl Service {
         Ok(MatchPage {
             puuid: puuid.to_owned(),
             begin,
+            next: begin + page.entries.len() as u32,
             games: page
                 .entries
                 .iter()
@@ -1301,12 +1327,12 @@ impl Service {
         };
         {
             let mut live = lock(&client.live);
-            if live
-                .champ_select
-                .as_ref()
-                .is_some_and(|previous| previous.game_id != session.game_id)
-            {
+            let previous = live.champ_select.as_ref().map(|previous| previous.game_id);
+            if previous.is_some_and(|game_id| game_id != session.game_id) {
                 live.reset_champ_select();
+            }
+            if previous != Some(session.game_id) {
+                live.champ_select_opened = Some(Instant::now());
             }
             live.champ_select = Some(session.clone());
         }
@@ -1407,10 +1433,13 @@ impl Service {
             .map(|view| view.callout.clone())
             .filter(|lines| !lines.is_empty());
         self.patch(Patch::ChampSelect(view));
-        if let Some(lines) = lines
-            && !std::mem::replace(&mut lock(&client.live).callout_sent, true)
-        {
-            self.call_out(client, lines, rule.audience);
+        if let Some(lines) = lines {
+            let mut live = lock(&client.live);
+            if !std::mem::replace(&mut live.callout_sent, true) {
+                let opened = live.champ_select_opened;
+                drop(live);
+                self.call_out(client, lines, rule, opened);
+            }
         }
         if let Some(session) = gameflow {
             let queue = &session.game_data.queue;
@@ -1437,9 +1466,24 @@ impl Service {
         self.render_lobby(client);
     }
 
-    fn call_out(&self, client: &Client, lines: Vec<String>, audience: Audience) {
+    /// Sends the automatic callout of the champ select `opened` then, once `rule`'s delay since
+    /// then has passed; not when that champ select ended or the callout was switched off
+    /// meanwhile.
+    fn call_out(
+        &self,
+        client: &Client,
+        lines: Vec<String>,
+        rule: &CalloutRule,
+        opened: Option<Instant>,
+    ) {
+        let wait = callout_wait(rule, opened, Instant::now());
+        let audience = rule.audience;
         let (service, client) = (self.clone(), client.clone());
         self.spawn(async move {
+            if !service.callout_still_due(&client, wait, opened).await {
+                debug!("the callout's champ select ended, or the callout was switched off");
+                return;
+            }
             let mut chat = None;
             for _ in 0..CHAT_WAIT_ATTEMPTS {
                 match champ_select_chat(&client.lcu).await {
@@ -1468,6 +1512,21 @@ impl Service {
                 }),
             }
         });
+    }
+
+    /// Waits out what is left of the automatic callout's delay (`wait`), and whether it is still to
+    /// go out then: the champ select `opened` still open, and the callout still on.
+    async fn callout_still_due(
+        &self,
+        client: &Client,
+        wait: Duration,
+        opened: Option<Instant>,
+    ) -> bool {
+        if wait.is_zero() {
+            return true;
+        }
+        sleep(wait).await;
+        lock(&client.live).champ_select_opened == opened && self.settings().automation.callout.auto
     }
 
     /// A player's stats as known now, the form read within `focus` ([`analysis::recent_form`]).
@@ -2747,6 +2806,16 @@ async fn wait_until_ready(lcu: &Lcu) -> Result<Summoner, lcu::Error> {
     }))
 }
 
+/// What is left of `rule`'s delay for the automatic callout, from champ select `opened` to `now`;
+/// nothing with the delay off, or once it has passed.
+fn callout_wait(rule: &CalloutRule, opened: Option<Instant>, now: Instant) -> Duration {
+    match opened {
+        Some(opened) if rule.delay => Duration::from_millis(u64::from(rule.delay_ms))
+            .saturating_sub(now.saturating_duration_since(opened)),
+        _ => Duration::ZERO,
+    }
+}
+
 /// The catalog's entry for `queue_id`.
 fn queue_info(data: Option<&GameData>, queue_id: i64) -> Option<&QueueInfo> {
     data?.queues.iter().find(|queue| queue.id == queue_id)
@@ -2764,18 +2833,19 @@ fn gameflow_mode(queue: &GameQueue) -> Option<Mode> {
 }
 
 /// One page of `puuid`'s history from wherever the shard keeps it, and whether it is worth keeping:
-/// a Tencent client standing in for its shard's server is asked again next time, in case the
-/// server is back.
+/// the server's, as [`server_history_page`] answered (`server`), else the client's own. A Tencent
+/// client standing in for its shard's server is asked again next time, in case the server is back.
 async fn fetch_history(
     client: &Client,
+    server: Option<Result<(sgp::Page, u32), CoreError>>,
     puuid: &str,
     me: &str,
     begin: u32,
     count: u32,
 ) -> Result<(HistoryPage, bool), CoreError> {
-    match server_history(client, puuid, begin, count).await {
-        Some(Ok(page)) => {
-            let more = page.entries.len() as u32 >= count;
+    let busy = match server {
+        Some(Ok((page, asked))) => {
+            let more = page.entries.len() as u32 >= asked;
             let entries = page
                 .entries
                 .into_iter()
@@ -2789,9 +2859,12 @@ async fn fetch_history(
             return Ok((page, true));
         }
         Some(Err(error)) if begin > 0 => return Err(error),
-        Some(Err(error)) => warn!(%error, "no match-history server, showing the client's own"),
-        None => {}
-    }
+        Some(Err(error)) => {
+            warn!(%error, "no match-history server, showing the client's own");
+            matches!(error, CoreError::Unavailable(_)).then_some(error)
+        }
+        None => None,
+    };
     let tencent = sgp::base(&client.platform_id).is_some() || client.platform_id.is_empty();
     if tencent && begin > 0 {
         // The client's window is the first page, whatever range is asked.
@@ -2802,16 +2875,56 @@ async fn fetch_history(
         };
         return Ok((page, false));
     }
-    let games = history(&client.lcu, puuid, me, begin, count)
-        .await?
-        .games
-        .games;
+    let games = match history(&client.lcu, puuid, me, begin, count).await {
+        Ok(list) => list.games.games,
+        // The client reads the same server, and says no more than that it failed (`503 Error
+        // getting match list for summoner`, GZ100, 2026-10-11): the server's own word is clearer.
+        Err(error) => return Err(busy.unwrap_or(error)),
+    };
     let page = HistoryPage {
         more: !tencent && games.len() as u32 >= count,
         entries: games.into_iter().map(|game| Some(Arc::new(game))).collect(),
         source: HistorySource::Client,
     };
     Ok((page, !tencent))
+}
+
+/// One page from the shard's server (`fetch`, given the number of places to ask for) and that
+/// number: `count` while the server manages that many, else the largest smaller page
+/// ([`BUSY_PAGES`]) it manages, starting from the size it managed last (`window`). `None` where
+/// the shard has no server.
+async fn server_history_page<F, Fut>(
+    mut fetch: F,
+    count: u32,
+    window: &AtomicU32,
+) -> Option<Result<(sgp::Page, u32), CoreError>>
+where
+    F: FnMut(u32) -> Fut,
+    Fut: Future<Output = Option<Result<sgp::Page, CoreError>>>,
+{
+    let mut size = count.min(window.load(Ordering::Relaxed)).max(1);
+    let mut singles = BUSY_SINGLE_TRIES;
+    loop {
+        if size == 1 {
+            singles -= 1;
+        }
+        match fetch(size).await? {
+            Ok(page) => {
+                // Twice as many next time: the pages grow back once the server copes again.
+                window.fetch_max((size * 2).min(HISTORY_PAGE), Ordering::Relaxed);
+                return Some(Ok((page, size)));
+            }
+            Err(CoreError::Unavailable(message)) if size > 1 || singles > 0 => {
+                size = BUSY_PAGES
+                    .into_iter()
+                    .find(|&smaller| smaller < size)
+                    .unwrap_or(1);
+                window.fetch_min(size, Ordering::Relaxed);
+                debug!(%message, size, "the match-history server is busy, asking for fewer games");
+            }
+            Err(error) => return Some(Err(error)),
+        }
+    }
 }
 
 /// One page from the shard's match-history server, with the client's own access token for it;
@@ -2836,7 +2949,12 @@ async fn server_history(
             count,
         )
         .await
-        .map_err(CoreError::Remote),
+        .map_err(|failure| match failure {
+            sgp::Failure::Busy(message) => {
+                CoreError::Unavailable(format!("the match-history server is busy: {message}"))
+            }
+            sgp::Failure::Other(message) => CoreError::Remote(message),
+        }),
     )
 }
 
@@ -3749,6 +3867,112 @@ mod tests {
         assert_eq!(error.code, ErrorCode::Busy);
     }
 
+    // ---- The automatic callout's delay ----
+
+    #[test]
+    fn the_automatic_callout_waits_what_is_left_of_its_delay_since_champ_select_opened() {
+        let opened = Instant::now();
+        let rule = CalloutRule::default();
+        assert_eq!(
+            (rule.delay, rule.delay_ms),
+            (true, 1500),
+            "1.5 s by default"
+        );
+        let at = |ms| opened + Duration::from_millis(ms);
+        assert_eq!(
+            callout_wait(&rule, Some(opened), at(400)),
+            Duration::from_millis(1100)
+        );
+        assert_eq!(
+            callout_wait(&rule, Some(opened), at(2000)),
+            Duration::ZERO,
+            "stats that took longer than the delay go at once"
+        );
+        let off = CalloutRule {
+            delay: false,
+            ..rule.clone()
+        };
+        assert_eq!(callout_wait(&off, Some(opened), at(0)), Duration::ZERO);
+        assert_eq!(callout_wait(&rule, None, at(0)), Duration::ZERO);
+    }
+
+    #[tokio::test]
+    async fn champ_select_opens_once_however_often_its_session_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        let client = quiet_client(Phase::ChampSelect);
+        let session = |game_id: i64| -> ChampSelectSession {
+            serde_json::from_value(json!({
+                "gameId": game_id, "localPlayerCellId": 0,
+                "myTeam": [{"cellId": 0, "puuid": "me", "gameName": "Me"}]
+            }))
+            .unwrap()
+        };
+        let opened = || lock(&client.live).champ_select_opened;
+        service.on_champ_select(&client, Some(session(1)));
+        let first = opened().expect("opened when it began");
+        service.on_champ_select(&client, Some(session(1)));
+        assert_eq!(opened(), Some(first), "an update is the same champ select");
+        service.on_champ_select(&client, Some(session(2)));
+        assert_ne!(
+            opened(),
+            Some(first),
+            "another game is another champ select"
+        );
+        assert!(opened().is_some());
+        service.on_champ_select(&client, None);
+        assert_eq!(opened(), None);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_delayed_callout_goes_only_to_the_champ_select_it_was_meant_for_while_switched_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        let mut settings = service.settings();
+        settings.automation.callout.auto = true;
+        service.set_settings(settings.clone()).unwrap();
+        let client = quiet_client(Phase::ChampSelect);
+        let opened = Instant::now();
+        lock(&client.live).champ_select_opened = Some(opened);
+        let wait = Duration::from_millis(1500);
+
+        let started = tokio::time::Instant::now();
+        assert!(service.callout_still_due(&client, wait, Some(opened)).await);
+        assert!(started.elapsed() >= wait, "it waited the delay out first");
+
+        let due = |service: &Service| {
+            let (service, client) = (service.clone(), client.clone());
+            tokio::spawn(
+                async move { service.callout_still_due(&client, wait, Some(opened)).await },
+            )
+        };
+        let ended = due(&service);
+        lock(&client.live).champ_select_opened = None;
+        assert!(!ended.await.unwrap(), "champ select ended meanwhile");
+
+        lock(&client.live).champ_select_opened = Some(opened + Duration::from_secs(1));
+        let next = due(&service);
+        assert!(
+            !next.await.unwrap(),
+            "the next champ select opened meanwhile"
+        );
+
+        lock(&client.live).champ_select_opened = Some(opened);
+        let switched_off = due(&service);
+        settings.automation.callout.auto = false;
+        service.set_settings(settings).unwrap();
+        assert!(
+            !switched_off.await.unwrap(),
+            "the user switched it off meanwhile"
+        );
+        assert!(
+            service
+                .callout_still_due(&client, Duration::ZERO, Some(opened))
+                .await,
+            "without a delay nothing is checked again: the lines are sent as they are ready"
+        );
+    }
+
     // ---- The callout's shortcut ----
 
     #[tokio::test]
@@ -3982,6 +4206,130 @@ mod tests {
             matches!(&later, Paged::Games(games, false) if games.len() == 20),
             "a later page failing keeps the first"
         );
+    }
+
+    /// A server that answers busy for pages larger than `manages`, and pages of a long history
+    /// otherwise; the sizes asked for go into `asked`.
+    fn busy_server(
+        manages: u32,
+        asked: &std::sync::Mutex<Vec<u32>>,
+    ) -> impl FnMut(u32) -> std::future::Ready<Option<Result<sgp::Page, CoreError>>> {
+        move |size| {
+            asked.lock().unwrap().push(size);
+            std::future::ready(Some(if size > manages {
+                Err(CoreError::Unavailable("503".into()))
+            } else {
+                Ok(server_page(0, size, 500, "KIWI"))
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn a_busy_server_is_asked_for_fewer_games_and_the_next_page_starts_where_that_worked() {
+        let window = AtomicU32::new(HISTORY_PAGE);
+        let asked = std::sync::Mutex::new(Vec::new());
+        let Some(Ok((page, size))) = server_history_page(busy_server(2, &asked), 50, &window).await
+        else {
+            panic!("a page of two games");
+        };
+        assert_eq!((page.entries.len(), size), (2, 2));
+        assert_eq!(*asked.lock().unwrap(), [50, 10, 2]);
+        assert_eq!(
+            window.load(Ordering::Relaxed),
+            4,
+            "twice what worked, next time"
+        );
+
+        asked.lock().unwrap().clear();
+        server_history_page(busy_server(2, &asked), 50, &window).await;
+        assert_eq!(
+            *asked.lock().unwrap(),
+            [4, 2],
+            "the next page starts from what worked, not from fifty"
+        );
+
+        // The server copes again: the pages grow back to fifty.
+        asked.lock().unwrap().clear();
+        for _ in 0..5 {
+            server_history_page(busy_server(50, &asked), 50, &window).await;
+        }
+        assert_eq!(*asked.lock().unwrap(), [4, 8, 16, 32, 50]);
+        assert_eq!(window.load(Ordering::Relaxed), HISTORY_PAGE);
+        asked.lock().unwrap().clear();
+        server_history_page(busy_server(50, &asked), 10, &window).await;
+        assert_eq!(
+            window.load(Ordering::Relaxed),
+            HISTORY_PAGE,
+            "a short list asked for does not shrink the next page"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_server_too_busy_for_one_game_is_given_up_on_after_three_tries_and_other_failures_at_once()
+     {
+        let window = AtomicU32::new(HISTORY_PAGE);
+        let asked = std::sync::Mutex::new(Vec::new());
+        let answer = server_history_page(busy_server(0, &asked), 50, &window).await;
+        assert!(matches!(answer, Some(Err(CoreError::Unavailable(_)))));
+        assert_eq!(*asked.lock().unwrap(), [50, 10, 2, 1, 1, 1]);
+        assert_eq!(window.load(Ordering::Relaxed), 1);
+
+        let calls = std::sync::Mutex::new(0);
+        let refused = server_history_page(
+            |_| {
+                *calls.lock().unwrap() += 1;
+                std::future::ready(Some(Err(CoreError::Remote("401".into()))))
+            },
+            50,
+            &AtomicU32::new(HISTORY_PAGE),
+        )
+        .await;
+        assert!(matches!(refused, Some(Err(CoreError::Remote(_)))));
+        assert_eq!(
+            *calls.lock().unwrap(),
+            1,
+            "only a busy server is asked for less"
+        );
+        assert!(
+            server_history_page(|_| std::future::ready(None), 50, &window)
+                .await
+                .is_none(),
+            "no server for the shard"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_busy_server_is_what_a_failed_history_says_when_the_client_fails_as_well() {
+        // The client is not there, so its own list fails too.
+        let client = quiet_client(Phase::None);
+        let busy = Some(Err(CoreError::Unavailable("busy".into())));
+        let failed = fetch_history(&client, busy, "p", "me", 0, 50).await;
+        assert!(
+            matches!(&failed, Err(CoreError::Unavailable(_))),
+            "{failed:?}"
+        );
+        assert_eq!(
+            IpcError::from(failed.unwrap_err()).code,
+            ErrorCode::Unavailable
+        );
+        let refused = Some(Err(CoreError::Remote("401".into())));
+        let failed = fetch_history(&client, refused, "p", "me", 0, 50).await;
+        assert!(
+            matches!(&failed, Err(CoreError::Lcu(_))),
+            "any other failure of the server leaves the client's own word: {failed:?}"
+        );
+
+        // A page that came back as full as it was asked may have more after it, however short.
+        let short = Some(Ok((server_page(0, 2, 500, "KIWI"), 2)));
+        let (page, keep) = fetch_history(&client, short, "p", "me", 0, 50)
+            .await
+            .unwrap();
+        assert_eq!((page.entries.len(), page.more, keep), (2, true, true));
+        let last = Some(Ok((server_page(0, 2, 1, "KIWI"), 2)));
+        let (page, _) = fetch_history(&client, last, "p", "me", 0, 50)
+            .await
+            .unwrap();
+        assert_eq!((page.entries.len(), page.more), (1, false));
     }
 
     #[test]

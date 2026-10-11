@@ -638,6 +638,7 @@ mod tests {
         let page = MatchPage {
             puuid: "PUUID-0010".into(),
             begin: 0,
+            next: 12,
             games,
             has_more: true,
             source: HistorySource::Server,
@@ -718,6 +719,7 @@ mod tests {
         let page = MatchPage {
             puuid: "PUUID-0010".into(),
             begin: 0,
+            next: 20,
             games,
             has_more: true,
             source: HistorySource::Server,
