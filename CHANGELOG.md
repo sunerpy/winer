@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.16](https://github.com/sunerpy/winer/compare/v0.0.15...v0.0.16) (2026-10-16)
+
+
+### Bug Fixes
+
+* read history game by game while the match-history server is busy ([#34](https://github.com/sunerpy/winer/issues/34)) ([42da955](https://github.com/sunerpy/winer/commit/42da9558a36fd4e3f07284bc1b78bde38dde32da))
+
 ## [0.0.15](https://github.com/sunerpy/winer/compare/v0.0.14...v0.0.15) (2026-10-11)
 
 
