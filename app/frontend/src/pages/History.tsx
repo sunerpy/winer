@@ -242,8 +242,7 @@ function PlayerHeader({
           </span>
         ) : (
           <ErrorNote
-            title={t("common.loadFailed")}
-            detail={errorMessage(summary.error)}
+            {...historyFailure(summary.error, t)}
             retryLabel={t("common.retry")}
             onRetry={summary.reload}
           />
@@ -347,6 +346,9 @@ interface Loaded {
   source: HistorySource | null;
   /** Drawn from the cache: the newest games are asked for again before anything else. */
   stale: boolean;
+  /** The last page held fewer games than asked while more remain: the server is too busy for
+   *  whole pages, so the rest is read only as far as the list is looked at. */
+  short: boolean;
 }
 
 const NOTHING_YET: Loaded = {
@@ -357,6 +359,7 @@ const NOTHING_YET: Loaded = {
   error: null,
   source: null,
   stale: false,
+  short: false,
 };
 
 function GameList({
@@ -411,7 +414,11 @@ function GameList({
   // Past the last page there is nothing to show; the last one stands in.
   const current = loaded.more ? page : Math.min(page, Math.max(1, known));
   const visible = shown.slice((current - 1) * perPage, current * perPage);
-  const filling = connected && loaded.more;
+  // While the server sends short pages, reading on waits until the page in view or the champion
+  // view needs more games: reading every page then takes hundreds of requests, which compete with
+  // champ select's for the same busy server.
+  const paused = loaded.short && view === "games" && shown.length >= current * perPage;
+  const filling = connected && loaded.more && !paused;
   const champions = useMemo(() => (loaded.more ? [] : championRows(shown)), [loaded.more, shown]);
 
   // The games as shown (filter, custom games) into a file in Downloads, the player's own lines.
@@ -456,10 +463,12 @@ function GameList({
 
   // One request at a time. A list drawn from the cache asks for the newest games first: the same
   // ones keep it as it was, new ones start it over from them (the older games have moved down).
-  // Then it reads every available page in the background. This establishes the total, makes the
-  // last page addressable and gives the champion view one complete, stable data source.
+  // Then it reads every available page in the background, unless `paused`. This establishes the
+  // total, makes the last page addressable and gives the champion view one complete, stable data
+  // source.
   useEffect(() => {
-    if (!connected || loaded.error || inFlight.current || !(loaded.stale || loaded.more)) return;
+    if (!connected || loaded.error || inFlight.current) return;
+    if (!(loaded.stale || (loaded.more && !paused))) return;
     inFlight.current = true;
     const revalidating = loaded.stale;
     const begin = revalidating ? 0 : loaded.next;
@@ -469,6 +478,7 @@ function GameList({
       .call("get_match_history", { puuid, begin, count: CHUNK })
       .then((result) => {
         if (!mounted.current) return;
+        const short = result.hasMore && result.next - begin < CHUNK;
         if (revalidating) {
           const same = result.games.every((game, index) => before[index]?.gameId === game.gameId);
           if (same) {
@@ -483,6 +493,7 @@ function GameList({
             error: null,
             source: result.source,
             stale: false,
+            short,
           });
           setPage(1);
           setSelected(null);
@@ -498,6 +509,7 @@ function GameList({
             error: null,
             source: result.source,
             stale: false,
+            short,
           };
         });
       })
@@ -507,7 +519,17 @@ function GameList({
       .finally(() => {
         inFlight.current = false;
       });
-  }, [connected, loaded.error, loaded.next, loaded.stale, loaded.games, loaded.more, puuid, store]);
+  }, [
+    connected,
+    loaded.error,
+    loaded.next,
+    loaded.stale,
+    loaded.games,
+    loaded.more,
+    paused,
+    puuid,
+    store,
+  ]);
 
   const turnTo = (next: number) => {
     setPage(next);
@@ -536,7 +558,7 @@ function GameList({
     visible.length > 0
       ? t("history.range", { from, to: from + visible.length - 1 }) +
         (loaded.more
-          ? ` · ${t("history.loadingAll", { n: loaded.games.length })}`
+          ? ` · ${t(paused ? "history.paused" : "history.loadingAll", { n: loaded.games.length })}`
           : ` · ${t("history.total", { n: shown.length })}`)
       : "";
 

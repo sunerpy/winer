@@ -693,6 +693,7 @@ export const zhCN = {
   "history.champ.winRate": "胜率",
   "history.champ.score": "平均评分",
   "history.champ.last": "最近一局",
+  "history.paused": "战绩服务器繁忙，翻页时再继续读取（已读取 {n} 场）",
   "history.loadingAll": "正在读取全部可查战绩（已读取 {n} 场）",
   "history.counted": "统计最近可查的 {n} 场（不含重开局）",
   "history.exportCsv": "导出 CSV",

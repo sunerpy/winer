@@ -119,8 +119,7 @@ function FormCard() {
           </div>
         ) : summary.error ? (
           <ErrorNote
-            title={t("common.loadFailed")}
-            detail={errorMessage(summary.error)}
+            {...historyFailure(summary.error, t)}
             retryLabel={t("common.retry")}
             onRetry={summary.reload}
           />

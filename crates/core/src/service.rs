@@ -13,7 +13,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, MutexGuard, OnceLock, RwLock,
-        atomic::{AtomicU32, AtomicU64, Ordering},
+        atomic::{AtomicU64, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -107,10 +107,19 @@ const PLAYER_TTL: Duration = Duration::from_secs(600);
 const RECORD_PAGES: [(u32, u32); 3] = [(0, 20), (20, 40), (60, 40)];
 /// The most games one page of a player's history holds.
 const HISTORY_PAGE: u32 = 50;
-/// The smaller pages the shard's server is asked for in turn while it answers that it is too busy
-/// for a larger one (`sgp::Failure::Busy`), down to a single game, which is asked for three times.
-const BUSY_PAGES: [u32; 3] = [10, 2, 1];
-const BUSY_SINGLE_TRIES: u32 = 3;
+/// How long the server's last busy answer is remembered ([`HistoryServer`]); whole pages are asked
+/// for again after it.
+const BUSY_MEMORY: Duration = Duration::from_secs(120);
+/// Requests to the shard's server out at once, for every player and page together.
+const SERVER_SLOTS: usize = 10;
+/// While the server is too busy for pages, its games are read one a request, all at once as the
+/// slots allow ([`read_places`]): on GZ100's evenings (2026-10-16, 23:14–23:20) pages of five or
+/// twenty were refused 18 times in 18, over HTTP/1.1 and HTTP/2 alike, while single games asked
+/// for ten at once came 46 times in 60. A page of History then holds this many games; a record
+/// reads its form's window ([`analysis::RECENT_GAMES`]).
+const SINGLE_PAGE: u32 = 10;
+/// How many times a place refused as too busy is asked for.
+const SINGLE_TRIES: u32 = 3;
 const FAILED_PLAYER_TTL: Duration = Duration::from_secs(30);
 
 #[derive(Debug, thiserror::Error)]
@@ -190,9 +199,8 @@ struct Inner {
     loadout: loadout::LoadoutState,
     /// History: pages, whole games and Riot ID lookups, for the signed-in account (`history`).
     history: Mutex<HistoryCache>,
-    /// The largest page of history the shard's server is asked for first: smaller while it is too
-    /// busy for larger ones, back up as pages come (`server_history_page`).
-    history_window: AtomicU32,
+    /// The shard's match-history server as requests to it have found it (`HistoryServer`).
+    history_server: HistoryServer,
     /// Counts the plugins' hellos on the bridge: a restarted interface is back once it changes
     /// (`ux`).
     plugin_hellos: watch::Sender<u64>,
@@ -204,6 +212,36 @@ struct Inner {
 
 /// Augment descriptions per language, with when they were fetched.
 type AugmentDetails = HashMap<Language, (Instant, Arc<Vec<AugmentDetail>>)>;
+
+/// The shard's match-history server as winer has found it lately, shared by every request to it:
+/// how many may be out at once ([`SERVER_SLOTS`]) and when it last said it was too busy. Within
+/// [`BUSY_MEMORY`] of that, games are read one a request; after it, whole pages again, so a server
+/// that copes again is noticed.
+struct HistoryServer {
+    slots: Semaphore,
+    busy_at: Mutex<Option<Instant>>,
+}
+
+impl HistoryServer {
+    fn new() -> Self {
+        Self {
+            slots: Semaphore::new(SERVER_SLOTS),
+            busy_at: Mutex::new(None),
+        }
+    }
+
+    /// Whether the server said it was too busy within [`BUSY_MEMORY`] of `now`.
+    fn busy(&self, now: Instant) -> bool {
+        lock(&self.busy_at).is_some_and(|at| now.saturating_duration_since(at) < BUSY_MEMORY)
+    }
+
+    /// Takes note of an answer that came at `now`.
+    fn note<T>(&self, answer: &Result<T, CoreError>, now: Instant) {
+        if let Err(CoreError::Unavailable(_)) = answer {
+            *lock(&self.busy_at) = Some(now);
+        }
+    }
+}
 
 /// One live connection to one client process.
 #[derive(Clone)]
@@ -417,7 +455,7 @@ impl Service {
                 backups: OnceLock::new(),
                 loadout: loadout::LoadoutState::new(loadouts),
                 history: Mutex::new(HistoryCache::default()),
-                history_window: AtomicU32::new(HISTORY_PAGE),
+                history_server: HistoryServer::new(),
                 plugin_hellos: watch::Sender::new(0),
                 versions,
                 notes,
@@ -488,12 +526,20 @@ impl Service {
         let page = match kept {
             Some(page) => page,
             None => {
-                let server = server_history_page(
-                    |size| server_history(&client, puuid, begin, size),
-                    count,
-                    &self.inner.history_window,
-                )
-                .await;
+                let history_server = &self.inner.history_server;
+                let server = match shard(&client).await {
+                    None => None,
+                    Some(Err(error)) => Some(Err(error)),
+                    Some(Ok(shard)) => Some(
+                        history_page(
+                            |begin, count| shard_page(history_server, &shard, puuid, begin, count),
+                            history_server,
+                            begin,
+                            count,
+                        )
+                        .await,
+                    ),
+                };
                 let (page, keep) = fetch_history(&client, server, puuid, &me, begin, count).await?;
                 if keep {
                     lock(&self.inner.history).put_page(
@@ -1362,13 +1408,18 @@ impl Service {
             return;
         }
         live.gameflow = session.clone();
+        // After the game its view keeps the records it has: read again now, all ten would compete
+        // with the lobby and the next champ select for the server, which then needs them more.
+        let playing = live.phase.in_game();
         drop(live);
         let focus = session.as_ref().and_then(|session| {
             let queue = &session.game_data.queue;
             queue_focus(lock(&client.data).as_deref(), queue.id, &queue.game_mode)
         });
-        for puuid in session.iter().flat_map(live::game_puuids) {
-            self.ensure_player(client, puuid, focus.clone());
+        if playing {
+            for puuid in session.iter().flat_map(live::game_puuids) {
+                self.ensure_player(client, puuid, focus.clone());
+            }
         }
         self.render(client);
     }
@@ -1697,7 +1748,8 @@ impl Service {
         self.spawn(async move {
             let entry = {
                 let _slot = service.inner.player_slots.acquire().await;
-                match load_record(&client, &puuid, &me, focus).await {
+                let server = &service.inner.history_server;
+                match load_record(&client, server, &puuid, &me, focus).await {
                     Ok(record) => PlayerEntry::Ready(Arc::new(record), Some(Instant::now())),
                     Err(error) => {
                         debug!(%error, "player stats unavailable");
@@ -2668,7 +2720,8 @@ impl Service {
         {
             return Ok(record.clone());
         }
-        let record = Arc::new(load_record(&client, puuid, &me, None).await?);
+        let server = &self.inner.history_server;
+        let record = Arc::new(load_record(&client, server, puuid, &me, None).await?);
         self.same_account(&client, &me)?;
         let shown = caches::players_shown(&client);
         let mut players = lock(&self.inner.players);
@@ -2713,8 +2766,8 @@ impl Service {
     }
 
     /// A game just ended: the local player and everyone in it have a new game in their history, so
-    /// their newest pages and records are asked for again. A view showing them keeps the record it
-    /// has until the new one arrives.
+    /// their newest pages and records are asked for again by the next view that shows them (the
+    /// lobby's party, the next champ select); the game's own view keeps the records it has.
     fn forget_newest(&self, client: &Client) {
         let played: Vec<String> = {
             let live = lock(&client.live);
@@ -2833,19 +2886,19 @@ fn gameflow_mode(queue: &GameQueue) -> Option<Mode> {
 }
 
 /// One page of `puuid`'s history from wherever the shard keeps it, and whether it is worth keeping:
-/// the server's, as [`server_history_page`] answered (`server`), else the client's own. A Tencent
-/// client standing in for its shard's server is asked again next time, in case the server is back.
+/// the server's, as [`history_page`] answered (`server`: the page, and whether more may follow),
+/// else the client's own. A Tencent client standing in for its shard's server is asked again next
+/// time, in case the server is back.
 async fn fetch_history(
     client: &Client,
-    server: Option<Result<(sgp::Page, u32), CoreError>>,
+    server: Option<Result<(sgp::Page, bool), CoreError>>,
     puuid: &str,
     me: &str,
     begin: u32,
     count: u32,
 ) -> Result<(HistoryPage, bool), CoreError> {
     let busy = match server {
-        Some(Ok((page, asked))) => {
-            let more = page.entries.len() as u32 >= asked;
+        Some(Ok((page, more))) => {
             let entries = page
                 .entries
                 .into_iter()
@@ -2889,48 +2942,115 @@ async fn fetch_history(
     Ok((page, !tencent))
 }
 
-/// One page from the shard's server (`fetch`, given the number of places to ask for) and that
-/// number: `count` while the server manages that many, else the largest smaller page
-/// ([`BUSY_PAGES`]) it manages, starting from the size it managed last (`window`). `None` where
-/// the shard has no server.
-async fn server_history_page<F, Fut>(
+/// `count` games of a player's history from the `begin`-th, from the shard's server (`fetch`, given
+/// where to begin and how many), and whether more may follow: one page while the server copes,
+/// else the games one a request ([`read_places`]), [`SINGLE_PAGE`] places at most, as far as they
+/// came in order, so the next page begins at the first that did not.
+async fn history_page<F, Fut>(
     mut fetch: F,
+    server: &HistoryServer,
+    begin: u32,
     count: u32,
-    window: &AtomicU32,
-) -> Option<Result<(sgp::Page, u32), CoreError>>
+) -> Result<(sgp::Page, bool), CoreError>
 where
-    F: FnMut(u32) -> Fut,
-    Fut: Future<Output = Option<Result<sgp::Page, CoreError>>>,
+    F: FnMut(u32, u32) -> Fut,
+    Fut: Future<Output = Result<sgp::Page, CoreError>>,
 {
-    let mut size = count.min(window.load(Ordering::Relaxed)).max(1);
-    let mut singles = BUSY_SINGLE_TRIES;
-    loop {
-        if size == 1 {
-            singles -= 1;
-        }
-        match fetch(size).await? {
+    if !server.busy(Instant::now()) {
+        let answer = fetch(begin, count).await;
+        server.note(&answer, Instant::now());
+        match answer {
             Ok(page) => {
-                // Twice as many next time: the pages grow back once the server copes again.
-                window.fetch_max((size * 2).min(HISTORY_PAGE), Ordering::Relaxed);
-                return Some(Ok((page, size)));
+                let more = page.entries.len() as u32 >= count;
+                return Ok((page, more));
             }
-            Err(CoreError::Unavailable(message)) if size > 1 || singles > 0 => {
-                size = BUSY_PAGES
-                    .into_iter()
-                    .find(|&smaller| smaller < size)
-                    .unwrap_or(1);
-                window.fetch_min(size, Ordering::Relaxed);
-                debug!(%message, size, "the match-history server is busy, asking for fewer games");
+            Err(CoreError::Unavailable(message)) => {
+                debug!(%message, "the match-history server is busy, reading single games");
             }
-            Err(error) => return Some(Err(error)),
+            Err(error) => return Err(error),
         }
     }
+    let places = begin..begin + count.min(SINGLE_PAGE);
+    let (places, failure) = read_places(|place| fetch(place, 1), places, server).await;
+    let mut entries = Vec::new();
+    let mut ended = false;
+    for place in places {
+        match place {
+            Place::Entry(entry) => entries.push(entry),
+            Place::End => {
+                ended = true;
+                break;
+            }
+            Place::Lost => break,
+        }
+    }
+    match failure {
+        Some(failure) if entries.is_empty() && !ended => Err(failure),
+        _ => Ok((sgp::Page { entries }, !ended)),
+    }
+}
+
+/// What reading one place of a player's history on its own came to.
+#[derive(Debug, PartialEq)]
+enum Place {
+    /// The server's entry there: a game, or `None` for one it listed but never recorded.
+    Entry(Option<Game>),
+    /// Past the end of the history.
+    End,
+    /// Never read: refused as too busy every time ([`SINGLE_TRIES`]), or failing otherwise.
+    Lost,
+}
+
+/// Reads `places` of a player's history one game a request (`fetch`, given the place), all at once
+/// as the server's slots allow, and asks again for those refused as too busy, [`SINGLE_TRIES`]
+/// times in all. Each place's outcome in order, and the last failure.
+async fn read_places<F, Fut>(
+    mut fetch: F,
+    places: std::ops::Range<u32>,
+    server: &HistoryServer,
+) -> (Vec<Place>, Option<CoreError>)
+where
+    F: FnMut(u32) -> Fut,
+    Fut: Future<Output = Result<sgp::Page, CoreError>>,
+{
+    let first = places.start;
+    let mut outcome: Vec<Place> = places.clone().map(|_| Place::Lost).collect();
+    let mut pending: Vec<u32> = places.collect();
+    let mut failure = None;
+    for _ in 0..SINGLE_TRIES {
+        if pending.is_empty() {
+            break;
+        }
+        let answers =
+            futures_util::future::join_all(pending.iter().map(|&place| fetch(place))).await;
+        let mut refused = Vec::new();
+        for (&place, answer) in pending.iter().zip(answers) {
+            server.note(&answer, Instant::now());
+            match answer {
+                Ok(page) => {
+                    outcome[(place - first) as usize] = page
+                        .entries
+                        .into_iter()
+                        .next()
+                        .map_or(Place::End, Place::Entry);
+                }
+                Err(error @ CoreError::Unavailable(_)) => {
+                    refused.push(place);
+                    failure = Some(error);
+                }
+                Err(error) => failure = Some(error),
+            }
+        }
+        pending = refused;
+    }
+    (outcome, failure)
 }
 
 /// One page from the shard's match-history server, with the client's own access token for it;
 /// `None` where the shard has no server (`sgp::base` knows the Tencent ones only).
 async fn server_history(
     client: &Client,
+    server: &HistoryServer,
     puuid: &str,
     begin: u32,
     count: u32,
@@ -2939,23 +3059,33 @@ async fn server_history(
         Ok(shard) => shard,
         Err(error) => return Some(Err(error)),
     };
-    Some(
-        sgp::history(
-            shard.base,
-            &shard.token,
-            &shard.user_agent,
-            puuid,
-            begin,
-            count,
-        )
-        .await
-        .map_err(|failure| match failure {
-            sgp::Failure::Busy(message) => {
-                CoreError::Unavailable(format!("the match-history server is busy: {message}"))
-            }
-            sgp::Failure::Other(message) => CoreError::Remote(message),
-        }),
+    Some(shard_page(server, &shard, puuid, begin, count).await)
+}
+
+/// One page from `shard`'s server, once one of the server's slots is free.
+async fn shard_page(
+    server: &HistoryServer,
+    shard: &Shard,
+    puuid: &str,
+    begin: u32,
+    count: u32,
+) -> Result<sgp::Page, CoreError> {
+    let _slot = server.slots.acquire().await;
+    sgp::history(
+        shard.base,
+        &shard.token,
+        &shard.user_agent,
+        puuid,
+        begin,
+        count,
     )
+    .await
+    .map_err(|failure| match failure {
+        sgp::Failure::Busy(message) => {
+            CoreError::Unavailable(format!("the match-history server is busy: {message}"))
+        }
+        sgp::Failure::Other(message) => CoreError::Remote(message),
+    })
 }
 
 /// The shard's match-history server, with what a request to it needs. The token stays in memory.
@@ -3101,9 +3231,10 @@ fn history_paths(
 /// come from the shard's match-history server where it has one: all ten players of each, so the form
 /// scores every game against its own players, and a Tencent client's own list holds as few as five
 /// at first. Elsewhere, or when the server fails, they come from the client's list, the player's
-/// own row only.
+/// own row only. A history neither could read for now is an error ([`record_games`]).
 async fn load_record(
     client: &Client,
+    server: &HistoryServer,
     puuid: &str,
     me: &str,
     focus: Option<analysis::Focus>,
@@ -3111,14 +3242,16 @@ async fn load_record(
     let lcu = &client.lcu;
     let summoner_path = format!("/lol-summoner/v2/summoners/puuid/{}", segment(puuid)?);
     let ranked_path = format!("/lol-ranked/v1/ranked-stats/{puuid}");
-    let (summoner, ranked, (games, complete)) = tokio::join!(
+    let (summoner, ranked, games) = tokio::join!(
         lcu.get::<Summoner>(&summoner_path),
         lcu.get_optional::<RankedStats>(&ranked_path),
-        record_games(client, puuid, me, focus.as_ref()),
+        record_games(client, server, puuid, me, focus.as_ref()),
     );
+    let summoner = summoner?;
+    let (games, complete) = games?;
     // A private profile refuses history and rank; the identity alone is still worth showing.
     Ok(PlayerRecord {
-        summoner: summoner?,
+        summoner,
         ranked: ranked.ok().flatten(),
         games,
         focus,
@@ -3127,31 +3260,90 @@ async fn load_record(
 }
 
 /// The games of a player's record, and whether they are all there are: the shard server's pages
-/// until they hold the form's window ([`RECORD_PAGES`]), else the client's own list; none when
-/// neither answers.
+/// until they hold the form's window ([`RECORD_PAGES`]), its window's games one a request while it
+/// is too busy for pages ([`read_places`]), else the client's own list. When neither source could read the history
+/// for now (the server busy, the client failing with a 5xx) the record is an error, asked for
+/// again soon (`FAILED_PLAYER_TTL`), rather than a record without games kept for ten minutes; a list
+/// the client refuses (a private profile) leaves the record without games.
 async fn record_games(
     client: &Client,
+    server: &HistoryServer,
     puuid: &str,
     me: &str,
     focus: Option<&analysis::Focus>,
-) -> (Vec<Game>, bool) {
+) -> Result<(Vec<Game>, bool), CoreError> {
     let kinds = catalog_kinds(client);
-    let paged = page_through(
-        |begin, count| server_history(client, puuid, begin, count),
-        |games| analysis::window_filled(games, &kinds, focus),
-    )
-    .await;
-    if let Paged::Games(games, ended) = paged {
-        return (games, ended);
+    let mut busy = server.busy(Instant::now());
+    if !busy {
+        let paged = page_through(
+            |begin, count| async move {
+                let answer = server_history(client, server, puuid, begin, count).await;
+                if let Some(answer) = &answer {
+                    server.note(answer, Instant::now());
+                }
+                answer
+            },
+            |games| analysis::window_filled(games, &kinds, focus),
+        )
+        .await;
+        match paged {
+            Paged::Games(games, ended) => return Ok((games, ended)),
+            Paged::Busy => busy = true,
+            Paged::NoServer => {}
+        }
+    }
+    if busy {
+        match shard(client).await {
+            Some(Ok(shard)) => {
+                let places = 0..analysis::RECENT_GAMES as u32;
+                let fetch = |place| shard_page(server, &shard, puuid, place, 1);
+                match record_places(read_places(fetch, places, server).await) {
+                    Ok((games, ended)) if ended || !games.is_empty() => return Ok((games, ended)),
+                    Ok(_) => {}
+                    Err(error) => debug!(%error, "no single game came either"),
+                }
+            }
+            Some(Err(error)) => debug!(%error, "no token for the match-history server"),
+            None => {}
+        }
     }
     // Wider than the form's twenty, so games form leaves out do not shrink it where the client has
     // more (a Tencent client answers with what it holds whatever the range). It is all there is.
     match history(&client.lcu, puuid, me, 0, 30).await {
-        Ok(list) => (list.games.games, true),
+        Ok(list) => Ok((list.games.games, true)),
+        Err(error) if busy => Err(CoreError::Unavailable(format!(
+            "the match-history server is busy, and the client's own list failed: {error}"
+        ))),
+        Err(CoreError::Lcu(error)) if error.status().is_some_and(|status| status >= 500) => {
+            Err(CoreError::Unavailable(error.to_string()))
+        }
         Err(error) => {
             debug!(%error, "match history unavailable");
-            (Vec::new(), true)
+            Ok((Vec::new(), true))
         }
+    }
+}
+
+/// A record's games from its places read one by one ([`read_places`]): every game that came, newest
+/// first, and whether the history ended among them with every place before its end read; the last
+/// failure when no game came and the history did not end.
+fn record_places(
+    (places, failure): (Vec<Place>, Option<CoreError>),
+) -> Result<(Vec<Game>, bool), CoreError> {
+    let end = places.iter().position(|place| *place == Place::End);
+    let ended = end.is_some_and(|end| !places[..end].contains(&Place::Lost));
+    let mut games: Vec<Game> = places
+        .into_iter()
+        .filter_map(|place| match place {
+            Place::Entry(game) => game,
+            Place::End | Place::Lost => None,
+        })
+        .collect();
+    games.sort_by_key(|game| std::cmp::Reverse(game.game_creation));
+    games.dedup_by_key(|game| game.game_id);
+    match failure {
+        Some(failure) if games.is_empty() && end.is_none() => Err(failure),
+        _ => Ok((games, ended)),
     }
 }
 
@@ -3160,6 +3352,8 @@ async fn record_games(
 enum Paged {
     /// The server answered: the games, and whether the history ended among them.
     Games(Vec<Game>, bool),
+    /// The first page was refused as too busy: single games may still come.
+    Busy,
     /// The shard has no server, or its first page failed: the client's own list stands in.
     NoServer,
 }
@@ -3185,6 +3379,10 @@ where
             Some(Err(error)) if begin > 0 => {
                 debug!(%error, "a further page of history failed; keeping the games before it");
                 return Paged::Games(games, false);
+            }
+            Some(Err(CoreError::Unavailable(message))) => {
+                debug!(%message, "the match-history server is busy, reading single games");
+                return Paged::Busy;
             }
             Some(Err(error)) => {
                 debug!(%error, "no match-history server, reading the client's own list");
@@ -4208,101 +4406,200 @@ mod tests {
         );
     }
 
-    /// A server that answers busy for pages larger than `manages`, and pages of a long history
-    /// otherwise; the sizes asked for go into `asked`.
-    fn busy_server(
-        manages: u32,
-        asked: &std::sync::Mutex<Vec<u32>>,
-    ) -> impl FnMut(u32) -> std::future::Ready<Option<Result<sgp::Page, CoreError>>> {
-        move |size| {
-            asked.lock().unwrap().push(size);
-            std::future::ready(Some(if size > manages {
-                Err(CoreError::Unavailable("503".into()))
+    /// A server busy answer, as the shard's server gives it.
+    fn refused() -> CoreError {
+        CoreError::Unavailable("the match-history server is busy: 503".into())
+    }
+
+    /// A history of `total` games, the newest first (creation `1000 - place`), that refuses every
+    /// page of more than one game and the single places `busy` names on the given try (from 1);
+    /// the `(begin, count)` asked for go into `asked`.
+    fn busy_history<'a>(
+        total: u32,
+        busy: impl Fn(u32, usize) -> bool + 'a,
+        asked: &'a std::sync::Mutex<Vec<(u32, u32)>>,
+    ) -> impl FnMut(u32, u32) -> std::future::Ready<Result<sgp::Page, CoreError>> + 'a {
+        move |begin, count| {
+            let tries = {
+                let mut asked = asked.lock().unwrap();
+                asked.push((begin, count));
+                asked.iter().filter(|&&each| each == (begin, count)).count()
+            };
+            std::future::ready(if count > 1 || busy(begin, tries) {
+                Err(refused())
             } else {
-                Ok(server_page(0, size, 500, "KIWI"))
-            }))
+                let mut page = server_page(begin, count, total, "KIWI");
+                for game in page.entries.iter_mut().flatten() {
+                    game.game_creation = 1000 - i64::from(begin);
+                }
+                Ok(page)
+            })
         }
     }
 
-    #[tokio::test]
-    async fn a_busy_server_is_asked_for_fewer_games_and_the_next_page_starts_where_that_worked() {
-        let window = AtomicU32::new(HISTORY_PAGE);
-        let asked = std::sync::Mutex::new(Vec::new());
-        let Some(Ok((page, size))) = server_history_page(busy_server(2, &asked), 50, &window).await
-        else {
-            panic!("a page of two games");
-        };
-        assert_eq!((page.entries.len(), size), (2, 2));
-        assert_eq!(*asked.lock().unwrap(), [50, 10, 2]);
-        assert_eq!(
-            window.load(Ordering::Relaxed),
-            4,
-            "twice what worked, next time"
-        );
-
-        asked.lock().unwrap().clear();
-        server_history_page(busy_server(2, &asked), 50, &window).await;
-        assert_eq!(
-            *asked.lock().unwrap(),
-            [4, 2],
-            "the next page starts from what worked, not from fifty"
-        );
-
-        // The server copes again: the pages grow back to fifty.
-        asked.lock().unwrap().clear();
-        for _ in 0..5 {
-            server_history_page(busy_server(50, &asked), 50, &window).await;
-        }
-        assert_eq!(*asked.lock().unwrap(), [4, 8, 16, 32, 50]);
-        assert_eq!(window.load(Ordering::Relaxed), HISTORY_PAGE);
-        asked.lock().unwrap().clear();
-        server_history_page(busy_server(50, &asked), 10, &window).await;
-        assert_eq!(
-            window.load(Ordering::Relaxed),
-            HISTORY_PAGE,
-            "a short list asked for does not shrink the next page"
+    #[test]
+    fn a_busy_answer_is_remembered_for_two_minutes() {
+        let server = HistoryServer::new();
+        let at = Instant::now();
+        assert!(!server.busy(at));
+        server.note(&Ok::<(), CoreError>(()), at);
+        assert!(!server.busy(at), "an answer that came says nothing");
+        server.note(&Err::<(), _>(CoreError::Remote("401".into())), at);
+        assert!(!server.busy(at), "nor does a refusal of another kind");
+        server.note(&Err::<(), _>(refused()), at);
+        assert!(server.busy(at + Duration::from_secs(119)));
+        assert!(
+            !server.busy(at + BUSY_MEMORY),
+            "whole pages are asked for again"
         );
     }
 
     #[tokio::test]
-    async fn a_server_too_busy_for_one_game_is_given_up_on_after_three_tries_and_other_failures_at_once()
+    async fn a_busy_server_gives_history_its_games_one_by_one_and_the_next_page_begins_where_they_stopped()
      {
-        let window = AtomicU32::new(HISTORY_PAGE);
+        let server = HistoryServer::new();
         let asked = std::sync::Mutex::new(Vec::new());
-        let answer = server_history_page(busy_server(0, &asked), 50, &window).await;
-        assert!(matches!(answer, Some(Err(CoreError::Unavailable(_)))));
-        assert_eq!(*asked.lock().unwrap(), [50, 10, 2, 1, 1, 1]);
-        assert_eq!(window.load(Ordering::Relaxed), 1);
+        // Place 4 refused twice, then read; place 7 refused every time.
+        let busy = |place: u32, tries: usize| place == 7 || (place == 4 && tries <= 2);
+        let (page, more) = history_page(busy_history(500, busy, &asked), &server, 0, 50)
+            .await
+            .unwrap();
+        let ids: Vec<i64> = page
+            .entries
+            .iter()
+            .flatten()
+            .map(|game| game.game_id)
+            .collect();
+        assert_eq!(
+            ids,
+            [1, 2, 3, 4, 5, 6, 7],
+            "as far as the places came in order"
+        );
+        assert!(more, "the next page begins at place 7");
+        {
+            let asked = asked.lock().unwrap();
+            assert_eq!(asked[0], (0, 50), "the whole page first");
+            let singles: Vec<u32> = asked[1..].iter().map(|&(place, _)| place).collect();
+            assert_eq!(
+                singles,
+                [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 4, 7, 4, 7],
+                "ten places at once, the refused ones twice more"
+            );
+        }
+        assert!(server.busy(Instant::now()));
 
-        let calls = std::sync::Mutex::new(0);
-        let refused = server_history_page(
-            |_| {
-                *calls.lock().unwrap() += 1;
-                std::future::ready(Some(Err(CoreError::Remote("401".into()))))
-            },
-            50,
-            &AtomicU32::new(HISTORY_PAGE),
+        // Busy now: no whole page is asked for, and the next page begins at 7.
+        asked.lock().unwrap().clear();
+        let (page, _) = history_page(busy_history(500, |_, _| false, &asked), &server, 7, 50)
+            .await
+            .unwrap();
+        assert_eq!(page.entries.len(), SINGLE_PAGE as usize);
+        assert_eq!(asked.lock().unwrap()[0], (7, 1));
+
+        // The end of the history ends the list.
+        asked.lock().unwrap().clear();
+        let (page, more) = history_page(busy_history(503, |_, _| false, &asked), &server, 500, 50)
+            .await
+            .unwrap();
+        assert_eq!((page.entries.len(), more), (3, false));
+    }
+
+    #[tokio::test]
+    async fn a_history_page_nothing_of_which_comes_says_the_server_is_busy() {
+        let server = HistoryServer::new();
+        let asked = std::sync::Mutex::new(Vec::new());
+        let failed = history_page(busy_history(500, |_, _| true, &asked), &server, 0, 20).await;
+        assert!(
+            matches!(failed, Err(CoreError::Unavailable(_))),
+            "{failed:?}"
+        );
+        assert_eq!(asked.lock().unwrap().len(), 1 + 3 * SINGLE_PAGE as usize);
+
+        let refused = history_page(
+            |_, _| std::future::ready(Err(CoreError::Remote("401".into()))),
+            &HistoryServer::new(),
+            0,
+            20,
         )
         .await;
-        assert!(matches!(refused, Some(Err(CoreError::Remote(_)))));
+        assert!(
+            matches!(refused, Err(CoreError::Remote(_))),
+            "only a busy server is read game by game"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_record_reads_its_window_one_game_a_request_while_the_server_is_busy() {
+        let server = HistoryServer::new();
+        let asked = std::sync::Mutex::new(Vec::new());
+        // Places 2 and 5 refused once, place 7 every time.
+        let busy = |place: u32, tries: usize| place == 7 || (matches!(place, 2 | 5) && tries == 1);
+        let mut fetch = busy_history(500, busy, &asked);
+        let places = 0..analysis::RECENT_GAMES as u32;
+        let (games, ended) =
+            record_places(read_places(|place| fetch(place, 1), places, &server).await).unwrap();
+        assert_eq!(games.len(), analysis::RECENT_GAMES - 1, "all but place 7");
+        assert!(
+            games
+                .windows(2)
+                .all(|pair| pair[0].game_creation > pair[1].game_creation)
+        );
+        assert!(!ended);
         assert_eq!(
-            *calls.lock().unwrap(),
-            1,
-            "only a busy server is asked for less"
+            asked.lock().unwrap().len(),
+            analysis::RECENT_GAMES + 2 + 2,
+            "twenty at once, then the refused ones: places 2, 5 and 7, then 7 again"
+        );
+
+        // Nothing came: the server's own word.
+        let asked = std::sync::Mutex::new(Vec::new());
+        let mut fetch = busy_history(500, |_, _| true, &asked);
+        let nothing = record_places(read_places(|place| fetch(place, 1), 0..20, &server).await);
+        assert!(
+            matches!(nothing, Err(CoreError::Unavailable(_))),
+            "{nothing:?}"
+        );
+
+        // A history of three games ends among the places, every place before its end read.
+        let asked = std::sync::Mutex::new(Vec::new());
+        let mut fetch = busy_history(3, |place, tries| place == 1 && tries == 1, &asked);
+        let short = record_places(read_places(|place| fetch(place, 1), 0..20, &server).await);
+        assert!(
+            matches!(&short, Ok((games, true)) if games.len() == 3),
+            "{short:?}"
+        );
+        let asked = std::sync::Mutex::new(Vec::new());
+        let mut fetch = busy_history(3, |place, _| place == 1, &asked);
+        let gap = record_places(read_places(|place| fetch(place, 1), 0..20, &server).await);
+        assert!(
+            matches!(&gap, Ok((games, false)) if games.len() == 2),
+            "a place lost before the end leaves the history open: {gap:?}"
+        );
+        let empty = record_places(
+            read_places(
+                |_| std::future::ready(Ok(sgp::Page::default())),
+                0..20,
+                &server,
+            )
+            .await,
         );
         assert!(
-            server_history_page(|_| std::future::ready(None), 50, &window)
-                .await
-                .is_none(),
-            "no server for the shard"
+            matches!(&empty, Ok((games, true)) if games.is_empty()),
+            "a new account"
         );
+    }
+
+    #[tokio::test]
+    async fn a_refused_first_page_turns_a_record_to_single_games() {
+        let busy = page_through(|_, _| async { Some(Err(refused())) }, |_| false).await;
+        assert_eq!(busy, Paged::Busy);
     }
 
     #[tokio::test]
     async fn a_busy_server_is_what_a_failed_history_says_when_the_client_fails_as_well() {
         // The client is not there, so its own list fails too.
         let client = quiet_client(Phase::None);
-        let busy = Some(Err(CoreError::Unavailable("busy".into())));
+        let busy = Some(Err(refused()));
         let failed = fetch_history(&client, busy, "p", "me", 0, 50).await;
         assert!(
             matches!(&failed, Err(CoreError::Unavailable(_))),
@@ -4312,24 +4609,75 @@ mod tests {
             IpcError::from(failed.unwrap_err()).code,
             ErrorCode::Unavailable
         );
-        let refused = Some(Err(CoreError::Remote("401".into())));
-        let failed = fetch_history(&client, refused, "p", "me", 0, 50).await;
+        let other = Some(Err(CoreError::Remote("401".into())));
+        let failed = fetch_history(&client, other, "p", "me", 0, 50).await;
         assert!(
             matches!(&failed, Err(CoreError::Lcu(_))),
             "any other failure of the server leaves the client's own word: {failed:?}"
         );
 
-        // A page that came back as full as it was asked may have more after it, however short.
-        let short = Some(Ok((server_page(0, 2, 500, "KIWI"), 2)));
+        // The server says whether more may follow, however short the page.
+        let short = Some(Ok((server_page(0, 2, 500, "KIWI"), true)));
         let (page, keep) = fetch_history(&client, short, "p", "me", 0, 50)
             .await
             .unwrap();
         assert_eq!((page.entries.len(), page.more, keep), (2, true, true));
-        let last = Some(Ok((server_page(0, 2, 1, "KIWI"), 2)));
+        let last = Some(Ok((server_page(0, 2, 1, "KIWI"), false)));
         let (page, _) = fetch_history(&client, last, "p", "me", 0, 50)
             .await
             .unwrap();
         assert_eq!((page.entries.len(), page.more), (1, false));
+    }
+
+    #[tokio::test]
+    async fn a_history_neither_source_can_read_now_is_asked_for_again_rather_than_kept_empty() {
+        // The client is not there: its list fails, and the shard's server cannot be found.
+        let client = quiet_client(Phase::ChampSelect);
+        let server = HistoryServer::new();
+        let refused_list = record_games(&client, &server, "p", "me", None).await;
+        assert!(
+            matches!(&refused_list, Ok((games, true)) if games.is_empty()),
+            "a list the client refuses leaves the identity alone: {refused_list:?}"
+        );
+        // The server said it was too busy a moment ago: no page is asked for, and with nothing
+        // read the record is an error, so it is asked for again soon.
+        server.note(&Err::<(), _>(refused()), Instant::now());
+        let busy = record_games(&client, &server, "p", "me", None).await;
+        assert!(matches!(&busy, Err(CoreError::Unavailable(_))), "{busy:?}");
+        assert_eq!(
+            IpcError::from(busy.unwrap_err()).code,
+            ErrorCode::Unavailable
+        );
+    }
+
+    #[tokio::test]
+    async fn a_game_that_ended_keeps_its_players_records_and_reads_none_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        let session: GameflowSession = serde_json::from_value(json!({
+            "phase": "EndOfGame",
+            "gameData": {
+                "gameId": 9, "queue": {"id": 450, "gameMode": "ARAM"},
+                "teamOne": [{"puuid": "mate", "championId": 1}],
+                "teamTwo": [{"puuid": "foe", "championId": 2}]
+            }
+        }))
+        .unwrap();
+        let after = quiet_client(Phase::EndOfGame);
+        service.on_gameflow(&after, Some(session.clone()));
+        assert!(
+            lock(&service.inner.players).is_empty(),
+            "nobody is read again after the game"
+        );
+        assert!(lock(&after.live).gameflow.is_some(), "its view stays");
+
+        let playing = quiet_client(Phase::InProgress);
+        service.on_gameflow(&playing, Some(session));
+        let players = lock(&service.inner.players);
+        assert!(
+            players.contains_key("mate") && players.contains_key("foe"),
+            "while the game runs its players are read"
+        );
     }
 
     #[test]
