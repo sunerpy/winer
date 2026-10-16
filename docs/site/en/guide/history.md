@@ -61,10 +61,12 @@ match-history server instead, with the client's own sign-in, so it pages through
 when that server cannot be reached it falls back to the client's 20 games and says so under the
 list.
 
-When the server is busy, a page of many games is the first to time out, so winer asks for fewer
-games at a time and the list fills more slowly. When it cannot send even one, the page says that
-Tencent's match-history server is busy: the client's own history usually cannot open then either,
-so retry in a while.
+When the server is busy (on Tencent's shards mostly from 21:00 to 23:00 Beijing time), whole pages
+time out while single games mostly still come. winer then reads the games one at a time, many at
+once, ten to a page, so the list fills more slowly. It reads on only as you page on, not every page
+in the background, so it does not compete with champ select's reads for the same server; the
+**Champions** view still reads them all. When not even one game comes, the page says that Tencent's
+match-history server is busy; retry in a while.
 
 Histories seen a moment ago stay in memory for this app run: going back to a player shows their
 profile and games at once, on the page you left, while winer checks for new games in the background,

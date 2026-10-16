@@ -217,6 +217,25 @@ limit exceeded. Response timed out.` after 1–5 s to every page of ten games or
   (`Error getting match list for summoner, begin 0, end: 20`) on both path forms, so its own
   history page had nothing either. winer then asks for fewer games a page
   (`server_history_page`).
+- It is the evening (winer's own logs on the owner's PC, GZ100, 2026-10-12/13/16): from about
+  21:00 to 23:00 Beijing time every record's page of twenty answered `503` busy and the client's
+  list `503` after it, for party members and for strangers in the same champ selects alike, while
+  History's pages of one or two games still came now and then. At 18:02 on 2026-10-16 every record
+  came and the callout went out. Playing in a party only made it look tied to the party: after each
+  game winer read all ten players again at once and kept each failure as a record without games
+  for ten minutes, so the party's records were not even asked for in the next champ select.
+- What gets through then is single games (2026-10-16, 23:14–23:20 Beijing, in a game): pages of
+  five or twenty were refused 18 times in 18, over HTTP/1.1 and HTTP/2 alike and whatever the user
+  agent, `Accept-Encoding` or a timeout header (`x-envoy-upstream-rq-timeout-ms`); `count=1`
+  asked for ten places at once came 46 times in 60, each batch in 1.1–1.7 s. The refusals come
+  after a steady ~1.05 s: the edge gives the service about a second. The service knows two
+  `infoType`s, `SUMMARY` and `DETAILS` (`IDS`, `TIMELINE` and others answer 400 `No enum
+constant ...InfoType`). The client's own match history failed the same way that evening: its log
+  holds 94 `503`s for `SUMMARY?startIndex=0&count=30&tagsQueryType=AND`, and its own list then
+  answers from what it cached. So while the server is busy winer reads every game on its own
+  (`read_places`, ten slots at once, three tries a place): History pages of ten, a record's window
+  of twenty. A record that still gets nothing is asked for again after 30 s, and nobody is read
+  again after the game.
 - The server compresses when asked (GZ100, 2026-10-07): a page of 20 games was 22,485 bytes as
   JSON and 4,067 on the wire with `Accept-Encoding: gzip` (`content-encoding: gzip`), the same
   bytes unpacked. winer's internet client asks for it; the LCU's does not.

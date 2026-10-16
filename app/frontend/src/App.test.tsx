@@ -1947,7 +1947,8 @@ describe("history", () => {
     expect(await screen.findByText(/已保存到下载文件夹/)).toBeInTheDocument();
   });
 
-  it("reads on from where a short page ended while the server sends few games a page", async () => {
+  it("reads a busy server's short pages only as far as the list is looked at", async () => {
+    localStorage.removeItem("winer.history.pageSize");
     const demo = demoBackend();
     // A busy server: ten games a page, whatever was asked.
     const backend = demoWith({
@@ -1955,19 +1956,33 @@ describe("history", () => {
         demo.call("get_match_history", { ...args, count: Math.min(args.count, 10) }),
     });
     const call = vi.spyOn(backend, "call");
+    const begins = () =>
+      call.mock.calls
+        .filter(([name]) => name === "get_match_history")
+        .map(([, args]) => args as { begin: number; count: number })
+        .filter((args) => args.count === 50)
+        .map((args) => args.begin);
     const { user, nav } = await renderApp(backend);
     await user.click(within(nav).getByRole("button", { name: zhCN["nav.history"] }));
     expect(
-      await screen.findByText("第 1–10 场 · 共 60 场", {}, { timeout: 5000 }),
+      await screen.findByText("第 1–10 场 · 战绩服务器繁忙，翻页时再继续读取（已读取 10 场）"),
     ).toBeInTheDocument();
-    const begins = call.mock.calls
-      .filter(([name]) => name === "get_match_history")
-      .map(([, args]) => args as { begin: number; count: number })
-      .filter((args) => args.count === 50)
-      .map((args) => args.begin);
-    expect(begins, "each page starts where the last one ended").toEqual([
-      0, 10, 20, 30, 40, 50, 60,
-    ]);
+    expect(begins(), "the first page fills the page in view: no more is read").toEqual([0]);
+
+    const pages = screen.getByRole("navigation", { name: zhCN["history.pages"] });
+    await user.click(within(pages).getByRole("button", { name: zhCN["history.next"] }));
+    expect(
+      await screen.findByText("第 11–20 场 · 战绩服务器繁忙，翻页时再继续读取（已读取 20 场）"),
+    ).toBeInTheDocument();
+    expect(begins(), "each page starts where the last one ended").toEqual([0, 10]);
+
+    // The champion view counts every game: it reads on to the end.
+    const views = screen.getByRole("radiogroup", { name: zhCN["history.view"] });
+    await user.click(within(views).getByRole("radio", { name: zhCN["history.champions"] }));
+    expect(
+      await screen.findByRole("table", { name: zhCN["history.champions"] }, { timeout: 5000 }),
+    ).toBeInTheDocument();
+    expect(begins()).toEqual([0, 10, 20, 30, 40, 50, 60]);
   });
 
   it("says plainly that the match-history server is busy, and asks again on retry", async () => {

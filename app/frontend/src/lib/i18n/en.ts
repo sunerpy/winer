@@ -721,6 +721,7 @@ export const en: Record<MessageKey, string> = {
   "history.champ.winRate": "Win rate",
   "history.champ.score": "Average score",
   "history.champ.last": "Last played",
+  "history.paused": "The match-history server is busy; more are read as you page on ({n} read)",
   "history.loadingAll": "Reading all available games ({n} read)",
   "history.counted": "{n} available games counted (remakes left out)",
   "history.exportCsv": "Export CSV",
