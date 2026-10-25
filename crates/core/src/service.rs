@@ -49,8 +49,8 @@ use crate::{
     },
     recommend,
     settings::{
-        self, Audience, CalloutRule, General, Language, Mode, ModeSource, PresenceRule,
-        ProfileSettings, RiftSource, Scoped, Settings, SettingsStore,
+        self, Audience, CalloutDelivery, CalloutRule, General, Language, Mode, ModeSource,
+        PresenceRule, ProfileSettings, RiftSource, Scoped, Settings, SettingsStore,
     },
     sgp,
     view::{
@@ -93,8 +93,8 @@ const FRIENDS_REFRESH: Duration = Duration::from_secs(60);
 /// Sooner until it has been read once: chat can still be signing in when the client connects.
 const FRIENDS_RETRY: Duration = Duration::from_secs(5);
 
-/// Between team-visible callout lines: short messages survive the remote chat service, and the gap
-/// keeps the six-message block below its burst limit.
+/// Between team-visible callout lines sent one a message (`CalloutDelivery::Lines`): the gap keeps
+/// the six messages below the chat's burst limit.
 const MESSAGE_GAP: Duration = Duration::from_millis(350);
 /// Champ select's chat room opens a moment after champ select itself.
 const CHAT_WAIT_ATTEMPTS: u32 = 10;
@@ -730,11 +730,12 @@ impl Service {
                 "nobody in champ select has been rated yet".into(),
             ));
         }
-        let audience = audience.unwrap_or(self.settings().automation.callout.audience);
+        let rule = self.settings().automation.callout;
+        let audience = audience.unwrap_or(rule.audience);
         let chat = champ_select_chat(&client.lcu)
             .await?
             .ok_or_else(|| CoreError::Invalid("champ select chat is not open".into()))?;
-        say(&client.lcu, &chat, &lines, audience).await?;
+        say(&client.lcu, &chat, &lines, audience, rule.delivery).await?;
         Ok(lines.len() as u32)
     }
 
@@ -1528,7 +1529,7 @@ impl Service {
         opened: Option<Instant>,
     ) {
         let wait = callout_wait(rule, opened, Instant::now());
-        let audience = rule.audience;
+        let (audience, delivery) = (rule.audience, rule.delivery);
         let (service, client) = (self.clone(), client.clone());
         self.spawn(async move {
             if !service.callout_still_due(&client, wait, opened).await {
@@ -1550,7 +1551,7 @@ impl Service {
                 }
             }
             let result = match &chat {
-                Some(chat) => say(&client.lcu, chat, &lines, audience).await,
+                Some(chat) => say(&client.lcu, chat, &lines, audience, delivery).await,
                 None => Err(CoreError::Invalid("champ select chat never opened".into())),
             };
             match result {
@@ -2807,15 +2808,24 @@ async fn champ_select_chat(lcu: &Lcu) -> Result<Option<String>, CoreError> {
         .map(|conversation| conversation.id))
 }
 
-/// Posts short team-visible messages in line order. The remote chat service can optimistically show
-/// a multi-line `chat` message and then remove it; `Me` is local-only and keeps one coherent block.
-async fn say(lcu: &Lcu, chat: &str, lines: &[String], audience: Audience) -> Result<(), CoreError> {
+/// Posts the callout's lines in `chat`: to the team as `delivery` says, one message or a message a
+/// line; to the user alone (`celebration`, shown only in this client) always one message.
+async fn say(
+    lcu: &Lcu,
+    chat: &str,
+    lines: &[String],
+    audience: Audience,
+    delivery: CalloutDelivery,
+) -> Result<(), CoreError> {
     let path = format!("/lol-chat/v1/conversations/{}/messages", query_value(chat));
     let kind = match audience {
         Audience::Team => "chat",
         Audience::Me => "celebration",
     };
-    for (index, body) in callout_messages(lines, audience).iter().enumerate() {
+    for (index, body) in callout_messages(lines, audience, delivery)
+        .iter()
+        .enumerate()
+    {
         if index > 0 {
             sleep(MESSAGE_GAP).await;
         }
@@ -2825,10 +2835,14 @@ async fn say(lcu: &Lcu, chat: &str, lines: &[String], audience: Audience) -> Res
     Ok(())
 }
 
-fn callout_messages(lines: &[String], audience: Audience) -> Vec<String> {
-    match audience {
-        Audience::Team => lines.to_vec(),
-        Audience::Me => vec![lines.join("\n")],
+fn callout_messages(
+    lines: &[String],
+    audience: Audience,
+    delivery: CalloutDelivery,
+) -> Vec<String> {
+    match (audience, delivery) {
+        (Audience::Team, CalloutDelivery::Lines) => lines.to_vec(),
+        _ => vec![lines.join("\n")],
     }
 }
 
@@ -3440,16 +3454,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn team_callouts_are_short_messages_while_only_me_keeps_one_block() {
+    fn a_callout_is_one_message_unless_the_team_is_to_get_a_message_a_line() {
         let lines = [
             "winer 战绩鉴定".into(),
             "1L: 🦄 独角马|胜率55%|KDA3.5|战力7.2".into(),
         ];
-        assert_eq!(callout_messages(&lines, Audience::Team), lines);
+        let block = ["winer 战绩鉴定\n1L: 🦄 独角马|胜率55%|KDA3.5|战力7.2"];
+        let delivery = CalloutRule::default().delivery;
+        assert_eq!(delivery, CalloutDelivery::Block, "one message by default");
+        assert_eq!(callout_messages(&lines, Audience::Team, delivery), block);
         assert_eq!(
-            callout_messages(&lines, Audience::Me),
-            ["winer 战绩鉴定\n1L: 🦄 独角马|胜率55%|KDA3.5|战力7.2"]
+            callout_messages(&lines, Audience::Team, CalloutDelivery::Lines),
+            lines
         );
+        for delivery in [CalloutDelivery::Block, CalloutDelivery::Lines] {
+            assert_eq!(
+                callout_messages(&lines, Audience::Me, delivery),
+                block,
+                "shown to the user alone, always one message"
+            );
+        }
     }
 
     #[test]

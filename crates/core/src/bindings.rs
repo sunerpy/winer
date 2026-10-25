@@ -100,6 +100,7 @@ pub fn typescript() -> String {
         settings::BanRule,
         settings::CalloutRule,
         settings::Audience,
+        settings::CalloutDelivery,
         settings::TierSet,
         settings::BenchRule,
         settings::Scopes,
