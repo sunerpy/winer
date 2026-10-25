@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.17](https://github.com/sunerpy/winer/compare/v0.0.16...v0.0.17) (2026-10-25)
+
+
+### Features
+
+* send the champ-select callout as one message by default ([#37](https://github.com/sunerpy/winer/issues/37)) ([9fc1f21](https://github.com/sunerpy/winer/commit/9fc1f210fbe58c3b51a6549235171757353a04ce))
+
 ## [0.0.16](https://github.com/sunerpy/winer/compare/v0.0.15...v0.0.16) (2026-10-16)
 
 
