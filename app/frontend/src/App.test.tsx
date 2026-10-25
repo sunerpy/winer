@@ -1812,6 +1812,36 @@ describe("callout", () => {
     );
   });
 
+  it("sends the team one message by default, or a message a line when chosen", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.automation"] }));
+    const delivery = await screen.findByRole("radiogroup", { name: zhCN["auto.calloutDelivery"] });
+    expect(
+      within(delivery).getByRole("radio", { name: zhCN["auto.delivery.block"] }),
+    ).toBeChecked();
+    await user.click(within(delivery).getByRole("radio", { name: zhCN["auto.delivery.lines"] }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          automation: expect.objectContaining({
+            callout: expect.objectContaining({ delivery: "lines" }),
+          }),
+        }),
+      }),
+    );
+
+    const audience = screen.getByRole("radiogroup", { name: zhCN["auto.calloutAudience"] });
+    await user.click(within(audience).getByRole("radio", { name: zhCN["auto.audience.me"] }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("radiogroup", { name: zhCN["auto.calloutDelivery"] }),
+        "shown to the user alone, it is always one message",
+      ).toBeNull(),
+    );
+  });
+
   it("holds the automatic callout 1.5 s after champ select opens, as long as chosen or not at all", async () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");

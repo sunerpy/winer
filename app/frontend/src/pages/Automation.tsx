@@ -1,6 +1,7 @@
 import type {
   Audience,
   Automation,
+  CalloutDelivery,
   CalloutRule,
   CalloutStyle,
   GameTeams,
@@ -365,6 +366,20 @@ function CalloutPanel({
           onChange={(audience) => onChange((value) => ({ ...value, audience }))}
         />
       </Row>
+      {rule.audience === "team" && (
+        <Row label={t("auto.calloutDelivery")} help={t("auto.calloutDeliveryHint")}>
+          <Segmented<CalloutDelivery>
+            size="sm"
+            label={t("auto.calloutDelivery")}
+            value={rule.delivery}
+            options={[
+              { value: "block", label: t("auto.delivery.block") },
+              { value: "lines", label: t("auto.delivery.lines") },
+            ]}
+            onChange={(delivery) => onChange((value) => ({ ...value, delivery }))}
+          />
+        </Row>
+      )}
       <Row label={t("auto.calloutSelf")}>
         <Toggle
           checked={rule.includeSelf}

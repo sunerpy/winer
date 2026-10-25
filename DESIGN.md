@@ -253,9 +253,9 @@ while the client is not connected), `ProfileIcon` (circle), `AssetIcon` (items, 
   the client's amber. 设置 › 评级 turns titles off everywhere.
 - **Callout.** A Panel beside the team in one-team modes (ARAM) and under both teams otherwise:
   the lines exactly as they will be sent, in an inset block. The Chinese team-safe default uses
-  a seat-first scan order (`1L: 档位|胜率|KDA|战力`) and omits free-form names, titles and quips. Team-visible
-  delivery sends one short message per line with a measured gap so the remote chat keeps it; local-only
-  delivery keeps the whole block in one message. Then 发送到队伍 (accent) and
+  a seat-first scan order (`1L: 档位|胜率|KDA|战力`) and omits free-form names, titles and quips. The whole
+  block goes out as one message, to the team and to the user alike; 发送方式 can send the team a
+  short message a line instead, with a measured gap between them. Then 发送到队伍 (accent) and
   仅自己可见 (outline). An accent badge in the header says when automatic sending is on. A last line
   under a hairline names the callout's shortcut in `Kbd` caps after a lamp (ok; `danger` when the
   system refused it; off without one), with 去设置 as a link to 自动化. In the game the panel holds

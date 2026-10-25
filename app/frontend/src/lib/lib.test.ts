@@ -55,6 +55,7 @@ const SETTINGS = {
       delay: true,
       delayMs: 1500,
       audience: "team",
+      delivery: "block",
       includeSelf: true,
       header: "",
       template: "",

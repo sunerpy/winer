@@ -945,6 +945,7 @@ const DEFAULT_SETTINGS: Settings = {
       delay: true,
       delayMs: 1500,
       audience: "team",
+      delivery: "block",
       includeSelf: true,
       header: "",
       template: "",

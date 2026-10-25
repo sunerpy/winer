@@ -567,7 +567,11 @@ auto: boolean,
  * Hold the automatic callout until [`Self::delay_ms`] after champ select opened; lines ready
  * only later go as soon as they are.
  */
-delay: boolean, delayMs: number, audience: Audience, includeSelf: boolean, 
+delay: boolean, delayMs: number, audience: Audience, 
+/**
+ * How a callout to the team goes out: one message, or a message a line.
+ */
+delivery: CalloutDelivery, includeSelf: boolean, 
 /**
  * Sent before the players' lines, as written; empty sends none.
  */
@@ -626,6 +630,8 @@ gameTeams: GameTeams,
 style: CalloutStyle, };
 
 export type Audience = "team" | "me";
+
+export type CalloutDelivery = "block" | "lines";
 
 export type TierSet = "riftFive" | "grades" | "horseUniverse" | "horses" | "horsesFive" | "rift" | "custom";
 

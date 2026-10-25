@@ -450,6 +450,8 @@ pub struct CalloutRule {
     pub delay: bool,
     pub delay_ms: u32,
     pub audience: Audience,
+    /// How a callout to the team goes out: one message, or a message a line.
+    pub delivery: CalloutDelivery,
     pub include_self: bool,
     /// Sent before the players' lines, as written; empty sends none.
     pub header: String,
@@ -497,6 +499,7 @@ impl Default for CalloutRule {
             delay: true,
             delay_ms: 1500,
             audience: Audience::Team,
+            delivery: CalloutDelivery::default(),
             include_self: true,
             header: String::new(),
             template: String::new(),
@@ -554,6 +557,19 @@ pub enum Audience {
     Team,
     /// Shown in this client only.
     Me,
+}
+
+/// How a callout to the team goes out (`service::say`). Shown only to the user, it is always one
+/// message.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum CalloutDelivery {
+    /// One message, its lines one under another, as a player pastes one.
+    #[default]
+    Block,
+    /// A short message a line, a moment apart: for a team chat that takes a block back once shown,
+    /// as was reported on 2026-10-07 (the default from 0.0.13 to 0.0.16).
+    Lines,
 }
 
 /// How the callout writes each player when the user has not written their own line.
@@ -1514,6 +1530,11 @@ mod tests {
         // Settings saved before the callout could wait wait the default 1.5 s.
         let callout = &settings.automation.callout;
         assert_eq!((callout.delay, callout.delay_ms), (true, 1500));
+        // Settings saved before the delivery could be chosen send one message.
+        assert_eq!(callout.delivery, CalloutDelivery::Block);
+        let lines: Settings =
+            serde_json::from_str(r#"{"automation":{"callout":{"delivery":"lines"}}}"#).unwrap();
+        assert_eq!(lines.automation.callout.delivery, CalloutDelivery::Lines);
     }
 
     #[test]
