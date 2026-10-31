@@ -11,7 +11,10 @@ import type {
   Build,
   CalloutRule,
   ChallengeProfile,
+  ClaimReport,
   CleanupReport,
+  Crest,
+  CrestChange,
   DiagnosticsReport,
   ExportFormat,
   NoteEntry,
@@ -19,7 +22,9 @@ import type {
   Event,
   GameData,
   General,
+  GrantChoice,
   HotkeyStatus,
+  IconChange,
   IpcError,
   LoadoutSummary,
   MatchDetail,
@@ -33,6 +38,7 @@ import type {
   PluginStatus,
   Position,
   Presence,
+  RewardsView,
   RiotId,
   RunePage,
   Settings,
@@ -96,6 +102,17 @@ export interface Commands {
     { challengeIds: number[]; titleId: number | null; bannerId: string | null },
     ChallengeProfile
   >;
+  /** Answers the icon before and the one the client shows afterwards. */
+  use_default_icon: Command<undefined, IconChange>;
+  set_icon: Command<{ icon: number }, IconChange>;
+  /** Answers the border before and the one the client reads back afterwards. */
+  use_plain_crest: Command<undefined, CrestChange>;
+  set_crest: Command<{ crest: Crest }, CrestChange>;
+  // Rewards the client holds for the player.
+  get_pending_rewards: Command<undefined, RewardsView>;
+  /** Every grant with nothing to choose, and each grant in `choices` as picked; refused (busy)
+   *  from the queue to the end of a game. */
+  claim_rewards: Command<{ choices: GrantChoice[] }, ClaimReport>;
   get_game_settings_backups: Command<undefined, BackupInfo[]>;
   create_game_settings_backup: Command<undefined, BackupInfo>;
   restore_game_settings_backup: Command<{ id: number; channels: BackupChannel[] }, null>;

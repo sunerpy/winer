@@ -184,6 +184,44 @@ GZ100, 16.19.821.7343, 2026-10-06.
   and the presence's `regalia` (`bannerType` 1 → 2), while `bannerType` stayed `blank` for an
   account with no last-season rank; `blank` put both back.
 
+### Icon and border
+
+The owner's account on windows-home (Tencent), 2026-10-31, between games, with the owner's consent.
+
+- `PUT /lol-regalia/v2/current-summoner/regalia` takes `{preferredCrestType, preferredBannerType,
+selectedPrestigeCrest}` (a `uint8`). `preferredCrestType` `"none"` and `""` answered 400
+  `Invalid preferredCrestType`; `"prestige"` with border 0 or 22 was read back as 14, the highest
+  unlocked at level 345; `"ranked"` was taken, but the effective
+  `crestType` stayed `prestige` on an unranked account while the chat presence's `regalia` said
+  `crestType: 2`. No request shows no border; border 1 (levels 1–29) is the plainest. The owner's
+  setting (prestige, 7) was put back and read back.
+- Every account owns icons 0–29 (`/lol-inventory/v2/inventory/SUMMONER_ICON`); 29 is 头盔老铁, the
+  icon of new accounts. `PUT /lol-summoner/v1/current-summoner/icon` takes `{profileIconId,
+inventoryToken}` (`LolSummonerSummonerIcon`); not yet exercised. The signed inventory is at
+  `/lol-inventory/v1/signedInventory` (a map of a token per kind of item); `signed-inventory`
+  answered 404 `Invalid URI format`.
+
+## Rewards waiting for the player
+
+The same account and day.
+
+- `GET /lol-rewards/v1/grants` lists every grant whatever its status; `?status=PENDING_SELECTION`
+  keeps the waiting ones (statuses `PENDING_FULFILLMENT`, `PENDING_SELECTION`, `FULFILLED`,
+  `FAILED`). 25 were waiting, the oldest from 2023-08: 13 × 750 Blue Essence, icons, emotes, a
+  champion. Each group has `selectionStrategyConfig {minSelectionsAllowed, maxSelectionsAllowed}`:
+  20 were one of one and 5 two of two, none a real choice. Some group titles are the placeholder
+  `Placeholder Name for Reward Group DO NOT TRANSLATE`.
+- Every event-pass reward still to take (`/lol-event-hub/v1/events/{eventId}/reward-track/items`,
+  an option in state `Unselected`) was also one of these grants. Grants of the 2023–2024 events the
+  hub no longer lists are reachable only this way.
+- `POST /lol-rewards/v1/grants/{grantId}/select` with `{grantId, rewardGroupId, selections:
+[rewardId, …]}` answered 200 with the grant, `PENDING_FULFILLMENT`; 1.5 s later it read
+  `FULFILLED`, and Blue Essence had gone from 280,747 to 281,497. The fulfilled grant stays in the
+  unfiltered list. `POST /lol-rewards/v1/select-bulk` takes an array of the same body; not
+  exercised.
+- Missions are no claim surface: a completed mission's rewards are applied or become grants. The
+  TFT pass had one `REWARDABLE` milestone, on the paid track and locked.
+
 ## Match history from the shard's server (SGP)
 
 Measured on NJ100, 16.19, 2026-10-05.

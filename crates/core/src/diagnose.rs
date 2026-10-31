@@ -99,6 +99,7 @@ pub const LCU_ROUTES: &[(Verb, &str)] = &[
     (Verb::Post, "/lol-game-settings/v1/save"),
     (Verb::Get, "/lol-gameflow/v1/gameflow-phase"),
     (Verb::Get, "/lol-gameflow/v1/session"),
+    (Verb::Get, "/lol-inventory/v1/signedInventory"),
     (Verb::Get, "/lol-item-sets/v1/item-sets/{summonerId}/sets"),
     (Verb::Put, "/lol-item-sets/v1/item-sets/{summonerId}/sets"),
     (Verb::Get, "/lol-lobby/v2/lobby"),
@@ -129,7 +130,10 @@ pub const LCU_ROUTES: &[(Verb, &str)] = &[
     (Verb::Get, "/lol-regalia/v2/current-summoner/regalia"),
     (Verb::Put, "/lol-regalia/v2/current-summoner/regalia"),
     (Verb::Get, "/lol-regalia/v3/inventory/{inventoryType}"),
+    (Verb::Get, "/lol-rewards/v1/grants"),
+    (Verb::Post, "/lol-rewards/v1/grants/{grantId}/select"),
     (Verb::Get, "/lol-summoner/v1/current-summoner"),
+    (Verb::Put, "/lol-summoner/v1/current-summoner/icon"),
     (
         Verb::Get,
         "/lol-summoner/v1/current-summoner/summoner-profile",

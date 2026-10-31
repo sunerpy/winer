@@ -1,0 +1,363 @@
+[
+ {
+  "info": {
+   "dateCreated": "2023-08-19T14:20:27.982+00:00",
+   "grantElements": [],
+   "granteeId": "00000000-0000-0000-0000-000000000000",
+   "grantorDescription": {
+    "appName": "cap.progression",
+    "entityId": "entity-0003"
+   },
+   "id": "grant-0001",
+   "messageParameters": {},
+   "rewardGroupId": "group-0002",
+   "selectedIds": [],
+   "status": "PENDING_SELECTION",
+   "viewed": false
+  },
+  "rewardGroup": {
+   "active": true,
+   "celebrationType": "NONE",
+   "childRewardGroupIds": [],
+   "id": "group-0002",
+   "localizations": {
+    "description": "",
+    "title": "斗魂觉醒 神之眼 图标"
+   },
+   "media": {},
+   "productId": "product-0004",
+   "rewardStrategy": "SELECTION",
+   "rewards": [
+    {
+     "fulfillmentSource": "cap.entitlements",
+     "id": "reward-0005",
+     "itemId": "item-0006",
+     "itemType": "bb69c4a5-35a6-423c-a61a-a1eb4ca1aae7",
+     "localizations": {
+      "details": " ",
+      "title": "斗魂觉醒 神之眼 图标"
+     },
+     "media": {
+      "iconUrl": "/lol-game-data/assets/ASSETS/UX/SummonerIcons/5903.jpg"
+     },
+     "quantity": 1
+    }
+   ],
+   "selectionStrategyConfig": {
+    "maxSelectionsAllowed": 1,
+    "minSelectionsAllowed": 1
+   },
+   "types": []
+  }
+ },
+ {
+  "info": {
+   "dateCreated": "2026-03-21T14:01:56.987+00:00",
+   "grantElements": [],
+   "granteeId": "00000000-0000-0000-0000-000000000000",
+   "grantorDescription": {
+    "appName": "cap.progression",
+    "entityId": "entity-0009"
+   },
+   "id": "grant-0007",
+   "messageParameters": {},
+   "rewardGroupId": "group-0008",
+   "selectedIds": [],
+   "status": "PENDING_SELECTION",
+   "viewed": false
+  },
+  "rewardGroup": {
+   "active": true,
+   "celebrationType": "TOAST",
+   "childRewardGroupIds": [],
+   "id": "group-0008",
+   "localizations": {
+    "description": "Placeholder Name for Reward Group DO NOT TRANSLATE",
+    "title": "Placeholder Name for Reward Group DO NOT TRANSLATE"
+   },
+   "media": {},
+   "productId": "product-0010",
+   "rewardStrategy": "SELECTION",
+   "rewards": [
+    {
+     "fulfillmentSource": "cap.wallets",
+     "id": "reward-0011",
+     "itemId": "item-0012",
+     "itemType": "",
+     "localizations": {
+      "details": "用来解锁英雄以及更多奖励。",
+      "title": "750蓝色精萃"
+     },
+     "media": {
+      "iconUrl": "/lol-game-data/assets/ASSETS/Seasons/images/generic/Currency_Blue_Essence_212x212.png"
+     },
+     "quantity": 750
+    }
+   ],
+   "selectionStrategyConfig": {
+    "maxSelectionsAllowed": 1,
+    "minSelectionsAllowed": 1
+   },
+   "types": []
+  }
+ },
+ {
+  "info": {
+   "dateCreated": "2026-10-30T15:17:31.055+00:00",
+   "grantElements": [],
+   "granteeId": "00000000-0000-0000-0000-000000000000",
+   "grantorDescription": {
+    "appName": "cap.progression",
+    "entityId": "entity-0015"
+   },
+   "id": "grant-0013",
+   "messageParameters": {},
+   "rewardGroupId": "group-0014",
+   "selectedIds": [],
+   "status": "PENDING_SELECTION",
+   "viewed": false
+  },
+  "rewardGroup": {
+   "active": true,
+   "celebrationType": "TOAST",
+   "childRewardGroupIds": [],
+   "id": "group-0014",
+   "localizations": {
+    "description": "",
+    "title": "Faker之友 "
+   },
+   "media": {},
+   "productId": "product-0016",
+   "rewardStrategy": "SELECTION",
+   "rewards": [
+    {
+     "fulfillmentSource": "cap.entitlements",
+     "id": "reward-0017",
+     "itemId": "item-0018",
+     "itemType": "5cee03fb-af16-4bc9-89f7-064b49e1233f",
+     "localizations": {
+      "details": "在游戏中秀出这个表情。可在你的藏品中装备。",
+      "title": "真实伤害魄罗"
+     },
+     "media": {
+      "iconUrl": "/lol-game-data/assets/ASSETS/Loadouts/SummonerEmotes/Events/Mayhem/5207_True_Damage_Poro_Inventory.ACCESSORIES_16_21.png"
+     },
+     "quantity": 1
+    },
+    {
+     "fulfillmentSource": "cap.entitlements",
+     "id": "reward-0019",
+     "itemId": "item-0020",
+     "itemType": "08b78152-d047-4726-a219-d92b8809a01c",
+     "localizations": {
+      "details": "解锁一个全新的赛季限定帽子用于轮换。",
+      "title": "时髦的红帽子"
+     },
+     "media": {
+      "iconUrl": "/lol-game-data/assets/ASSETS/Seasons/images/2026_S3A1/Reward_EverlynnHat.png",
+      "splashImage": "/lol-game-data/assets/ASSETS/Seasons/images/2026_S3A1/Reward_EverlynnHat.png"
+     },
+     "quantity": 1
+    }
+   ],
+   "selectionStrategyConfig": {
+    "maxSelectionsAllowed": 2,
+    "minSelectionsAllowed": 2
+   },
+   "types": []
+  }
+ },
+ {
+  "info": {
+   "dateCreated": "2026-10-31T13:59:44.512+00:00",
+   "grantElements": [],
+   "granteeId": "00000000-0000-0000-0000-000000000000",
+   "grantorDescription": {
+    "appName": "cap.progression",
+    "entityId": "entity-0023"
+   },
+   "id": "grant-0021",
+   "messageParameters": {},
+   "rewardGroupId": "group-0022",
+   "selectedIds": [],
+   "status": "PENDING_SELECTION",
+   "viewed": false
+  },
+  "rewardGroup": {
+   "active": true,
+   "celebrationType": "TOAST",
+   "childRewardGroupIds": [],
+   "id": "group-0022",
+   "localizations": {
+    "description": "Placeholder Description for Reward Group DO NOT TRANSLATE",
+    "title": "Placeholder Name for Reward Group DO NOT TRANSLATE"
+   },
+   "media": {},
+   "productId": "product-0024",
+   "rewardStrategy": "SELECTION",
+   "rewards": [
+    {
+     "fulfillmentSource": "loot.lootserver",
+     "id": "reward-0025",
+     "itemId": "item-0026",
+     "itemType": "",
+     "localizations": {
+      "details": " ",
+      "title": "瑟提"
+     },
+     "media": {
+      "iconUrl": "/lol-game-data/assets/ASSETS/Seasons/images/2026_S3A2/Sett_Bordered_212x212.png",
+      "splashImage": "/lol-game-data/assets/ASSETS/Characters/Sett/Skins/Base/Images/sett_splash_centered_0.jpg"
+     },
+     "quantity": 1
+    }
+   ],
+   "selectionStrategyConfig": {
+    "maxSelectionsAllowed": 1,
+    "minSelectionsAllowed": 1
+   },
+   "types": []
+  }
+ },
+ {
+  "info": {
+   "dateCreated": "2026-03-21T14:01:56.987+00:00",
+   "grantElements": [
+    {
+     "elementId": "reward-0031",
+     "fulfillmentSource": "cap.wallets",
+     "itemId": "item-0034",
+     "itemType": "",
+     "localizations": {},
+     "media": {},
+     "quantity": 750,
+     "status": "FULFILLED"
+    }
+   ],
+   "granteeId": "00000000-0000-0000-0000-000000000000",
+   "grantorDescription": {
+    "appName": "cap.progression",
+    "entityId": "entity-0029"
+   },
+   "id": "grant-0027",
+   "messageParameters": {},
+   "rewardGroupId": "group-0028",
+   "selectedIds": [],
+   "status": "FULFILLED",
+   "viewed": true
+  },
+  "rewardGroup": {
+   "active": true,
+   "celebrationType": "TOAST",
+   "childRewardGroupIds": [],
+   "id": "group-0028",
+   "localizations": {
+    "description": "Placeholder Name for Reward Group DO NOT TRANSLATE",
+    "title": "Placeholder Name for Reward Group DO NOT TRANSLATE"
+   },
+   "media": {},
+   "productId": "product-0030",
+   "rewardStrategy": "SELECTION",
+   "rewards": [
+    {
+     "fulfillmentSource": "cap.wallets",
+     "id": "reward-0031",
+     "itemId": "item-0032",
+     "itemType": "",
+     "localizations": {
+      "details": "用来解锁英雄以及更多奖励。",
+      "title": "750蓝色精萃"
+     },
+     "media": {
+      "iconUrl": "/lol-game-data/assets/ASSETS/Seasons/images/generic/Currency_Blue_Essence_212x212.png"
+     },
+     "quantity": 750
+    }
+   ],
+   "selectionStrategyConfig": {
+    "maxSelectionsAllowed": 1,
+    "minSelectionsAllowed": 1
+   },
+   "types": []
+  }
+ },
+ {
+  "info": {
+   "dateCreated": "2026-10-31T23:00:00.000+00:00",
+   "grantElements": [],
+   "granteeId": "00000000-0000-0000-0000-000000000000",
+   "grantorDescription": {
+    "appName": "cap.progression",
+    "entityId": "entity-0003"
+   },
+   "id": "grant-choice",
+   "messageParameters": {},
+   "rewardGroupId": "group-choice",
+   "selectedIds": [],
+   "status": "PENDING_SELECTION",
+   "viewed": false
+  },
+  "rewardGroup": {
+   "active": true,
+   "celebrationType": "NONE",
+   "childRewardGroupIds": [],
+   "id": "group-choice",
+   "localizations": {
+    "description": "",
+    "title": "三选一：图标"
+   },
+   "media": {},
+   "productId": "product-0004",
+   "rewardStrategy": "SELECTION",
+   "rewards": [
+    {
+     "fulfillmentSource": "cap.entitlements",
+     "id": "reward-choice-1",
+     "itemId": "item-choice-1",
+     "itemType": "bb69c4a5-35a6-423c-a61a-a1eb4ca1aae7",
+     "localizations": {
+      "details": "",
+      "title": "图标 1"
+     },
+     "media": {
+      "iconUrl": "/lol-game-data/assets/ASSETS/UX/SummonerIcons/5903.jpg"
+     },
+     "quantity": 1
+    },
+    {
+     "fulfillmentSource": "cap.entitlements",
+     "id": "reward-choice-2",
+     "itemId": "item-choice-2",
+     "itemType": "bb69c4a5-35a6-423c-a61a-a1eb4ca1aae7",
+     "localizations": {
+      "details": "",
+      "title": "图标 2"
+     },
+     "media": {
+      "iconUrl": "/lol-game-data/assets/ASSETS/UX/SummonerIcons/5903.jpg"
+     },
+     "quantity": 1
+    },
+    {
+     "fulfillmentSource": "cap.entitlements",
+     "id": "reward-choice-3",
+     "itemId": "item-choice-3",
+     "itemType": "bb69c4a5-35a6-423c-a61a-a1eb4ca1aae7",
+     "localizations": {
+      "details": "",
+      "title": "图标 3"
+     },
+     "media": {
+      "iconUrl": "/lol-game-data/assets/ASSETS/UX/SummonerIcons/5903.jpg"
+     },
+     "quantity": 1
+    }
+   ],
+   "selectionStrategyConfig": {
+    "maxSelectionsAllowed": 1,
+    "minSelectionsAllowed": 1
+   },
+   "types": []
+  }
+ }
+]

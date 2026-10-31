@@ -38,4 +38,17 @@ describe("notices", () => {
     }
     expect(isFailure({ kind: "typedInGame", lines: 2 })).toBe(false);
   });
+
+  it("says what the automatic claim did", () => {
+    expect(zh({ kind: "rewardsClaimed", claimed: 4, left: 0 })).toBe("自动领取了 4 个奖励");
+    expect(zh({ kind: "rewardsClaimed", claimed: 3, left: 1 })).toBe(
+      "自动领取了 3 个奖励，还有 1 个待领取",
+    );
+    expect(en({ kind: "rewardsClaimed", claimed: 3, left: 1 })).toBe(
+      "Claimed rewards automatically: 3; 1 still waiting",
+    );
+    expect(zh({ kind: "rewardsFailed", failed: 2 })).toBe("有 2 个奖励没能自动领取，到工具页看看");
+    expect(isFailure({ kind: "rewardsFailed", failed: 2 })).toBe(true);
+    expect(isFailure({ kind: "rewardsClaimed", claimed: 1, left: 0 })).toBe(false);
+  });
 });

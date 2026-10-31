@@ -24,6 +24,7 @@ pub mod plugin;
 pub mod profile;
 pub mod rating;
 pub mod recommend;
+pub mod rewards;
 pub mod service;
 pub mod settings;
 pub mod sgp;

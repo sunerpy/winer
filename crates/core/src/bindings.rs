@@ -4,7 +4,9 @@
 
 use ts_rs::{Config, TS};
 
-use crate::{backup, bridge, builds, export, loadout, notes, plugin, profile, settings, view};
+use crate::{
+    backup, bridge, builds, export, loadout, notes, plugin, profile, rewards, settings, view,
+};
 
 pub fn typescript() -> String {
     let config = Config::new().with_large_int("number");
@@ -119,6 +121,17 @@ pub fn typescript() -> String {
         profile::TitleChoice,
         profile::BannerChoice,
         profile::BannerKind,
+        profile::Crest,
+        profile::IconChange,
+        profile::CrestChange,
+        // Rewards the client holds for the player.
+        rewards::RewardsView,
+        rewards::PendingGrant,
+        rewards::GrantReward,
+        rewards::GrantChoice,
+        rewards::ClaimReport,
+        rewards::ClaimFailure,
+        rewards::ClaimFailed,
         backup::BackupInfo,
         backup::BackupChannel,
         plugin::PluginStatus,

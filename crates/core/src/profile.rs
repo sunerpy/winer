@@ -488,6 +488,82 @@ pub fn regalia_request(regalia: &Regalia, banner: &str) -> Option<Value> {
     )
 }
 
+// ---- Icon and crest ----------------------------------------------------------------------------
+
+/// The icon new accounts start with (头盔老铁), which every account owns: icons 0–29 were in the
+/// measured account's inventory (2026-10-31).
+pub const DEFAULT_ICON: i64 = 29;
+/// The level border of levels 1–29, the plainest the client draws. It takes no request for none:
+/// `preferredCrestType` `"none"` and `""` were refused, and borders 0 and 22 were read back as the
+/// highest the account had unlocked (2026-10-31).
+pub const PLAIN_CREST: i64 = 1;
+const CREST_KINDS: [&str; 2] = ["prestige", "ranked"];
+
+/// The border around the profile icon: the level border (`prestige`) of `level`, or the ranked
+/// one (`ranked`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Crest {
+    pub kind: String,
+    pub level: i64,
+}
+
+/// An icon put on the profile: the one before, and the one the client reports after, which is
+/// still the one before where it refused the change.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct IconChange {
+    pub previous: i64,
+    pub current: i64,
+}
+
+/// A border put on the profile, the same way as [`IconChange`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct CrestChange {
+    pub previous: Crest,
+    pub current: Crest,
+}
+
+pub fn plain_crest() -> Crest {
+    Crest {
+        kind: CREST_KINDS[0].into(),
+        level: PLAIN_CREST,
+    }
+}
+
+/// The border the regalia asks for.
+pub fn crest_of(regalia: &Regalia) -> Crest {
+    Crest {
+        kind: regalia.preferred_crest_type.clone(),
+        level: regalia.selected_prestige_crest,
+    }
+}
+
+/// A border the client takes: one of its two kinds, a level that fits a byte.
+pub fn check_crest(crest: &Crest) -> Result<(), String> {
+    if CREST_KINDS.contains(&crest.kind.as_str()) && (0..=255).contains(&crest.level) {
+        Ok(())
+    } else {
+        Err(format!("{} {} is not a border", crest.kind, crest.level))
+    }
+}
+
+/// The body of `PUT /lol-regalia/v2/current-summoner/regalia` that draws `crest` and keeps the
+/// banner as it is.
+pub fn crest_request(regalia: &Regalia, crest: &Crest) -> Value {
+    let banner = if regalia.preferred_banner_type.is_empty() {
+        BLANK_TYPE
+    } else {
+        &regalia.preferred_banner_type
+    };
+    json!({
+        "preferredCrestType": crest.kind,
+        "preferredBannerType": banner,
+        "selectedPrestigeCrest": crest.level,
+    })
+}
+
 // ---- Rank in the friends list ------------------------------------------------------------------
 
 /// The keys of the chat presence's `lol` map that carry the rank friends see.
@@ -981,6 +1057,51 @@ mod tests {
 
     fn banners() -> HashMap<String, ClientBanner> {
         fixture("live/profile/regalia-banners.json")
+    }
+
+    #[test]
+    fn a_border_keeps_the_banner_and_takes_only_what_the_client_does() {
+        let measured = Regalia {
+            preferred_banner_type: "lastSeasonHighestRank".into(),
+            preferred_crest_type: "prestige".into(),
+            selected_prestige_crest: 7,
+            last_season_highest_rank: None,
+        };
+        assert_eq!(
+            crest_of(&measured),
+            Crest {
+                kind: "prestige".into(),
+                level: 7
+            }
+        );
+        assert_eq!(
+            crest_request(&measured, &plain_crest()),
+            json!({
+                "preferredCrestType": "prestige",
+                "preferredBannerType": "lastSeasonHighestRank",
+                "selectedPrestigeCrest": 1,
+            })
+        );
+        let unread = Regalia::default();
+        assert_eq!(
+            crest_request(&unread, &plain_crest())["preferredBannerType"],
+            "blank"
+        );
+        assert!(check_crest(&plain_crest()).is_ok());
+        assert!(
+            check_crest(&Crest {
+                kind: "ranked".into(),
+                level: 7
+            })
+            .is_ok()
+        );
+        for refused in [("none", 1), ("", 1), ("prestige", 256), ("prestige", -1)] {
+            let crest = Crest {
+                kind: refused.0.into(),
+                level: refused.1,
+            };
+            assert!(check_crest(&crest).is_err(), "{crest:?}");
+        }
     }
 
     fn regalia() -> Regalia {

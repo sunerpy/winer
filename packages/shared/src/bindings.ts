@@ -323,7 +323,7 @@ runes: PageOutcome | null,
 /**
  * The two summoner spells are the ones set up.
  */
-spells: boolean, } | { "kind": "itemSetWritten", championId: number, } | { "kind": "itemSetsFull" } | { "kind": "typedInGame", lines: number, } | { "kind": "typingStopped", lines: number, reason: CalloutSkip, } | { "kind": "calloutSkipped", reason: CalloutSkip, };
+spells: boolean, } | { "kind": "itemSetWritten", championId: number, } | { "kind": "itemSetsFull" } | { "kind": "rewardsClaimed", claimed: number, left: number, } | { "kind": "rewardsFailed", failed: number, } | { "kind": "typedInGame", lines: number, } | { "kind": "typingStopped", lines: number, reason: CalloutSkip, } | { "kind": "calloutSkipped", reason: CalloutSkip, };
 
 export type PlayerProfile = { puuid: string, name: RiotId | null, level: number, iconId: number, private: boolean, ranked: Ranked, };
 
@@ -533,7 +533,12 @@ loadout: LoadoutRule,
 /**
  * Experimental: write winer's item set for a champion once it is locked in (`loadout`).
  */
-itemSets: boolean, };
+itemSets: boolean, 
+/**
+ * Claim the rewards that need no choice after connecting and after each game (`rewards`).
+ * Not scoped by mode: the rewards are the account's.
+ */
+claimRewards: boolean, };
 
 export type AcceptRule = { enabled: boolean, 
 /**
@@ -786,6 +791,66 @@ name: string,
 art: string, };
 
 export type BannerKind = "default" | "rank" | "event";
+
+export type Crest = { kind: string, level: number, };
+
+export type IconChange = { previous: number, current: number, };
+
+export type CrestChange = { previous: Crest, current: Crest, };
+
+export type RewardsView = { grants: Array<PendingGrant>, 
+/**
+ * Grants with nothing to choose.
+ */
+claimable: number, 
+/**
+ * Grants that wait for the player to pick.
+ */
+choices: number, };
+
+export type PendingGrant = { id: string, title: string, 
+/**
+ * When the client granted it, as the client wrote it (ISO 8601); empty when it did not say.
+ */
+created: string, rewards: Array<GrantReward>, 
+/**
+ * How many of the rewards the player takes: all of them where `max` covers them all.
+ */
+min: number, max: number, };
+
+export type GrantReward = { id: string, title: string, quantity: number, 
+/**
+ * A game-data path; empty when the client has no picture.
+ */
+icon: string, };
+
+export type GrantChoice = { grantId: string, rewardIds: Array<string>, };
+
+export type ClaimReport = { 
+/**
+ * Grants the client read back as handed out.
+ */
+claimed: number, failed: Array<ClaimFailure>, 
+/**
+ * Grants the client took but had not handed out when winer stopped waiting.
+ */
+processing: number, 
+/**
+ * Grants still waiting for the player afterwards.
+ */
+left: number, 
+/**
+ * Champ select or a game began, and the rest waits for later.
+ */
+stopped: boolean, };
+
+export type ClaimFailure = { grantId: string, 
+/**
+ * Empty for a grant that no longer waits: the window names it from its own list.
+ */
+title: string, reason: ClaimFailed, };
+
+export type ClaimFailed = { "kind": "refused", message: string, } | { "kind": "failed" } | { "kind": "invalid" } | { "kind": "gone" };
 
 export type BackupInfo = { 
 /**

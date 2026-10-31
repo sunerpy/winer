@@ -12,8 +12,10 @@ import { ConnectionGate, PageBody } from "./common";
 import { BackgroundPanel } from "./tools/Background";
 import { BackupPanel } from "./tools/Backup";
 import { ChallengePanel } from "./tools/Challenges";
+import { IdentityPanel } from "./tools/Identity";
 import { NotesPanel } from "./tools/Notes";
 import { RankDisguisePanel } from "./tools/RankDisguise";
+import { RewardsPanel } from "./tools/Rewards";
 
 /** The states the client takes from winer. It sets `dnd` on its own during a game and ignores a
  *  request for it; `mobile` is the phone app's, which the desktop client keeps and shows as 在线分组,
@@ -229,7 +231,9 @@ export function ToolsPage() {
           <PresencePanel />
           <ClientPanel />
           <BackgroundPanel />
+          <RewardsPanel />
           <ChallengePanel />
+          <IdentityPanel />
           <RankDisguisePanel />
           <BackupPanel />
           <NotesPanel />

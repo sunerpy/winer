@@ -789,6 +789,16 @@ pub enum NoticeKind {
     },
     /// The client refused winer's item set: the player's own item sets fill its list.
     ItemSetsFull,
+    // Rewards (`rewards`).
+    /// Claimed `claimed` grants by the automatic switch; `left` still wait for the player.
+    RewardsClaimed {
+        claimed: u32,
+        left: u32,
+    },
+    /// The automatic claim failed for `failed` grants; the Tools page says which.
+    RewardsFailed {
+        failed: u32,
+    },
     // The callout's shortcut (`callout::press`), which may act while the window is hidden.
     /// Typed the callout into the game's team chat: `lines` messages.
     TypedInGame {

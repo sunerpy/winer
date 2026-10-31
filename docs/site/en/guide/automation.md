@@ -167,6 +167,8 @@ A live preview shows what one press types, with your own recent form.
 ## After the game
 
 - **Return to the lobby**: goes back to the lobby when the game ends, ready to queue again.
+- **Claim rewards automatically**: claims the rewards that need no choice when winer connects to
+  the client and after each game. The switch is in [Tools › Rewards](/en/guide/settings#rewards).
 
 ## Bench
 

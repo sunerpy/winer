@@ -844,6 +844,82 @@ describe("Tools: profile", () => {
     expect(screen.getByText("好友看到：超凡大师 · 灵活组排")).toBeInTheDocument();
   });
 
+  it("lists the waiting rewards and claims them all, a choice only as picked", async () => {
+    const backend = await idleDemo();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openTools(backend);
+    expect(await screen.findByRole("button", { name: "一键领取（3）" })).toBeEnabled();
+    const choice = screen.getByRole("group", { name: "三选一：守卫皮肤 的奖励" });
+    expect(within(choice.parentElement!).getByText(/选 1 个/)).toBeInTheDocument();
+    const wards = within(choice).getAllByRole("checkbox");
+    expect(wards).toHaveLength(3);
+    await user.click(wards[1]!);
+    await user.click(wards[0]!);
+    expect(wards[0], "one of one: the pick moves").toHaveAttribute("aria-checked", "true");
+    expect(wards[1]).toHaveAttribute("aria-checked", "false");
+
+    await user.click(screen.getByRole("button", { name: "一键领取（4）" }));
+    expect(call).toHaveBeenCalledWith("claim_rewards", {
+      choices: [{ grantId: "demo-grant-choice", rewardIds: ["demo-reward-ward-1"] }],
+    });
+    expect(await screen.findByText("已领取 4 个奖励")).toBeInTheDocument();
+    expect(await screen.findByText(zhCN["rewards.none"])).toBeInTheDocument();
+  });
+
+  it("claims nothing from the queue to the end of a game, and says so", async () => {
+    await openTools(demoBackend());
+    expect(await screen.findByRole("button", { name: "一键领取（3）" })).toBeDisabled();
+    expect(screen.getByText(zhCN["rewards.blocked"])).toBeInTheDocument();
+  });
+
+  it("switches the automatic claim on in the settings", async () => {
+    const backend = await idleDemo();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openTools(backend);
+    const toggle = await screen.findByRole("switch", { name: zhCN["rewards.auto"] });
+    expect(toggle, "off until switched on").toHaveAttribute("aria-checked", "false");
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          automation: expect.objectContaining({ claimRewards: true }),
+        }),
+      }),
+    );
+  });
+
+  it("puts the default icon and the plain border on, each with an undo", async () => {
+    const backend = await idleDemo({
+      use_default_icon: () => ({ previous: 7143, current: 29 }),
+      set_icon: ({ icon }: { icon: number }) => ({ previous: 29, current: icon }),
+    });
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openTools(backend);
+    await user.click(await screen.findByRole("button", { name: zhCN["identity.useIcon"] }));
+    expect(call).toHaveBeenCalledWith("use_default_icon");
+    expect(await screen.findByText(zhCN["identity.iconDone"])).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: zhCN["identity.undo"] }));
+    expect(call).toHaveBeenCalledWith("set_icon", { icon: 7143 });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: zhCN["identity.undo"] })).toBeNull(),
+    );
+
+    await user.click(screen.getByRole("button", { name: zhCN["identity.useCrest"] }));
+    expect(call).toHaveBeenCalledWith("use_plain_crest");
+    await user.click(await screen.findByRole("button", { name: zhCN["identity.undo"] }));
+    expect(call).toHaveBeenCalledWith("set_crest", { crest: { kind: "prestige", level: 7 } });
+  });
+
+  it("says when the client keeps the old border, and offers no undo", async () => {
+    const kept = { kind: "prestige", level: 7 };
+    const { user } = await openTools(
+      await idleDemo({ use_plain_crest: () => ({ previous: kept, current: kept }) }),
+    );
+    await user.click(await screen.findByRole("button", { name: zhCN["identity.useCrest"] }));
+    expect(await screen.findByText(zhCN["identity.refused"])).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: zhCN["identity.undo"] })).toBeNull();
+  });
+
   it("backs up the game settings, and restores them only outside a game", async () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");

@@ -48,6 +48,7 @@ import {
   DEMO_SPELLS,
   demoLoadoutHandlers,
 } from "./demoLoadout";
+import { demoRewardsHandlers } from "./demoRewards";
 import { demoStorageHandlers } from "./demoStorage";
 import { FEAT_ORDER } from "./feats";
 import { defaultScopes } from "./modes";
@@ -963,6 +964,7 @@ const DEFAULT_SETTINGS: Settings = {
     scopes: defaultScopes(),
     loadout: { enabled: false, recommended: true },
     itemSets: false,
+    claimRewards: false,
   },
   plugin: {
     auto: true,
@@ -1266,6 +1268,7 @@ export function demoBackend(): Backend {
     }),
     // Storage: what winer keeps, and the cleanup.
     ...demoStorageHandlers(),
+    ...demoRewardsHandlers(snapshot.me?.iconId ?? 29),
     get_autostart: () => false,
     set_autostart: ({ enabled }) => enabled,
     get_update_status: () => update,

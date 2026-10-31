@@ -64,6 +64,13 @@ export function noticeText(kind: NoticeKind, t: Translate, catalog: Catalog | nu
       return t("loadout.notice.itemSet", { champion: champion(kind.championId) });
     case "itemSetsFull":
       return t("loadout.itemSetsFull");
+    // Rewards.
+    case "rewardsClaimed":
+      return kind.left > 0
+        ? t("rewards.notice.claimedLeft", { n: kind.claimed, left: kind.left })
+        : t("rewards.notice.claimed", { n: kind.claimed });
+    case "rewardsFailed":
+      return t("rewards.notice.failed", { n: kind.failed });
     // The callout's shortcut.
     case "typedInGame":
       return t("callout.notice.typed", { n: kind.lines });
@@ -84,6 +91,7 @@ export function isFailure(kind: NoticeKind): boolean {
     kind.kind === "presenceRefused" ||
     kind.kind === "diagnosticsFailed" ||
     kind.kind === "itemSetsFull" ||
+    kind.kind === "rewardsFailed" ||
     // The callout's shortcut.
     kind.kind === "typingStopped" ||
     kind.kind === "calloutSkipped"
