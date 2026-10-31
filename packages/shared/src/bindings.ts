@@ -323,7 +323,7 @@ runes: PageOutcome | null,
 /**
  * The two summoner spells are the ones set up.
  */
-spells: boolean, } | { "kind": "itemSetWritten", championId: number, } | { "kind": "typedInGame", lines: number, } | { "kind": "typingStopped", lines: number, reason: CalloutSkip, } | { "kind": "calloutSkipped", reason: CalloutSkip, };
+spells: boolean, } | { "kind": "itemSetWritten", championId: number, } | { "kind": "itemSetsFull" } | { "kind": "typedInGame", lines: number, } | { "kind": "typingStopped", lines: number, reason: CalloutSkip, } | { "kind": "calloutSkipped", reason: CalloutSkip, };
 
 export type PlayerProfile = { puuid: string, name: RiotId | null, level: number, iconId: number, private: boolean, ranked: Ranked, };
 
@@ -395,7 +395,7 @@ export type CheckFailure = { "kind": "timeout" } | { "kind": "connect" } | { "ki
 
 export type IpcError = { code: ErrorCode, message: string, };
 
-export type ErrorCode = "notConnected" | "notFound" | "invalid" | "busy" | "client" | "unavailable" | "internal";
+export type ErrorCode = "notConnected" | "notFound" | "invalid" | "busy" | "client" | "unavailable" | "full" | "internal";
 
 export type FriendsView = { 
 /**

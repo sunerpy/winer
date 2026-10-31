@@ -21,7 +21,7 @@ import { Check, ListPlus, Search, Sparkles, Swords } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { AssetIcon, AugmentIcon, ChampionIcon } from "../../game/icons";
-import { errorMessage } from "../../lib/backend";
+import { errorCode, errorMessage } from "../../lib/backend";
 import { cx } from "../../lib/cx";
 import { type MessageKey, useLanguage, useT } from "../../lib/i18n";
 import { MODE_LABEL, modeOf } from "../../lib/modes";
@@ -240,11 +240,16 @@ function ItemsTab({
           disabled={actions.busy !== null}
           onClick={() =>
             void actions.run("itemSet", async () => {
-              await store.backend.call("write_item_set", {
-                championId: build.championId,
-                mode: build.mode,
-                lane,
-              });
+              try {
+                await store.backend.call("write_item_set", {
+                  championId: build.championId,
+                  mode: build.mode,
+                  lane,
+                });
+              } catch (error) {
+                if (errorCode(error) === "full") throw new Error(t("loadout.itemSetsFull"));
+                throw error;
+              }
               return t("loadout.itemSetWritten");
             })
           }

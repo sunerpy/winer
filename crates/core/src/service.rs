@@ -144,6 +144,9 @@ pub enum CoreError {
     /// while it is overloaded); later it may.
     #[error("{0}")]
     Unavailable(String),
+    /// The client has no room for what winer would write (its list of item sets is full).
+    #[error("{0}")]
+    Full(String),
 }
 
 impl From<CoreError> for IpcError {
@@ -157,6 +160,7 @@ impl From<CoreError> for IpcError {
             CoreError::Lcu(error) if error.is_unreachable() => ErrorCode::NotConnected,
             CoreError::Lcu(_) | CoreError::Remote(_) => ErrorCode::Client,
             CoreError::Unavailable(_) => ErrorCode::Unavailable,
+            CoreError::Full(_) => ErrorCode::Full,
             CoreError::Io(_) => ErrorCode::Internal,
         };
         Self {

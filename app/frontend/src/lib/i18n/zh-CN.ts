@@ -906,6 +906,8 @@ export const zhCN = {
   "loadout.notice.noPage": "{champion} 的符文没有改动：没有空位放 winer 的符文页",
   "loadout.notice.noPageToo": "{applied}；符文没有改动：没有空位放 winer 的符文页",
   "loadout.notice.itemSet": "已为 {champion} 写入装备方案",
+  "loadout.itemSetsFull":
+    "装备方案没有写入：客户端的装备方案列表放满了你自己的方案（上限约 64 KB）。在客户端里删掉一些装备方案后再试。",
   "loadout.what.both": "符文和召唤师技能",
   "loadout.what.runes": "符文",
   "loadout.what.spells": "召唤师技能",

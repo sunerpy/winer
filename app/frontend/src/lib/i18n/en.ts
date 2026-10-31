@@ -943,6 +943,8 @@ export const en: Record<MessageKey, string> = {
   "loadout.notice.noPage": "{champion}'s runes unchanged: no room for winer's rune page",
   "loadout.notice.noPageToo": "{applied}; runes unchanged: no room for winer's rune page",
   "loadout.notice.itemSet": "Wrote the item set for {champion}",
+  "loadout.itemSetsFull":
+    "The item set was not written: your own item sets fill the client's list (about 64 KB at most). Delete some in the client, then try again.",
   "loadout.what.both": "runes and summoner spells",
   "loadout.what.runes": "runes",
   "loadout.what.spells": "summoner spells",

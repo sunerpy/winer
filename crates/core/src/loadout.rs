@@ -419,6 +419,12 @@ pub fn new_page_body(name: &str, runes: &RunePage) -> Value {
 
 /// winer's sets carry this in their `uid`; nothing else in the list is ever touched.
 pub const ITEM_SET_PREFIX: &str = "winer-";
+/// winer keeps its sets for this many champions and maps, the newest: a set matters only while its
+/// champion is played, and the client refuses a list past a size (`ITEM_SETS_BUDGET`).
+pub const MAX_OWN_ITEM_SETS: usize = 20;
+/// The size winer keeps the whole list under when it writes. The client took a list of 64,881 bytes
+/// and refused the next, about 66 KB, with HTTP 413 (2026-10-31).
+pub const ITEM_SETS_BUDGET: usize = 60_000;
 
 pub fn item_set_uid(champion_id: i64, mode: Mode) -> String {
     format!(
@@ -461,33 +467,45 @@ fn uid(set: &RawValue) -> Option<String> {
 impl ItemSets {
     /// With `set`, winer's set for `champion_id` in a game of `mode`, in place of winer's sets the
     /// shop would list beside it: the same champion on the same map. Ranked and normal games share
-    /// the Rift and the two ARAMs the Howling Abyss, so the champion keeps one set per map. Added
-    /// after the others where there was none; the sets that are not winer's keep their places.
+    /// the Rift and the two ARAMs the Howling Abyss, so the champion keeps one set per map. The set
+    /// goes last, so winer's sets run from the oldest written to the newest, and the oldest go while
+    /// winer keeps more than [`MAX_OWN_ITEM_SETS`] or the list is longer than [`ITEM_SETS_BUDGET`].
+    /// The sets that are not winer's keep their places.
     pub fn with(mut self, champion_id: i64, mode: Mode, set: Box<RawValue>, now: u64) -> Self {
         let own = item_set_uid(champion_id, mode);
         let maps = item_set_maps(mode);
-        let shadowed = |other: &RawValue| {
-            uid(other).is_some_and(|uid| {
+        self.item_sets.retain(|other| {
+            !uid(other).is_some_and(|uid| {
                 uid == own
                     || our_uid(&uid).is_some_and(|(champion, other)| {
                         champion == champion_id
                             && item_set_maps(other).iter().any(|map| maps.contains(map))
                     })
             })
-        };
-        let mut set = Some(set);
-        let mut sets = Vec::with_capacity(self.item_sets.len() + 1);
-        for other in std::mem::take(&mut self.item_sets) {
-            if !shadowed(&other) {
-                sets.push(other);
-            } else if let Some(set) = set.take() {
-                sets.push(set);
-            }
-        }
-        sets.extend(set);
-        self.item_sets = sets;
+        });
+        self.item_sets.push(set);
         self.timestamp = now;
+        self.trim_ours();
         self
+    }
+
+    /// Lets go of winer's oldest sets, never the newest (the last), while winer keeps more than
+    /// [`MAX_OWN_ITEM_SETS`] or the list is longer than [`ITEM_SETS_BUDGET`]. A list the player's
+    /// own sets fill is left to the client to refuse.
+    fn trim_ours(&mut self) {
+        let ours = |set: &RawValue| uid(set).is_some_and(|uid| uid.starts_with(ITEM_SET_PREFIX));
+        let mut count = self.item_sets.iter().filter(|set| ours(set)).count();
+        let mut len = serde_json::to_vec(&*self).map_or(0, |body| body.len());
+        while count > MAX_OWN_ITEM_SETS || len > ITEM_SETS_BUDGET {
+            let newest = self.item_sets.len().saturating_sub(1);
+            let Some(index) = self.item_sets[..newest].iter().position(|set| ours(set)) else {
+                break;
+            };
+            let gone = self.item_sets.remove(index);
+            count -= 1;
+            // The set and the comma after it: it was not the last.
+            len -= gone.get().len() + 1;
+        }
     }
 
     /// Without any of winer's sets; how many went.
@@ -904,7 +922,8 @@ mod tests {
         let list = sets(&format!(
             r#"{{"accountId":"12","itemSets":[{{"uid":"winer-202-ranked"}},{FOREIGN},{{"uid":"winer-202-aram"}}],"timestamp":1}}"#
         ));
-        // A normal game is played on the Rift too: its set takes the ranked one's place.
+        // A normal game is played on the Rift too: its set replaces the ranked one, and goes last as
+        // winer's newest.
         let normal = Build {
             mode: Mode::Normal,
             ..jhin()
@@ -915,7 +934,7 @@ mod tests {
             item_set(&normal, "烬", Language::ZhCn),
             2,
         );
-        assert_eq!(uids(&list), ["winer-202-normal", "a1b2", "winer-202-aram"]);
+        assert_eq!(uids(&list), ["a1b2", "winer-202-aram", "winer-202-normal"]);
         assert_eq!(
             list.account_id,
             json!("12"),
@@ -940,8 +959,8 @@ mod tests {
         assert_eq!(
             uids(&list),
             [
-                "winer-202-normal",
                 "a1b2",
+                "winer-202-normal",
                 "winer-202-hextech",
                 "winer-202-arena"
             ]
@@ -949,6 +968,110 @@ mod tests {
         assert_eq!(our_uid("winer-202-hextech"), Some((202, Mode::Hextech)));
         assert_eq!(our_uid("a1b2"), None);
         assert_eq!(our_uid("winer-x-ranked"), None);
+    }
+
+    /// winer's set for `champion` in a game of `mode`, as written.
+    fn set_for(champion: i64, mode: Mode) -> Box<RawValue> {
+        let build = Build {
+            champion_id: champion,
+            mode,
+            ..jhin()
+        };
+        item_set(&build, "烬", Language::ZhCn)
+    }
+
+    fn hextech_set(champion: i64) -> Box<RawValue> {
+        set_for(champion, Mode::Hextech)
+    }
+
+    fn body_len(sets: &ItemSets) -> usize {
+        serde_json::to_vec(sets).unwrap().len()
+    }
+
+    #[test]
+    fn winers_oldest_sets_make_room_for_its_newest() {
+        // Measured on 2026-10-31: 58 of winer's Hextech sets filled the list to 64,881 bytes, and
+        // the client refused the next write (HTTP 413).
+        let mut list = sets(&format!(
+            r#"{{"accountId":12,"itemSets":[{FOREIGN}],"timestamp":1}}"#
+        ));
+        for champion in 1..=58 {
+            list = list.with(champion, Mode::Hextech, hextech_set(champion), 2);
+        }
+        let list = list.with(59, Mode::Hextech, hextech_set(59), 3);
+        let uids: Vec<String> = list.item_sets.iter().filter_map(|set| uid(set)).collect();
+        assert_eq!(uids.len(), 1 + MAX_OWN_ITEM_SETS);
+        assert_eq!(
+            list.item_sets[0].get(),
+            FOREIGN,
+            "the player's set stays first"
+        );
+        let newest: Vec<String> = (59 - MAX_OWN_ITEM_SETS as i64 + 1..=59)
+            .map(|champion| item_set_uid(champion, Mode::Hextech))
+            .collect();
+        assert_eq!(uids[1..], newest[..], "the newest of winer's, oldest first");
+        assert!(body_len(&list) <= ITEM_SETS_BUDGET);
+
+        // Played again, a champion's set moves to the end and none of the others goes.
+        let first_kept = 59 - MAX_OWN_ITEM_SETS as i64 + 1;
+        let again = list.with(first_kept, Mode::Aram, set_for(first_kept, Mode::Aram), 4);
+        let uids: Vec<String> = again.item_sets.iter().filter_map(|set| uid(set)).collect();
+        assert_eq!(uids.len(), 1 + MAX_OWN_ITEM_SETS);
+        assert_eq!(
+            uids.last().map(String::as_str),
+            Some(item_set_uid(first_kept, Mode::Aram).as_str())
+        );
+    }
+
+    #[test]
+    fn winers_sets_give_way_to_the_players_own_within_the_size_the_client_takes() {
+        // The player's own sets take most of the room: winer keeps fewer of its own.
+        let big = |n: usize| {
+            format!(
+                r#"{{"uid":"own-{n}","title":"{}","mode":"any","map":"any","type":"custom","sortrank":0,"startedFrom":"blank","associatedChampions":[],"associatedMaps":[],"blocks":[],"preferredItemSlots":[]}}"#,
+                "x".repeat(4_900)
+            )
+        };
+        let own: Vec<String> = (0..10).map(big).collect();
+        let mut list = sets(&format!(
+            r#"{{"accountId":12,"itemSets":[{}],"timestamp":1}}"#,
+            own.join(",")
+        ));
+        for champion in 1..=15 {
+            list = list.with(champion, Mode::Hextech, hextech_set(champion), 2);
+        }
+        assert!(body_len(&list) <= ITEM_SETS_BUDGET);
+        let ours = list
+            .item_sets
+            .iter()
+            .filter(|set| uid(set).is_some_and(|uid| uid.starts_with(ITEM_SET_PREFIX)))
+            .count();
+        assert!(ours < MAX_OWN_ITEM_SETS && ours > 0, "{ours} of winer's");
+        assert_eq!(
+            list.item_sets.iter().filter_map(|set| uid(set)).next_back(),
+            Some(item_set_uid(15, Mode::Hextech))
+        );
+        for (index, set) in own.iter().enumerate() {
+            assert_eq!(
+                list.item_sets[index].get(),
+                set,
+                "the player's sets byte for byte"
+            );
+        }
+
+        // Too full even for one: winer's newest set is kept and the client gets to say.
+        let crowded: Vec<String> = (0..13).map(big).collect();
+        let list = sets(&format!(
+            r#"{{"accountId":12,"itemSets":[{}],"timestamp":1}}"#,
+            crowded.join(",")
+        ))
+        .with(1, Mode::Hextech, hextech_set(1), 2)
+        .with(2, Mode::Hextech, hextech_set(2), 3);
+        assert_eq!(list.item_sets.len(), crowded.len() + 1);
+        assert_eq!(
+            list.item_sets.last().and_then(|set| uid(set)),
+            Some(item_set_uid(2, Mode::Hextech))
+        );
     }
 
     fn option(items: &[i64], pick: f64) -> ItemOption {

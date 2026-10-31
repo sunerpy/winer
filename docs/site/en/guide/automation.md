@@ -63,6 +63,9 @@ summoner spells for Jhin"; a failure says why. Nothing is posted to chat.
   started only from the next game.
 - A champion keeps one of winer's item sets per map, named after the champion: Ranked and Normal
   share Summoner's Rift and the two ARAMs the Howling Abyss. Your own item sets stay as they are.
+- winer keeps only the 20 item sets it wrote last. The client's list holds about 64 KB of item sets,
+  so as it fills up winer removes its own oldest first; when your own item sets fill it, nothing can
+  be written and winer asks you to delete some in the client.
 - Needs **Builds** on in **Settings › General**.
 - **Remove winer's item sets**: removes every item set winer wrote, and only those.
 

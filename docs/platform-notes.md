@@ -108,6 +108,11 @@ for one client build or one privilege level, it says so.
   route winer calls was there under the name `diagnose::function_name` gives it; the names are kept
   in `fixtures/lcu-rest/help-functions.json` (descriptions dropped), which a test checks the routes
   against. The self-check reads this one route and requests none of the others.
+- **The item-set list has a size limit** (the owner's account on windows-home, 2026-10-31): the
+  client's `GET /lol-item-sets/v1/item-sets/{summonerId}/sets` held 59 sets in 64,881 bytes, 58 of
+  them winer's Hextech ARAM sets (1,065–1,187 bytes each), and each `PUT` that added one more set,
+  about 66 KB, answered `413` `Content length is too large`. winer now keeps 20 sets of its own,
+  the newest, and the list under 60,000 bytes.
 
 ## Profile and chat presence
 

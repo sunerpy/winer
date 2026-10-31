@@ -787,6 +787,8 @@ pub enum NoticeKind {
     ItemSetWritten {
         champion_id: i64,
     },
+    /// The client refused winer's item set: the player's own item sets fill its list.
+    ItemSetsFull,
     // The callout's shortcut (`callout::press`), which may act while the window is hidden.
     /// Typed the callout into the game's team chat: `lines` messages.
     TypedInGame {
@@ -918,6 +920,8 @@ pub enum ErrorCode {
     /// A server answered that it cannot serve the request now (the shard's match-history server
     /// while it is overloaded): asking again later may work.
     Unavailable,
+    /// The client has no room for what winer would write (its list of item sets is full).
+    Full,
     Internal,
 }
 

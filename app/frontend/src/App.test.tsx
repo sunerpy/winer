@@ -1256,6 +1256,20 @@ describe("loadout", () => {
     expect(await screen.findByText(zhCN["loadout.itemSetWritten"])).toBeInTheDocument();
   });
 
+  it("says the client has no room when it refuses the item set", async () => {
+    const backend = demoWith({
+      write_item_set: () => {
+        throw { code: "full", message: "the client's item sets are full" };
+      },
+    });
+    const { user } = await openLive(backend);
+    await screen.findByText("数据：腾讯掌上英雄联盟");
+    const tabs = screen.getByRole("radiogroup", { name: zhCN["loadout.tabs"] });
+    await user.click(within(tabs).getByRole("radio", { name: "出装" }));
+    await user.click(screen.getByRole("button", { name: zhCN["loadout.writeItemSet"] }));
+    expect(await screen.findByText(zhCN["loadout.itemSetsFull"])).toBeInTheDocument();
+  });
+
   it("shows the pick suggestions with their reasons, and nothing to click in them", async () => {
     const backend = demoWith({
       get_snapshot: () =>
