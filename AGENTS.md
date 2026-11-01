@@ -97,6 +97,27 @@ scripts/windows/qa.sh log 40
   to `main` (its ruleset takes changes through a pull request only, `CI Success` green). The PR title
   is a Conventional Commit (`feat: …`, `fix: …`): it becomes the squash subject and release-please
   reads it.
+- **Release notes are Chinese.** release-please writes the notes (the CHANGELOG section, the GitHub
+  release, and `latest.json`'s notes, which winer's update dialog shows) from the merged pull
+  request, under the section names in `release-please-config.json`: `新功能`, `问题修复`, `性能优化`,
+  `回退`. Other types neither show nor cut a release. The subject stays English, so end the PR
+  body with an override, which release-please reads instead of the squash message: one Chinese line
+  per user-facing change, each a Conventional Commit with the PR's number, blank lines between.
+
+  ```text
+  BEGIN_COMMIT_OVERRIDE
+  feat: 工具页新增「奖励领取」：列出客户端里等你领取的奖励，一键领取 (#40)
+
+  fix: 自动写入装备方案不再报 HTTP 413 (#40)
+  END_COMMIT_OVERRIDE
+  ```
+
+  Write it before merging: release-please reads it when the merge reaches `main`. Lines sort by
+  their text within a section. Without an override the English subject becomes the note; a `ci:`
+  or `chore:` change needs none. To preview the notes, feed the override to release-please 17.6.0's
+  `parseConventionalCommits` and `DefaultChangelogNotes` (the version release-please-action v5.0.0
+  bundles).
+
 - **One change per version.** Merge one squashed change, then the release PR release-please opens
   (`chore: release X.Y.Z`), so `main` reads change, release, change, release. Related work goes
   into one PR rather than several merges before a release.
@@ -118,6 +139,6 @@ scripts/windows/qa.sh log 40
 ## Conventions a new session gets wrong
 
 - **Commit subjects are English**, a deliberate override of the repository's Chinese-subject
-  convention.
+  convention; the release notes are Chinese (see Releases).
 - Rust uses rustfmt's defaults (no `rustfmt.toml`); TypeScript, JSON, YAML and Markdown use oxfmt
   (`pnpm format`).

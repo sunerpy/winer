@@ -10,7 +10,25 @@
       "include-v-in-tag": true,
       "draft": true,
       "force-tag-creation": true,
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "新功能"
+        },
+        {
+          "type": "fix",
+          "section": "问题修复"
+        },
+        {
+          "type": "perf",
+          "section": "性能优化"
+        },
+        {
+          "type": "revert",
+          "section": "回退"
+        }
+      ]
     }
   }
 }
