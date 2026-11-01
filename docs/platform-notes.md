@@ -221,6 +221,9 @@ The same account and day.
   exercised.
 - Missions are no claim surface: a completed mission's rewards are applied or become grants. The
   TFT pass had one `REWARDABLE` milestone, on the paid track and locked.
+- winer's own claim, 2026-11-01: the owner pressed 一键领取 in a test build with 24 grants waiting;
+  winer's log read `claimed=24 failed=0 processing=0 left=0`, `left` being its own read-back of the
+  grants still waiting.
 
 ## Match history from the shard's server (SGP)
 

@@ -30,7 +30,8 @@ It has two parts:
   starts, go back to the lobby after a game and take wished-for ARAM bench champions, each limited to
   the modes you choose. See [Automation](/en/guide/automation).
 - **Tools**: switch your status (online, away, invisible), edit your status message, restart the
-  client's interface.
+  client's interface, and claim the rewards the client holds for you in one click. See
+  [Tools and settings](/en/guide/settings).
 
 Scores and tiers are winer's own formulas, all written out in [How rating works](/en/rating).
 
