@@ -14,7 +14,8 @@ use winer_core::{
     loadout::{LoadoutSummary, PageOutcome},
     notes::{NoteEntry, NoteTag, PlayerNote},
     plugin::PluginStatus,
-    profile::{ChallengeProfile, SkinChoice},
+    profile::{ChallengeProfile, Crest, CrestChange, IconChange, SkinChoice},
+    rewards::{ClaimReport, GrantChoice, RewardsView},
     settings::{Audience, CalloutRule, General, Language, Mode},
     view::{
         AppInfo, AugmentDetail, CleanupReport, DiagnosticsReport, ErrorCode, GameData,
@@ -73,6 +74,13 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         set_profile_background,
         get_challenge_profile,
         set_challenge_profile,
+        use_default_icon,
+        set_icon,
+        use_plain_crest,
+        set_crest,
+        // Rewards the client holds for the player.
+        get_pending_rewards,
+        claim_rewards,
         get_game_settings_backups,
         create_game_settings_backup,
         restore_game_settings_backup,
@@ -438,6 +446,45 @@ async fn set_challenge_profile<R: Runtime>(
         .await?)
 }
 
+/// Answers the icon before and the one the client shows afterwards.
+#[tauri::command]
+async fn use_default_icon<R: Runtime>(app: AppHandle<R>) -> Result<IconChange> {
+    Ok(service(&app).use_default_icon().await?)
+}
+
+/// Puts an icon back, as the undo of [`use_default_icon`].
+#[tauri::command]
+async fn set_icon<R: Runtime>(app: AppHandle<R>, icon: i64) -> Result<IconChange> {
+    Ok(service(&app).set_icon(icon).await?)
+}
+
+/// Answers the border before and the one the client reads back afterwards.
+#[tauri::command]
+async fn use_plain_crest<R: Runtime>(app: AppHandle<R>) -> Result<CrestChange> {
+    Ok(service(&app).use_plain_crest().await?)
+}
+
+/// Puts a border back, as the undo of [`use_plain_crest`].
+#[tauri::command]
+async fn set_crest<R: Runtime>(app: AppHandle<R>, crest: Crest) -> Result<CrestChange> {
+    Ok(service(&app).set_crest(crest).await?)
+}
+
+#[tauri::command]
+async fn get_pending_rewards<R: Runtime>(app: AppHandle<R>) -> Result<RewardsView> {
+    Ok(service(&app).pending_rewards().await?)
+}
+
+/// Claims every grant with nothing to choose and each of `choices`; refused from the queue to the
+/// end of a game.
+#[tauri::command]
+async fn claim_rewards<R: Runtime>(
+    app: AppHandle<R>,
+    choices: Vec<GrantChoice>,
+) -> Result<ClaimReport> {
+    Ok(service(&app).claim_rewards(choices).await?)
+}
+
 #[tauri::command]
 async fn get_game_settings_backups<R: Runtime>(app: AppHandle<R>) -> Result<Vec<BackupInfo>> {
     let service = service(&app);
@@ -730,6 +777,11 @@ mod tests {
                 set_challenge_profile(handle.clone(), vec![101304], None, Some("24".into()))
                     .await
                     .unwrap_err(),
+                use_default_icon(handle.clone()).await.unwrap_err(),
+                set_icon(handle.clone(), 7143).await.unwrap_err(),
+                use_plain_crest(handle.clone()).await.unwrap_err(),
+                get_pending_rewards(handle.clone()).await.unwrap_err(),
+                claim_rewards(handle.clone(), Vec::new()).await.unwrap_err(),
                 apply_mobile_message(handle.clone()).await.unwrap_err(),
                 create_game_settings_backup(handle.clone())
                     .await

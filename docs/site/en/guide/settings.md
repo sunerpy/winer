@@ -35,6 +35,30 @@ Pick one and press **Set as background**. winer then reads the client's profile 
 may refuse a skin you do not own; if the background did not change, the page says so, and what the
 client shows is what counts.
 
+### Rewards
+
+Lists the rewards the client holds for you: the rewards of event pass levels you reached, and
+rewards of past events you never took, oldest first, each with what it gives and when it was granted.
+**Claim all** takes every reward that needs no choice, then says how it went: how many were claimed,
+which are still being granted, and which were not claimed and why.
+
+- **Rewards that offer a choice**: winer never picks for you. Tick the ones you want as the hint
+  beside the reward says, then press **Claim all**: they are claimed with the rest.
+- **Claim automatically**: with it on, winer claims the rewards that need no choice when it connects
+  to the client and after each game, and says so in the activity feed. A reward that offers a choice
+  still waits for you here. Off by default.
+- Nothing is claimed while queueing, in champ select or in a game: the client shows a toast for each
+  reward, so winer claims only on the home screen, in the lobby and on the post-game screen.
+
+### Icon and border
+
+- **Use the default icon**: the icon new accounts start with, which every account owns.
+- **Use the plain border**: the client cannot show your icon with no border at all, so this uses the
+  plain border of levels 1 to 29.
+- Each has an **Undo** that puts back the icon or border you had. It goes when you leave the Tools
+  page; after that, change them back in the client itself. When the client does not take a change,
+  the page says so.
+
 ### Challenge tokens, title and banner
 
 The three challenge tokens on your profile, left to right: each can be any challenge you have

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { demoBuild } from "../../lib/demoLoadout";
 import { translate } from "../../lib/i18n";
-import { noticeText } from "../../shell/notices";
+import { isFailure, noticeText } from "../../shell/notices";
 import {
   augmentGroups,
   availableTabs,
@@ -107,5 +107,7 @@ describe("build panel", () => {
     );
     expect(applied("noPage", false)).toBe("#202 的符文没有改动：没有空位放 winer 的符文页");
     expect(zh({ kind: "itemSetWritten", championId: 202 })).toBe("已为 #202 写入装备方案");
+    expect(zh({ kind: "itemSetsFull" })).toBe(translate("zh-CN", "loadout.itemSetsFull"));
+    expect(isFailure({ kind: "itemSetsFull" }), "drawn as a failure").toBe(true);
   });
 });

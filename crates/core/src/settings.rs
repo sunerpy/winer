@@ -258,6 +258,9 @@ pub struct Automation {
     pub loadout: LoadoutRule,
     /// Experimental: write winer's item set for a champion once it is locked in (`loadout`).
     pub item_sets: bool,
+    /// Claim the rewards that need no choice after connecting and after each game (`rewards`).
+    /// Not scoped by mode: the rewards are the account's.
+    pub claim_rewards: bool,
 }
 
 impl Automation {
@@ -1532,6 +1535,8 @@ mod tests {
         assert_eq!((callout.delay, callout.delay_ms), (true, 1500));
         // Settings saved before the delivery could be chosen send one message.
         assert_eq!(callout.delivery, CalloutDelivery::Block);
+        // Settings saved before rewards could be claimed claim nothing by themselves.
+        assert!(!settings.automation.claim_rewards);
         let lines: Settings =
             serde_json::from_str(r#"{"automation":{"callout":{"delivery":"lines"}}}"#).unwrap();
         assert_eq!(lines.automation.callout.delivery, CalloutDelivery::Lines);

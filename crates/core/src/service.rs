@@ -3,6 +3,7 @@
 
 mod caches;
 mod loadout;
+mod rewards;
 mod ux;
 
 pub use ux::{Readiness, UiRestart};
@@ -18,7 +19,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use lcu::{Credentials, DiscoverError, EventKind, Lcu};
+use lcu::{Credentials, DiscoverError, EventKind, Lcu, Method};
 use serde::de::DeserializeOwned;
 use serde_json::json;
 use tokio::{
@@ -45,7 +46,7 @@ use crate::{
     notes::{NoteEntry, NoteError, NoteStore, NoteTag, PlayerNote},
     profile::{
         self, Admit, ChallengeProfile, ChallengeSummary, ClientBanner, ClientChallenge,
-        ClientTitle, Fix, Regalia, SkinChoice, SummonerProfile,
+        ClientTitle, Crest, CrestChange, Fix, IconChange, Regalia, SkinChoice, SummonerProfile,
     },
     recommend,
     settings::{
@@ -144,6 +145,9 @@ pub enum CoreError {
     /// while it is overloaded); later it may.
     #[error("{0}")]
     Unavailable(String),
+    /// The client has no room for what winer would write (its list of item sets is full).
+    #[error("{0}")]
+    Full(String),
 }
 
 impl From<CoreError> for IpcError {
@@ -157,6 +161,7 @@ impl From<CoreError> for IpcError {
             CoreError::Lcu(error) if error.is_unreachable() => ErrorCode::NotConnected,
             CoreError::Lcu(_) | CoreError::Remote(_) => ErrorCode::Client,
             CoreError::Unavailable(_) => ErrorCode::Unavailable,
+            CoreError::Full(_) => ErrorCode::Full,
             CoreError::Io(_) => ErrorCode::Internal,
         };
         Self {
@@ -208,6 +213,8 @@ struct Inner {
     versions: diagnose::VersionStore,
     /// The user's notes on other players (`notes`).
     notes: NoteStore,
+    /// Claims the rewards the client holds, one run at a time (`rewards`).
+    rewards: rewards::RewardsClaimer,
 }
 
 /// Augment descriptions per language, with when they were fetched.
@@ -459,6 +466,7 @@ impl Service {
                 plugin_hellos: watch::Sender::new(0),
                 versions,
                 notes,
+                rewards: rewards::RewardsClaimer::default(),
             }),
         }
     }
@@ -1125,12 +1133,20 @@ impl Service {
             platform_id,
         }));
         self.load_game_data(&client);
-        if let Ok(phase) = client.lcu.get::<String>(PHASE).await {
-            self.on_phase(&client, Phase::parse(&phase)).await;
-        }
+        let initial = match client.lcu.get::<String>(PHASE).await {
+            Ok(phase) => {
+                let phase = Phase::parse(&phase);
+                self.on_phase(&client, phase).await;
+                Some(phase)
+            }
+            Err(_) => None,
+        };
         // A client starting up resets the status; winer's disguise is not there yet either.
         self.open_presence_window(&client);
         self.follow_friends(&client);
+        if rewards::claims_on_connect(initial) {
+            self.claim_rewards_by_rule(&client, false);
+        }
 
         while let Some(event) = events.next().await {
             let event = event?;
@@ -1245,7 +1261,10 @@ impl Service {
                     self.on_gameflow(client, session);
                 }
             }
-            Phase::EndOfGame => self.play_again(client),
+            Phase::EndOfGame => {
+                self.play_again(client);
+                self.claim_rewards_by_rule(client, true);
+            }
             Phase::ReadyCheck => {
                 lock(&client.live).gameflow = None;
                 self.patch(Patch::Game(None));
@@ -1998,6 +2017,10 @@ const PREFERENCES: &str = "/lol-challenges/v1/update-player-preferences";
 const BANNERS: &str = "/lol-regalia/v3/inventory/REGALIA_BANNER";
 /// How the banner is drawn: plain, or in the tier of last season's rank.
 const REGALIA: &str = "/lol-regalia/v2/current-summoner/regalia";
+const ICON: &str = "/lol-summoner/v1/current-summoner/icon";
+/// The account's inventory signed by the server, one token per kind of item. The route is spelt
+/// `signedInventory`: `signed-inventory` answered 404 `Invalid URI format` (2026-11-01).
+const SIGNED_INVENTORY: &str = "/lol-inventory/v1/signedInventory";
 /// A change to the profile is the server's to accept: winer reads it back this many times, this
 /// far apart, before taking the answer as final.
 const READ_BACK_ATTEMPTS: u32 = 4;
@@ -2056,6 +2079,48 @@ impl Service {
             regalia(&lcu)
         );
         Ok(choices.profile(&summary?, &regalia))
+    }
+
+    /// Puts icon `icon` on the profile; the change says what the client shows afterwards.
+    pub async fn set_icon(&self, icon: i64) -> Result<IconChange, CoreError> {
+        if icon < 0 {
+            return Err(CoreError::Invalid(format!("{icon} is not an icon")));
+        }
+        let lcu = self.client()?.lcu;
+        let previous = lcu.get::<Summoner>(SUMMONER).await?.profile_icon_id;
+        let current = put_icon(&lcu, icon).await?;
+        Ok(IconChange { previous, current })
+    }
+
+    /// The icon new accounts start with ([`profile::DEFAULT_ICON`]).
+    pub async fn use_default_icon(&self) -> Result<IconChange, CoreError> {
+        self.set_icon(profile::DEFAULT_ICON).await
+    }
+
+    /// Puts `crest` around the profile icon, the banner as it is; the change says what the
+    /// client reads back.
+    pub async fn set_crest(&self, crest: Crest) -> Result<CrestChange, CoreError> {
+        profile::check_crest(&crest).map_err(CoreError::Invalid)?;
+        let lcu = self.client()?.lcu;
+        let regalia: Regalia = lcu.get(REGALIA).await?;
+        let previous = profile::crest_of(&regalia);
+        let answer: Regalia = lcu
+            .call(
+                Method::PUT,
+                REGALIA,
+                &profile::crest_request(&regalia, &crest),
+            )
+            .await?;
+        Ok(CrestChange {
+            previous,
+            current: profile::crest_of(&answer),
+        })
+    }
+
+    /// The plainest border the client draws ([`profile::PLAIN_CREST`]): it takes no request for
+    /// none.
+    pub async fn use_plain_crest(&self) -> Result<CrestChange, CoreError> {
+        self.set_crest(profile::plain_crest()).await
     }
 
     /// Shows `tokens` in the profile's slots, left to right, `title` when given and `banner` when
@@ -2412,6 +2477,43 @@ impl ChallengeChoices {
             regalia,
         )
     }
+}
+
+/// `PUT …/icon` with the icon alone (`profileIconId`), the icon the answer shows. The request's
+/// type also names `inventoryToken`: where the client refuses the icon alone, the same request
+/// goes once more with the account's signed icon inventory. The token is never logged.
+async fn put_icon(lcu: &Lcu, icon: i64) -> Result<i64, CoreError> {
+    let alone = lcu
+        .call::<_, Summoner>(Method::PUT, ICON, &json!({ "profileIconId": icon }))
+        .await;
+    let refused = match alone {
+        Ok(summoner) => return Ok(summoner.profile_icon_id),
+        Err(error)
+            if error
+                .status()
+                .is_some_and(|status| (400..500).contains(&status)) =>
+        {
+            error
+        }
+        Err(error) => return Err(error.into()),
+    };
+    debug!(%refused, "the icon alone was refused; again with the signed inventory");
+    let path = format!(
+        "{SIGNED_INVENTORY}?inventoryTypes={}",
+        query_value(r#"["SUMMONER_ICON"]"#)
+    );
+    let signed: HashMap<String, String> = lcu.get(&path).await?;
+    let Some(token) = signed.get("SUMMONER_ICON") else {
+        return Err(refused.into());
+    };
+    let summoner: Summoner = lcu
+        .call(
+            Method::PUT,
+            ICON,
+            &json!({ "profileIconId": icon, "inventoryToken": token }),
+        )
+        .await?;
+    Ok(summoner.profile_icon_id)
 }
 
 /// The regalia, or nothing known of it where the client does not say: the banner is then read

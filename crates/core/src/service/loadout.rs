@@ -357,6 +357,7 @@ impl Service {
                 Ok(()) => service.notice(NoticeKind::ItemSetWritten {
                     champion_id: champion,
                 }),
+                Err(CoreError::Full(_)) => service.notice(NoticeKind::ItemSetsFull),
                 Err(error) => service.notice(NoticeKind::Failed {
                     action: "itemSet".into(),
                     message: error.to_string(),
@@ -375,7 +376,11 @@ impl Service {
         );
         let (path, sets) = item_sets(&client.lcu).await?;
         let sets = sets.with(build.champion_id, build.mode, set, now_ms().max(0) as u64);
-        client.lcu.put(&path, &sets).await?;
+        client
+            .lcu
+            .put(&path, &sets)
+            .await
+            .map_err(item_sets_refused)?;
         Ok(())
     }
 
@@ -614,6 +619,16 @@ async fn client_recommendation(
 }
 
 /// The local player's item sets as the client keeps them, and where they are written back.
+/// The client answers 413 to a list of item sets past the size it takes (64,881 bytes went, about
+/// 66 KB did not, 2026-10-31). winer's own older sets have gone by then, so the player's fill it.
+fn item_sets_refused(error: lcu::Error) -> CoreError {
+    if error.status() == Some(413) {
+        CoreError::Full(format!("the client's item sets are full: {error}"))
+    } else {
+        error.into()
+    }
+}
+
 async fn item_sets(lcu: &Lcu) -> Result<(String, ItemSets), CoreError> {
     let summoner: Summoner = lcu.get(SUMMONER).await?;
     if summoner.summoner_id <= 0 {
@@ -949,5 +964,25 @@ mod tests {
         assert_eq!(state.clear(), 3, "two answers and the patch list");
         assert_eq!(state.entries(), 1);
         assert!(lock(&state.builds).contains_key(&key(3)));
+    }
+
+    #[test]
+    fn a_list_of_item_sets_the_client_will_not_take_is_full_and_says_so() {
+        let refused = |status| lcu::Error::Status {
+            method: Method::PUT,
+            path: "/lol-item-sets/v1/item-sets/1/sets".into(),
+            status,
+            message: "Content length is too large".into(),
+        };
+        let full = item_sets_refused(refused(413));
+        assert!(matches!(full, CoreError::Full(_)), "{full:?}");
+        assert_eq!(
+            crate::view::IpcError::from(full).code,
+            crate::view::ErrorCode::Full
+        );
+        assert!(matches!(
+            item_sets_refused(refused(500)),
+            CoreError::Lcu(error) if error.status() == Some(500)
+        ));
     }
 }

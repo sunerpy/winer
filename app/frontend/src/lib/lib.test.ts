@@ -73,6 +73,7 @@ const SETTINGS = {
     scopes: defaultScopes(),
     loadout: { enabled: false, recommended: true },
     itemSets: false,
+    claimRewards: false,
   },
   plugin: {
     auto: true,
