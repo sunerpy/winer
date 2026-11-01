@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.0.18](https://github.com/sunerpy/winer/compare/v0.0.17...v0.0.18) (2026-11-01)
+
+
+### Features
+
+* claim waiting rewards in one click, and reset the icon and border ([#40](https://github.com/sunerpy/winer/issues/40)) ([4854fad](https://github.com/sunerpy/winer/commit/4854fad89b23b5f5f3fef0caa8ab67e6dca2daa8))
+* list the rewards the client holds for you on the Tools page, oldest first, each with what it contains and when it was granted ([#40](https://github.com/sunerpy/winer/issues/40)) ([4854fad](https://github.com/sunerpy/winer/commit/4854fad89b23b5f5f3fef0caa8ab67e6dca2daa8))
+* only claim a reward that offers a choice as you tick it; winer never picks for you ([#40](https://github.com/sunerpy/winer/issues/40)) ([4854fad](https://github.com/sunerpy/winer/commit/4854fad89b23b5f5f3fef0caa8ab67e6dca2daa8))
+* optionally claim when winer connects and after each game, behind a switch that is off by default, and never while queueing, in champ select or in a game ([#40](https://github.com/sunerpy/winer/issues/40)) ([4854fad](https://github.com/sunerpy/winer/commit/4854fad89b23b5f5f3fef0caa8ab67e6dca2daa8))
+* put back the default profile icon or the plain border in one click, each with an undo ([#40](https://github.com/sunerpy/winer/issues/40)) ([4854fad](https://github.com/sunerpy/winer/commit/4854fad89b23b5f5f3fef0caa8ab67e6dca2daa8))
+
+
+### Bug Fixes
+
+* keep winer's item sets within what the client takes, so the automatic build import no longer fails with HTTP 413 (Content length is too large): at most 20 of winer's own sets and under 60 KB in all, its oldest dropped first and never yours ([#40](https://github.com/sunerpy/winer/issues/40)) ([4854fad](https://github.com/sunerpy/winer/commit/4854fad89b23b5f5f3fef0caa8ab67e6dca2daa8))
+* say the item-set list is full when the client still refuses it, instead of showing the HTTP error ([#40](https://github.com/sunerpy/winer/issues/40)) ([4854fad](https://github.com/sunerpy/winer/commit/4854fad89b23b5f5f3fef0caa8ab67e6dca2daa8))
+
 ## [0.0.17](https://github.com/sunerpy/winer/compare/v0.0.16...v0.0.17) (2026-10-25)
 
 
