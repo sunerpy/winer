@@ -25,8 +25,8 @@ pub const SPACING: Duration = Duration::from_secs(3);
 /// What a press of a comeback's shortcut does.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ComebackPress {
-    /// Champ select: this line goes to its chat.
-    ChampSelect(String),
+    /// Champ select `game_id`: this line goes to its chat, and to no later champ select's.
+    ChampSelect { line: String, game_id: i64 },
     /// The game runs and in-game sending is on: the shell types this line into the game's chat, to
     /// everyone with `all`.
     Game { line: String, all: bool },
@@ -37,7 +37,9 @@ pub enum ComebackPress {
     },
 }
 
-/// What went out last: the next press neither repeats it nor follows it within [`SPACING`].
+/// What went out last, and when it finished going out: the next press neither repeats it nor
+/// follows it within [`SPACING`]. Only a line that reached the chat, whole or in part, counts; a
+/// press that sent nothing leaves it as it was.
 #[derive(Clone, Debug, Default)]
 pub struct Memory {
     pub last: Option<String>,
@@ -53,12 +55,14 @@ pub fn place(phase: Phase, all: bool) -> ComebackPlace {
     }
 }
 
-/// What a press does in `phase` under `rule`: in champ select a line of `pool` goes to its chat;
-/// while the game runs (`InProgress`: not its loading screen) the shell types one, if in-game
-/// sending is on. The line is [`pick`]ed with `random`; nothing goes out within [`SPACING`] of the
-/// last one (`memory`, at `now`).
+/// What a press does in `phase` under `rule`: in champ select (`champ_select`, its game id, once
+/// its view is in) a line of `pool` goes to its chat; while the game runs (`InProgress`: not its
+/// loading screen) the shell types one, if in-game sending is on. The line is [`pick`]ed with
+/// `random`; nothing goes out within [`SPACING`] of the last line that did (`memory`, at `now`).
+#[allow(clippy::too_many_arguments)]
 pub fn press(
     phase: Phase,
+    champ_select: Option<i64>,
     rule: &ComebackSettings,
     all: bool,
     pool: &[&str],
@@ -70,10 +74,10 @@ pub fn press(
         place: place(phase, all),
         reason,
     };
-    match phase {
-        Phase::ChampSelect => {}
-        Phase::InProgress if !rule.in_game => return skip(CalloutSkip::InGameOff),
-        Phase::InProgress => {}
+    match (phase, champ_select) {
+        (Phase::ChampSelect, Some(_)) => {}
+        (Phase::InProgress, _) if !rule.in_game => return skip(CalloutSkip::InGameOff),
+        (Phase::InProgress, _) => {}
         _ => return skip(CalloutSkip::NotNow),
     }
     let Some(index) = pick(pool, memory.last.as_deref(), random) else {
@@ -86,10 +90,9 @@ pub fn press(
         return skip(CalloutSkip::TooSoon);
     }
     let line = pool[index].to_owned();
-    if phase == Phase::ChampSelect {
-        ComebackPress::ChampSelect(line)
-    } else {
-        ComebackPress::Game { line, all }
+    match champ_select.filter(|_| phase == Phase::ChampSelect) {
+        Some(game_id) => ComebackPress::ChampSelect { line, game_id },
+        None => ComebackPress::Game { line, all },
     }
 }
 
@@ -392,11 +395,31 @@ mod tests {
         let on = rule(&["hi"], true);
         let pool: Vec<&str> = pool(&on, None);
         assert_eq!(
-            press(Phase::ChampSelect, &on, true, &pool, &memory, now, 0),
-            ComebackPress::ChampSelect("hi".into())
+            press(
+                Phase::ChampSelect,
+                Some(7),
+                &on,
+                true,
+                &pool,
+                &memory,
+                now,
+                0
+            ),
+            ComebackPress::ChampSelect {
+                line: "hi".into(),
+                game_id: 7
+            }
         );
         assert_eq!(
-            press(Phase::InProgress, &on, true, &pool, &memory, now, 0),
+            press(Phase::ChampSelect, None, &on, true, &pool, &memory, now, 0),
+            ComebackPress::Skip {
+                place: ComebackPlace::ChampSelect,
+                reason: CalloutSkip::NotNow
+            },
+            "champ select's view is not in yet"
+        );
+        assert_eq!(
+            press(Phase::InProgress, None, &on, true, &pool, &memory, now, 0),
             ComebackPress::Game {
                 line: "hi".into(),
                 all: true
@@ -404,21 +427,30 @@ mod tests {
         );
         let off = rule(&["hi"], false);
         assert_eq!(
-            press(Phase::InProgress, &off, false, &pool, &memory, now, 0),
+            press(Phase::InProgress, None, &off, false, &pool, &memory, now, 0),
             ComebackPress::Skip {
                 place: ComebackPlace::Team,
                 reason: CalloutSkip::InGameOff
             }
         );
         assert_eq!(
-            press(Phase::Lobby, &on, true, &pool, &memory, now, 0),
+            press(Phase::Lobby, None, &on, true, &pool, &memory, now, 0),
             ComebackPress::Skip {
                 place: ComebackPlace::All,
                 reason: CalloutSkip::NotNow
             }
         );
         assert_eq!(
-            press(Phase::ChampSelect, &on, false, &[], &memory, now, 0),
+            press(
+                Phase::ChampSelect,
+                Some(7),
+                &on,
+                false,
+                &[],
+                &memory,
+                now,
+                0
+            ),
             ComebackPress::Skip {
                 place: ComebackPlace::ChampSelect,
                 reason: CalloutSkip::NoLines
@@ -431,6 +463,7 @@ mod tests {
         assert_eq!(
             press(
                 Phase::ChampSelect,
+                Some(7),
                 &on,
                 false,
                 &pool,
@@ -446,6 +479,7 @@ mod tests {
         assert_eq!(
             press(
                 Phase::ChampSelect,
+                Some(7),
                 &on,
                 false,
                 &pool,
@@ -453,8 +487,11 @@ mod tests {
                 now + SPACING,
                 0
             ),
-            ComebackPress::ChampSelect("hi".into()),
-            "three seconds on, the one line again"
+            ComebackPress::ChampSelect {
+                line: "hi".into(),
+                game_id: 7
+            },
+            "three seconds after the last one finished, the one line again"
         );
     }
 

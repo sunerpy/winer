@@ -500,10 +500,10 @@ fn come_back<R: Runtime>(app: &AppHandle<R>, all: bool) {
     let (service, sending) = (service.inner().clone(), Sending(app.clone()));
     // Off the main thread from the start: the first press with the library in use reads its file.
     tauri::async_runtime::spawn_blocking(move || match service.comeback_press(all) {
-        ComebackPress::ChampSelect(line) => {
+        ComebackPress::ChampSelect { line, game_id } => {
             tauri::async_runtime::spawn(async move {
                 let _sending = sending;
-                service.report(match service.send_comeback(line).await {
+                service.report(match service.send_comeback(line, game_id).await {
                     Ok(messages) => NoticeKind::ComebackSent {
                         place: ComebackPlace::ChampSelect,
                         messages,
@@ -515,10 +515,15 @@ fn come_back<R: Runtime>(app: &AppHandle<R>, all: bool) {
                 });
             });
         }
-        // The game's rights are checked as the keys are about to go (`game_chat`).
+        // The game's rights are checked as the keys are about to go (`game_chat`). A line that
+        // reached the chat, whole or in part, is the one the next press neither repeats nor
+        // follows within the spacing; one that sent nothing changes neither.
         ComebackPress::Game { line, all } => {
             let _sending = sending;
-            let typed = game_chat::type_lines(&[line], all);
+            let typed = game_chat::type_lines(std::slice::from_ref(&line), all);
+            if game_chat::sent(typed) > 0 {
+                service.comeback_went_out(&line);
+            }
             service.report(game_chat::comeback_notice(typed, all));
         }
         ComebackPress::Skip { place, reason } => {

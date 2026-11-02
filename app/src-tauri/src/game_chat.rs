@@ -219,6 +219,14 @@ pub(crate) fn notice(typed: Typed) -> NoticeKind {
     }
 }
 
+/// How many messages of `typed` reached the chat.
+pub(crate) fn sent(typed: Typed) -> u32 {
+    match typed {
+        Typed::Sent(messages) | Typed::Stopped { sent: messages, .. } => messages,
+        Typed::Nothing(_) => 0,
+    }
+}
+
 /// The activity feed's entry for `typed`, a comeback for the team's chat or, with `all`,
 /// everyone's.
 pub(crate) fn comeback_notice(typed: Typed, all: bool) -> NoticeKind {
@@ -574,6 +582,19 @@ mod tests {
             messages(&[long], false).len() > 1,
             "longer than a message: more than one"
         );
+    }
+
+    #[test]
+    fn only_messages_that_reached_the_chat_count_as_sent() {
+        assert_eq!(sent(Typed::Sent(2)), 2);
+        assert_eq!(
+            sent(Typed::Stopped {
+                sent: 1,
+                reason: CalloutSkip::NotInFront
+            }),
+            1
+        );
+        assert_eq!(sent(Typed::Nothing(CalloutSkip::NeedsAdmin)), 0);
     }
 
     #[test]

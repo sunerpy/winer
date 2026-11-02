@@ -3,18 +3,21 @@
 //! user's request, kept in a file of its own beside the settings.
 
 use std::{
+    future::Future,
     io,
     path::PathBuf,
     sync::{Arc, Mutex},
     time::Instant,
 };
 
+use lcu::Lcu;
 use tracing::{info, warn};
 
-use super::{CoreError, Service, champ_select_chat, lock, say};
+use super::{CHAMP_SELECT, CoreError, Service, champ_select_chat, lock, say};
 use crate::{
     callout,
     comeback::{self, ComebackPress, Library, Memory},
+    model::ChampSelectSession,
     settings::{Audience, CalloutDelivery, write_atomic},
     view::{ComebackLibrary, Phase},
 };
@@ -94,6 +97,65 @@ impl LibraryStore {
     }
 }
 
+/// The client's side of posting in champ select's chat; the tests use one of their own.
+pub(super) trait ChampSelectChat {
+    /// The game id of the champ select the client holds now; `None` outside one.
+    fn game_id(&self) -> impl Future<Output = Result<Option<i64>, CoreError>> + Send;
+    /// Champ select's chat room, once it is open.
+    fn room(&self) -> impl Future<Output = Result<Option<String>, CoreError>> + Send;
+    /// Posts `body` in `room` as one message to the team.
+    fn post(&self, room: &str, body: &str) -> impl Future<Output = Result<(), CoreError>> + Send;
+}
+
+pub(super) struct LcuChat<'a>(pub &'a Lcu);
+
+impl ChampSelectChat for LcuChat<'_> {
+    async fn game_id(&self) -> Result<Option<i64>, CoreError> {
+        match self.0.get::<ChampSelectSession>(CHAMP_SELECT).await {
+            Ok(session) => Ok(Some(session.game_id)),
+            Err(error) if error.is_not_found() => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    async fn room(&self) -> Result<Option<String>, CoreError> {
+        champ_select_chat(self.0).await
+    }
+
+    async fn post(&self, room: &str, body: &str) -> Result<(), CoreError> {
+        say(
+            self.0,
+            room,
+            &[body.to_owned()],
+            Audience::Team,
+            CalloutDelivery::Block,
+        )
+        .await
+    }
+}
+
+/// Posts `body` in the chat of champ select `game_id` and nowhere else. The client is asked which
+/// champ select it holds before the room is looked up and again after, so a champ select that ended
+/// while the room was looked up, and one that began meanwhile, get nothing (`Invalid`).
+pub(super) async fn post_to(
+    chat: &impl ChampSelectChat,
+    game_id: i64,
+    body: &str,
+) -> Result<(), CoreError> {
+    let over = || CoreError::Invalid("that champ select is over".into());
+    if chat.game_id().await? != Some(game_id) {
+        return Err(over());
+    }
+    let room = chat
+        .room()
+        .await?
+        .ok_or_else(|| CoreError::Invalid("champ select chat is not open".into()))?;
+    if chat.game_id().await? != Some(game_id) {
+        return Err(over());
+    }
+    chat.post(&room, body).await
+}
+
 /// A random number for [`comeback::pick`]; the clock stands in should the system have none.
 fn random() -> u64 {
     let mut bytes = [0u8; 8];
@@ -106,44 +168,54 @@ fn random() -> u64 {
 
 impl Service {
     /// What a press of the Comebacks page's team shortcut (`all` false) or all-chat shortcut does
-    /// now (`comeback::press`), from the phase and the settings as saved; a line that goes out is
-    /// remembered, so the next press neither repeats it nor follows within `comeback::SPACING`.
-    /// The shell acts on it: champ select's line goes out through [`Self::send_comeback`], the
-    /// game's is typed by the shell itself.
+    /// now (`comeback::press`), from the phase, champ select's game id and the settings as saved,
+    /// against the last line that went out. The shell acts on it: champ select's line goes out
+    /// through [`Self::send_comeback`], the game's is typed by the shell, which then tells
+    /// [`Self::comeback_went_out`]. A press itself remembers nothing: one that sends nothing neither
+    /// starts the spacing nor changes the line not to repeat.
     pub fn comeback_press(&self, all: bool) -> ComebackPress {
         let rule = self.settings().comeback;
-        let phase = self.phase();
+        let (phase, champ_select) = {
+            let state = lock(&self.inner.state);
+            (
+                state.phase,
+                state.champ_select.as_ref().map(|view| view.game_id),
+            )
+        };
         let library = if rule.library.enabled {
             self.inner.comeback.library.get()
         } else {
             None
         };
         let pool = comeback::pool(&rule, library.as_deref());
-        let now = Instant::now();
-        let mut memory = lock(&self.inner.comeback.memory);
-        let press = comeback::press(phase, &rule, all, &pool, &memory, now, random());
-        if let ComebackPress::ChampSelect(line) | ComebackPress::Game { line, .. } = &press {
-            memory.last = Some(line.clone());
-            memory.sent_at = Some(now);
-        }
-        press
+        let memory = lock(&self.inner.comeback.memory).clone();
+        comeback::press(
+            phase,
+            champ_select,
+            &rule,
+            all,
+            &pool,
+            &memory,
+            Instant::now(),
+            random(),
+        )
     }
 
-    /// Posts `line` in champ select's chat as one message, as the callout's 发送到队伍 does. Returns
-    /// the messages sent: one.
-    pub async fn send_comeback(&self, line: String) -> Result<u32, CoreError> {
+    /// `line` reached the chat, whole or in part, just now: the next press does not repeat it, nor
+    /// follow within `comeback::SPACING`.
+    pub fn comeback_went_out(&self, line: &str) {
+        let mut memory = lock(&self.inner.comeback.memory);
+        memory.last = Some(line.to_owned());
+        memory.sent_at = Some(Instant::now());
+    }
+
+    /// Posts `line` in the chat of champ select `game_id` as one message, as the callout's 发送到队伍
+    /// does, and nowhere else (`post_to`); remembers it once it went out. Returns the messages sent:
+    /// one.
+    pub async fn send_comeback(&self, line: String, game_id: i64) -> Result<u32, CoreError> {
         let client = self.client()?;
-        let chat = champ_select_chat(&client.lcu)
-            .await?
-            .ok_or_else(|| CoreError::Invalid("champ select chat is not open".into()))?;
-        say(
-            &client.lcu,
-            &chat,
-            &[line],
-            Audience::Team,
-            CalloutDelivery::Block,
-        )
-        .await?;
+        post_to(&LcuChat(&client.lcu), game_id, &line).await?;
+        self.comeback_went_out(&line);
         Ok(1)
     }
 
@@ -160,17 +232,7 @@ impl Service {
     ) -> Result<String, CoreError> {
         let client = self.client()?;
         let text = self.render_phrase(index, game_id, cell_id)?;
-        let chat = champ_select_chat(&client.lcu)
-            .await?
-            .ok_or_else(|| CoreError::Invalid("champ select chat is not open".into()))?;
-        say(
-            &client.lcu,
-            &chat,
-            std::slice::from_ref(&text),
-            Audience::Team,
-            CalloutDelivery::Block,
-        )
-        .await?;
+        post_to(&LcuChat(&client.lcu), game_id, &text).await?;
         info!(index, "sent a quick phrase");
         Ok(text)
     }
@@ -243,7 +305,7 @@ impl Service {
     /// Downloads the library (`comeback::library_urls`), checks it is the pinned file and keeps its
     /// lines; only ever on the user's request, after the Comebacks page's confirmation. The switch
     /// that uses it goes off first: every download is opted into again. A failed download changes
-    /// nothing.
+    /// nothing: a file that cannot be written puts the switch back as it was.
     pub async fn download_comeback_library(&self) -> Result<ComebackLibrary, CoreError> {
         self.download_library(
             crate::net::web_client().map_err(CoreError::Remote)?,
@@ -266,8 +328,17 @@ impl Service {
         let library = comeback::download(client, urls, size, sha256, super::now_ms())
             .await
             .map_err(CoreError::Remote)?;
-        self.switch_library_off()?;
-        let library = self.inner.comeback.library.put(library)?;
+        let was_on = self.switch_library_off()?;
+        let library = match self.inner.comeback.library.put(library) {
+            Ok(library) => library,
+            Err(error) => {
+                warn!(%error, "the downloaded library could not be written");
+                if was_on {
+                    self.switch_library(true)?;
+                }
+                return Err(error);
+            }
+        };
         info!(
             mild = library.mild.len(),
             strong = library.strong.len(),
@@ -285,14 +356,19 @@ impl Service {
         Ok(ComebackLibrary::default())
     }
 
-    /// Saves the library's switch off, where it is on.
-    fn switch_library_off(&self) -> Result<(), CoreError> {
-        let mut settings = self.settings();
-        if settings.comeback.library.enabled {
-            settings.comeback.library.enabled = false;
-            self.set_settings(settings)?;
+    /// Saves the library's switch off, where it is on; whether it was.
+    fn switch_library_off(&self) -> Result<bool, CoreError> {
+        let was_on = self.settings().comeback.library.enabled;
+        if was_on {
+            self.switch_library(false)?;
         }
-        Ok(())
+        Ok(was_on)
+    }
+
+    fn switch_library(&self, on: bool) -> Result<(), CoreError> {
+        let mut settings = self.settings();
+        settings.comeback.library.enabled = on;
+        self.set_settings(settings).map(drop)
     }
 }
 
@@ -438,6 +514,107 @@ mod tests {
         ));
     }
 
+    /// A client whose champ select is each of `game_ids` in turn as it is asked, with chat room
+    /// `room`; it keeps what is posted.
+    struct FakeChat {
+        game_ids: Mutex<std::collections::VecDeque<Option<i64>>>,
+        room: Option<String>,
+        posts: Mutex<Vec<(String, String)>>,
+    }
+
+    impl FakeChat {
+        fn new(game_ids: &[Option<i64>], room: Option<&str>) -> Self {
+            Self {
+                game_ids: Mutex::new(game_ids.iter().copied().collect()),
+                room: room.map(str::to_owned),
+                posts: Mutex::default(),
+            }
+        }
+    }
+
+    impl ChampSelectChat for FakeChat {
+        async fn game_id(&self) -> Result<Option<i64>, CoreError> {
+            Ok(lock(&self.game_ids)
+                .pop_front()
+                .expect("asked no more often than set up"))
+        }
+
+        async fn room(&self) -> Result<Option<String>, CoreError> {
+            Ok(self.room.clone())
+        }
+
+        async fn post(&self, room: &str, body: &str) -> Result<(), CoreError> {
+            lock(&self.posts).push((room.to_owned(), body.to_owned()));
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn a_line_goes_only_to_the_champ_select_it_was_meant_for() {
+        let held = FakeChat::new(&[Some(7), Some(7)], Some("room"));
+        post_to(&held, 7, "hi").await.unwrap();
+        assert_eq!(*lock(&held.posts), [("room".to_owned(), "hi".to_owned())]);
+
+        let over = FakeChat::new(&[Some(8)], Some("room"));
+        assert!(matches!(
+            post_to(&over, 7, "hi").await,
+            Err(CoreError::Invalid(_))
+        ));
+        assert!(lock(&over.posts).is_empty(), "another champ select is on");
+
+        // The champ select ended and the next began while the room was being looked up: the room
+        // found is the new one's, and nothing goes to it.
+        let switched = FakeChat::new(&[Some(7), Some(8)], Some("next room"));
+        assert!(matches!(
+            post_to(&switched, 7, "hi").await,
+            Err(CoreError::Invalid(_))
+        ));
+        assert!(lock(&switched.posts).is_empty());
+
+        let ended = FakeChat::new(&[Some(7), None], Some("room"));
+        assert!(post_to(&ended, 7, "hi").await.is_err());
+        assert!(lock(&ended.posts).is_empty(), "no champ select any more");
+
+        let closed = FakeChat::new(&[Some(7)], None);
+        assert!(matches!(
+            post_to(&closed, 7, "hi").await,
+            Err(CoreError::Invalid(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn only_a_line_that_went_out_starts_the_spacing_or_is_kept_from_repeating() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = in_champ_select(&dir, 7);
+        let mut settings = service.settings();
+        settings.comeback.lines = vec!["a".into(), "b".into()];
+        service.set_settings(settings).unwrap();
+        seat_champ_select(&service, 7);
+        let line = |press: ComebackPress| match press {
+            ComebackPress::ChampSelect { line, .. } => line,
+            other => panic!("not sent: {other:?}"),
+        };
+        let first = line(service.comeback_press(false));
+        let _ = line(service.comeback_press(false));
+        // The client never answers: the line did not go out, so nothing is remembered.
+        assert!(service.send_comeback(first.clone(), 7).await.is_err());
+        assert!(lock(&service.inner.comeback.memory).last.is_none());
+        let _ = line(service.comeback_press(false));
+        service.comeback_went_out(&first);
+        assert!(matches!(
+            service.comeback_press(false),
+            ComebackPress::Skip {
+                reason: crate::view::CalloutSkip::TooSoon,
+                ..
+            }
+        ));
+        // Three seconds after it finished going out, any line but that one.
+        lock(&service.inner.comeback.memory).sent_at = Some(Instant::now() - comeback::SPACING);
+        for _ in 0..10 {
+            assert_ne!(line(service.comeback_press(false)), first);
+        }
+    }
+
     /// Answers `routes` (a path, a status and a body each), one connection at a time, `count`
     /// connections in all; returns the base URL.
     fn serve(routes: Vec<(&'static str, u16, Vec<u8>)>, count: usize) -> String {
@@ -538,9 +715,10 @@ mod tests {
         );
         switch_on(&service);
         seat_champ_select(&service, 7);
-        let ComebackPress::ChampSelect(line) = service.comeback_press(false) else {
+        let ComebackPress::ChampSelect { line, game_id } = service.comeback_press(false) else {
             panic!("a library line for champ select");
         };
+        assert_eq!(game_id, 7, "bound to the champ select it was pressed in");
         let library = library_now(&service);
         assert!(library.mild.contains(&line), "from the chosen level");
         let removed = service.remove_comeback_library().await.unwrap();
@@ -585,6 +763,32 @@ mod tests {
         assert!(
             service.settings().comeback.library.enabled,
             "a failed download leaves the switch as it was"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_library_that_cannot_be_written_leaves_the_old_one_and_its_switch() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = serve(vec![("/ok", 200, FIXTURE.to_vec())], 2);
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        let status = download(&service, &[format!("{base}/ok")]).await.unwrap();
+        switch_on(&service);
+        // The file's place is taken by a directory, so the next write fails.
+        let file = dir.path().join("comeback-library.json");
+        std::fs::remove_file(&file).unwrap();
+        std::fs::create_dir(&file).unwrap();
+        assert!(matches!(
+            download(&service, &[format!("{base}/ok")]).await,
+            Err(CoreError::Io(_))
+        ));
+        assert!(
+            service.settings().comeback.library.enabled,
+            "the switch is put back as it was"
+        );
+        assert_eq!(
+            service.comeback_library(),
+            status,
+            "the library held is kept"
         );
     }
 
