@@ -1093,7 +1093,7 @@ export const zhCN = {
     "游戏中打开「在游戏里输入」后，在这一句前加上 /all 输入全体聊天，对面也看得到；英雄选择中和「发到队伍」一样，发到只有本队看得到的选人聊天。默认不设置。",
   "comeback.hotkeyTakenByTeam": "这个组合键已用于把反击发到队伍，请换一个。",
   "comeback.hotkeyTakenByAll": "这个组合键已用于把反击发到全体，请换一个。",
-  "comeback.spacing": "两次发送至少隔 3 秒：上一句发出后 3 秒内再按，这一下不发，免得刷屏被举报。",
+  "comeback.spacing": "两次发送至少隔 3 秒：上一句发出后 3 秒内再按，这一下不发，以免刷屏被举报。",
   "comeback.gameSection": "游戏内发送",
   "comeback.inGame": "在游戏里输入",
   "comeback.inGameHint":

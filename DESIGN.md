@@ -109,7 +109,7 @@ an emblem stroke next to the tier's name, never as text.
 Groups and entries (glyph + label; the rail keeps the label as name and tooltip):
 
 - 工作台 Workbench: 概览 Overview · 对局 Live game · 战绩 History
-- 助手 Assistant: 自动化 Automation · 工具 Tools · 客户端增强 In-client
+- 助手 Assistant: 自动化 Automation · 工具 Tools · 客户端增强 In-client · 反击 Comebacks
 
 Footer entries: the theme switch (opens a menu) and 设置 Settings (opens a dialog; carries
 `aria-haspopup="dialog"`, never `aria-current`). Collapse lives in the brand row, not the footer.
@@ -120,7 +120,8 @@ that takes the next combination, Esc cancelling, while the shell lets the old on
 turns it off; a lamp says 已生效, or the row says in `danger` that the system refused it. Under the
 配装推荐 and 选人推荐 switches, a 数据源 eyebrow heads where each mode's numbers come from: 召唤师峡谷 as a Segmented
 (腾讯 101 · OP.GG), 大乱斗 and 斗魂竞技场 as Segmented (OP.GG · 关闭), then the Hextech ARAM.GG fallback and
-the augment descriptions as switches; the hints name each source's terms. 关于 holds 诊断: 立即检查 lists
+the augment descriptions as switches; the hints name each source's terms. 关于 holds 交流群 (the QQ
+group's name and number, 加入 QQ 群 and 复制群号) and 诊断: 立即检查 lists
 one line a check (a lamp by status, the check's name, why, and in mono the routes a client lost), and
 复制 copies the report as text, falling back to a read-only text box when the clipboard refuses. 评级
 holds the rating scheme as radio cards (name, one-line hint, the tiers best to worst; two columns
@@ -131,6 +132,18 @@ the way 通用's is (neither takes the other's combination), and under a hairlin
 section: the in-game sending switch, whose risk line is `warning` with a triangle; 游戏中输入哪一方
 as a Segmented (对面 · 我方 · 双方), its hint naming the most lines one press types; the two enemy
 lines and the team's line as inputs, and what one press would type as their preview.
+
+反击 Comebacks is a page of Panels: 反击语句, the user's lines as a numbered list of CommitInputs
+(each with a danger ✕) over an add row, with its count; 快捷键, two rows recorded as 通用's is (发到队伍,
+发到全体; none of the four shortcuts takes another's combination, and one recorder listens at a time);
+游戏内发送, the 在游戏里输入 switch with its `warning` risk line and, while winer is not elevated, the
+rights note with 以管理员身份重启 (shared with 自动化's 游戏内发送); 选人快捷语, the phrases with the default
+one marked 默认 while the user has none, the placeholders and a preview for a sample teammate; and
+在线语录, which says whose library it is, its licence and its risk, then 下载, which opens a Dialog whose
+only download button is 我已了解，下载 (the initial focus is 取消). Downloaded, it shows the counts, the
+date and 移除, the 使用在线语录 switch (disabled until there is a library) and the level as a Segmented
+(口吐芬芳 · 火力全开 · 两者). On the Live page's champ-select board, each teammate but the user ends their
+row with a phrase IconButton whose Popover lists the phrases filled in for that seat.
 
 ## Components
 

@@ -4,7 +4,7 @@
 // before the download and a switch after it.
 import type { ComebackLibrary, ComebackSettings, Language, LibraryLevel } from "@winer/shared";
 import { Download, MessageSquareQuote, Plus, Trash2, TriangleAlert } from "lucide-react";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { errorMessage } from "../lib/backend";
 import {
@@ -88,8 +88,7 @@ function TextList({
   const t = useT();
   const [draft, setDraft] = useState("");
   const full = items.length >= limit;
-  const add = (event: FormEvent) => {
-    event.preventDefault();
+  const add = () => {
     const text = draft.trim();
     if (!text || full) return;
     onChange((list) => [...list, text]);
@@ -125,7 +124,13 @@ function TextList({
       ) : (
         empty
       )}
-      <form onSubmit={add} className="mt-3 flex items-center gap-2">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          add();
+        }}
+        className="mt-3 flex items-center gap-2"
+      >
         <Input
           aria-label={newLabel}
           value={draft}

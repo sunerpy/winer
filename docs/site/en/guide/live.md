@@ -106,16 +106,16 @@ the lines yourself; winer ships none. An open library can also be downloaded, as
 
 - **Lines**: one a row, 100 at most, each up to 200 characters. A press sends one at random, never
   the same line twice in a row.
-- **Shortcuts**: **Send to team** and **Send to all**, none by default, and neither can share a
+- **Shortcuts**: **Send to the team** and **Send to everyone**, none by default, and neither can share a
   combination with the shortcut that brings up winer or the one that sends the callout. In champ
-  select both go to its chat, which only your team reads; in a game, with **In-game sending** on,
-  **Send to team** types into the team chat and **Send to all** types the line after `/all ` into
+  select both go to its chat, which only your team reads; in a game, with **Type in the game** on,
+  **Send to the team** types into the team chat and **Send to everyone** types the line after `/all ` into
   the chat everyone sees, a line too long for one message going out as several. They work while
   winer's window is hidden, and what a press did is noted in **Activity** on the overview: sent
   whole, sent in part, or not sent and why.
 - Two sends are at least 3 seconds apart, so that a burst of them does not flood the chat and get you
   reported.
-- **In-game sending**: off by default. With it on, a press in a game makes winer type on the
+- **In-game sending**: its **Type in the game** is off by default. With it on, a press in a game makes winer type on the
   keyboard's behalf, by the same rules as [Lines in game](/en/guide/automation#lines-in-game). While
   winer does not run as administrator, this says that a game started from WeGame drops its keys and
   offers **Restart as administrator**.
@@ -133,7 +133,7 @@ filled in, for instance to ask the player in seat 5 for their champion:
 P5, may I play Aurelion Sol? Thank you!
 ```
 
-The phrases are edited in **Comebacks › Quick phrases**: 20 at most, each up to 200 characters, with
+The phrases are edited in **Comebacks › Champ-select phrases**: 20 at most, each up to 200 characters, with
 `{seat}` (P1 to P5), `{champion}` (that teammate's champion) and `{name}` (their name; empty where
 it is hidden, and the brackets around it go with it). Removing all of them brings the default back.
 Before sending, winer checks that it is still the same champ select and that the player is your
@@ -143,7 +143,7 @@ teammate, so a menu left open into the next game sends nothing to the wrong play
 
 **Comebacks › Online library** downloads the library of the open project
 [祖安语录](https://github.com/cndiandian/zuanbot.com) (Apache-2.0): 1676 Chinese lines once cleaned
-up, in two sets, **口吐芬芳** (mild, 682) and **火力全开** (harsh, 994). They are crude and offensive,
+up, in two sets, **Mild** (口吐芬芳, 682 lines) and **Strong** (火力全开, 994). They are crude and offensive,
 and sending them can get you reported, muted or banned; winer neither writes nor checks them.
 
 - It downloads only after you press **Download** and then **I understand, download** in the
