@@ -1,6 +1,8 @@
 //! The global shortcut that summons the window while the game has the screen: the one combination
-//! the settings name (`general.hotkey`), registered with the system for winer alone. A second one,
-//! off by default, sends the callout (`automation.callout.hotkey`, at the end of this file).
+//! the settings name (`general.hotkey`), registered with the system for winer alone. Three more,
+//! each off by default, send something to a chat (at the end of this file): the callout
+//! (`automation.callout.hotkey`), and a comeback to the team (`comeback.hotkey`) or to everyone
+//! (`comeback.all_hotkey`).
 //!
 //! Registration runs on the main thread, where the shortcut plugin keeps its manager: called from
 //! there, the plugin acts at once instead of waiting for the event loop, so nothing here waits on
@@ -21,11 +23,12 @@ use tracing::{info, warn};
 use winer_core::{
     Service,
     callout::Press,
+    comeback::ComebackPress,
     settings::Audience,
-    view::{CalloutHotkeyStatus, HotkeyStatus, NoticeKind, Phase},
+    view::{CalloutHotkeyStatus, ComebackPlace, HotkeyStatus, NoticeKind, Phase},
 };
 
-use crate::{elevation, events, game_chat, window};
+use crate::{events, game_chat, window};
 
 /// The recorder lets the shortcut go while it listens; should the window never say it is done (it
 /// was closed, or reloaded), the shortcut comes back after this long.
@@ -37,11 +40,11 @@ pub(crate) struct Hotkey {
     /// The shortcut put the window above the game; it stays there until it is hidden or the game
     /// ends. Apart from the lock: the shortcut's own handler reads it.
     pinned: AtomicBool,
-    // Callout: the second shortcut.
-    /// The id of the combination registered for the callout, 0 for none: the handler tells the two
-    /// shortcuts apart by it, without the lock.
-    callout: AtomicU32,
-    /// A press of the callout's shortcut is being carried out; another one meanwhile does nothing.
+    /// The id of the combination each of the other shortcuts holds, in [`Action::ALL`]'s order, 0
+    /// for none: the handler tells the shortcuts apart by them, without the lock.
+    ids: [AtomicU32; Action::ALL.len()],
+    /// A press of the callout's or a comeback's shortcut is being carried out; another press of
+    /// any of them meanwhile does nothing.
     sending: AtomicBool,
 }
 
@@ -55,22 +58,26 @@ struct State {
     /// Counts suspensions, so a late safety timer cannot end a newer one.
     suspension: u64,
     error: Option<String>,
-    // Callout: the second shortcut, let go while suspended like the first.
-    callout: CalloutSlot,
+    /// The other shortcuts, in [`Action::ALL`]'s order, let go while suspended like the first.
+    slots: [Slot; Action::ALL.len()],
 }
 
 impl State {
     fn status(&self) -> HotkeyStatus {
+        let [callout, comeback, comeback_all] = &self.slots;
         HotkeyStatus {
             shortcut: self.wanted.clone(),
             active: self.registered.is_some(),
             suspended: self.suspended,
             error: self.error.clone(),
-            callout: self.callout.status(),
-            // Held by the Comebacks page's slots once the shell registers them.
-            comeback: CalloutHotkeyStatus::default(),
-            comeback_all: CalloutHotkeyStatus::default(),
+            callout: callout.status(),
+            comeback: comeback.status(),
+            comeback_all: comeback_all.status(),
         }
+    }
+
+    fn slot(&mut self, action: Action) -> &mut Slot {
+        &mut self.slots[action as usize]
     }
 }
 
@@ -145,11 +152,15 @@ fn update<R: Runtime>(
         let mut state = lock(&hotkey.state);
         let before = state.status();
         change(&mut state);
-        // The callout lets go first and takes its combination last, so the window's shortcut can
-        // take one the callout has just given up.
-        release_callout(app, &mut state);
+        // The other shortcuts let go first and take their combinations last, so the window's
+        // shortcut, and each of theirs, can take one that another has just given up.
+        for action in Action::ALL {
+            release(app, &mut state, action);
+        }
         sync(app, &mut state);
-        take_callout(app, &mut state, &hotkey.callout);
+        for action in Action::ALL {
+            take(app, &mut state, action, &hotkey.ids[action as usize]);
+        }
         let status = state.status();
         drop(state);
         if status != before {
@@ -225,8 +236,8 @@ pub(crate) fn decide(
     }
 }
 
-/// The shortcut plugin's handler, for both of winer's combinations: the callout's is told apart by
-/// the id registered for it, and every other press is the window's.
+/// The shortcut plugin's handler, for every one of winer's combinations: the callout's and the
+/// comebacks' are told apart by the ids registered for them, and every other press is the window's.
 pub(crate) fn on_shortcut<R: Runtime>(
     app: &AppHandle<R>,
     shortcut: &Shortcut,
@@ -235,13 +246,15 @@ pub(crate) fn on_shortcut<R: Runtime>(
     if event.state != ShortcutState::Pressed {
         return;
     }
-    let callout = app
+    let ids = app
         .try_state::<Hotkey>()
-        .map_or(0, |hotkey| hotkey.callout.load(Ordering::Acquire));
-    if is_callout(callout, shortcut) {
-        call_out(app);
-    } else {
-        toggle(app);
+        .map(|hotkey| hotkey.ids.each_ref().map(|id| id.load(Ordering::Acquire)))
+        .unwrap_or_default();
+    match action_of(&ids, shortcut) {
+        Some(Action::Callout) => call_out(app),
+        Some(Action::Comeback) => come_back(app, false),
+        Some(Action::ComebackAll) => come_back(app, true),
+        None => toggle(app),
     }
 }
 
@@ -297,18 +310,45 @@ pub(crate) fn on_phase<R: Runtime>(app: &AppHandle<R>, phase: Phase) {
     }
 }
 
-// ---- The callout's shortcut (`automation.callout.hotkey`) ----
+// ---- The shortcuts that send to a chat: the callout's and the comebacks' ----
 
-/// The second combination, which sends the callout. It is let go and taken back with the window's,
-/// and never holds the window's combination: the settings keep the two apart.
+/// What a press of one of the other shortcuts does. Each holds a combination of its own, let go and
+/// taken back with the window's, and never one another holds: the settings keep them apart.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Action {
+    /// Sends the callout (`automation.callout.hotkey`).
+    Callout,
+    /// Sends a comeback to the team: champ select's chat, or the game's team chat
+    /// (`comeback.hotkey`).
+    Comeback,
+    /// Sends a comeback to everyone in the game; in champ select, to its chat
+    /// (`comeback.all_hotkey`).
+    ComebackAll,
+}
+
+impl Action {
+    /// Every one, in the order of the slots and their ids.
+    const ALL: [Self; 3] = [Self::Callout, Self::Comeback, Self::ComebackAll];
+
+    /// What the log calls its shortcut.
+    fn name(self) -> &'static str {
+        match self {
+            Self::Callout => "callout",
+            Self::Comeback => "comeback",
+            Self::ComebackAll => "all-chat comeback",
+        }
+    }
+}
+
+/// The combination one of the other shortcuts holds.
 #[derive(Default)]
-struct CalloutSlot {
+struct Slot {
     wanted: Option<String>,
     registered: Option<Shortcut>,
     error: Option<String>,
 }
 
-impl CalloutSlot {
+impl Slot {
     fn status(&self) -> CalloutHotkeyStatus {
         CalloutHotkeyStatus {
             shortcut: self.wanted.clone(),
@@ -326,13 +366,31 @@ impl CalloutSlot {
 /// Holds the combination the settings name for the callout, `None` for none. Returns at once; the
 /// outcome reaches the window as a [`HotkeyStatus`] event.
 pub(crate) fn apply_callout<R: Runtime>(app: &AppHandle<R>, wanted: Option<String>) {
-    drop(update(app, move |state| state.callout.wanted = wanted));
+    drop(update(app, move |state| {
+        state.slot(Action::Callout).wanted = wanted;
+    }));
 }
 
-/// Lets go of what the callout holds, unless it is still the combination to hold. Main thread only.
-fn release_callout<R: Runtime>(app: &AppHandle<R>, state: &mut State) {
-    let target = state.callout.target(state.suspended);
-    let slot = &mut state.callout;
+/// Holds the combinations the settings name for the Comebacks page's shortcuts, to the team
+/// (`team`) and to everyone (`all`), `None` for none. Returns at once; the outcome reaches the
+/// window as a [`HotkeyStatus`] event.
+pub(crate) fn apply_comebacks<R: Runtime>(
+    app: &AppHandle<R>,
+    team: Option<String>,
+    all: Option<String>,
+) {
+    drop(update(app, move |state| {
+        state.slot(Action::Comeback).wanted = team;
+        state.slot(Action::ComebackAll).wanted = all;
+    }));
+}
+
+/// Lets go of what `action`'s slot holds, unless it is still the combination to hold. Main thread
+/// only.
+fn release<R: Runtime>(app: &AppHandle<R>, state: &mut State, action: Action) {
+    let suspended = state.suspended;
+    let slot = state.slot(action);
+    let target = slot.target(suspended);
     let keep =
         matches!((&target, slot.registered), (Some(Ok(wanted)), Some(held)) if *wanted == held);
     if !keep
@@ -340,15 +398,16 @@ fn release_callout<R: Runtime>(app: &AppHandle<R>, state: &mut State) {
         && let Some(manager) = app.try_state::<GlobalShortcut<R>>()
         && let Err(error) = manager.unregister(held)
     {
-        warn!(%error, "the callout's old shortcut was not released");
+        warn!(%error, "the {}'s old shortcut was not released", action.name());
     }
 }
 
-/// Registers the combination the callout wants, and records its id for the handler. Main thread
-/// only.
-fn take_callout<R: Runtime>(app: &AppHandle<R>, state: &mut State, id: &AtomicU32) {
-    let target = state.callout.target(state.suspended);
-    let slot = &mut state.callout;
+/// Registers the combination `action`'s slot wants, and records its id for the handler. Main
+/// thread only.
+fn take<R: Runtime>(app: &AppHandle<R>, state: &mut State, action: Action, id: &AtomicU32) {
+    let suspended = state.suspended;
+    let slot = state.slot(action);
+    let target = slot.target(suspended);
     slot.error = None;
     match target {
         None => {}
@@ -358,11 +417,11 @@ fn take_callout<R: Runtime>(app: &AppHandle<R>, state: &mut State, id: &AtomicU3
             None => slot.error = Some("the global shortcut plugin is not running".into()),
             Some(manager) => match manager.register(shortcut) {
                 Ok(()) => {
-                    info!(%shortcut, "callout shortcut registered");
+                    info!(%shortcut, "{} shortcut registered", action.name());
                     slot.registered = Some(shortcut);
                 }
                 Err(error) => {
-                    warn!(%error, %shortcut, "callout shortcut refused");
+                    warn!(%error, %shortcut, "{} shortcut refused", action.name());
                     slot.error = Some(error.to_string());
                 }
             },
@@ -374,16 +433,21 @@ fn take_callout<R: Runtime>(app: &AppHandle<R>, state: &mut State, id: &AtomicU3
     );
 }
 
-/// Whether `shortcut` is the callout's, by the id registered for it (0: none is).
-fn is_callout(registered: u32, shortcut: &Shortcut) -> bool {
-    registered != 0 && shortcut.id() == registered
+/// Which of the other shortcuts `shortcut` is, by the ids registered for them (`ids`, in
+/// [`Action::ALL`]'s order; 0: that one holds none). `None`: it is the window's.
+fn action_of(ids: &[u32; Action::ALL.len()], shortcut: &Shortcut) -> Option<Action> {
+    Action::ALL
+        .into_iter()
+        .zip(ids)
+        .find(|&(_, &id)| id != 0 && id == shortcut.id())
+        .map(|(action, _)| action)
 }
 
 /// A press of the callout's shortcut. What it does is the core's to say (`Service::callout_press`):
 /// champ select's lines go to its chat over the client's API, as 发送到队伍 sends them; the game's
 /// are typed into the game's chat here, off the main thread. What came of it goes to the activity
-/// feed, since the window may be hidden behind the game. One press at a time: another one while a
-/// callout is going out does nothing.
+/// feed, since the window may be hidden behind the game. One press at a time, of this shortcut or
+/// a comeback's: another one while something is going out does nothing.
 fn call_out<R: Runtime>(app: &AppHandle<R>) {
     let (Some(service), Some(hotkey)) = (app.try_state::<Service>(), app.try_state::<Hotkey>())
     else {
@@ -406,15 +470,11 @@ fn call_out<R: Runtime>(app: &AppHandle<R>) {
                 });
             });
         }
+        // The game's rights are checked as the keys are about to go (`game_chat`).
         Press::Game(lines) => {
-            if !elevation::is_elevated() {
-                warn!(
-                    "winer runs without administrator rights; a game that has them ignores its keys"
-                );
-            }
             tauri::async_runtime::spawn_blocking(move || {
                 let _sending = sending;
-                service.report(game_chat::notice(game_chat::type_lines(&lines)));
+                service.report(game_chat::notice(game_chat::type_lines(&lines, false)));
             });
         }
         Press::Skip(reason) => {
@@ -424,8 +484,52 @@ fn call_out<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-/// A press of the callout's shortcut under way: dropped however the press ends, it lets the next
-/// one through.
+/// A press of a comeback's shortcut, to the team or, with `all`, to everyone. Which line goes, and
+/// where, is the core's to say (`Service::comeback_press`): in champ select it is posted in its
+/// chat over the client's API; while the game runs it is typed into the game's chat here, with
+/// `/all ` for everyone. What came of it goes to the activity feed, never the line itself (the log
+/// keeps no line either). One press at a time, as for the callout.
+fn come_back<R: Runtime>(app: &AppHandle<R>, all: bool) {
+    let (Some(service), Some(hotkey)) = (app.try_state::<Service>(), app.try_state::<Hotkey>())
+    else {
+        return;
+    };
+    if hotkey.sending.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let (service, sending) = (service.inner().clone(), Sending(app.clone()));
+    // Off the main thread from the start: the first press with the library in use reads its file.
+    tauri::async_runtime::spawn_blocking(move || match service.comeback_press(all) {
+        ComebackPress::ChampSelect(line) => {
+            tauri::async_runtime::spawn(async move {
+                let _sending = sending;
+                service.report(match service.send_comeback(line).await {
+                    Ok(messages) => NoticeKind::ComebackSent {
+                        place: ComebackPlace::ChampSelect,
+                        messages,
+                    },
+                    Err(error) => NoticeKind::Failed {
+                        action: "comeback".into(),
+                        message: error.to_string(),
+                    },
+                });
+            });
+        }
+        // The game's rights are checked as the keys are about to go (`game_chat`).
+        ComebackPress::Game { line, all } => {
+            let _sending = sending;
+            let typed = game_chat::type_lines(&[line], all);
+            service.report(game_chat::comeback_notice(typed, all));
+        }
+        ComebackPress::Skip { place, reason } => {
+            info!(?place, ?reason, "a comeback's shortcut sent nothing");
+            service.report(NoticeKind::ComebackSkipped { place, reason });
+        }
+    });
+}
+
+/// A press of the callout's or a comeback's shortcut under way: dropped however the press ends, it
+/// lets the next one through.
 struct Sending<R: Runtime>(AppHandle<R>);
 
 impl<R: Runtime> Drop for Sending<R> {
@@ -486,28 +590,45 @@ mod tests {
         );
     }
 
-    // ---- The callout's shortcut ----
+    // ---- The shortcuts that send to a chat ----
 
     #[test]
-    fn a_press_is_the_callouts_only_by_the_id_registered_for_it() {
-        let callout = parse("Ctrl+Shift+X").unwrap();
-        let window = parse(DEFAULT_HOTKEY).unwrap();
-        assert!(is_callout(callout.id(), &callout));
-        assert!(
-            !is_callout(callout.id(), &window),
+    fn each_press_is_told_apart_by_the_id_registered_for_its_combination() {
+        let [window, callout, team, all] =
+            [DEFAULT_HOTKEY, "Ctrl+Shift+X", "Alt+3", "Alt+4"].map(|combination| {
+                parse(combination).unwrap_or_else(|error| panic!("{combination}: {error}"))
+            });
+        let distinct: std::collections::HashSet<u32> = [&window, &callout, &team, &all]
+            .iter()
+            .map(|shortcut| shortcut.id())
+            .collect();
+        assert_eq!(distinct.len(), 4, "four combinations, four ids");
+        let ids = [callout.id(), team.id(), all.id()];
+        assert_eq!(action_of(&ids, &callout), Some(Action::Callout));
+        assert_eq!(action_of(&ids, &team), Some(Action::Comeback));
+        assert_eq!(action_of(&ids, &all), Some(Action::ComebackAll));
+        assert_eq!(
+            action_of(&ids, &window),
+            None,
             "the window's stays the window's"
         );
-        assert!(
-            !is_callout(0, &callout),
+        assert_eq!(
+            action_of(&[0; 3], &callout),
+            None,
             "with none registered, every press is the window's"
+        );
+        assert_eq!(
+            action_of(&[callout.id(), 0, all.id()], &team),
+            None,
+            "a slot that holds nothing takes no press"
         );
     }
 
     #[test]
-    fn the_callouts_shortcut_holds_its_combination_unless_the_recorder_lets_go_of_all() {
-        let slot = CalloutSlot {
+    fn a_shortcut_holds_its_combination_unless_the_recorder_lets_go_of_all() {
+        let slot = Slot {
             wanted: Some("Ctrl+Shift+X".into()),
-            ..CalloutSlot::default()
+            ..Slot::default()
         };
         assert_eq!(slot.target(false), Some(parse("Ctrl+Shift+X")));
         assert_eq!(
@@ -515,10 +636,10 @@ mod tests {
             None,
             "let go while a combination is recorded"
         );
-        assert_eq!(CalloutSlot::default().target(false), None);
-        let nonsense = CalloutSlot {
+        assert_eq!(Slot::default().target(false), None);
+        let nonsense = Slot {
             wanted: Some("Ctrl+Nonsense".into()),
-            ..CalloutSlot::default()
+            ..Slot::default()
         };
         assert!(matches!(nonsense.target(false), Some(Err(_))));
         assert_eq!(
@@ -529,5 +650,30 @@ mod tests {
                 error: None
             }
         );
+    }
+
+    #[test]
+    fn the_status_reports_each_shortcut_under_its_own_name() {
+        let mut state = State::default();
+        state.slot(Action::Callout).wanted = Some("Ctrl+Shift+X".into());
+        state.slot(Action::Comeback).registered = Some(parse("Alt+3").unwrap());
+        state.slot(Action::Comeback).wanted = Some("Alt+3".into());
+        state.slot(Action::ComebackAll).error = Some("HotKey already registered".into());
+        let status = state.status();
+        assert_eq!(status.callout.shortcut.as_deref(), Some("Ctrl+Shift+X"));
+        assert!(!status.callout.active);
+        assert_eq!(
+            status.comeback,
+            CalloutHotkeyStatus {
+                shortcut: Some("Alt+3".into()),
+                active: true,
+                error: None
+            }
+        );
+        assert_eq!(
+            status.comeback_all.error.as_deref(),
+            Some("HotKey already registered")
+        );
+        assert_eq!(status.shortcut, None, "the window's own is apart");
     }
 }
