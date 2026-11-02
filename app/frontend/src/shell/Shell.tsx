@@ -17,6 +17,7 @@ import { useObservable } from "../lib/observable";
 import { useLive, useStore, useUpdateStatus } from "../lib/store";
 import { useWindowChrome } from "../lib/window";
 import { AutomationPage } from "../pages/Automation";
+import { ComebackPage } from "../pages/Comeback";
 import { HistoryPage } from "../pages/History";
 import { LivePage } from "../pages/Live";
 import { OverviewPage } from "../pages/Overview";
@@ -96,6 +97,7 @@ const TITLES: Record<Page, Parameters<ReturnType<typeof useT>>[0]> = {
   automation: "nav.automation",
   tools: "tools.title",
   plugin: "plugin.title",
+  comeback: "comeback.title",
 };
 
 function PageView({ route }: { route: Route }): ReactNode {
@@ -112,6 +114,8 @@ function PageView({ route }: { route: Route }): ReactNode {
       return <ToolsPage />;
     case "plugin":
       return <PluginPage />;
+    case "comeback":
+      return <ComebackPage />;
   }
 }
 

@@ -1,5 +1,6 @@
 // One team, one row per player: who they are and how they have been playing on the left, their
-// latest games as tiles on the right. A player's name opens their history.
+// latest games as tiles on the right, and where the board offers one, an action at the end (champ
+// select's quick phrases). A player's name opens their history.
 import {
   formatKda,
   kda,
@@ -10,7 +11,7 @@ import {
   type Seat,
 } from "@winer/shared";
 import { ChevronRight, EyeOff, RotateCcw, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { errorMessage } from "../lib/backend";
 import { cx } from "../lib/cx";
@@ -197,7 +198,16 @@ export function RecentTiles({ stats, puuid }: { stats: Seat["stats"]; puuid?: st
   );
 }
 
-function PlayerRow({ seat, onPlayer }: { seat: Seat; onPlayer: (puuid: string) => void }) {
+function PlayerRow({
+  seat,
+  onPlayer,
+  action,
+}: {
+  seat: Seat;
+  onPlayer: (puuid: string) => void;
+  /** The row's own action, in a third column; `undefined` where the board offers none. */
+  action?: ReactNode;
+}) {
   const t = useT();
   const summary = seat.stats.state === "ready" ? seat.stats : null;
   const name = riotId(seat.name ?? summary?.name ?? null);
@@ -211,7 +221,10 @@ function PlayerRow({ seat, onPlayer }: { seat: Seat; onPlayer: (puuid: string) =
     <li
       data-self={seat.isSelf || undefined}
       className={cx(
-        "grid min-w-0 grid-cols-[minmax(0,340px)_minmax(0,1fr)] items-center gap-3 rounded-10 bg-surface p-2 hairline",
+        "grid min-w-0 items-center gap-3 rounded-10 bg-surface p-2 hairline",
+        action === undefined
+          ? "grid-cols-[minmax(0,340px)_minmax(0,1fr)]"
+          : "grid-cols-[minmax(0,340px)_minmax(0,1fr)_auto]",
         seat.isSelf && "shadow-[inset_3px_0_0_0_var(--accent)]",
       )}
     >
@@ -234,6 +247,7 @@ function PlayerRow({ seat, onPlayer }: { seat: Seat; onPlayer: (puuid: string) =
         <span className="flex min-w-0 items-center gap-3 p-1">{who}</span>
       )}
       <RecentTiles stats={seat.stats} puuid={seat.puuid} />
+      {action}
     </li>
   );
 }
@@ -241,14 +255,25 @@ function PlayerRow({ seat, onPlayer }: { seat: Seat; onPlayer: (puuid: string) =
 export function TeamBoard({
   seats,
   onPlayer,
+  action,
 }: {
   seats: Seat[];
   onPlayer: (puuid: string) => void;
+  /** Each row's action at its end, by seat and place in the list; a row it gives none keeps the
+   *  column, empty, so the tiles line up. */
+  action?: (seat: Seat, index: number) => ReactNode;
 }) {
   return (
     <ul className="flex flex-col gap-1.5">
       {seats.map((seat, index) => (
-        <PlayerRow key={seat.puuid ?? `seat-${index}`} seat={seat} onPlayer={onPlayer} />
+        <PlayerRow
+          key={seat.puuid ?? `seat-${index}`}
+          seat={seat}
+          onPlayer={onPlayer}
+          action={
+            action ? (action(seat, index) ?? <span aria-hidden className="w-7" />) : undefined
+          }
+        />
       ))}
     </ul>
   );

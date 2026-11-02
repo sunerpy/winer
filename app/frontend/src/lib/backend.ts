@@ -13,6 +13,7 @@ import type {
   ChallengeProfile,
   ClaimReport,
   CleanupReport,
+  ComebackLibrary,
   Crest,
   CrestChange,
   DiagnosticsReport,
@@ -90,6 +91,8 @@ export interface Commands {
   check_update: Command<undefined, UpdateStatus>;
   install_update: Command<undefined, null>;
   open_releases: Command<undefined, null>;
+  /** Opens winer's QQ group (交流群); the shell holds the address, the window never passes one. */
+  open_community: Command<undefined, null>;
   open_docs: Command<{ page: "home" | "rating" }, null>;
   // The profile tools on the Tools page.
   get_skins: Command<undefined, SkinChoice[]>;
@@ -149,6 +152,18 @@ export interface Commands {
   save_export: Command<{ stem: string; format: ExportFormat; contents: string }, string>;
   /** Asks again for a player whose record failed to load; nothing for one that loaded. */
   retry_player: Command<{ puuid: string }, null>;
+  // The Comebacks page (反击).
+  /** Posts quick phrase `index` (the user's, or the language's default) to champ select's chat for
+   *  the teammate in `cellId` of champ select `gameId`; answers the message sent. Refused outside
+   *  champ select, for another champ select, the user's own cell or one not of the user's team. */
+  send_phrase: Command<{ index: number; gameId: number; cellId: number }, string>;
+  /** The downloaded library (在线语录): whether there is one, its counts and when; no client needed. */
+  comeback_library: Command<undefined, ComebackLibrary>;
+  /** Downloads the pinned library, only after the page's confirmation; the core saves its switch
+   *  off and broadcasts the settings. Answers the new status, or why not. */
+  download_comeback_library: Command<undefined, ComebackLibrary>;
+  /** Removes the library, its switch saved off first. */
+  remove_comeback_library: Command<undefined, ComebackLibrary>;
 }
 
 export type CommandName = keyof Commands;

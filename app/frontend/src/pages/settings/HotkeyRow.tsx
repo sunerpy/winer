@@ -1,14 +1,15 @@
-// The global shortcuts as settings rows: Settings › 通用's, which brings winer up from anywhere, and
-// 自动化 › 战力喊话's, which sends the callout. The recorder takes the window's next keydown before
-// anything else does (capture phase: the shell's own shortcuts and the dialog's Escape never see
-// it), and the shell lets every shortcut go while it listens, or pressing one would act instead of
-// being recorded.
+// The global shortcuts as settings rows: Settings › 通用's, which brings winer up from anywhere,
+// 自动化 › 战力喊话's, which sends the callout, and the Comebacks page's two. The recorder takes the
+// window's next keydown before anything else does (capture phase: the shell's own shortcuts and the
+// dialog's Escape never see it), and the shell lets every shortcut go while it listens, or pressing
+// one would act instead of being recorded. No shortcut takes another's combination.
+import type { Settings } from "@winer/shared";
 import { Keyboard, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { errorMessage } from "../../lib/backend";
 import { keycaps, record } from "../../lib/hotkey";
-import { useT } from "../../lib/i18n";
+import { type Translate, useT } from "../../lib/i18n";
 import { useHotkeyStatus, useSettings, useStore } from "../../lib/store";
 import { Button, IconButton, Kbd, Lamp, Row, toast } from "../../ui";
 
@@ -28,6 +29,18 @@ interface Held {
   error: string | null;
 }
 
+/** A combination another shortcut holds, and what to say when it is pressed for this one. */
+interface Taken {
+  combo: string | null;
+  message: string;
+}
+
+/** The recorder listening now: starting another ends it, so a page with two rows (the Comebacks
+ *  page) records each combination once. */
+let recording: (() => void) | null = null;
+/** Recorders holding the shortcuts let go; the shell takes them back when the last one ends. */
+let suspending = 0;
+
 /** One shortcut: its keys, a recorder for a new combination and a ✕ that turns it off. */
 function ShortcutRow({
   label,
@@ -35,7 +48,6 @@ function ShortcutRow({
   combo,
   held,
   taken,
-  takenMessage,
   onSave,
 }: {
   label: string;
@@ -43,20 +55,20 @@ function ShortcutRow({
   combo: string | null;
   /** What the system said about `combo`; `null` until it has. */
   held: Held | null;
-  /** The other shortcut's combination, which this one cannot take. */
-  taken: string | null;
-  takenMessage: string;
+  /** The other shortcuts' combinations, which this one cannot take. */
+  taken: Taken[];
   onSave: (combo: string | null) => Promise<void>;
 }) {
   const t = useT();
   const store = useStore();
   const [listening, setListening] = useState(false);
   const [keys, setKeys] = useState<string[]>([]);
-  const [problem, setProblem] = useState<"invalid" | "taken" | null>(null);
+  /** What is wrong with the keys just pressed, said in the row. */
+  const [problem, setProblem] = useState<string | null>(null);
   // The listener lives as long as the recording; it reads the newest of these when a key comes.
-  const latest = useRef({ taken, onSave });
+  const latest = useRef({ taken, onSave, t });
   useEffect(() => {
-    latest.current = { taken, onSave };
+    latest.current = { taken, onSave, t };
   });
 
   const save = (next: string | null) =>
@@ -66,12 +78,15 @@ function ShortcutRow({
 
   useEffect(() => {
     if (!listening) return undefined;
+    recording?.();
+    const stop = () => setListening(false);
+    recording = stop;
     const suspend = (suspended: boolean) =>
       void store.backend
         .call("suspend_hotkey", { suspended })
         .then((next) => store.hotkey.set(next))
         .catch(() => undefined);
-    suspend(true);
+    if (suspending++ === 0) suspend(true);
     const onKey = (event: KeyboardEvent) => {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -81,15 +96,19 @@ function ShortcutRow({
         return;
       }
       const result = record(event);
+      const holder =
+        result.kind === "done"
+          ? latest.current.taken.find((other) => other.combo === result.combo)
+          : undefined;
       if (result.kind === "partial") {
         setKeys(result.keys);
         setProblem(null);
       } else if (result.kind === "invalid") {
         setKeys([]);
-        setProblem("invalid");
-      } else if (result.combo === latest.current.taken) {
+        setProblem(latest.current.t("social.hotkeyInvalid"));
+      } else if (holder) {
         setKeys([]);
-        setProblem("taken");
+        setProblem(holder.message);
       } else {
         setListening(false);
         void latest.current
@@ -104,8 +123,10 @@ function ShortcutRow({
     return () => {
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("blur", onBlur);
-      // Done, cancelled or the settings closed: the shortcuts the settings name come back.
-      suspend(false);
+      if (recording === stop) recording = null;
+      // Done, cancelled or the settings closed: the shortcuts the settings name come back, once no
+      // other recorder has taken over.
+      if (--suspending === 0) suspend(false);
     };
   }, [listening, store]);
 
@@ -124,9 +145,7 @@ function ShortcutRow({
           {listening ? (
             <span className="mt-1 block text-fg-subtle">
               {problem ? (
-                <span className="text-danger">
-                  {problem === "taken" ? takenMessage : t("social.hotkeyInvalid")}
-                </span>
+                <span className="text-danger">{problem}</span>
               ) : (
                 t("social.hotkeyListeningHint")
               )}
@@ -194,8 +213,10 @@ export function HotkeyRow() {
       hint={t("social.hotkeyHint")}
       combo={hotkey}
       held={settled}
-      taken={settings.automation.callout.hotkey}
-      takenMessage={t("callout.hotkeyTakenByCallout")}
+      taken={[
+        { combo: settings.automation.callout.hotkey, message: t("callout.hotkeyTakenByCallout") },
+        ...comebackTaken(settings, t),
+      ]}
       onSave={(combo) =>
         store.updateSettings((value) => ({
           ...value,
@@ -223,8 +244,10 @@ export function CalloutHotkeyRow() {
       hint={t("callout.hotkeyHint")}
       combo={combo}
       held={settled}
-      taken={settings.general.hotkey}
-      takenMessage={t("callout.hotkeyTakenByWindow")}
+      taken={[
+        { combo: settings.general.hotkey, message: t("callout.hotkeyTakenByWindow") },
+        ...comebackTaken(settings, t),
+      ]}
       onSave={(hotkey) =>
         store.updateSettings((value) => ({
           ...value,
@@ -232,6 +255,51 @@ export function CalloutHotkeyRow() {
             ...value.automation,
             callout: { ...value.automation.callout, hotkey },
           },
+        }))
+      }
+    />
+  );
+}
+
+// The Comebacks page's two shortcuts, beside the window's and the callout's.
+
+/** The comebacks' combinations, which neither the window's nor the callout's shortcut takes. */
+function comebackTaken(settings: Settings, t: Translate): Taken[] {
+  return [
+    { combo: settings.comeback.hotkey, message: t("comeback.hotkeyTakenByTeam") },
+    { combo: settings.comeback.allHotkey, message: t("comeback.hotkeyTakenByAll") },
+  ];
+}
+
+/** The Comebacks page: the shortcut that sends a line to the team, or with `all` to everyone in
+ *  the game; off until a combination is set. */
+export function ComebackHotkeyRow({ all }: { all: boolean }) {
+  const t = useT();
+  const store = useStore();
+  const settings = useSettings();
+  const combo = all ? settings.comeback.allHotkey : settings.comeback.hotkey;
+  const status = useHotkeyStatus();
+  const slot = status && (all ? status.comebackAll : status.comeback);
+  const settled = status && !status.suspended && slot?.shortcut === combo ? slot : null;
+  return (
+    <ShortcutRow
+      label={t(all ? "comeback.allHotkey" : "comeback.hotkey")}
+      hint={t(all ? "comeback.allHotkeyHint" : "comeback.hotkeyHint")}
+      combo={combo}
+      held={settled}
+      taken={[
+        { combo: settings.general.hotkey, message: t("callout.hotkeyTakenByWindow") },
+        { combo: settings.automation.callout.hotkey, message: t("callout.hotkeyTakenByCallout") },
+        all
+          ? { combo: settings.comeback.hotkey, message: t("comeback.hotkeyTakenByTeam") }
+          : { combo: settings.comeback.allHotkey, message: t("comeback.hotkeyTakenByAll") },
+      ]}
+      onSave={(next) =>
+        store.updateSettings((value) => ({
+          ...value,
+          comeback: all
+            ? { ...value.comeback, allHotkey: next }
+            : { ...value.comeback, hotkey: next },
         }))
       }
     />

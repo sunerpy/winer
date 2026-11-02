@@ -30,13 +30,53 @@ describe("notices", () => {
       "keysHeld",
       "blocked",
       "unsupported",
+      "needsAdmin",
+      "noLines",
+      "tooSoon",
     ];
     for (const reason of reasons) {
       const text = zh({ kind: "calloutSkipped", reason });
       expect(text, reason).not.toContain("callout.skip");
+      expect(en({ kind: "calloutSkipped", reason }), reason).not.toContain("callout.skip");
       expect(isFailure({ kind: "calloutSkipped", reason }), "drawn as a failure").toBe(true);
     }
     expect(isFailure({ kind: "typedInGame", lines: 2 })).toBe(false);
+    expect(zh({ kind: "calloutSkipped", reason: "needsAdmin" })).toBe(
+      "喊话没有发送：游戏以管理员身份运行而 winer 不是，模拟的按键会被系统丢弃；以管理员身份重启 winer 后再试",
+    );
+  });
+
+  it("says where a comeback went, where it stopped with how much was sent, and why not", () => {
+    expect(zh({ kind: "comebackSent", place: "champSelect", messages: 1 })).toBe(
+      "已把反击发到选人聊天",
+    );
+    expect(zh({ kind: "comebackSent", place: "team", messages: 1 })).toBe("已把反击发到队伍");
+    expect(zh({ kind: "comebackSent", place: "all", messages: 2 })).toBe(
+      "已把反击发到全体，分成 2 条消息",
+    );
+    expect(en({ kind: "comebackSent", place: "all", messages: 1 })).toBe(
+      "Sent a comeback to everyone",
+    );
+    expect(zh({ kind: "comebackStopped", place: "team", sent: 1, reason: "notInFront" })).toBe(
+      "反击输入到一半停下了：游戏窗口不在前台（已发到队伍 1 条）",
+    );
+    expect(en({ kind: "comebackStopped", place: "all", sent: 2, reason: "keysHeld" })).toBe(
+      "The comeback stopped part of the way: a key stayed held down (2 sent to everyone)",
+    );
+    expect(zh({ kind: "comebackSkipped", place: "all", reason: "tooSoon" })).toBe(
+      "反击没有发到全体：离上一句还不到 3 秒",
+    );
+    expect(zh({ kind: "comebackSkipped", place: "champSelect", reason: "noLines" })).toBe(
+      "反击没有发到选人聊天：反击页还没有可以发的语句",
+    );
+    expect(en({ kind: "comebackSkipped", place: "team", reason: "needsAdmin" })).toBe(
+      "Comeback not sent to the team: the game runs as administrator and winer does not, so the system would drop its keys; restart winer as administrator and try again",
+    );
+    expect(isFailure({ kind: "comebackSent", place: "team", messages: 1 })).toBe(false);
+    expect(isFailure({ kind: "comebackStopped", place: "team", sent: 1, reason: "blocked" })).toBe(
+      true,
+    );
+    expect(isFailure({ kind: "comebackSkipped", place: "all", reason: "inGameOff" })).toBe(true);
   });
 
   it("says what the automatic claim did", () => {

@@ -2,6 +2,7 @@ import type { Accent, Appearance, Language, Settings, Theme, TierSet } from "@wi
 import {
   BookOpen,
   Check,
+  Copy,
   ExternalLink,
   FolderOpen,
   Info,
@@ -9,6 +10,7 @@ import {
   Palette,
   RefreshCw,
   SlidersHorizontal,
+  Users,
 } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useId, useRef } from "react";
 
@@ -437,6 +439,46 @@ function RatingSection() {
   );
 }
 
+/** winer's QQ group (winer交流群); `open_community` opens its invitation, whose address the shell
+ *  keeps (`COMMUNITY_URL`). */
+const COMMUNITY_GROUP = "1109319256";
+
+/** 关于 › 交流群: join the QQ group, or copy its number to search for it in QQ. */
+function CommunityRow() {
+  const t = useT();
+  const store = useStore();
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(COMMUNITY_GROUP);
+      toast(t("settings.communityCopied", { number: COMMUNITY_GROUP }), "ok");
+    } catch {
+      // The number stays in the row's help, to copy by hand.
+      toast(t("settings.communityCopyFailed", { number: COMMUNITY_GROUP }), "danger");
+    }
+  };
+  return (
+    <Row
+      label={t("settings.community")}
+      help={t("settings.communityHint", { number: COMMUNITY_GROUP })}
+    >
+      <Button
+        size="sm"
+        icon={Users}
+        onClick={() =>
+          void store.backend
+            .call("open_community")
+            .catch((error: unknown) => toast(errorMessage(error), "danger"))
+        }
+      >
+        {t("settings.communityJoin")}
+      </Button>
+      <Button size="sm" variant="ghost" icon={Copy} onClick={() => void copy()}>
+        {t("settings.communityCopy")}
+      </Button>
+    </Row>
+  );
+}
+
 function AboutSection({ onOpenUpdate }: { onOpenUpdate: () => void }) {
   const t = useT();
   const store = useStore();
@@ -497,6 +539,7 @@ function AboutSection({ onOpenUpdate }: { onOpenUpdate: () => void }) {
           {t("settings.releases")}
         </Button>
       </Row>
+      <CommunityRow />
       <DiagnosticsRow version={info.data?.version ?? ""} />
       <Row label={t("settings.notices")} help={t("settings.noticesHint")}>
         <details className="w-full">
