@@ -12,6 +12,7 @@ import type {
   ChallengeProfile,
   ChallengeToken,
   ChampSelectView,
+  ComebackLibrary,
   Event,
   Feat,
   FormScope,
@@ -41,6 +42,7 @@ import type {
 
 import type { ArgsOf, Backend, CommandName, Commands } from "./backend";
 import { typedLines } from "./callout";
+import { fillPhrase, phrasesOf, seatLabel } from "./comeback";
 import {
   DEMO_AUGMENTS,
   DEMO_ITEMS,
@@ -639,7 +641,8 @@ function champSelect(): ChampSelectView {
     gameId: 1,
     queueId: 2400,
     timer: { phase: "BAN_PICK", endsAt: Date.now() + 47_000, totalMs: 60_000 },
-    myTeam: seats(),
+    // The blue side's cells, 0 to 4, in the order champ select lists the team.
+    myTeam: seats().map((seat, index) => ({ ...seat, cellId: index })),
     theirTeam: [],
     myBans: [],
     theirBans: [],
@@ -991,7 +994,19 @@ const DEFAULT_SETTINGS: Settings = {
     recommend: true,
   },
   history: { hideCustomGames: true },
+  // The Comebacks page: none of the user's lines, no shortcut, no library in use.
+  comeback: {
+    lines: [],
+    hotkey: null,
+    allHotkey: null,
+    inGame: false,
+    phrases: [],
+    library: { enabled: false, level: "mild" },
+  },
 };
+
+/** The downloaded library's status before any download (`ComebackLibrary::default`). */
+const NO_LIBRARY: ComebackLibrary = { downloaded: false, mild: 0, strong: 0, fetchedAt: null };
 
 /** The tier names `rule` ranks with, best first, as the core resolves them (`callout::tier_names`):
  *  fewer than two names of the user's own stand in for none. */
@@ -1014,19 +1029,32 @@ export function demoBackend(): Backend {
     active: shortcut !== null && !suspended,
     error: null,
   });
-  let hotkey: HotkeyStatus = {
-    ...held(settings.general.hotkey, false),
-    suspended: false,
-    callout: held(settings.automation.callout.hotkey, false),
-  };
-  const setHotkey = (
-    shortcut: string | null,
-    suspended: boolean,
-    callout: string | null = hotkey.callout.shortcut,
-  ) => {
-    hotkey = { ...held(shortcut, suspended), suspended, callout: held(callout, suspended) };
+  const hotkeyOf = (suspended: boolean): HotkeyStatus => ({
+    ...held(settings.general.hotkey, suspended),
+    suspended,
+    callout: held(settings.automation.callout.hotkey, suspended),
+    comeback: held(settings.comeback.hotkey, suspended),
+    comebackAll: held(settings.comeback.allHotkey, suspended),
+  });
+  let hotkey = hotkeyOf(false);
+  const setHotkey = (suspended: boolean) => {
+    hotkey = hotkeyOf(suspended);
     hotkeyListeners.forEach((listener) => listener(hotkey));
     return hotkey;
+  };
+  // The Comebacks page: no library until one is downloaded.
+  let library = NO_LIBRARY;
+  /** As the core does after a download or a removal: the library's switch saved off. */
+  const switchLibraryOff = () => {
+    if (!settings.comeback.library.enabled) return;
+    settings = {
+      ...settings,
+      comeback: {
+        ...settings.comeback,
+        library: { ...settings.comeback.library, enabled: false },
+      },
+    };
+    emit({ type: "settings", data: settings });
   };
   const notes = new Map<string, PlayerNote>([
     [
@@ -1124,9 +1152,11 @@ export function demoBackend(): Backend {
       settings = next;
       if (
         settings.general.hotkey !== hotkey.shortcut ||
-        settings.automation.callout.hotkey !== hotkey.callout.shortcut
+        settings.automation.callout.hotkey !== hotkey.callout.shortcut ||
+        settings.comeback.hotkey !== hotkey.comeback.shortcut ||
+        settings.comeback.allHotkey !== hotkey.comebackAll.shortcut
       )
-        setHotkey(settings.general.hotkey, hotkey.suspended, settings.automation.callout.hotkey);
+        setHotkey(hotkey.suspended);
       return settings;
     },
     get_game_data: () => GAME_DATA,
@@ -1279,6 +1309,7 @@ export function demoBackend(): Backend {
     },
     install_update: () => null,
     open_releases: () => null,
+    open_community: () => null,
     open_docs: () => null,
     get_skins: () => SKINS,
     get_profile_background: () => background,
@@ -1334,7 +1365,7 @@ export function demoBackend(): Backend {
     },
     reveal_game_settings_backup: () => null,
     get_hotkey_status: () => hotkey,
-    suspend_hotkey: ({ suspended }) => setHotkey(hotkey.shortcut, suspended),
+    suspend_hotkey: ({ suspended }) => setHotkey(suspended),
     ...demoLoadoutHandlers(() => settings),
     // Callout: as the core does, the best tier to watch and the worst to go after on the red side,
     // the user in every tier of the team on the blue side, by champion, typed as one press would.
@@ -1355,6 +1386,39 @@ export function demoBackend(): Backend {
         ),
       ];
       return typedLines(enemies, allies, rule.gameTeams);
+    },
+    // The Comebacks page: a quick phrase for a teammate of the demo's champ select, refused as the
+    // core refuses it (`Service::send_phrase`).
+    send_phrase: ({ index, gameId, cellId }) => {
+      const view = champSelect();
+      if (gameId !== view.gameId) throw { code: "invalid", message: "that champ select is over" };
+      const number = view.myTeam.findIndex((seat) => seat.cellId === cellId);
+      const seat = view.myTeam[number];
+      if (!seat) throw { code: "invalid", message: "no teammate sits in that cell" };
+      if (seat.isSelf) throw { code: "invalid", message: "that seat is the user's own" };
+      const language = settings.general.language;
+      const template = phrasesOf(settings.comeback, language)[index];
+      if (template === undefined) throw { code: "invalid", message: "no such quick phrase" };
+      const champion = GAME_DATA.champions.find((entry) => entry.id === seat.championId);
+      return fillPhrase(
+        template,
+        seatLabel(number + 1, language),
+        champion?.shortName ?? "",
+        seat.name?.gameName ?? "",
+      );
+    },
+    comeback_library: () => library,
+    // About the pinned file's counts after the clean-up; the switch goes off, to be opted into
+    // again.
+    download_comeback_library: () => {
+      switchLibraryOff();
+      library = { downloaded: true, mild: 682, strong: 994, fetchedAt: Date.now() };
+      return library;
+    },
+    remove_comeback_library: () => {
+      switchLibraryOff();
+      library = NO_LIBRARY;
+      return library;
     },
     // History.
     get_player_standing: ({ puuid }) => {

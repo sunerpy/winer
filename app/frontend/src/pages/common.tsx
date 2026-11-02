@@ -1,5 +1,5 @@
 // Pieces every page uses: the page frame, what to show while the client is not connected, and the
-// restart as administrator.
+// restart as administrator, which typing into a game started from WeGame needs as well.
 import { PlugZap, ShieldAlert } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -7,6 +7,7 @@ import { errorMessage } from "../lib/backend";
 import { cx } from "../lib/cx";
 import { useT } from "../lib/i18n";
 import { useLive, useStore } from "../lib/store";
+import { useAsync } from "../lib/useAsync";
 import { Button, EmptyState, Lamp, toast } from "../ui";
 
 export function PageBody({ children, className }: { children: ReactNode; className?: string }) {
@@ -24,6 +25,30 @@ export function useRelaunch() {
     void store.backend
       .call("relaunch_elevated")
       .catch((error: unknown) => toast(errorMessage(error), "danger"));
+}
+
+/** Where typing into the game is switched on (自动化 › 战力喊话 and the Comebacks page), while winer
+ *  runs without administrator rights: a game started from WeGame has them, and Windows drops the
+ *  keys of a program with fewer, so nothing would reach it; with the restart that fixes it. */
+export function GameRightsNote() {
+  const t = useT();
+  const store = useStore();
+  const relaunch = useRelaunch();
+  const info = useAsync(() => store.backend.call("get_app_info"), []);
+  if (info.data?.elevated !== false) return null;
+  return (
+    <div
+      role="note"
+      className="my-2 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-6 bg-warning-soft px-3 py-2.5 hairline"
+    >
+      <p className="min-w-0 flex-1 basis-[320px] text-[12.5px] leading-5 text-fg">
+        {t("elevation.gameNote")}
+      </p>
+      <Button variant="primary" size="sm" icon={ShieldAlert} onClick={relaunch}>
+        {t("connection.relaunch")}
+      </Button>
+    </div>
+  );
 }
 
 /** The connection, as one sentence with a lamp, and what to do about it. */

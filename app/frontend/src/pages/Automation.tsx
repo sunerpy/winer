@@ -33,7 +33,7 @@ import {
   toast,
 } from "../ui";
 import { ItemSetsPanel, LoadoutPanel } from "./automation/LoadoutRules";
-import { PageBody } from "./common";
+import { GameRightsNote, PageBody } from "./common";
 import { CalloutHotkeyRow } from "./settings/HotkeyRow";
 
 const WISHLIST_LIMIT = 20;
@@ -205,9 +205,9 @@ function CalloutPreview({
 
 // Callout: in the game, both teams' lines, which the shortcut types into the game's chat.
 
-/** The callout card's second half: typing into the game, opt-in and said to be third-party input;
- *  whose lines a press types, at most so many; the two enemy lines and the team's, and what one
- *  press would type. */
+/** The callout card's second half: typing into the game, opt-in and said to be third-party input,
+ *  with the rights a game started from WeGame needs; whose lines a press types, at most so many;
+ *  the two enemy lines and the team's, and what one press would type. */
 function GameCallout({
   rule,
   onChange,
@@ -240,6 +240,7 @@ function GameCallout({
           label={t("callout.inGame")}
         />
       </Row>
+      <GameRightsNote />
       <Row label={t("callout.gameTeams")} help={t("callout.gameTeamsHint", { n: GAME_LINE_LIMIT })}>
         <Segmented<GameTeams>
           size="sm"

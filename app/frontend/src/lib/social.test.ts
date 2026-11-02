@@ -117,6 +117,8 @@ describe("store", () => {
       suspended: false,
       error: "taken",
       callout: { shortcut: null, active: false, error: null },
+      comeback: { shortcut: null, active: false, error: null },
+      comebackAll: { shortcut: null, active: false, error: null },
     });
     expect(store.hotkey.get()?.error).toBe("taken");
   });

@@ -81,6 +81,24 @@ export function noticeText(kind: NoticeKind, t: Translate, catalog: Catalog | nu
       });
     case "calloutSkipped":
       return t("callout.notice.skipped", { reason: t(`callout.skip.${kind.reason}`) });
+    // The Comebacks page's shortcuts: each says where the line went, or would have gone.
+    case "comebackSent": {
+      const place = t(`comeback.place.${kind.place}`);
+      return kind.messages > 1
+        ? t("comeback.notice.sentParts", { place, n: kind.messages })
+        : t("comeback.notice.sent", { place });
+    }
+    case "comebackStopped":
+      return t("comeback.notice.stopped", {
+        place: t(`comeback.place.${kind.place}`),
+        n: kind.sent,
+        reason: t(`callout.skip.${kind.reason}`),
+      });
+    case "comebackSkipped":
+      return t("comeback.notice.skipped", {
+        place: t(`comeback.place.${kind.place}`),
+        reason: t(`callout.skip.${kind.reason}`),
+      });
   }
 }
 
@@ -94,7 +112,10 @@ export function isFailure(kind: NoticeKind): boolean {
     kind.kind === "rewardsFailed" ||
     // The callout's shortcut.
     kind.kind === "typingStopped" ||
-    kind.kind === "calloutSkipped"
+    kind.kind === "calloutSkipped" ||
+    // The Comebacks page's shortcuts.
+    kind.kind === "comebackStopped" ||
+    kind.kind === "comebackSkipped"
   );
 }
 

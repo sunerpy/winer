@@ -17,6 +17,7 @@ import { useShell } from "../shell/navigation";
 import { Badge, Button, Card, EmptyState, Lamp, Panel, Segmented, toast } from "../ui";
 import { ConnectionGate, PageBody } from "./common";
 import { BuildLookup, ChampSelectBuild, GameBuild } from "./live/BuildPanel";
+import { PhraseMenu } from "./live/PhraseMenu";
 import { Suggestions } from "./live/Suggestions";
 import { Keycaps } from "./settings/HotkeyRow";
 
@@ -37,6 +38,8 @@ interface TeamTab {
   title: string;
   side: Side | null;
   seats: Seat[];
+  /** What a row offers at its end: champ select's quick phrases, on the user's own team. */
+  action?: (seat: Seat, index: number) => ReactNode;
 }
 
 /** The analysis board of one team at a time, the local player's first. */
@@ -70,7 +73,11 @@ function Teams({ teams, initial = 0 }: { teams: TeamTab[]; initial?: number }) {
         )
       }
     >
-      <TeamBoard seats={team.seats} onPlayer={(puuid) => navigate({ page: "history", puuid })} />
+      <TeamBoard
+        seats={team.seats}
+        onPlayer={(puuid) => navigate({ page: "history", puuid })}
+        action={team.action}
+      />
     </Panel>
   );
 }
@@ -333,6 +340,11 @@ function ChampSelect({ view }: { view: ChampSelectView }) {
   const seconds =
     view.timer.endsAt > 0 ? Math.max(0, Math.ceil((view.timer.endsAt - now) / 1000)) : null;
   const phase = TIMER_PHASES[view.timer.phase];
+  // Quick phrases: every teammate but the user, by the cell champ select gives them.
+  const phrases = (seat: Seat, index: number) =>
+    !seat.isSelf && seat.cellId !== undefined ? (
+      <PhraseMenu seat={seat} number={index + 1} gameId={view.gameId} cellId={seat.cellId} />
+    ) : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -364,7 +376,7 @@ function ChampSelect({ view }: { view: ChampSelectView }) {
 
       <Teams
         teams={[
-          { title: t("live.myTeam"), side: view.side, seats: view.myTeam },
+          { title: t("live.myTeam"), side: view.side, seats: view.myTeam, action: phrases },
           ...(view.theirTeam.length > 0
             ? [{ title: t("live.theirTeam"), side: opposite(view.side), seats: view.theirTeam }]
             : []),
