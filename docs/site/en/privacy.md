@@ -11,6 +11,7 @@ places it connects to:
 | The Tencent League app             | the champion, lane and patch                                   | the build panel's statistics from the Chinese servers, at `mlol.qt.qq.com`                                                                    |
 | OP.GG                              | the champion, mode and lane                                    | the build panel's statistics from the world, at `lol-api-champion.op.gg`                                                                      |
 | GitHub                             | a plain web request                                            | checking for and downloading updates                                                                                                          |
+| jsDelivr and GitHub                | a plain web request                                            | only when you press download in **Comebacks › Online library**: the open 祖安语录 library, from jsDelivr's mirrors first, then GitHub         |
 
 The build panel reads the statistics of the champion on the Live game page only (yours, in champ
 select and in the game), and once more when a champion is locked in while item sets are written by
@@ -28,6 +29,7 @@ settings file or a log.
 | Remembered runes and spells         | `%APPDATA%\app.winer.desktop\loadouts.json`                                           | kept, one setup per champion and mode, under 1 MB with every one remembered; forgotten in **Automation** |
 | Player notes                        | `%APPDATA%\app.winer.desktop\notes.json`                                              | kept, 5,000 notes at most, 200 characters each; deleted in **Tools › My notes**                          |
 | The client version last seen        | `%APPDATA%\app.winer.desktop\diagnostics.json`                                        | kept, the version number alone, for the self-check after the client updates                              |
+| The downloaded online library       | `%APPDATA%\app.winer.desktop\comeback-library.json`                                   | only once you download it, about 200 KB; **Remove** in **Comebacks › Online library** deletes it         |
 | Game settings backups               | `%LOCALAPPDATA%\app.winer.desktop\game-settings`                                      | 10 at most, a few KB each; a new one past that removes the oldest                                        |
 | The bundled Pengu Loader and plugin | `%LOCALAPPDATA%\app.winer.desktop\pengu`                                              | about 0.5 MB, updated with winer                                                                         |
 | Logs                                | `%LOCALAPPDATA%\app.winer.desktop\logs`                                               | the last 7 days, 50 MB in all and 10 MB a file at most; past that the oldest files go first              |

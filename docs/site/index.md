@@ -52,6 +52,10 @@ home:
             body: 按档位排好的聊天内容，一键发到队伍或只给自己看，也可以每局自动发送；第一行带上红蓝方和 winer 署名。
             status: available
             link: /guide/live#战力喊话
+          - title: 反击与选人快捷语
+            body: 按快捷键随机发一句自己写的反击语句，选人时点一下快捷语发给某位队友；在线语录要你自己下载并打开。
+            status: experimental
+            link: /guide/live#反击
           - title: 大乱斗备选席
             body: 点一下立刻换成备选席上的英雄，不等冷却；设好心愿英雄后自动换。
             status: available
@@ -153,6 +157,9 @@ home:
       - name: ARAM.GG 与 GitHub
         sends: 普通的网页请求
         detail: 获取海克斯符文的效果说明（可以关闭），检查和下载更新。
+      - name: jsDelivr 与 GitHub
+        sends: 普通的网页请求
+        detail: 只在你点了下载时，下载反击用的在线语录。
 ---
 
 <HomeIndex />
@@ -209,4 +216,5 @@ irm https://github.com/sunerpy/winer/releases/download/v0.0.1/install.ps1 | iex
 
 ## 反馈
 
-报告问题、提出建议：[GitHub Issues](https://github.com/sunerpy/winer/issues)。
+报告问题、提出建议：[GitHub Issues](https://github.com/sunerpy/winer/issues)，或者加入 QQ 交流群「winer交流群」
+（群号 1109319256，[入群链接](https://qm.qq.com/q/DV1thxtEWe)）。

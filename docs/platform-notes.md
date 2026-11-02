@@ -464,3 +464,23 @@ Read-only, on the owner's PC (winer 0.0.2, two days after it was installed), 202
   image of the client's CEF window after its GPU process had restarted with `--use-gl=disabled`.
 - `decorations: false` keeps Aero Snap, resize borders, shadow and rounded corners; it loses only the
   Windows 11 Snap Layouts flyout (see `accepted-tradeoffs.md`).
+
+### Typing into the game's chat
+
+- **Rights, not the keys.** `SendInput` "is subject to UIPI. Applications are permitted to inject
+  input only into applications that are at an equal or lesser integrity level", and "neither
+  GetLastError nor the return value will indicate the failure was caused by UIPI blocking"
+  (learn.microsoft.com, `SendInput`). `RegisterHotKey`'s `WM_HOTKEY` does reach a lower-integrity
+  process, so the shortcut fires while every key it types into a higher one is dropped.
+- The owner's report (2026-11-02): pressing the callout's shortcut in a game started from WeGame
+  showed and typed nothing, and their winer had started with `elevated=false` (its log, 2026-11-01
+  12:03:12Z) and connected anyway, since the client's command line reads with
+  `PROCESS_QUERY_LIMITED_INFORMATION`. WeGame starts the client elevated (above); a game it starts
+  takes its token. ZuAnBot, which types into the game the same way (Enter, the text as Unicode,
+  Enter; `/all ` for all chat), asks for `requireAdministrator` in its manifest.
+- **Not measured**: that the game itself runs elevated, that an elevated winer's keys arrive, and
+  that `/all ` reaches all chat on Tencent's servers. From 0.0.19 winer reads the game window's
+  token before typing (`elevation::token_of`) and types nothing when it is outranked (the
+  `needsAdmin` notice), and asks once at connect to restart elevated when in-game typing is set up;
+  the owner's first test in a WeGame game is the measurement. If an elevated winer's log shows the
+  typing and the chat stays empty, another cause (anti-cheat dropping injected input) is next.

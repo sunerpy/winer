@@ -52,6 +52,10 @@ home:
             body: A chat message ranked by tier, sent to the team or to you alone in one click or every game by itself, its first line naming your side and winer.
             status: available
             link: /en/guide/live#callout
+          - title: Comebacks and quick phrases
+            body: A shortcut sends one of your own lines at random; in champ select a quick phrase goes to one teammate in one click; an online library only once you download it and turn it on.
+            status: experimental
+            link: /en/guide/live#comebacks
           - title: ARAM bench
             body: Swap to a bench champion in one click without the cooldown, or let a wishlist do it.
             status: available
@@ -153,6 +157,9 @@ home:
       - name: ARAM.GG and GitHub
         sends: plain web requests
         detail: What Hextech ARAM's augments do (can be turned off), and checking for and downloading updates.
+      - name: jsDelivr and GitHub
+        sends: a plain web request
+        detail: Only when you press download, the online library the comebacks can use.
 ---
 
 <HomeIndex />
@@ -213,4 +220,5 @@ when it matches. You can also download `winer_<version>_x64-setup.exe` from
 
 ## Feedback
 
-Report a problem or suggest something: [GitHub Issues](https://github.com/sunerpy/winer/issues).
+Report a problem or suggest something: [GitHub Issues](https://github.com/sunerpy/winer/issues), or in
+the QQ group winer交流群 (number 1109319256, [invitation link](https://qm.qq.com/q/DV1thxtEWe)).

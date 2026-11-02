@@ -25,16 +25,22 @@ running as administrator it asks to restart that way by itself; once the link ex
 using it without administrator rights. See
 [In-client](/en/guide/client#the-first-activation-needs-administrator-rights).
 
+Typing a callout or a comeback into a game needs them too: a game started from WeGame runs as
+administrator, and Windows does not let a program without those rights send it key presses. With
+**In-game sending** on and a shortcut set, winer asks to restart as administrator when it connects
+to such a client; see [Lines in game](/en/guide/automation#lines-in-game).
+
 ## Can it get my account banned
 
 winer uses only the API the client opens on your computer (the LCU), the same one the client's own
 interface uses. It does not read the game's memory, change game files or act in a running game.
 Even so, no third-party tool can promise zero risk; judge for yourself.
 
-The one exception is **In-game sending**, off by default: with it on, pressing the callout's
-shortcut in a game makes winer send key presses to the game's window to type the callout into its
-chat. That is third-party input and may break the game's terms of service; leave it off if you
-would rather not take that risk.
+The one exception is **In-game sending**, off by default, which the callout and the comebacks each
+have: with it on, pressing their shortcut in a game makes winer send key presses to the game's window
+to type into its chat. That is third-party input and may break the game's terms of service; leave it
+off if you would rather not take that risk. Comeback lines, the downloaded online library above all,
+may break the game's chat rules, and a report can get the account muted or banned.
 
 ## The history stops at 20 games
 
@@ -68,3 +74,9 @@ teammate's numbers. The format, the opening line and the tier names are the same
 Open an issue on [GitHub](https://github.com/sunerpy/winer/issues). Attaching the day's log from
 **Settings › About › Open the log folder** makes it quicker to find; logs never contain the client's
 credentials.
+
+There is also a QQ group, winer交流群 (number 1109319256), for reports and questions: open the
+[invitation link](https://qm.qq.com/q/DV1thxtEWe) or scan the code below in QQ. winer's
+**Settings › About › Community** opens it as well.
+
+<img src="/community/qq-group.png" width="180" alt="The QR code of the QQ group winer交流群, number 1109319256" />
