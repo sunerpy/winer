@@ -295,3 +295,320 @@ impl Service {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        io::{Read as _, Write as _},
+        net::TcpListener,
+        thread,
+    };
+
+    use lcu::{Credentials, Lcu};
+    use tokio::runtime::Handle;
+
+    use super::*;
+    use crate::{
+        service::{Client, Live},
+        view::{ChampSelectView, ChampionInfo, GameData, PlayerStats, RiotId, Seat, TimerView},
+    };
+
+    /// The fixture `sqlite.rs` reads: harmless words shaped as the library is.
+    const FIXTURE: &[u8] = include_bytes!("../testdata/comeback-library.db");
+
+    fn seat(cell_id: i64, is_self: bool, champion_id: i64, name: Option<&str>) -> Seat {
+        Seat {
+            puuid: Some(format!("p{cell_id}")),
+            name: name.and_then(|name| RiotId::new(name, "1")),
+            champion_id,
+            intent: false,
+            position: None,
+            spells: [0, 0],
+            is_self,
+            premade: None,
+            premade_inferred: false,
+            autofilled: false,
+            note: None,
+            stats: PlayerStats::Loading,
+            rating: None,
+            cell_id: Some(cell_id),
+        }
+    }
+
+    /// A service in champ select `game_id`: the user in cell 0, a teammate on 龙王 in cell 1, the
+    /// other team in cells 5 and 6; a client that never answers (port 1).
+    fn in_champ_select(dir: &tempfile::TempDir, game_id: i64) -> Service {
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        let credentials = Credentials::new(1, "t");
+        let data = GameData {
+            champions: vec![ChampionInfo {
+                id: 136,
+                name: "铸星龙王".into(),
+                short_name: "龙王".into(),
+                alias: "AurelionSol".into(),
+                icon: String::new(),
+            }],
+            ..GameData::default()
+        };
+        *service
+            .inner
+            .client
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Client {
+            lcu: Lcu::new(&credentials).unwrap(),
+            credentials,
+            platform_id: String::new(),
+            data: Arc::new(Mutex::new(Some(Arc::new(data)))),
+            live: Arc::new(Mutex::new(Live::default())),
+        });
+        seat_champ_select(&service, game_id);
+        service
+    }
+
+    /// Puts champ select `game_id` in the service's snapshot. Saving settings draws the views again
+    /// from the client's own state, which these tests leave empty: they seat it again after.
+    fn seat_champ_select(service: &Service, game_id: i64) {
+        let mut state = lock(&service.inner.state);
+        state.phase = Phase::ChampSelect;
+        state.champ_select = Some(ChampSelectView {
+            game_id,
+            queue_id: 420,
+            timer: TimerView::default(),
+            my_team: vec![seat(0, true, 1, Some("Me")), seat(1, false, 136, None)],
+            their_team: vec![seat(5, false, 2, None), seat(6, false, 3, None)],
+            my_bans: Vec::new(),
+            their_bans: Vec::new(),
+            bench_enabled: false,
+            bench: Vec::new(),
+            rerolls_remaining: 0,
+            callout: Vec::new(),
+            side: None,
+            recommendations: Vec::new(),
+        });
+    }
+
+    #[tokio::test]
+    async fn a_phrase_goes_only_to_a_teammate_of_this_champ_select() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = in_champ_select(&dir, 7);
+        assert_eq!(
+            service.render_phrase(0, 7, 1).unwrap(),
+            "2L大佬，小弟想玩下龙王，给您磕一个了",
+            "the teammate's seat in the list and their champion"
+        );
+        let refused = |result: Result<String, CoreError>| match result {
+            Err(CoreError::Invalid(_)) => true,
+            other => panic!("not refused as invalid: {other:?}"),
+        };
+        assert!(
+            refused(service.render_phrase(0, 8, 1)),
+            "another champ select"
+        );
+        assert!(
+            refused(service.render_phrase(0, 7, 0)),
+            "the user's own cell"
+        );
+        assert!(
+            refused(service.render_phrase(0, 7, 5)),
+            "the other team's cell"
+        );
+        assert!(
+            refused(service.render_phrase(0, 7, 9)),
+            "a cell nobody sits in"
+        );
+        assert!(refused(service.render_phrase(1, 7, 1)), "no second phrase");
+        let mut settings = service.settings();
+        settings.comeback.phrases = vec!["{seat}【{name}】，{champion}给我吗".into()];
+        service.set_settings(settings).unwrap();
+        seat_champ_select(&service, 7);
+        assert_eq!(
+            service.render_phrase(0, 7, 1).unwrap(),
+            "2L，龙王给我吗",
+            "a hidden name takes its brackets along"
+        );
+        // Past the checks, the phrase goes to the client, which here never answers.
+        assert!(matches!(
+            service.send_phrase(0, 7, 1).await,
+            Err(CoreError::Lcu(_))
+        ));
+        lock(&service.inner.state).phase = Phase::InProgress;
+        assert!(matches!(
+            service.send_phrase(0, 7, 1).await,
+            Err(CoreError::Busy(_))
+        ));
+    }
+
+    /// Answers `routes` (a path, a status and a body each), one connection at a time, `count`
+    /// connections in all; returns the base URL.
+    fn serve(routes: Vec<(&'static str, u16, Vec<u8>)>, count: usize) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        thread::spawn(move || {
+            for _ in 0..count {
+                let Ok((mut stream, _)) = listener.accept() else {
+                    return;
+                };
+                let mut request = Vec::new();
+                let mut buffer = [0u8; 1024];
+                while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    match stream.read(&mut buffer) {
+                        Ok(0) | Err(_) => break,
+                        Ok(read) => request.extend_from_slice(&buffer[..read]),
+                    }
+                }
+                let request = String::from_utf8_lossy(&request);
+                let path = request.split_whitespace().nth(1).unwrap_or_default();
+                let (status, body) = routes
+                    .iter()
+                    .find(|(route, ..)| *route == path)
+                    .map_or((404, &[][..]), |(_, status, body)| {
+                        (*status, body.as_slice())
+                    });
+                let head = format!(
+                    "HTTP/1.1 {status} X\r\ncontent-type: application/octet-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(head.as_bytes());
+                let _ = stream.write_all(body);
+            }
+        });
+        base
+    }
+
+    async fn download(service: &Service, urls: &[String]) -> Result<ComebackLibrary, CoreError> {
+        service
+            .download_library(
+                crate::net::client().unwrap(),
+                urls,
+                FIXTURE.len(),
+                &comeback::digest(FIXTURE),
+            )
+            .await
+    }
+
+    fn switch_on(service: &Service) {
+        let mut settings = service.settings();
+        settings.comeback.library.enabled = true;
+        service.set_settings(settings).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_download_tries_the_next_mirror_turns_its_switch_off_and_outlives_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = serve(
+            vec![("/refuse", 503, Vec::new()), ("/ok", 200, FIXTURE.to_vec())],
+            2,
+        );
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        assert!(!service.comeback_library().downloaded, "none before");
+        switch_on(&service);
+        let status = download(&service, &[format!("{base}/refuse"), format!("{base}/ok")])
+            .await
+            .unwrap();
+        assert!(status.downloaded);
+        assert_eq!((status.mild, status.strong), (62, 73));
+        assert!(status.fetched_at.is_some());
+        assert!(
+            !service.settings().comeback.library.enabled,
+            "a download is opted into again"
+        );
+        assert!(dir.path().join("comeback-library.json").exists());
+        let restarted = Service::new(dir.path().join("settings.json"), Handle::current());
+        assert_eq!(
+            restarted.comeback_library(),
+            status,
+            "read back after a restart"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_library_is_used_only_switched_on_and_never_after_removal() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = serve(vec![("/ok", 200, FIXTURE.to_vec())], 1);
+        let service = in_champ_select(&dir, 7);
+        download(&service, &[format!("{base}/ok")]).await.unwrap();
+        let skipped = |press: ComebackPress| match press {
+            ComebackPress::Skip { reason, .. } => reason,
+            other => panic!("not skipped: {other:?}"),
+        };
+        assert_eq!(
+            skipped(service.comeback_press(false)),
+            crate::view::CalloutSkip::NoLines,
+            "downloaded, not switched on"
+        );
+        switch_on(&service);
+        seat_champ_select(&service, 7);
+        let ComebackPress::ChampSelect(line) = service.comeback_press(false) else {
+            panic!("a library line for champ select");
+        };
+        let library = library_now(&service);
+        assert!(library.mild.contains(&line), "from the chosen level");
+        let removed = service.remove_comeback_library().await.unwrap();
+        assert!(!removed.downloaded);
+        assert!(
+            !service.settings().comeback.library.enabled,
+            "switched off first"
+        );
+        assert!(!dir.path().join("comeback-library.json").exists());
+        switch_on(&service);
+        seat_champ_select(&service, 7);
+        assert_eq!(
+            skipped(service.comeback_press(false)),
+            crate::view::CalloutSkip::NoLines,
+            "switched on again, nothing left to pick"
+        );
+    }
+
+    fn library_now(service: &Service) -> Arc<Library> {
+        service.inner.comeback.library.get().expect("a library")
+    }
+
+    #[tokio::test]
+    async fn other_bytes_or_more_of_them_are_refused_and_change_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut other = FIXTURE.to_vec();
+        other[2000] ^= 0xFF;
+        let mut more = FIXTURE.to_vec();
+        more.push(0);
+        let base = serve(vec![("/other", 200, other), ("/more", 200, more)], 2);
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        switch_on(&service);
+        let Err(CoreError::Remote(error)) =
+            download(&service, &[format!("{base}/other"), format!("{base}/more")]).await
+        else {
+            panic!("refused");
+        };
+        assert!(error.contains("not the file winer knows"), "{error}");
+        assert!(error.contains("more bytes"), "{error}");
+        assert!(!dir.path().join("comeback-library.json").exists());
+        assert!(!service.comeback_library().downloaded);
+        assert!(
+            service.settings().comeback.library.enabled,
+            "a failed download leaves the switch as it was"
+        );
+    }
+
+    /// The real file through the real mirrors: needs the internet, so it runs only when asked
+    /// (`cargo test -p winer-core pinned_library -- --ignored`), before a pull request.
+    #[tokio::test]
+    #[ignore = "downloads from the internet"]
+    async fn the_pinned_library_downloads_and_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        let status = service.download_comeback_library().await.unwrap();
+        let library = library_now(&service);
+        println!(
+            "mild {} strong {} sha256 {} source {}",
+            status.mild, status.strong, library.sha256, library.source
+        );
+        assert_eq!(library.sha256, comeback::LIBRARY_SHA256);
+        assert!(status.mild > 600 && status.strong > 900, "{status:?}");
+        assert!(
+            library
+                .mild
+                .iter()
+                .chain(&library.strong)
+                .all(|line| !line.is_empty() && line.chars().count() <= 200)
+        );
+    }
+}
