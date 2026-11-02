@@ -1,9 +1,11 @@
-//! Typing the callout into the game's own chat, which has no API to post to: synthesized key
-//! presses into the game's window (Windows `SendInput`). Enter opens the team chat, the text goes
-//! in as Unicode characters (whatever the keyboard layout or input method), Enter sends it, one
-//! message at a time. It is opt-in (`automation.callout.inGame`) and only ever types into the
-//! game's window while that already is the foreground window: winer never brings it there, and
-//! stops at the first key press it finds anything else in front.
+//! Typing the callout and the Comebacks page's lines into the game's own chat, which has no API to
+//! post to: synthesized key presses into the game's window (Windows `SendInput`). Enter opens the
+//! team chat, the text goes in as Unicode characters (whatever the keyboard layout or input
+//! method), Enter sends it, one message at a time; a message to everyone starts with `/all `. It
+//! is opt-in (`automation.callout.inGame`, `comeback.inGame`) and only ever types into the game's
+//! window while that already is the foreground window: winer never brings it there, and stops at
+//! the first key press it finds anything else in front. Nor does it type into a game that runs
+//! with more rights than winer: the system would drop every key, and say nothing.
 //!
 //! What is typed, and when, is planned here without touching the system and tested on every
 //! platform; `imp` carries the plan out on Windows and does nothing elsewhere.
@@ -13,7 +15,7 @@
 
 use std::time::Duration;
 
-use winer_core::view::{CalloutSkip, NoticeKind};
+use winer_core::view::{CalloutSkip, ComebackPlace, NoticeKind};
 
 /// The game's executable: its window is the only one typed into.
 const GAME_EXE: &str = "League of Legends.exe";
@@ -22,6 +24,11 @@ const GAME_EXE: &str = "League of Legends.exe";
 /// its chat's limit is, which was not measured (players report 150 to 230 characters); a line
 /// longer than this goes out as two messages instead, well within it.
 pub(crate) const MESSAGE_LIMIT: usize = 80;
+
+/// What a message to everyone in the game starts with: the game's chat takes it for the channel and
+/// sends the rest to all (not measured on Tencent's servers). It counts toward [`MESSAGE_LIMIT`]
+/// like the rest of the message.
+pub(crate) const ALL_CHAT: &str = "/all ";
 
 /// Enter's virtual key and scan code. The scan code goes along: a game reading the keyboard by
 /// scan code would otherwise see a key without one.
@@ -70,13 +77,18 @@ impl Pause {
     }
 }
 
-/// The messages `lines` are typed as: control characters out (a typed carriage return is an
-/// Enter), blank lines dropped, a line longer than [`MESSAGE_LIMIT`] cut in pieces.
-pub(crate) fn messages(lines: &[String]) -> Vec<String> {
+/// The messages `lines` are typed as, to the team or, with `all`, to everyone: control characters
+/// out (a typed carriage return is an Enter), blank lines dropped, a line longer than a message
+/// cut in pieces. A message to everyone is [`ALL_CHAT`] and a piece short enough for the two to
+/// fit [`MESSAGE_LIMIT`] together, so every piece of a long line carries its own.
+pub(crate) fn messages(lines: &[String], all: bool) -> Vec<String> {
+    let prefix = if all { ALL_CHAT } else { "" };
+    let limit = MESSAGE_LIMIT - prefix.encode_utf16().count();
     lines
         .iter()
         .map(|line| line.chars().filter(|c| !c.is_control()).collect::<String>())
-        .flat_map(|line| chunks(&line, MESSAGE_LIMIT))
+        .flat_map(|line| chunks(&line, limit))
+        .map(|piece| format!("{prefix}{piece}"))
         .collect()
 }
 
@@ -195,7 +207,7 @@ pub(crate) enum Typed {
     Stopped { sent: u32, reason: CalloutSkip },
 }
 
-/// The activity feed's entry for `typed`.
+/// The activity feed's entry for `typed`, the callout.
 pub(crate) fn notice(typed: Typed) -> NoticeKind {
     match typed {
         Typed::Sent(lines) => NoticeKind::TypedInGame { lines },
@@ -207,11 +219,31 @@ pub(crate) fn notice(typed: Typed) -> NoticeKind {
     }
 }
 
-/// Types `lines` into the game's team chat, if the game's window is the foreground window now.
-/// Blocks for as long as the typing takes (about half a second a message): call it off the main
-/// thread and off the async runtime.
-pub(crate) fn type_lines(lines: &[String]) -> Typed {
-    imp::type_messages(&messages(lines))
+/// The activity feed's entry for `typed`, a comeback for the team's chat or, with `all`,
+/// everyone's.
+pub(crate) fn comeback_notice(typed: Typed, all: bool) -> NoticeKind {
+    let place = if all {
+        ComebackPlace::All
+    } else {
+        ComebackPlace::Team
+    };
+    match typed {
+        Typed::Sent(messages) => NoticeKind::ComebackSent { place, messages },
+        Typed::Nothing(reason) => NoticeKind::ComebackSkipped { place, reason },
+        Typed::Stopped { sent, reason } => NoticeKind::ComebackStopped {
+            place,
+            sent,
+            reason,
+        },
+    }
+}
+
+/// Types `lines` into the game's chat, the team's or, with `all`, everyone's, if the game's window
+/// is the foreground window now and the game runs with no more rights than winer. Blocks for as
+/// long as the typing takes (about half a second a message): call it off the main thread and off
+/// the async runtime.
+pub(crate) fn type_lines(lines: &[String], all: bool) -> Typed {
+    imp::type_messages(&messages(lines, all), all)
 }
 
 #[cfg(windows)]
@@ -240,6 +272,7 @@ mod imp {
     };
 
     use super::{CalloutSkip, KeyEvent, Pause, Stroke, Typed, is_game, key_events, strokes};
+    use crate::elevation;
 
     // The plan's own constants are the system's.
     const _: () = assert!(
@@ -253,16 +286,33 @@ mod imp {
     const RELEASE_WAIT: Duration = Duration::from_millis(1500);
     const RELEASE_POLL: Duration = Duration::from_millis(15);
 
-    pub(super) fn type_messages(messages: &[String]) -> Typed {
-        let Some(game) = game_in_front() else {
+    pub(super) fn type_messages(messages: &[String], all: bool) -> Typed {
+        let Some((game, pid)) = game_in_front() else {
             return Typed::Nothing(CalloutSkip::NotInFront);
         };
-        if !keys_released() {
+        // A game started from WeGame has the client's elevation: every key would be dropped, with
+        // no error to tell, and the notice would say the line went out.
+        let (elevated, rights) = (elevation::is_elevated(), elevation::token_of(pid));
+        if elevation::outranks(elevated, rights) {
+            info!(
+                elevated,
+                game = ?rights,
+                "the game runs with more rights than winer; nothing typed"
+            );
+            return Typed::Nothing(CalloutSkip::NeedsAdmin);
+        }
+        let held = held_keys();
+        if !held.is_empty() {
+            let keys: Vec<String> = held.iter().map(|key| format!("{key:#04x}")).collect();
+            info!(?keys, "a key was still down after the wait; nothing typed");
             return Typed::Nothing(CalloutSkip::KeysHeld);
         }
         info!(
             messages = messages.len(),
-            "typing the callout into the game's chat"
+            all,
+            elevated,
+            game = ?rights,
+            "typing into the game's chat"
         );
         let (mut sent, mut pressed) = (0, false);
         for (index, message) in messages.iter().enumerate() {
@@ -284,7 +334,7 @@ mod imp {
                 } else {
                     CalloutSkip::Blocked
                 };
-                info!(sent, ?reason, "typing the callout stopped");
+                info!(sent, ?reason, "typing into the game's chat stopped");
                 return if pressed {
                     Typed::Stopped { sent, reason }
                 } else {
@@ -296,8 +346,8 @@ mod imp {
         Typed::Sent(sent)
     }
 
-    /// The game's window, when it is the foreground window.
-    fn game_in_front() -> Option<HWND> {
+    /// The game's window and its process, when that window is the foreground window.
+    fn game_in_front() -> Option<(HWND, u32)> {
         // SAFETY: plain Win32 calls on values checked as they come; the process handle opened
         // here is closed here, and `path` is as long as `size` says.
         unsafe {
@@ -327,24 +377,24 @@ mod imp {
                 return None;
             }
             let path = String::from_utf16_lossy(&path[..(size as usize).min(path.len())]);
-            is_game(&path).then_some(window)
+            is_game(&path).then_some((window, pid))
         }
     }
 
-    /// Whether every key of the keyboard is up, waiting [`RELEASE_WAIT`] at most: Shift still held
-    /// with the first Enter would open the chat to everyone, not the team, and the shortcut's own
-    /// key held down would repeat into the line.
-    fn keys_released() -> bool {
+    /// The keys of the keyboard still down after waiting [`RELEASE_WAIT`] at most for every one to
+    /// come up, by virtual key; none once they have. Shift still held with the first Enter would
+    /// open the chat to everyone, not the team, and the shortcut's own key held down would repeat
+    /// into the line.
+    fn held_keys() -> Vec<i32> {
         let deadline = Instant::now() + RELEASE_WAIT;
         loop {
             // Every virtual key from Backspace up; below it are the mouse buttons.
             // SAFETY: any virtual key may be asked about; the top bit says it is down.
-            let held = (0x08..=0xFE).any(|key| unsafe { GetAsyncKeyState(key) } < 0);
-            if !held {
-                return true;
-            }
-            if Instant::now() >= deadline {
-                return false;
+            let held: Vec<i32> = (0x08..=0xFE)
+                .filter(|&key| unsafe { GetAsyncKeyState(key) } < 0)
+                .collect();
+            if held.is_empty() || Instant::now() >= deadline {
+                return held;
             }
             thread::sleep(RELEASE_POLL);
         }
@@ -384,7 +434,7 @@ mod imp {
 mod imp {
     use super::{CalloutSkip, Typed};
 
-    pub(super) fn type_messages(_: &[String]) -> Typed {
+    pub(super) fn type_messages(_: &[String], _all: bool) -> Typed {
         Typed::Nothing(CalloutSkip::Unsupported)
     }
 }
@@ -515,14 +565,56 @@ mod tests {
             "对面\r 盖伦\n".to_owned(),
         ];
         assert_eq!(
-            messages(&lines),
+            messages(&lines, false),
             ["【敌方·红色方】winer 战绩鉴定", "对面 盖伦"],
             "a typed carriage return would be an Enter of its own"
         );
         let long = format!("小心：{}", "近20场胜率65%，".repeat(10));
         assert!(
-            messages(&[long]).len() > 1,
+            messages(&[long], false).len() > 1,
             "longer than a message: more than one"
+        );
+    }
+
+    #[test]
+    fn every_message_to_everyone_starts_with_all_and_still_fits_one_message() {
+        assert_eq!(messages(&["你好".to_owned()], true), ["/all 你好"]);
+        assert_eq!(
+            messages(&["你好".to_owned()], false),
+            ["你好"],
+            "the team's chat takes the line as it is"
+        );
+        assert!(
+            messages(&["  \r\n".to_owned()], true).is_empty(),
+            "a blank line sends no lone prefix"
+        );
+        let full = vec!["a".repeat(MESSAGE_LIMIT)];
+        assert_eq!(messages(&full, false), full, "one message to the team");
+        assert_eq!(
+            messages(&full, true).len(),
+            2,
+            "to everyone, the prefix leaves the line no room in one"
+        );
+        let long = vec![format!("小心：{}", "近20场胜率65%，".repeat(10))];
+        let to_all = messages(&long, true);
+        assert!(to_all.len() > 1, "longer than a message: more than one");
+        for message in &to_all {
+            assert!(message.starts_with(ALL_CHAT), "{message}");
+            assert!(message.encode_utf16().count() <= MESSAGE_LIMIT, "{message}");
+        }
+        let pieces: Vec<&str> = to_all
+            .iter()
+            .filter_map(|message| message.strip_prefix(ALL_CHAT))
+            .collect();
+        assert_eq!(
+            pieces,
+            chunks(&long[0], MESSAGE_LIMIT - ALL_CHAT.encode_utf16().count()),
+            "the line cut as for the team, five units shorter"
+        );
+        assert_eq!(
+            messages(&long, false),
+            chunks(&long[0], MESSAGE_LIMIT),
+            "the team's pieces as before"
         );
     }
 
@@ -562,12 +654,63 @@ mod tests {
         );
     }
 
+    #[test]
+    fn what_came_of_typing_a_comeback_is_put_in_the_activity_feed_with_its_chat() {
+        assert_eq!(
+            comeback_notice(Typed::Sent(2), true),
+            NoticeKind::ComebackSent {
+                place: ComebackPlace::All,
+                messages: 2
+            },
+            "a long line, whole in two messages"
+        );
+        assert_eq!(
+            comeback_notice(Typed::Sent(1), false),
+            NoticeKind::ComebackSent {
+                place: ComebackPlace::Team,
+                messages: 1
+            }
+        );
+        assert_eq!(
+            comeback_notice(
+                Typed::Stopped {
+                    sent: 1,
+                    reason: CalloutSkip::NotInFront
+                },
+                true
+            ),
+            NoticeKind::ComebackStopped {
+                place: ComebackPlace::All,
+                sent: 1,
+                reason: CalloutSkip::NotInFront
+            },
+            "a line of two messages, cut after the first"
+        );
+        // Every reason typing gives for pressing nothing.
+        for reason in [
+            CalloutSkip::NotInFront,
+            CalloutSkip::NeedsAdmin,
+            CalloutSkip::KeysHeld,
+            CalloutSkip::Blocked,
+            CalloutSkip::Unsupported,
+        ] {
+            for (all, place) in [(false, ComebackPlace::Team), (true, ComebackPlace::All)] {
+                assert_eq!(
+                    comeback_notice(Typed::Nothing(reason), all),
+                    NoticeKind::ComebackSkipped { place, reason }
+                );
+            }
+        }
+    }
+
     #[cfg(not(windows))]
     #[test]
     fn nothing_is_typed_off_windows() {
-        assert_eq!(
-            type_lines(&["小心".to_owned()]),
-            Typed::Nothing(CalloutSkip::Unsupported)
-        );
+        for all in [false, true] {
+            assert_eq!(
+                type_lines(&["小心".to_owned()], all),
+                Typed::Nothing(CalloutSkip::Unsupported)
+            );
+        }
     }
 }

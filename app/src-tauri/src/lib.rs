@@ -32,6 +32,10 @@ pub(crate) const PENGU_VERSION: &str = "1.1.6";
 pub(crate) const RELEASES_URL: &str = "https://github.com/sunerpy/winer/releases";
 /// The documentation's home; its pages are `DocsPage`'s.
 pub(crate) const DOCS_URL: &str = "https://firlab.app/winer/";
+/// The invitation to winer's QQ group (winer交流群, 群号 1109319256): the link its QR code holds,
+/// which leads to QQ's share page for the group. Settings › About opens it; the window never
+/// opens a URL it was given.
+pub(crate) const COMMUNITY_URL: &str = "https://qm.qq.com/q/DV1thxtEWe";
 
 pub(crate) struct Paths {
     pub log_dir: PathBuf,
@@ -117,6 +121,9 @@ fn setup(app: &mut App, start_hidden: bool) -> Result<(), Box<dyn Error>> {
     hotkey::apply(app.handle(), service.settings().general.hotkey);
     // Callout: the shortcut that sends it, none by default.
     hotkey::apply_callout(app.handle(), service.settings().automation.callout.hotkey);
+    // Comebacks: the two shortcuts that send one, none by default.
+    let comeback = service.settings().comeback;
+    hotkey::apply_comebacks(app.handle(), comeback.hotkey, comeback.all_hotkey);
 
     // Subscribed before the service starts: the core's events are not replayed, and the first
     // `Connected` is what sets up the loader and points the plugin at this session's bridge.
