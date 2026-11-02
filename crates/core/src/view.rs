@@ -1202,6 +1202,11 @@ pub struct HotkeyStatus {
     // Callout.
     /// The second shortcut, which sends the callout; let go and taken back together with this one.
     pub callout: CalloutHotkeyStatus,
+    // The Comebacks page: its two shortcuts, held and let go with the others.
+    /// The one that sends a comeback to the team (`comeback.hotkey`).
+    pub comeback: CalloutHotkeyStatus,
+    /// The one that sends a comeback to everyone in the game (`comeback.all_hotkey`).
+    pub comeback_all: CalloutHotkeyStatus,
 }
 
 /// The shortcut that sends the callout (`automation.callout.hotkey`), as the shell holds it.

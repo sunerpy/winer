@@ -477,7 +477,15 @@ error: string | null,
 /**
  * The second shortcut, which sends the callout; let go and taken back together with this one.
  */
-callout: CalloutHotkeyStatus, };
+callout: CalloutHotkeyStatus, 
+/**
+ * The one that sends a comeback to the team (`comeback.hotkey`).
+ */
+comeback: CalloutHotkeyStatus, 
+/**
+ * The one that sends a comeback to everyone in the game (`comeback.all_hotkey`).
+ */
+comebackAll: CalloutHotkeyStatus, };
 
 export type Settings = { appearance: Appearance, general: General, automation: Automation, plugin: PluginSettings, profile: ProfileSettings, 
 /**

@@ -67,6 +67,9 @@ impl State {
             suspended: self.suspended,
             error: self.error.clone(),
             callout: self.callout.status(),
+            // Held by the Comebacks page's slots once the shell registers them.
+            comeback: CalloutHotkeyStatus::default(),
+            comeback_all: CalloutHotkeyStatus::default(),
         }
     }
 }
