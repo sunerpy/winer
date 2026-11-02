@@ -1,5 +1,6 @@
-//! The public internet, for the two things winer reads from it: what augments do (ARAM.GG) and match
-//! history from the shard's own server (SGP). Nothing of the LCU's pinned trust applies here.
+//! The public internet, for what winer reads from it: what augments do (ARAM.GG), match history
+//! from the shard's own server (SGP), and the library the Comebacks page downloads on request.
+//! Nothing of the LCU's pinned trust applies here.
 
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -16,19 +17,36 @@ pub fn client() -> Result<&'static reqwest::Client, String> {
     CLIENT.get_or_init(build).as_ref().map_err(Clone::clone)
 }
 
+/// A client for hosts outside the player's region, which honours the system's proxy as the updater
+/// does: in China GitHub and its mirrors are often reachable only through it. For the Comebacks
+/// page's library (`comeback::download`).
+pub fn web_client() -> Result<&'static reqwest::Client, String> {
+    static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| builder(true)?.build().map_err(|error| error.to_string()))
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
 fn build() -> Result<reqwest::Client, String> {
+    builder(false)?.build().map_err(|error| error.to_string())
+}
+
+fn builder(system_proxy: bool) -> Result<reqwest::ClientBuilder, String> {
     let provider = Arc::new(rustls::crypto::ring::default_provider());
     let tls = rustls::ClientConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()
         .and_then(|builder| builder.with_platform_verifier())
         .map_err(|error| error.to_string())?
         .with_no_client_auth();
-    reqwest::Client::builder()
+    let builder = reqwest::Client::builder()
         .tls_backend_preconfigured(tls)
-        .no_proxy()
-        .connect_timeout(Duration::from_secs(5))
-        .build()
-        .map_err(|error| error.to_string())
+        .connect_timeout(Duration::from_secs(5));
+    Ok(if system_proxy {
+        builder
+    } else {
+        builder.no_proxy()
+    })
 }
 
 #[cfg(test)]

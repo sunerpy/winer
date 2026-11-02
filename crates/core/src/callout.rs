@@ -639,6 +639,16 @@ fn line(
             }),
         ),
     ];
+    Some(fill(template, values))
+}
+
+/// `template` with each placeholder of `values` replaced by its value. A blank value (no champion
+/// yet, a hidden name) leaves no gap in the sentence: the brackets it sat in go with it, full-width
+/// punctuation takes no space on either side, and a comma or a colon between words none before it.
+pub(crate) fn fill<'a>(
+    template: &str,
+    values: impl IntoIterator<Item = (&'a str, String)>,
+) -> String {
     let mut text = template.to_owned();
     for (key, value) in values {
         // A blank value is marked, so that only brackets it emptied go: a pair the user wrote
@@ -650,9 +660,6 @@ fn line(
         };
         text = text.replace(key, &value);
     }
-    // A blank value (no champion yet, a hidden name) must not leave a gap in the sentence: the
-    // brackets it sat in go with it, full-width punctuation takes no space on either side, and a
-    // comma or a colon between words none before it.
     let mut text = without_emptied_brackets(&text)
         .replace(BLANK, "")
         .split_whitespace()
@@ -665,7 +672,7 @@ fn line(
     }
     let text = text.replace(" ,", ",").replace(" : ", ": ");
     // Nor a column separator with nothing after it, where the compact line's name is hidden.
-    Some(text.trim_matches(['｜', '|', ' ']).to_owned())
+    text.trim_matches(['｜', '|', ' ']).to_owned()
 }
 
 /// The brackets a line may hold a value in, opening and closing.
@@ -744,6 +751,7 @@ fn sample(me: &PlayerSummary, ranking: &Ranking, tier: usize, is_self: bool) -> 
             title,
             quip: ranking.quip(tier as u8, &me.puuid, 0),
         }),
+        cell_id: None,
     }
 }
 
@@ -1209,6 +1217,7 @@ mod tests {
                 title: None,
                 quip: None,
             }),
+            cell_id: None,
         }
     }
 

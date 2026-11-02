@@ -11,6 +11,7 @@ pub mod builds;
 pub mod cache;
 pub mod callout;
 pub mod catalog;
+pub mod comeback;
 pub mod diagnose;
 pub mod export;
 pub mod friends;
@@ -28,6 +29,7 @@ pub mod rewards;
 pub mod service;
 pub mod settings;
 pub mod sgp;
+pub mod sqlite;
 pub mod view;
 
 pub use service::{Asset, CoreError, Service};
