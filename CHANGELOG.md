@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.0.19](https://github.com/sunerpy/winer/compare/v0.0.18...v0.0.19) (2026-11-03)
+
+
+### 新功能
+
+* 「反击」页（新菜单，Ctrl+7）：按快捷键随机发一句你自己写的反击语句，选人时发到选人聊天，打开「在游戏里输入」后可输入游戏的队伍或全体聊天，两次发送至少间隔 3 秒；还没有可发的语句时页面会提示 ([#43](https://github.com/sunerpy/winer/issues/43)) ([7186cdb](https://github.com/sunerpy/winer/commit/7186cdbcf578ccbc3e134616d0808bef3985e886))
+* 反击可以使用开源的祖安语录（在线语录）：下载前要确认，下载后要自己打开才会使用，文件按 SHA-256 校验，可随时移除 ([#43](https://github.com/sunerpy/winer/issues/43)) ([7186cdb](https://github.com/sunerpy/winer/commit/7186cdbcf578ccbc3e134616d0808bef3985e886))
+* 设置 › 关于新增 QQ 交流群「winer交流群」（群号 1109319256），可一键加入或复制群号 ([#43](https://github.com/sunerpy/winer/issues/43)) ([7186cdb](https://github.com/sunerpy/winer/commit/7186cdbcf578ccbc3e134616d0808bef3985e886))
+* 选人快捷语：英雄选择中点对局页队友旁的菜单，把填好楼层和英雄的一句话发到选人聊天，例如「5L大佬，小弟想玩下龙王，给您磕一个了」；也可以先在客户端对队友点「交换」，再按「发给交换的队友」快捷键发出 ([#43](https://github.com/sunerpy/winer/issues/43)) ([7186cdb](https://github.com/sunerpy/winer/commit/7186cdbcf578ccbc3e134616d0808bef3985e886))
+
+
+### 问题修复
+
+* 从 WeGame 启动的游戏收不到 winer 输入的文字：游戏以管理员身份运行时会丢弃权限较低程序的按键；现在输入前先检查权限，不够时在动态里说明，并在连接客户端时请求一次以管理员身份重启 ([#43](https://github.com/sunerpy/winer/issues/43)) ([7186cdb](https://github.com/sunerpy/winer/commit/7186cdbcf578ccbc3e134616d0808bef3985e886))
+* 游戏中按快捷键没有反应：游戏在前台时 Windows 的系统快捷键传不到 winer，现在游戏进行中改由键盘钩子接收你设置的组合键，只接手这几个组合键，其他按键原样交给游戏 ([#43](https://github.com/sunerpy/winer/issues/43)) ([7186cdb](https://github.com/sunerpy/winer/commit/7186cdbcf578ccbc3e134616d0808bef3985e886))
+
 ## [0.0.18](https://github.com/sunerpy/winer/compare/v0.0.17...v0.0.18) (2026-11-01)
 
 
