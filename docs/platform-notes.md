@@ -489,11 +489,12 @@ Read-only, on the owner's PC (winer 0.0.2, two days after it was installed), 202
   `PROCESS_QUERY_LIMITED_INFORMATION`. WeGame starts the client elevated (above); a game it starts
   takes its token. ZuAnBot, which types into the game the same way (Enter, the text as Unicode,
   Enter; `/all ` for all chat), asks for `requireAdministrator` in its manifest.
-- **Not measured**: that the game itself runs elevated, that an elevated winer's keys arrive, and
-  that `/all ` reaches all chat on Tencent's servers. From 0.0.19 winer reads the game window's
-  token before typing (`elevation::token_of`) and types nothing when it is outranked (the
-  `needsAdmin` notice), and asks once at connect to restart elevated when in-game typing is set up;
-  the owner's first test in a WeGame game is the measurement. If an elevated winer's log shows the
+- **Not measured at first** (the first two measured since, below): that the game itself runs
+  elevated, that an elevated winer's keys arrive, and that `/all ` reaches all chat on Tencent's
+  servers. From 0.0.19 winer reads the game window's token before typing (`elevation::token_of`)
+  and types nothing when it is outranked (the `needsAdmin` notice), and asks once at connect to
+  restart elevated when in-game typing is set up; the owner's first test in a WeGame game is the
+  measurement. If an elevated winer's log shows the
   typing and the chat stays empty, another cause (anti-cheat dropping injected input) is next.
 - **The shortcuts never reached winer in a game** (the owner's PC, 2026-11-03, the 0.0.19 test
   build): the client outranked winer, winer restarted elevated (`elevated=true`, 12:28:45Z) and
@@ -509,4 +510,10 @@ Read-only, on the owner's PC (winer 0.0.2, two days after it was installed), 202
   too (`game_keys.rs`): an exact combination winer holds, pressed with the game's window in front,
   goes to winer and not the game; every other key passes, and none is logged. The log says
   `listening for winer's shortcuts in the game`, and `a shortcut pressed in the game` for each press.
-  That the hook's presses arrive in a WeGame game is the owner's next test.
+- **Measured with the hook** (the same PC, test build 47fe510, 2026-11-03): winer, started elevated,
+  logged `listening for winer's shortcuts in the game` at each game's `GameStart` and `stopped
+listening` at its end; in a WeGame ARAM game, Alt+5 at 15:13:19Z and 15:17:35Z logged `a shortcut
+pressed in the game`, then `typing into the game's chat messages=1 all=false elevated=true
+game=Elevated` and `ComebackSent { place: Team }`, and the owner read the line in the team chat.
+  So an elevated winer's synthesized keys do reach a WeGame game, and nothing dropped them. Still
+  not measured: `/all ` on Tencent's servers, and the callout typed in a game.
