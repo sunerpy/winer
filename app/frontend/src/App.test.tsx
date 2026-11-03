@@ -1807,6 +1807,7 @@ describe("callout", () => {
         callout: { shortcut: "Ctrl+Shift+X", active: false, error: "HotKey already registered" },
         comeback: { shortcut: null, active: false, error: null },
         comebackAll: { shortcut: null, active: false, error: null },
+        phrase: { shortcut: null, active: false, error: null },
       }),
     );
     expect(panel().getByText(zhCN["callout.liveHotkeyFailed"])).toBeInTheDocument();
@@ -2355,8 +2356,11 @@ describe("comebacks", () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");
     const { user } = await openComebacks(backend);
-    const [team, all] = screen.getAllByRole("button", { name: zhCN["social.hotkeyRecord"] });
+    const [team, all, phrase] = screen.getAllByRole("button", {
+      name: zhCN["social.hotkeyRecord"],
+    });
     expect(all).toBeDefined();
+    expect(phrase, "the quick phrase's, under 选人快捷语").toBeDefined();
 
     await user.click(team as HTMLElement);
     await waitFor(() => expect(call).toHaveBeenCalledWith("suspend_hotkey", { suspended: true }));
@@ -2377,7 +2381,9 @@ describe("comebacks", () => {
           name === "suspend_hotkey" && (args as { suspended: boolean }).suspended === false,
       ).length;
     const before = resumed();
-    await user.click(screen.getByRole("button", { name: zhCN["social.hotkeyRecord"] }));
+    await user.click(
+      screen.getAllByRole("button", { name: zhCN["social.hotkeyRecord"] })[0] as HTMLElement,
+    );
     expect(screen.getAllByText(zhCN["social.hotkeyListening"])).toHaveLength(1);
     expect(screen.getByRole("button", { name: zhCN["social.hotkeyChange"] })).toBeInTheDocument();
     expect(resumed(), "still let go for the second recorder").toBe(before);
@@ -2387,6 +2393,39 @@ describe("comebacks", () => {
     fireEvent.keyDown(window, { code: "KeyG", key: "G", ctrlKey: true, shiftKey: true });
     await saved(call, { hotkey: "Ctrl+Shift+F", allHotkey: "Ctrl+Shift+G" });
     await waitFor(() => expect(resumed()).toBe(before + 1));
+  });
+
+  it("records the quick phrase's shortcut apart from the others, and says when to press it", async () => {
+    const backend = demoBackend();
+    const settings = await backend.call("get_settings");
+    await backend.call("set_settings", {
+      settings: { ...settings, comeback: { ...settings.comeback, hotkey: "Alt+5" } },
+    });
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openComebacks(backend);
+    expect(screen.getByText(zhCN["comeback.phraseHotkeyHint"])).toBeInTheDocument();
+    const record = screen.getAllByRole("button", { name: zhCN["social.hotkeyRecord"] });
+    // The team's holds Alt+5 already: the all chat's, then the quick phrase's, are left.
+    expect(record).toHaveLength(2);
+    await user.click(record[1] as HTMLElement);
+    fireEvent.keyDown(window, { code: "Digit5", key: "5", altKey: true });
+    expect(screen.getByText(zhCN["comeback.hotkeyTakenByTeam"])).toBeInTheDocument();
+    fireEvent.keyDown(window, { code: "Digit6", key: "6", altKey: true });
+    await saved(call, { hotkey: "Alt+5", phraseHotkey: "Alt+6" });
+    await waitFor(() => expect(screen.getAllByText(zhCN["social.hotkeyActive"])).toHaveLength(2));
+  });
+
+  it("warns that the shortcuts send nothing until there is a line or the library is on", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openComebacks(backend);
+    expect(screen.getByText(zhCN["comeback.noLinesYet"])).toBeInTheDocument();
+    await user.type(
+      screen.getByRole("textbox", { name: zhCN["comeback.newLine"] }),
+      "泉水见{Enter}",
+    );
+    await saved(call, { lines: ["泉水见"] });
+    expect(screen.queryByText(zhCN["comeback.noLinesYet"])).toBeNull();
   });
 
   it("types into the game only once switched on, and says what that risks", async () => {

@@ -135,10 +135,12 @@ lines and the team's line as inputs, and what one press would type as their prev
 
 反击 Comebacks is a page of Panels: 反击语句, the user's lines as a numbered list of CommitInputs
 (each with a danger ✕) over an add row, with its count; 快捷键, two rows recorded as 通用's is (发到队伍,
-发到全体; none of the four shortcuts takes another's combination, and one recorder listens at a time);
+发到全体; none of the five shortcuts takes another's combination, and one recorder listens at a time),
+under a `warning` line while there is no line to send and the library is off;
 游戏内发送, the 在游戏里输入 switch with its `warning` risk line and, while winer is not elevated, the
-rights note with 以管理员身份重启 (shared with 自动化's 游戏内发送); 选人快捷语, the phrases with the default
-one marked 默认 while the user has none, the placeholders and a preview for a sample teammate; and
+rights note with 以管理员身份重启 (shared with 自动化's 游戏内发送); 选人快捷语, its own shortcut row (发给交换的
+队友), the phrases with the default one marked 默认 while the user has none, the placeholders and a
+preview for a sample teammate; and
 在线语录, which says whose library it is, its licence and its risk, then 下载, which opens a Dialog whose
 only download button is 我已了解，下载 (the initial focus is 取消). Downloaded, it shows the counts, the
 date and 移除, the 使用在线语录 switch (disabled until there is a library) and the level as a Segmented

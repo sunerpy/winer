@@ -254,6 +254,12 @@ pub(crate) fn type_lines(lines: &[String], all: bool) -> Typed {
     imp::type_messages(&messages(lines, all), all)
 }
 
+/// Whether the game's window is the foreground window now (`game_keys` asks).
+#[cfg(windows)]
+pub(crate) fn game_in_front() -> bool {
+    imp::game_in_front().is_some()
+}
+
 #[cfg(windows)]
 mod imp {
     #![allow(unsafe_code)]
@@ -355,7 +361,7 @@ mod imp {
     }
 
     /// The game's window and its process, when that window is the foreground window.
-    fn game_in_front() -> Option<(HWND, u32)> {
+    pub(super) fn game_in_front() -> Option<(HWND, u32)> {
         // SAFETY: plain Win32 calls on values checked as they come; the process handle opened
         // here is closed here, and `path` is as long as `size` says.
         unsafe {

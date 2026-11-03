@@ -34,7 +34,7 @@ import {
   toast,
 } from "../ui";
 import { GameRightsNote, PageBody } from "./common";
-import { ComebackHotkeyRow } from "./settings/HotkeyRow";
+import { ComebackHotkeyRow, PhraseHotkeyRow } from "./settings/HotkeyRow";
 
 const LEVELS: readonly LibraryLevel[] = ["mild", "strong", "both"];
 
@@ -182,11 +182,19 @@ function LinesPanel() {
   );
 }
 
-/** 快捷键: the team's shortcut and the all chat's, each with what the system made of it. */
+/** 快捷键: the team's shortcut and the all chat's, each with what the system made of it; and a
+ *  warning while there is nothing for them to send. */
 function ShortcutsPanel() {
   const t = useT();
+  const { lines, library } = useSettings().comeback;
   return (
     <Panel eyebrow={t("comeback.shortcuts")} className="col-span-12">
+      {lines.length === 0 && !library.enabled && (
+        <p className="flex items-start gap-1.5 pb-2 text-[12px] leading-4 text-warning">
+          <TriangleAlert size={13} strokeWidth={2} aria-hidden className="mt-0.5 shrink-0" />
+          {t("comeback.noLinesYet")}
+        </p>
+      )}
       <ComebackHotkeyRow all={false} />
       <ComebackHotkeyRow all />
       <p className="pt-2 text-[11.5px] leading-4 text-fg-subtle">{t("comeback.spacing")}</p>
@@ -226,7 +234,8 @@ function GamePanel() {
 }
 
 /** 选人快捷语: the templates the Live page offers for a teammate, the language's own while the user
- *  has none, and how they read for a sample teammate. */
+ *  has none, the shortcut that sends the first to the teammate asked to trade, and how they read
+ *  for a sample teammate. */
 function PhrasesPanel() {
   const t = useT();
   const save = useSave();
@@ -255,6 +264,7 @@ function PhrasesPanel() {
       }
     >
       <p className="pb-2 text-[12px] leading-4 text-fg-muted">{t("comeback.phrasesHint")}</p>
+      <PhraseHotkeyRow />
       <TextList
         items={own}
         limit={PHRASE_LIMIT}

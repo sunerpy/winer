@@ -1001,6 +1001,7 @@ const DEFAULT_SETTINGS: Settings = {
     allHotkey: null,
     inGame: false,
     phrases: [],
+    phraseHotkey: null,
     library: { enabled: false, level: "mild" },
   },
 };
@@ -1035,6 +1036,7 @@ export function demoBackend(): Backend {
     callout: held(settings.automation.callout.hotkey, suspended),
     comeback: held(settings.comeback.hotkey, suspended),
     comebackAll: held(settings.comeback.allHotkey, suspended),
+    phrase: held(settings.comeback.phraseHotkey, suspended),
   });
   let hotkey = hotkeyOf(false);
   const setHotkey = (suspended: boolean) => {
@@ -1154,7 +1156,8 @@ export function demoBackend(): Backend {
         settings.general.hotkey !== hotkey.shortcut ||
         settings.automation.callout.hotkey !== hotkey.callout.shortcut ||
         settings.comeback.hotkey !== hotkey.comeback.shortcut ||
-        settings.comeback.allHotkey !== hotkey.comebackAll.shortcut
+        settings.comeback.allHotkey !== hotkey.comebackAll.shortcut ||
+        settings.comeback.phraseHotkey !== hotkey.phrase.shortcut
       )
         setHotkey(hotkey.suspended);
       return settings;

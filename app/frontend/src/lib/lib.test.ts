@@ -106,6 +106,7 @@ const SETTINGS = {
     allHotkey: null,
     inGame: false,
     phrases: [],
+    phraseHotkey: null,
     library: { enabled: false, level: "mild" },
   },
 } satisfies Settings;

@@ -113,6 +113,17 @@ for one client build or one privilege level, it says so.
   them winer's Hextech ARAM sets (1,065–1,187 bytes each), and each `PUT` that added one more set,
   about 66 KB, answered `413` `Content length is too large`. winer now keeps 20 sets of its own,
   the newest, and the list under 60,000 bytes.
+- **Champ select's champion trades (交换)** (the owner's ARAM games, 2026-11-03, a read-only recorder
+  of `/lol-champ-select/v1/session` every second): `trades` holds one `{id, cellId, state}` for each
+  teammate's cell, never the user's own; an id changes whenever the champions do. Captured states:
+  `AVAILABLE`, `INVALID` (every teammate with no champion yet, and some with one; why is not
+  measured) and `BUSY`
+  on two teammates' cells at once while those two trade with each other (1.3 s later their
+  champions had swapped). The client's own `/help` (type `ChampSelectSwapState`) lists `ACCEPTED`,
+  `AVAILABLE`, `BUSY`, `CANCELLED`, `DECLINED`, `INVALID`, `RECEIVED` and `SENT`; the state of the
+  cell the user asked (`SENT`, by its name) is not captured yet, since the owner asked nobody.
+  `/lol-champ-select/v1/ongoing-trade` answered `404` throughout. The quick phrase's shortcut sends
+  to the cell whose trade is `SENT`.
 
 ## Profile and chat presence
 
@@ -484,3 +495,18 @@ Read-only, on the owner's PC (winer 0.0.2, two days after it was installed), 202
   `needsAdmin` notice), and asks once at connect to restart elevated when in-game typing is set up;
   the owner's first test in a WeGame game is the measurement. If an elevated winer's log shows the
   typing and the chat stays empty, another cause (anti-cheat dropping injected input) is next.
+- **The shortcuts never reached winer in a game** (the owner's PC, 2026-11-03, the 0.0.19 test
+  build): the client outranked winer, winer restarted elevated (`elevated=true`, 12:28:45Z) and
+  registered Alt+3 and Alt+5. Every press in the lobby and in champ select is in its log (12:28 to
+  13:47Z; at 13:47:35Z Alt+5 posted a line in champ select's chat), and not one in the three games
+  between (13:09 to 13:42Z, 13:44 to 13:46Z, from 13:48Z), though the owner pressed Alt+5 in them.
+  The logs of 2026-11-01 and 2026-11-02 hold no in-game press either. So `RegisterHotKey`'s
+  `WM_HOTKEY` does not come while the game is in front, whatever winer's rights. One documented way a
+  window in front does that is raw input with `RIDEV_NOHOTKEYS` ("the application-defined keyboard
+  device hotkeys are not handled", learn.microsoft.com, `RAWINPUTDEVICE`); which way the game does
+  it is not measured. ZuAnBot, which works in these games, listens through a `WH_KEYBOARD_LL` hook.
+  From the next build, while a game runs (`GameStart`, `InProgress`, `Reconnect`) winer installs one
+  too (`game_keys.rs`): an exact combination winer holds, pressed with the game's window in front,
+  goes to winer and not the game; every other key passes, and none is logged. The log says
+  `listening for winer's shortcuts in the game`, and `a shortcut pressed in the game` for each press.
+  That the hook's presses arrive in a WeGame game is the owner's next test.

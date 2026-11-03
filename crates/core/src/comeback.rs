@@ -1,6 +1,6 @@
 //! The Comebacks page (反击): which line a press of its two shortcuts sends and where, the quick
-//! phrases a teammate is sent from champ select's board, and the library a user may download (在线
-//! 语录). Pure: the service keeps what went out last and the downloaded file
+//! phrases a teammate is sent from champ select's board or by their own shortcut, and the library a
+//! user may download (在线语录). Pure: the service keeps what went out last and the downloaded file
 //! (`service/comeback.rs`); the shell types into the game.
 
 use std::{
@@ -13,9 +13,10 @@ use sha2::{Digest as _, Sha256};
 
 use crate::{
     callout,
+    model::ChampSelectSession,
     settings::{ComebackSettings, Language, LibraryLevel},
     sqlite::{self, Value},
-    view::{CalloutSkip, ComebackLibrary, ComebackPlace, Phase},
+    view::{CalloutSkip, ComebackLibrary, ComebackPlace, Phase, PhraseSkip},
 };
 
 /// The least time between two comebacks that go out: presses one after another flood the chat,
@@ -39,7 +40,8 @@ pub enum ComebackPress {
 
 /// What went out last, and when it finished going out: the next press neither repeats it nor
 /// follows it within [`SPACING`]. Only a line that reached the chat, whole or in part, counts; a
-/// press that sent nothing leaves it as it was.
+/// press that sent nothing leaves it as it was. A quick phrase sent by its shortcut starts the
+/// spacing too, and is no line to avoid.
 #[derive(Clone, Debug, Default)]
 pub struct Memory {
     pub last: Option<String>,
@@ -159,6 +161,43 @@ pub fn phrase(template: &str, seat: &str, champion: &str, name: &str) -> String 
             ("{name}", name.to_owned()),
         ],
     )
+}
+
+/// What a press of the quick phrase's shortcut does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PhrasePress {
+    /// The first quick phrase goes to champ select `game_id`'s chat, for the teammate in `cell_id`.
+    Send { game_id: i64, cell_id: i64 },
+    /// Nothing is sent.
+    Skip(PhraseSkip),
+}
+
+/// What a press does in `phase`, with champ select's session as the client last sent it: the first
+/// quick phrase is for the teammate the user has asked to trade champions with (交换), the one
+/// they would pick from the board; nothing goes out within [`SPACING`] of the last line or phrase
+/// that did (`memory`, at `now`).
+pub fn phrase_press(
+    phase: Phase,
+    session: Option<&ChampSelectSession>,
+    memory: &Memory,
+    now: Instant,
+) -> PhrasePress {
+    let Some(session) = session.filter(|_| phase == Phase::ChampSelect) else {
+        return PhrasePress::Skip(PhraseSkip::NotChampSelect);
+    };
+    let Some(cell_id) = session.trade_asked() else {
+        return PhrasePress::Skip(PhraseSkip::NoTrade);
+    };
+    if memory
+        .sent_at
+        .is_some_and(|at| now.saturating_duration_since(at) < SPACING)
+    {
+        return PhrasePress::Skip(PhraseSkip::TooSoon);
+    }
+    PhrasePress::Send {
+        game_id: session.game_id,
+        cell_id,
+    }
 }
 
 // ---- Lines as a message holds them ----
@@ -386,6 +425,66 @@ mod tests {
             in_game,
             ..ComebackSettings::default()
         }
+    }
+
+    #[test]
+    fn the_quick_phrases_shortcut_names_the_teammate_asked_to_trade() {
+        let session = |trades: &[(i64, &str)]| -> ChampSelectSession {
+            serde_json::from_value(serde_json::json!({
+                "gameId": 601024537150_i64,
+                "localPlayerCellId": 7,
+                "trades": trades
+                    .iter()
+                    .enumerate()
+                    .map(|(id, (cell, state))| serde_json::json!({
+                        "id": id + 20, "cellId": cell, "state": state
+                    }))
+                    .collect::<Vec<_>>(),
+            }))
+            .unwrap()
+        };
+        let now = Instant::now();
+        let memory = Memory::default();
+        let asked = session(&[
+            (6, "AVAILABLE"),
+            (9, "INVALID"),
+            (5, "SENT"),
+            (8, "AVAILABLE"),
+        ]);
+        assert_eq!(
+            phrase_press(Phase::ChampSelect, Some(&asked), &memory, now),
+            PhrasePress::Send {
+                game_id: 601024537150,
+                cell_id: 5
+            }
+        );
+        let none = session(&[(6, "AVAILABLE"), (9, "INVALID")]);
+        assert_eq!(
+            phrase_press(Phase::ChampSelect, Some(&none), &memory, now),
+            PhrasePress::Skip(PhraseSkip::NoTrade),
+            "no ask out, or answered"
+        );
+        assert_eq!(
+            phrase_press(Phase::ChampSelect, None, &memory, now),
+            PhrasePress::Skip(PhraseSkip::NotChampSelect),
+            "its session is not in yet"
+        );
+        assert_eq!(
+            phrase_press(Phase::InProgress, Some(&asked), &memory, now),
+            PhrasePress::Skip(PhraseSkip::NotChampSelect)
+        );
+        let recent = Memory {
+            last: None,
+            sent_at: Some(now),
+        };
+        assert_eq!(
+            phrase_press(Phase::ChampSelect, Some(&asked), &recent, now + SPACING / 2),
+            PhrasePress::Skip(PhraseSkip::TooSoon)
+        );
+        assert!(matches!(
+            phrase_press(Phase::ChampSelect, Some(&asked), &recent, now + SPACING),
+            PhrasePress::Send { .. }
+        ));
     }
 
     #[test]

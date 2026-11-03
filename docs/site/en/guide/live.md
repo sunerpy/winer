@@ -107,12 +107,14 @@ the lines yourself; winer ships none. An open library can also be downloaded, as
 - **Lines**: one a row, 100 at most, each up to 200 characters. A press sends one at random, never
   the same line twice in a row.
 - **Shortcuts**: **Send to the team** and **Send to everyone**, none by default, and neither can share a
-  combination with the shortcut that brings up winer or the one that sends the callout. In champ
+  combination with the shortcut that brings up winer, the one that sends the callout or **Send to the
+  teammate you asked to trade**. In champ
   select both go to its chat, which only your team reads; in a game, with **Type in the game** on,
   **Send to the team** types into the team chat and **Send to everyone** types the line after `/all ` into
   the chat everyone sees, a line too long for one message going out as several. They work while
   winer's window is hidden, and what a press did is noted in **Activity** on the overview: sent
-  whole, sent in part, or not sent and why.
+  whole, sent in part, or not sent and why. While there is no line to send (none of your own, and
+  the online library off), a line here says so.
 - Two sends are at least 3 seconds apart, so that a burst of them does not flood the chat and get you
   reported.
 - **In-game sending**: its **Type in the game** is off by default. With it on, a press in a game makes winer type on the
@@ -138,6 +140,13 @@ The phrases are edited in **Comebacks › Champ-select phrases**: 20 at most, ea
 it is hidden, and the brackets around it go with it). Removing all of them brings the default back.
 Before sending, winer checks that it is still the same champ select and that the player is your
 teammate, so a menu left open into the next game sends nothing to the wrong player.
+
+**Send to the teammate you asked to trade**, in the same panel, is the phrases' shortcut, none by
+default. In champ select, click Trade in the client on the teammate whose champion you want, then
+press it: winer posts the first phrase to champ select's chat with that teammate's seat and champion
+filled in, without its window open. With no trade asked, one already answered, or less than 3
+seconds since the last line, it sends nothing, and **Activity** on the overview says why. It cannot
+share a combination with the shortcuts that bring up winer, send the callout or send comebacks.
 
 ### Online library
 

@@ -627,6 +627,10 @@ pub struct ComebackSettings {
     /// [`Self::LINE_LENGTH`] characters. Empty means the language's own
     /// (`comeback::default_phrases`).
     pub phrases: Vec<String>,
+    /// The shortcut that sends the first quick phrase, in champ select, to the teammate the user
+    /// has just asked to trade champions with (交换). In [`normalize_hotkey`]'s form; never one the
+    /// window, the callout or the comebacks hold.
+    pub phrase_hotkey: Option<String>,
     /// The library downloaded on the user's request (在线语录), and whether a press picks from it.
     pub library: LibraryRule,
 }
@@ -1105,11 +1109,15 @@ impl Settings {
         callout.watch_template = clip(&callout.watch_template, 200);
         callout.target_template = clip(&callout.target_template, 200);
         callout.ally_template = clip(&callout.ally_template, 200);
-        // The Comebacks page's two shortcuts are spelled the same way and take no combination held
-        // before them: the window's, the callout's, then the team's for the all-chat one.
+        // The Comebacks page's three shortcuts are spelled the same way and take no combination held
+        // before them: the window's, the callout's, then each earlier one of theirs.
         let mut held = vec![self.general.hotkey.clone(), callout.hotkey.clone()];
         let comeback = &mut self.comeback;
-        for shortcut in [&mut comeback.hotkey, &mut comeback.all_hotkey] {
+        for shortcut in [
+            &mut comeback.hotkey,
+            &mut comeback.all_hotkey,
+            &mut comeback.phrase_hotkey,
+        ] {
             *shortcut = shortcut
                 .as_deref()
                 .and_then(normalize_hotkey)
@@ -2012,6 +2020,49 @@ mod tests {
         assert!(callout.auto && callout.template == "{name}" && callout.tiers == TierSet::Horses);
         let defaults = CalloutRule::default();
         assert!(defaults.hotkey.is_none() && !defaults.in_game);
+    }
+
+    #[test]
+    fn the_comebacks_shortcuts_are_spelled_one_way_and_never_take_one_held_before() {
+        let with = |team: &str, all: &str, phrase: &str| {
+            let mut settings = Settings::default();
+            settings.general.hotkey = Some("Alt+Backquote".into());
+            settings.automation.callout.hotkey = Some("Alt+3".into());
+            settings.comeback.hotkey = Some(team.into());
+            settings.comeback.all_hotkey = Some(all.into());
+            settings.comeback.phrase_hotkey = Some(phrase.into());
+            let comeback = settings.normalized().comeback;
+            (comeback.hotkey, comeback.all_hotkey, comeback.phrase_hotkey)
+        };
+        assert_eq!(
+            with("alt+5", " ctrl + alt + 5 ", "alt + digit6"),
+            (
+                Some("Alt+5".into()),
+                Some("Ctrl+Alt+5".into()),
+                Some("Alt+6".into())
+            )
+        );
+        assert_eq!(
+            with("Alt+3", "Alt+Backquote", "Alt+6").0,
+            None,
+            "the callout keeps its combination"
+        );
+        assert_eq!(
+            with("Alt+3", "Alt+Backquote", "Alt+6").1,
+            None,
+            "and the window its own"
+        );
+        assert_eq!(
+            with("Alt+5", "Alt+6", "alt+5"),
+            (Some("Alt+5".into()), Some("Alt+6".into()), None),
+            "the quick phrase's never takes a comeback's"
+        );
+        assert_eq!(
+            with("Alt+5", "Alt+6", "Alt+6").2,
+            None,
+            "nor the all-chat one's"
+        );
+        assert_eq!(with("Alt+5", "Alt+6", "7").2, None, "a key alone is typed");
     }
 
     #[test]

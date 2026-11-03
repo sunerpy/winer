@@ -171,11 +171,12 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
             hotkey::apply(app, settings.general.hotkey.clone());
             // Callout: its own shortcut.
             hotkey::apply_callout(app, settings.automation.callout.hotkey.clone());
-            // Comebacks: their two shortcuts.
+            // Comebacks: their two shortcuts, and the quick phrase's.
             hotkey::apply_comebacks(
                 app,
                 settings.comeback.hotkey.clone(),
                 settings.comeback.all_hotkey.clone(),
+                settings.comeback.phrase_hotkey.clone(),
             );
             // Typing into the game, set up just now while connected to a client that outranks
             // winer: its games will too.

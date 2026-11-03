@@ -1062,7 +1062,7 @@ export const zhCN = {
   "callout.skip.unsupported": "游戏内发送只支持 Windows",
   "callout.skip.needsAdmin":
     "游戏以管理员身份运行而 winer 不是，模拟的按键会被系统丢弃；以管理员身份重启 winer 后再试",
-  "callout.skip.noLines": "反击页还没有可以发的语句",
+  "callout.skip.noLines": "还没有可以发的反击语句，请在「反击」页添加，或下载并打开在线语录",
   "callout.skip.tooSoon": "离上一句还不到 3 秒",
   // Typing into the game: a game started from WeGame runs as administrator, and Windows drops the
   // keys of a program that does not.
@@ -1093,7 +1093,10 @@ export const zhCN = {
     "游戏中打开「在游戏里输入」后，在这一句前加上 /all 输入全体聊天，对面也看得到；英雄选择中和「发到队伍」一样，发到只有本队看得到的选人聊天。默认不设置。",
   "comeback.hotkeyTakenByTeam": "这个组合键已用于把反击发到队伍，请换一个。",
   "comeback.hotkeyTakenByAll": "这个组合键已用于把反击发到全体，请换一个。",
+  "comeback.hotkeyTakenByPhrase": "这个组合键已用于把快捷语发给交换的队友，请换一个。",
   "comeback.spacing": "两次发送至少隔 3 秒：上一句发出后 3 秒内再按，这一下不发，以免刷屏被举报。",
+  "comeback.noLinesYet":
+    "还没有可以发的语句，现在按这两个快捷键什么也不会发：在上面的「反击语句」里添加，或下载下面的在线语录并打开「使用在线语录」。",
   "comeback.gameSection": "游戏内发送",
   "comeback.inGame": "在游戏里输入",
   "comeback.inGameHint":
@@ -1110,6 +1113,9 @@ export const zhCN = {
   "comeback.newPhrase": "新的快捷语",
   "comeback.newPhrasePlaceholder": "写一句快捷语，按 Enter 添加",
   "comeback.phrasePreview": "预览：发给 {seat} 玩{champion}的 {name}",
+  "comeback.phraseHotkey": "发给交换的队友",
+  "comeback.phraseHotkeyHint":
+    "英雄选择中，先在客户端里对想换英雄的队友点「交换」，再按下：把第一句快捷语发到选人聊天，楼层和英雄填成那位队友的。默认不设置。",
   "comeback.library": "在线语录",
   "comeback.libraryAbout":
     "开源项目 github.com/cndiandian/zuanbot.com 收集的祖安语录（Apache-2.0 许可），分「口吐芬芳」和「火力全开」两档。winer 不自带它，只在你点“下载”并确认后才从网上下载。",
@@ -1144,6 +1150,12 @@ export const zhCN = {
   "comeback.place.champSelect": "选人聊天",
   "comeback.place.team": "队伍",
   "comeback.place.all": "全体",
+  // The quick phrase's shortcut.
+  "phrase.notice.sent": "已把快捷语发到选人聊天",
+  "phrase.notice.skipped": "快捷语没有发送：{reason}",
+  "phrase.skip.notChampSelect": "只能在英雄选择中发送",
+  "phrase.skip.noTrade": "还没有向队友发起交换，先在客户端里对那位队友点「交换」",
+  "phrase.skip.tooSoon": "离上一句还不到 3 秒",
 } as const;
 
 export type MessageKey = keyof typeof zhCN;

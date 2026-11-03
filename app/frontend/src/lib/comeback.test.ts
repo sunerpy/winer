@@ -10,6 +10,7 @@ describe("the Comebacks page's quick phrases", () => {
     allHotkey: null,
     inGame: false,
     phrases: [],
+    phraseHotkey: null,
     library: { enabled: false, level: "mild" },
   };
 

@@ -99,6 +99,11 @@ export function noticeText(kind: NoticeKind, t: Translate, catalog: Catalog | nu
         place: t(`comeback.place.${kind.place}`),
         reason: t(`callout.skip.${kind.reason}`),
       });
+    // The quick phrase's shortcut.
+    case "phraseSent":
+      return t("phrase.notice.sent");
+    case "phraseSkipped":
+      return t("phrase.notice.skipped", { reason: t(`phrase.skip.${kind.reason}`) });
   }
 }
 
@@ -115,7 +120,8 @@ export function isFailure(kind: NoticeKind): boolean {
     kind.kind === "calloutSkipped" ||
     // The Comebacks page's shortcuts.
     kind.kind === "comebackStopped" ||
-    kind.kind === "comebackSkipped"
+    kind.kind === "comebackSkipped" ||
+    kind.kind === "phraseSkipped"
   );
 }
 

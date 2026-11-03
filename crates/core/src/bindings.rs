@@ -193,6 +193,7 @@ pub fn typescript() -> String {
         settings::LibraryLevel,
         view::ComebackPlace,
         view::ComebackLibrary,
+        view::PhraseSkip,
     );
     out
 }

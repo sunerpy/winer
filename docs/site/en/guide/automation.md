@@ -98,8 +98,8 @@ summoner spells for Jhin"; a failure says why. Nothing is posted to chat.
   **In-game sending** on, it types the in-game lines chosen below into the game's team chat. It
   works while winer's window is hidden, and what it did is noted in **Activity** on the overview. It
   is set the way the shortcut that brings up winer is (see [Settings](/en/guide/settings)); it cannot
-  share a combination with that one, nor can the two [Comebacks](/en/guide/live#comebacks) shortcuts
-  share one with either.
+  share a combination with that one, nor can the three shortcuts of the [Comebacks](/en/guide/live#comebacks)
+  page share one with either.
 
 ### Lines in game
 
@@ -108,6 +108,12 @@ The game's own chat has no API in the client, so the only way in is to type like
 type on the keyboard's behalf: `Enter` opens the team chat, a line goes in, `Enter` sends it, line
 by line, and a line too long for one message goes out as several.
 
+- With the game's window in front, Windows' system shortcuts do not reach winer, so while a game
+  runs winer also listens for your combinations (the shortcuts that bring up winer, send the callout
+  and send comebacks) through a keyboard hook: only with the game's window in front, and only an
+  exact one of those combinations, is a press winer's, and that press no longer reaches the game.
+  Every other key goes to the game untouched, and winer keeps no record of it. The hook goes as the
+  game ends.
 - It types only while the game's window is already in front; winer never brings the game there.
   The moment the game's window leaves the foreground, typing stops, and a half-typed line stays in
   the game's chat box unsent.

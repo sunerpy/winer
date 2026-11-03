@@ -328,7 +328,7 @@ runes: PageOutcome | null,
 /**
  * The two summoner spells are the ones set up.
  */
-spells: boolean, } | { "kind": "itemSetWritten", championId: number, } | { "kind": "itemSetsFull" } | { "kind": "rewardsClaimed", claimed: number, left: number, } | { "kind": "rewardsFailed", failed: number, } | { "kind": "typedInGame", lines: number, } | { "kind": "typingStopped", lines: number, reason: CalloutSkip, } | { "kind": "calloutSkipped", reason: CalloutSkip, } | { "kind": "comebackSent", place: ComebackPlace, messages: number, } | { "kind": "comebackStopped", place: ComebackPlace, sent: number, reason: CalloutSkip, } | { "kind": "comebackSkipped", place: ComebackPlace, reason: CalloutSkip, };
+spells: boolean, } | { "kind": "itemSetWritten", championId: number, } | { "kind": "itemSetsFull" } | { "kind": "rewardsClaimed", claimed: number, left: number, } | { "kind": "rewardsFailed", failed: number, } | { "kind": "typedInGame", lines: number, } | { "kind": "typingStopped", lines: number, reason: CalloutSkip, } | { "kind": "calloutSkipped", reason: CalloutSkip, } | { "kind": "comebackSent", place: ComebackPlace, messages: number, } | { "kind": "comebackStopped", place: ComebackPlace, sent: number, reason: CalloutSkip, } | { "kind": "comebackSkipped", place: ComebackPlace, reason: CalloutSkip, } | { "kind": "phraseSent" } | { "kind": "phraseSkipped", reason: PhraseSkip, };
 
 export type PlayerProfile = { puuid: string, name: RiotId | null, level: number, iconId: number, private: boolean, ranked: Ranked, };
 
@@ -485,7 +485,12 @@ comeback: CalloutHotkeyStatus,
 /**
  * The one that sends a comeback to everyone in the game (`comeback.all_hotkey`).
  */
-comebackAll: CalloutHotkeyStatus, };
+comebackAll: CalloutHotkeyStatus, 
+/**
+ * The one that sends the first quick phrase to the teammate asked to trade
+ * (`comeback.phrase_hotkey`).
+ */
+phrase: CalloutHotkeyStatus, };
 
 export type Settings = { appearance: Appearance, general: General, automation: Automation, plugin: PluginSettings, profile: ProfileSettings, 
 /**
@@ -1246,6 +1251,12 @@ inGame: boolean,
  */
 phrases: Array<string>, 
 /**
+ * The shortcut that sends the first quick phrase, in champ select, to the teammate the user
+ * has just asked to trade champions with (交换). In [`normalize_hotkey`]'s form; never one the
+ * window, the callout or the comebacks hold.
+ */
+phraseHotkey: string | null, 
+/**
  * The library downloaded on the user's request (在线语录), and whether a press picks from it.
  */
 library: LibraryRule, };
@@ -1273,3 +1284,5 @@ mild: number, strong: number,
  * When it was downloaded, in milliseconds since the epoch.
  */
 fetchedAt: number | null, };
+
+export type PhraseSkip = "notChampSelect" | "noTrade" | "tooSoon";

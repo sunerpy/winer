@@ -16,7 +16,7 @@ use tracing::{info, warn};
 use super::{CHAMP_SELECT, CoreError, Service, champ_select_chat, lock, say};
 use crate::{
     callout,
-    comeback::{self, ComebackPress, Library, Memory},
+    comeback::{self, ComebackPress, Library, Memory, PhrasePress},
     model::ChampSelectSession,
     settings::{Audience, CalloutDelivery, write_atomic},
     view::{ComebackLibrary, Phase},
@@ -219,6 +219,25 @@ impl Service {
         Ok(1)
     }
 
+    /// What a press of the quick phrase's shortcut does now (`comeback::phrase_press`), from the
+    /// phase and champ select's session as the client last sent it, its trades among it. The shell
+    /// sends the phrase through [`Self::send_phrase`] and then tells [`Self::phrase_went_out`].
+    pub fn phrase_press(&self) -> PhrasePress {
+        let phase = lock(&self.inner.state).phase;
+        let session = self
+            .client()
+            .ok()
+            .and_then(|client| lock(&client.live).champ_select.clone());
+        let memory = lock(&self.inner.comeback.memory).clone();
+        comeback::phrase_press(phase, session.as_ref(), &memory, Instant::now())
+    }
+
+    /// A quick phrase went out by its shortcut just now: the next press of the Comebacks page's
+    /// shortcuts waits `comeback::SPACING`, and the line not to repeat stays as it was.
+    pub fn phrase_went_out(&self) {
+        lock(&self.inner.comeback.memory).sent_at = Some(Instant::now());
+    }
+
     /// Sends quick phrase `index` (`comeback::phrases`) to champ select's chat for the teammate in
     /// cell `cell_id` of champ select `game_id`: their seat and champion filled in. Refused outside
     /// champ select (`Busy`), and for another champ select, the user's own cell or a cell not of
@@ -386,7 +405,10 @@ mod tests {
     use super::*;
     use crate::{
         service::{Client, Live},
-        view::{ChampSelectView, ChampionInfo, GameData, PlayerStats, RiotId, Seat, TimerView},
+        view::{
+            ChampSelectView, ChampionInfo, GameData, PhraseSkip, PlayerStats, RiotId, Seat,
+            TimerView,
+        },
     };
 
     /// The fixture `sqlite.rs` reads: harmless words shaped as the library is.
@@ -512,6 +534,57 @@ mod tests {
             service.send_phrase(0, 7, 1).await,
             Err(CoreError::Busy(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn the_quick_phrases_shortcut_reads_the_trade_asked_from_the_clients_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = in_champ_select(&dir, 7);
+        let held = |trades: serde_json::Value| {
+            let session: ChampSelectSession =
+                serde_json::from_value(serde_json::json!({ "gameId": 7, "trades": trades }))
+                    .unwrap();
+            let client = service.client().unwrap();
+            lock(&client.live).champ_select = Some(session);
+        };
+        assert_eq!(
+            service.phrase_press(),
+            PhrasePress::Skip(PhraseSkip::NotChampSelect),
+            "no session from the client yet"
+        );
+        held(serde_json::json!([{ "id": 3, "cellId": 1, "state": "AVAILABLE" }]));
+        assert_eq!(
+            service.phrase_press(),
+            PhrasePress::Skip(PhraseSkip::NoTrade)
+        );
+        held(serde_json::json!([{ "id": 4, "cellId": 1, "state": "SENT" }]));
+        assert_eq!(
+            service.phrase_press(),
+            PhrasePress::Send {
+                game_id: 7,
+                cell_id: 1
+            }
+        );
+        service.comeback_went_out("a line");
+        assert_eq!(
+            service.phrase_press(),
+            PhrasePress::Skip(PhraseSkip::TooSoon),
+            "a comeback just went out"
+        );
+        lock(&service.inner.comeback.memory).sent_at = None;
+        service.phrase_went_out();
+        let memory = lock(&service.inner.comeback.memory).clone();
+        assert!(memory.sent_at.is_some(), "a phrase starts the spacing");
+        assert_eq!(
+            memory.last.as_deref(),
+            Some("a line"),
+            "and is no line to avoid"
+        );
+        lock(&service.inner.state).phase = Phase::InProgress;
+        assert_eq!(
+            service.phrase_press(),
+            PhrasePress::Skip(PhraseSkip::NotChampSelect)
+        );
     }
 
     /// A client whose champ select is each of `game_ids` in turn as it is asked, with chat room

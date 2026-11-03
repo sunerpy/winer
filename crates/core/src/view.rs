@@ -838,6 +838,26 @@ pub enum NoticeKind {
         place: ComebackPlace,
         reason: CalloutSkip,
     },
+    // The quick phrase's shortcut (`comeback::phrase_press`).
+    /// Sent the first quick phrase to champ select's chat, for the teammate asked to trade.
+    PhraseSent,
+    /// The quick phrase's shortcut sent nothing, for `reason`.
+    PhraseSkipped {
+        reason: PhraseSkip,
+    },
+}
+
+/// Why the quick phrase's shortcut sent nothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum PhraseSkip {
+    /// Not in champ select: the phrases go to its chat only.
+    NotChampSelect,
+    /// No teammate has been asked to trade (交换) yet, or they have answered: the phrase names the
+    /// one asked.
+    NoTrade,
+    /// Less than `comeback::SPACING` after the last comeback or quick phrase that went out.
+    TooSoon,
 }
 
 /// Where a comeback goes: champ select's chat, or the game's team or all chat.
@@ -1207,6 +1227,9 @@ pub struct HotkeyStatus {
     pub comeback: CalloutHotkeyStatus,
     /// The one that sends a comeback to everyone in the game (`comeback.all_hotkey`).
     pub comeback_all: CalloutHotkeyStatus,
+    /// The one that sends the first quick phrase to the teammate asked to trade
+    /// (`comeback.phrase_hotkey`).
+    pub phrase: CalloutHotkeyStatus,
 }
 
 /// The shortcut that sends the callout (`automation.callout.hotkey`), as the shell holds it.

@@ -1111,7 +1111,8 @@ export const en: Record<MessageKey, string> = {
   "callout.skip.unsupported": "in-game sending works on Windows only",
   "callout.skip.needsAdmin":
     "the game runs as administrator and winer does not, so the system would drop its keys; restart winer as administrator and try again",
-  "callout.skip.noLines": "the Comebacks page has no line to send",
+  "callout.skip.noLines":
+    "there is no comeback line yet: add some on the Comebacks page, or download the online library and turn it on",
   "callout.skip.tooSoon": "less than 3 seconds since the last line",
   // Typing into the game: a game started from WeGame runs as administrator, and Windows drops the
   // keys of a program that does not.
@@ -1142,8 +1143,12 @@ export const en: Record<MessageKey, string> = {
     "In a game, with Type in the game on, it types the line into the all chat with /all before it, where the enemy reads it too; in champ select it posts to the champ-select chat, which only your team reads, as Send to the team does. None by default.",
   "comeback.hotkeyTakenByTeam": "This combination sends a comeback to the team. Choose another.",
   "comeback.hotkeyTakenByAll": "This combination sends a comeback to everyone. Choose another.",
+  "comeback.hotkeyTakenByPhrase":
+    "This combination sends the phrase to the teammate you asked to trade. Choose another.",
   "comeback.spacing":
     "Two lines go out at least 3 seconds apart: a press within 3 seconds of the last line sends nothing, so the chat is never flooded.",
+  "comeback.noLinesYet":
+    "There is no line to send yet, so these shortcuts send nothing: add lines under Comeback lines above, or download the online library below and turn on Use the online library.",
   "comeback.gameSection": "In-game sending",
   "comeback.inGame": "Type in the game",
   "comeback.inGameHint":
@@ -1160,6 +1165,9 @@ export const en: Record<MessageKey, string> = {
   "comeback.removePhrase": "Remove phrase {n}",
   "comeback.newPhrase": "New phrase",
   "comeback.newPhrasePlaceholder": "Write a phrase and press Enter",
+  "comeback.phraseHotkey": "Send to the teammate you asked to trade",
+  "comeback.phraseHotkeyHint":
+    "In champ select, first click Trade on the teammate whose champion you want in the client, then press it: the first phrase goes to the champ-select chat, their place and champion filled in. None by default.",
   "comeback.phrasePreview": "Preview, sent to {name} in {seat} on {champion}",
   "comeback.library": "Online library",
   "comeback.libraryAbout":
@@ -1195,4 +1203,10 @@ export const en: Record<MessageKey, string> = {
   "comeback.place.champSelect": "the champ-select chat",
   "comeback.place.team": "the team",
   "comeback.place.all": "everyone",
+  // The quick phrase's shortcut.
+  "phrase.notice.sent": "Sent the phrase to the champ-select chat",
+  "phrase.notice.skipped": "Phrase not sent: {reason}",
+  "phrase.skip.notChampSelect": "it goes out in champ select only",
+  "phrase.skip.noTrade": "no trade asked yet: click Trade on that teammate in the client first",
+  "phrase.skip.tooSoon": "less than 3 seconds since the last line",
 };

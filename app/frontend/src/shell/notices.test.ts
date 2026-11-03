@@ -67,7 +67,7 @@ describe("notices", () => {
       "反击没有发到全体：离上一句还不到 3 秒",
     );
     expect(zh({ kind: "comebackSkipped", place: "champSelect", reason: "noLines" })).toBe(
-      "反击没有发到选人聊天：反击页还没有可以发的语句",
+      "反击没有发到选人聊天：还没有可以发的反击语句，请在「反击」页添加，或下载并打开在线语录",
     );
     expect(en({ kind: "comebackSkipped", place: "team", reason: "needsAdmin" })).toBe(
       "Comeback not sent to the team: the game runs as administrator and winer does not, so the system would drop its keys; restart winer as administrator and try again",
@@ -77,6 +77,19 @@ describe("notices", () => {
       true,
     );
     expect(isFailure({ kind: "comebackSkipped", place: "all", reason: "inGameOff" })).toBe(true);
+  });
+
+  it("says when the quick phrase went to the teammate asked to trade, and why not", () => {
+    expect(zh({ kind: "phraseSent" })).toBe("已把快捷语发到选人聊天");
+    expect(en({ kind: "phraseSent" })).toBe("Sent the phrase to the champ-select chat");
+    expect(zh({ kind: "phraseSkipped", reason: "noTrade" })).toBe(
+      "快捷语没有发送：还没有向队友发起交换，先在客户端里对那位队友点「交换」",
+    );
+    for (const reason of ["notChampSelect", "noTrade", "tooSoon"] as const) {
+      expect(en({ kind: "phraseSkipped", reason }), reason).not.toContain("phrase.skip");
+    }
+    expect(isFailure({ kind: "phraseSent" })).toBe(false);
+    expect(isFailure({ kind: "phraseSkipped", reason: "tooSoon" })).toBe(true);
   });
 
   it("says what the automatic claim did", () => {

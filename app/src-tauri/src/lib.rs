@@ -7,6 +7,7 @@ mod diagnostics;
 mod elevation;
 mod events;
 mod game_chat;
+mod game_keys;
 mod hotkey;
 mod logging;
 mod plugin_host;
@@ -121,9 +122,14 @@ fn setup(app: &mut App, start_hidden: bool) -> Result<(), Box<dyn Error>> {
     hotkey::apply(app.handle(), service.settings().general.hotkey);
     // Callout: the shortcut that sends it, none by default.
     hotkey::apply_callout(app.handle(), service.settings().automation.callout.hotkey);
-    // Comebacks: the two shortcuts that send one, none by default.
+    // Comebacks: the two shortcuts that send one and the quick phrase's, none by default.
     let comeback = service.settings().comeback;
-    hotkey::apply_comebacks(app.handle(), comeback.hotkey, comeback.all_hotkey);
+    hotkey::apply_comebacks(
+        app.handle(),
+        comeback.hotkey,
+        comeback.all_hotkey,
+        comeback.phrase_hotkey,
+    );
 
     // Subscribed before the service starts: the core's events are not replayed, and the first
     // `Connected` is what sets up the loader and points the plugin at this session's bridge.
