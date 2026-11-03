@@ -4,7 +4,7 @@
 
 use tauri::{AppHandle, Manager, Runtime, ipc::Invoke};
 use tauri_plugin_autostart::ManagerExt as _;
-use tauri_plugin_opener::OpenerExt as _;
+use tauri_plugin_opener::{Opener, OpenerExt as _};
 use winer_core::{
     CoreError, Service, Settings,
     backup::{BackupChannel, BackupInfo},
@@ -18,15 +18,15 @@ use winer_core::{
     rewards::{ClaimReport, GrantChoice, RewardsView},
     settings::{Audience, CalloutRule, General, Language, Mode},
     view::{
-        AppInfo, AugmentDetail, CleanupReport, DiagnosticsReport, ErrorCode, GameData,
-        HotkeyStatus, IpcError, MatchDetail, MatchPage, PlayerProfile, PlayerStanding,
+        AppInfo, AugmentDetail, CleanupReport, ComebackLibrary, DiagnosticsReport, ErrorCode,
+        GameData, HotkeyStatus, IpcError, MatchDetail, MatchPage, PlayerProfile, PlayerStanding,
         PlayerSummary, Position, Presence, RiotId, Snapshot, StorageReport, UpdateStatus,
     },
 };
 
 use crate::{
-    Paths, RELEASES_URL, VERSION, diagnostics, elevation, hotkey, plugin_host, storage::Storage,
-    updater,
+    COMMUNITY_URL, Paths, RELEASES_URL, VERSION, diagnostics, elevation, hotkey, plugin_host,
+    storage::Storage, updater,
 };
 
 type Result<T> = std::result::Result<T, IpcError>;
@@ -68,6 +68,8 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         install_update,
         open_releases,
         open_docs,
+        // The QQ group, from Settings › About.
+        open_community,
         // The profile tools on the Tools page.
         get_skins,
         get_profile_background,
@@ -100,6 +102,11 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         clear_loadouts,
         // The callout typed into the game's chat.
         preview_game_callout,
+        // The Comebacks page (反击): champ select's quick phrases and the downloaded library.
+        send_phrase,
+        comeback_library,
+        download_comeback_library,
+        remove_comeback_library,
         // History.
         get_player_standing,
         // The user's notes on other players.
@@ -368,12 +375,26 @@ async fn install_update<R: Runtime>(app: AppHandle<R>) -> Result<()> {
     updater::install(&app).await
 }
 
+/// Opens one of winer's fixed pages in the browser: the window names a command, never a URL. An
+/// app without the opener (a test's) answers an error instead.
+fn open_fixed<R: Runtime>(app: &AppHandle<R>, url: &'static str) -> Result<()> {
+    app.try_state::<Opener<R>>()
+        .ok_or_else(|| internal("the opener is not running"))?
+        .open_url(url, None::<&str>)
+        .map_err(internal)
+}
+
 /// Opens the release page. The URL is built here: the window never opens one it was handed.
 #[tauri::command]
 async fn open_releases<R: Runtime>(app: AppHandle<R>) -> Result<()> {
-    app.opener()
-        .open_url(RELEASES_URL, None::<&str>)
-        .map_err(internal)
+    open_fixed(&app, RELEASES_URL)
+}
+
+/// Opens the invitation to winer's QQ group (`COMMUNITY_URL`), as the release page opens: the URL
+/// is fixed here.
+#[tauri::command]
+async fn open_community<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    open_fixed(&app, COMMUNITY_URL)
 }
 
 /// A page of the documentation the window may open; it names a page, never a URL.
@@ -620,6 +641,43 @@ async fn preview_game_callout<R: Runtime>(
     Ok(service(&app).preview_game_callout(&rule, &general).await?)
 }
 
+// The Comebacks page (反击). Its two shortcuts are the shell's own (`hotkey`).
+
+/// Sends quick phrase `index` to champ select's chat for the teammate in cell `cell_id` of champ
+/// select `game_id`, as the board drew them: refused outside champ select (`busy`), and for another
+/// champ select, the user's own cell or one not of the team (`invalid`), so a menu left open from
+/// an earlier champ select sends nothing. Returns the message sent.
+#[tauri::command]
+async fn send_phrase<R: Runtime>(
+    app: AppHandle<R>,
+    index: usize,
+    game_id: i64,
+    cell_id: i64,
+) -> Result<String> {
+    Ok(service(&app).send_phrase(index, game_id, cell_id).await?)
+}
+
+/// The library downloaded on the user's request (在线语录), or that there is none; answers without
+/// a client. Its file is read on first use.
+#[tauri::command]
+async fn comeback_library<R: Runtime>(app: AppHandle<R>) -> Result<ComebackLibrary> {
+    let service = service(&app);
+    blocking(move || Ok(service.comeback_library())).await
+}
+
+/// Downloads the library: the window calls it only after the user has confirmed. Its switch is off
+/// afterwards, so each download is opted into again; a failed one changes nothing.
+#[tauri::command]
+async fn download_comeback_library<R: Runtime>(app: AppHandle<R>) -> Result<ComebackLibrary> {
+    Ok(service(&app).download_comeback_library().await?)
+}
+
+/// Deletes the downloaded library, its switch turned off first.
+#[tauri::command]
+async fn remove_comeback_library<R: Runtime>(app: AppHandle<R>) -> Result<ComebackLibrary> {
+    Ok(service(&app).remove_comeback_library().await?)
+}
+
 // ---- History ----
 
 /// What a player's form counts, and the tier, title and quip it earns on its own.
@@ -740,6 +798,8 @@ mod tests {
                 preview_game_callout(handle.clone(), CalloutRule::default(), General::default())
                     .await
                     .unwrap_err(),
+                // The Comebacks page: a quick phrase goes to champ select's chat.
+                send_phrase(handle.clone(), 0, 1, 2).await.unwrap_err(),
                 // History.
                 get_player_standing(handle.clone(), "p".into())
                     .await
@@ -747,6 +807,18 @@ mod tests {
             ] {
                 assert_eq!(error.code, ErrorCode::NotConnected);
             }
+            // The library is a file beside the settings: none yet, and none after its removal.
+            assert_eq!(
+                comeback_library(handle.clone()).await.unwrap(),
+                ComebackLibrary::default()
+            );
+            assert_eq!(
+                remove_comeback_library(handle.clone()).await.unwrap(),
+                ComebackLibrary::default()
+            );
+            // The QQ group needs no client either; this app runs no opener, so nothing opens.
+            let error = open_community(handle.clone()).await.unwrap_err();
+            assert_eq!(error.code, ErrorCode::Internal, "{}", error.message);
             let error = get_player_standing(handle.clone(), "../x".into())
                 .await
                 .unwrap_err();

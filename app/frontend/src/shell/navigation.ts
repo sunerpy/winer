@@ -3,6 +3,7 @@ import {
   History,
   LayoutDashboard,
   type LucideIcon,
+  MessageSquareQuote,
   Puzzle,
   Swords,
   Wrench,
@@ -11,7 +12,7 @@ import { createContext, useContext } from "react";
 
 import type { MessageKey } from "../lib/i18n";
 
-export type Page = "overview" | "live" | "history" | "automation" | "tools" | "plugin";
+export type Page = "overview" | "live" | "history" | "automation" | "tools" | "plugin" | "comeback";
 
 /** Where the window is. History can be opened on someone else's games. */
 export type Route = { page: Exclude<Page, "history"> } | { page: "history"; puuid?: string };
@@ -39,11 +40,13 @@ export const NAV_GROUPS: { title: MessageKey; items: NavItem[] }[] = [
       { page: "automation", label: "nav.automation", icon: Bot },
       { page: "tools", label: "nav.tools", icon: Wrench },
       { page: "plugin", label: "nav.plugin", icon: Puzzle },
+      // Last, so the pages before it keep their Ctrl numbers.
+      { page: "comeback", label: "nav.comeback", icon: MessageSquareQuote },
     ],
   },
 ];
 
-/** Ctrl+1 … Ctrl+6 follow this order. */
+/** Ctrl+1 … Ctrl+7 follow this order. */
 export const PAGE_ORDER: Page[] = NAV_GROUPS.flatMap((group) =>
   group.items.map((item) => item.page),
 );

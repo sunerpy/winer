@@ -332,6 +332,11 @@ pub struct Seat {
     pub stats: PlayerStats,
     /// Recent form and the tier it earns within the team; absent until stats arrive.
     pub rating: Option<SeatRating>,
+    /// The seat's cell in champ select (`ChampSelectPlayer::cell_id`), which a quick phrase names
+    /// (`Service::send_phrase`); absent in a running game.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cell_id: Option<i64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
@@ -814,6 +819,54 @@ pub enum NoticeKind {
     CalloutSkipped {
         reason: CalloutSkip,
     },
+    // The Comebacks page's shortcuts (`comeback::press`), which act while the window may be hidden.
+    /// A comeback went out whole, in `messages` messages: one in champ select; in the game a line
+    /// longer than one message is typed as two or more.
+    ComebackSent {
+        place: ComebackPlace,
+        messages: u32,
+    },
+    /// Typing a comeback into the game stopped after `sent` messages, for `reason`: the line went
+    /// out cut.
+    ComebackStopped {
+        place: ComebackPlace,
+        sent: u32,
+        reason: CalloutSkip,
+    },
+    /// A comeback's shortcut sent nothing, for `reason`.
+    ComebackSkipped {
+        place: ComebackPlace,
+        reason: CalloutSkip,
+    },
+    // The quick phrase's shortcut (`comeback::phrase_press`).
+    /// Sent the first quick phrase to champ select's chat, for the teammate asked to trade.
+    PhraseSent,
+    /// The quick phrase's shortcut sent nothing, for `reason`.
+    PhraseSkipped {
+        reason: PhraseSkip,
+    },
+}
+
+/// Why the quick phrase's shortcut sent nothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum PhraseSkip {
+    /// Not in champ select: the phrases go to its chat only.
+    NotChampSelect,
+    /// No teammate has been asked to trade (交换) yet, or they have answered: the phrase names the
+    /// one asked.
+    NoTrade,
+    /// Less than `comeback::SPACING` after the last comeback or quick phrase that went out.
+    TooSoon,
+}
+
+/// Where a comeback goes: champ select's chat, or the game's team or all chat.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum ComebackPlace {
+    ChampSelect,
+    Team,
+    All,
 }
 
 /// Why the callout's shortcut sent nothing.
@@ -837,6 +890,26 @@ pub enum CalloutSkip {
     Blocked,
     /// Typing into the game is a Windows feature.
     Unsupported,
+    /// The game runs with more rights than winer (a client started from WeGame runs elevated, and
+    /// so does its game), so the system would drop every key winer pressed: nothing was typed.
+    NeedsAdmin,
+    /// The Comebacks page has no line to send: none of the user's, and no library in use.
+    NoLines,
+    /// Less than `comeback::SPACING` after the last comeback that went out.
+    TooSoon,
+}
+
+/// The downloaded library (在线语录) as the Comebacks page shows it (`comeback::Library`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ComebackLibrary {
+    /// A library is downloaded and readable.
+    pub downloaded: bool,
+    /// Its 口吐芬芳 (`min`) and 火力全开 (`max`) lines, after the clean-up.
+    pub mild: u32,
+    pub strong: u32,
+    /// When it was downloaded, in milliseconds since the epoch.
+    pub fetched_at: Option<i64>,
 }
 
 /// A player found by Riot ID.
@@ -1149,6 +1222,14 @@ pub struct HotkeyStatus {
     // Callout.
     /// The second shortcut, which sends the callout; let go and taken back together with this one.
     pub callout: CalloutHotkeyStatus,
+    // The Comebacks page: its two shortcuts, held and let go with the others.
+    /// The one that sends a comeback to the team (`comeback.hotkey`).
+    pub comeback: CalloutHotkeyStatus,
+    /// The one that sends a comeback to everyone in the game (`comeback.all_hotkey`).
+    pub comeback_all: CalloutHotkeyStatus,
+    /// The one that sends the first quick phrase to the teammate asked to trade
+    /// (`comeback.phrase_hotkey`).
+    pub phrase: CalloutHotkeyStatus,
 }
 
 /// The shortcut that sends the callout (`automation.callout.hotkey`), as the shell holds it.

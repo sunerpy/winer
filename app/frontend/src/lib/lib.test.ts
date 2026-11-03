@@ -100,6 +100,15 @@ const SETTINGS = {
     recommend: true,
   },
   history: { hideCustomGames: true },
+  comeback: {
+    lines: [],
+    hotkey: null,
+    allHotkey: null,
+    inGame: false,
+    phrases: [],
+    phraseHotkey: null,
+    library: { enabled: false, level: "mild" },
+  },
 } satisfies Settings;
 
 /** A backend whose events the test fires by hand, with each command's answer settable. */

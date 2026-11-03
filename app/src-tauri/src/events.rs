@@ -6,7 +6,7 @@ use tauri::{AppHandle, Emitter as _, Manager as _, Runtime};
 use tokio::sync::broadcast::error::RecvError;
 use tracing::{debug, info, warn};
 use winer_core::{
-    Service,
+    Service, Settings,
     bridge::Bridge,
     view::{CheckStatus, Connection, Event, NoticeKind, Patch},
 };
@@ -66,6 +66,36 @@ async fn self_check_after_update<R: Runtime>(
     }
 }
 
+/// Whether `settings` have winer type into the game: the callout's shortcut or a comeback's, with
+/// typing into the game switched on beside it. Without a shortcut, or with the switch off, nothing
+/// is typed, and champ select's chat needs no rights.
+fn types_in_game(settings: &Settings) -> bool {
+    let (callout, comeback) = (&settings.automation.callout, &settings.comeback);
+    (callout.in_game && callout.hotkey.is_some())
+        || (comeback.in_game && (comeback.hotkey.is_some() || comeback.all_hotkey.is_some()))
+}
+
+/// A game the client starts runs with the client's rights, and the system drops every key a
+/// process with fewer types into it (`game_chat`). With typing into the game set up under
+/// `settings` and a connected client that outranks winer, winer asks ahead of the game to restart
+/// elevated: once per run, and a refusal is final, as for an elevated client.
+fn elevate_for_the_game<R: Runtime>(app: &AppHandle<R>, service: &Service, settings: &Settings) {
+    if elevation::asked() || !types_in_game(settings) {
+        return;
+    }
+    let Some(pid) = service.client_pid() else {
+        return;
+    };
+    let (elevated, client) = (elevation::is_elevated(), elevation::token_of(pid));
+    if elevation::outranks(elevated, client) {
+        info!(
+            ?client,
+            "the client outranks winer, and so will the games it starts"
+        );
+        elevation::ask_once(app, "the game will run elevated");
+    }
+}
+
 pub(crate) fn forward<R: Runtime>(app: AppHandle<R>, service: Service, bridge: Bridge) {
     let mut events = service.subscribe();
     tauri::async_runtime::spawn(async move {
@@ -95,6 +125,7 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
         // (`plugin_host::start_loader`); otherwise it starts with the client's next launch.
         // Only an administrator can create the link: without those rights winer restarts
         // elevated, as for an elevated client, and the elevated copy links on its connection.
+        // It restarts elevated too when it is to type into the games of a client that outranks it.
         Event::Update(update)
             if matches!(
                 update.patch,
@@ -114,6 +145,7 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
                 if outcome.needs_elevation {
                     elevation::ask_once(&app, "only an administrator can link the loader");
                 }
+                elevate_for_the_game(&app, &service, &service.settings());
                 if outcome.linked {
                     plugin_host::start_loader(&service);
                 }
@@ -139,6 +171,16 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
             hotkey::apply(app, settings.general.hotkey.clone());
             // Callout: its own shortcut.
             hotkey::apply_callout(app, settings.automation.callout.hotkey.clone());
+            // Comebacks: their two shortcuts, and the quick phrase's.
+            hotkey::apply_comebacks(
+                app,
+                settings.comeback.hotkey.clone(),
+                settings.comeback.all_hotkey.clone(),
+                settings.comeback.phrase_hotkey.clone(),
+            );
+            // Typing into the game, set up just now while connected to a client that outranks
+            // winer: its games will too.
+            elevate_for_the_game(app, service, settings);
         }
         // Social: a click in the client asked for a player's history, which the window opens.
         Event::OpenHistory { .. } => window::show(app),
@@ -148,5 +190,34 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_shortcut_with_typing_into_the_game_on_types_into_the_game() {
+        let mut settings = Settings::default();
+        assert!(!types_in_game(&settings), "nothing by default");
+        settings.automation.callout.in_game = true;
+        assert!(!types_in_game(&settings), "no shortcut to press");
+        settings.automation.callout.hotkey = Some("Alt+3".into());
+        assert!(types_in_game(&settings));
+
+        let mut settings = Settings::default();
+        settings.comeback.all_hotkey = Some("Alt+4".into());
+        assert!(
+            !types_in_game(&settings),
+            "a comeback goes to champ select's chat only"
+        );
+        settings.comeback.in_game = true;
+        assert!(types_in_game(&settings), "the all-chat shortcut alone");
+        settings.comeback.all_hotkey = None;
+        settings.comeback.hotkey = Some("Alt+5".into());
+        assert!(types_in_game(&settings), "the team's alone");
+        settings.comeback.hotkey = None;
+        assert!(!types_in_game(&settings), "the switch without a shortcut");
     }
 }

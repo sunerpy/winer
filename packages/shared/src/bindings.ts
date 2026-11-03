@@ -114,7 +114,12 @@ autofilled: boolean, stats: PlayerStats,
 /**
  * Recent form and the tier it earns within the team; absent until stats arrive.
  */
-rating: SeatRating | null, };
+rating: SeatRating | null, 
+/**
+ * The seat's cell in champ select (`ChampSelectPlayer::cell_id`), which a quick phrase names
+ * (`Service::send_phrase`); absent in a running game.
+ */
+cellId?: number, };
 
 export type SeatRating = { 
 /**
@@ -323,7 +328,7 @@ runes: PageOutcome | null,
 /**
  * The two summoner spells are the ones set up.
  */
-spells: boolean, } | { "kind": "itemSetWritten", championId: number, } | { "kind": "itemSetsFull" } | { "kind": "rewardsClaimed", claimed: number, left: number, } | { "kind": "rewardsFailed", failed: number, } | { "kind": "typedInGame", lines: number, } | { "kind": "typingStopped", lines: number, reason: CalloutSkip, } | { "kind": "calloutSkipped", reason: CalloutSkip, };
+spells: boolean, } | { "kind": "itemSetWritten", championId: number, } | { "kind": "itemSetsFull" } | { "kind": "rewardsClaimed", claimed: number, left: number, } | { "kind": "rewardsFailed", failed: number, } | { "kind": "typedInGame", lines: number, } | { "kind": "typingStopped", lines: number, reason: CalloutSkip, } | { "kind": "calloutSkipped", reason: CalloutSkip, } | { "kind": "comebackSent", place: ComebackPlace, messages: number, } | { "kind": "comebackStopped", place: ComebackPlace, sent: number, reason: CalloutSkip, } | { "kind": "comebackSkipped", place: ComebackPlace, reason: CalloutSkip, } | { "kind": "phraseSent" } | { "kind": "phraseSkipped", reason: PhraseSkip, };
 
 export type PlayerProfile = { puuid: string, name: RiotId | null, level: number, iconId: number, private: boolean, ranked: Ranked, };
 
@@ -472,7 +477,20 @@ error: string | null,
 /**
  * The second shortcut, which sends the callout; let go and taken back together with this one.
  */
-callout: CalloutHotkeyStatus, };
+callout: CalloutHotkeyStatus, 
+/**
+ * The one that sends a comeback to the team (`comeback.hotkey`).
+ */
+comeback: CalloutHotkeyStatus, 
+/**
+ * The one that sends a comeback to everyone in the game (`comeback.all_hotkey`).
+ */
+comebackAll: CalloutHotkeyStatus, 
+/**
+ * The one that sends the first quick phrase to the teammate asked to trade
+ * (`comeback.phrase_hotkey`).
+ */
+phrase: CalloutHotkeyStatus, };
 
 export type Settings = { appearance: Appearance, general: General, automation: Automation, plugin: PluginSettings, profile: ProfileSettings, 
 /**
@@ -482,7 +500,12 @@ builds: BuildSettings,
 /**
  * History: what the history lists show.
  */
-history: HistorySettings, };
+history: HistorySettings, 
+/**
+ * The Comebacks page (反击): the user's lines, their two shortcuts, champ select's quick
+ * phrases and the downloaded library (`comeback`).
+ */
+comeback: ComebackSettings, };
 
 export type Appearance = { theme: Theme, accent: Accent, density: Density, 
 /**
@@ -1155,7 +1178,7 @@ active: boolean,
  */
 error: string | null, };
 
-export type CalloutSkip = "notNow" | "nothingToSay" | "inGameOff" | "notInFront" | "keysHeld" | "blocked" | "unsupported";
+export type CalloutSkip = "notNow" | "nothingToSay" | "inGameOff" | "notInFront" | "keysHeld" | "blocked" | "unsupported" | "needsAdmin" | "noLines" | "tooSoon";
 
 export type GameTeams = "enemies" | "allies" | "both";
 
@@ -1197,3 +1220,69 @@ export type HistorySettings = {
  * not the games a history is opened for, and they push those down the first page.
  */
 hideCustomGames: boolean, };
+
+export type ComebackSettings = { 
+/**
+ * The user's own lines, one a message: control characters out, trimmed, blanks dropped, at
+ * most [`Self::LINE_LIMIT`] of [`Self::LINE_LENGTH`] characters. winer ships none.
+ */
+lines: Array<string>, 
+/**
+ * The shortcut that sends a line to the team: champ select's chat, or the game's team chat.
+ * In [`normalize_hotkey`]'s form; never one the window or the callout holds.
+ */
+hotkey: string | null, 
+/**
+ * The shortcut that sends a line to everyone in the game (`/all ` before it); in champ select
+ * to its chat, which only the team reads.
+ */
+allHotkey: string | null, 
+/**
+ * While the game runs, the shortcuts type the line into the game's chat with synthesized key
+ * presses. Off by default, as the callout's: third-party input into the game, and abusive
+ * chat, may get the account muted or banned.
+ */
+inGame: boolean, 
+/**
+ * Champ select's quick phrases (选人快捷语), each sent to one teammate from the Live page, with
+ * `{seat}`, `{champion}` and `{name}`: at most [`Self::PHRASE_LIMIT`] of
+ * [`Self::LINE_LENGTH`] characters. Empty means the language's own
+ * (`comeback::default_phrases`).
+ */
+phrases: Array<string>, 
+/**
+ * The shortcut that sends the first quick phrase, in champ select, to the teammate the user
+ * has just asked to trade champions with (交换). In [`normalize_hotkey`]'s form; never one the
+ * window, the callout or the comebacks hold.
+ */
+phraseHotkey: string | null, 
+/**
+ * The library downloaded on the user's request (在线语录), and whether a press picks from it.
+ */
+library: LibraryRule, };
+
+export type LibraryRule = { 
+/**
+ * Off by default: the user turns it on after downloading, on the Comebacks page.
+ */
+enabled: boolean, level: LibraryLevel, };
+
+export type LibraryLevel = "mild" | "strong" | "both";
+
+export type ComebackPlace = "champSelect" | "team" | "all";
+
+export type ComebackLibrary = { 
+/**
+ * A library is downloaded and readable.
+ */
+downloaded: boolean, 
+/**
+ * Its 口吐芬芳 (`min`) and 火力全开 (`max`) lines, after the clean-up.
+ */
+mild: number, strong: number, 
+/**
+ * When it was downloaded, in milliseconds since the epoch.
+ */
+fetchedAt: number | null, };
+
+export type PhraseSkip = "notChampSelect" | "noTrade" | "tooSoon";

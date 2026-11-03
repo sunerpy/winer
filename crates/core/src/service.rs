@@ -2,6 +2,7 @@
 //! client, mirrors its state into a [`Snapshot`] and acts on it for the user.
 
 mod caches;
+mod comeback;
 mod loadout;
 mod rewards;
 mod ux;
@@ -215,6 +216,8 @@ struct Inner {
     notes: NoteStore,
     /// Claims the rewards the client holds, one run at a time (`rewards`).
     rewards: rewards::RewardsClaimer,
+    /// The Comebacks page: what went out last, and the downloaded library (`comeback`).
+    comeback: comeback::ComebackState,
 }
 
 /// Augment descriptions per language, with when they were fetched.
@@ -447,6 +450,8 @@ impl Service {
         let versions =
             diagnose::VersionStore::new(settings_path.with_file_name("diagnostics.json"));
         let notes = NoteStore::open(settings_path.with_file_name("notes.json"));
+        let comeback =
+            comeback::ComebackState::new(settings_path.with_file_name("comeback-library.json"));
         Self {
             inner: Arc::new(Inner {
                 settings: SettingsStore::open(settings_path),
@@ -467,6 +472,7 @@ impl Service {
                 versions,
                 notes,
                 rewards: rewards::RewardsClaimer::default(),
+                comeback,
             }),
         }
     }

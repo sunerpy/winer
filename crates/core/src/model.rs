@@ -118,6 +118,9 @@ pub struct ChampSelectSession {
     pub bench_champions: Vec<BenchChampion>,
     pub allow_rerolling: bool,
     pub rerolls_remaining: i64,
+    /// Champion trades (交换) with the teammates: one for each teammate's cell, its id changing as
+    /// the champions do (captured 2026-11-03, ARAM; the client's `ChampSelectSwapContract`).
+    pub trades: Vec<ChampSelectTrade>,
 }
 
 impl ChampSelectSession {
@@ -127,9 +130,34 @@ impl ChampSelectSession {
             .find(|player| player.cell_id == self.local_player_cell_id)
     }
 
+    /// The cell of the teammate the user has asked to trade champions with (交换), while the ask
+    /// waits for their answer.
+    pub fn trade_asked(&self) -> Option<i64> {
+        self.trades
+            .iter()
+            .find(|trade| trade.state.eq_ignore_ascii_case(TRADE_SENT))
+            .map(|trade| trade.cell_id)
+    }
+
     pub fn all_actions(&self) -> impl Iterator<Item = &ChampSelectAction> {
         self.actions.iter().flatten()
     }
+}
+
+/// The state of a trade the user asked for and the teammate has not answered yet. The client's own
+/// API help (`/help`, type `ChampSelectSwapState`, 2026-11-03) lists `AVAILABLE`, `BUSY`, `INVALID`,
+/// `SENT`, `RECEIVED`, `DECLINED`, `CANCELLED` and `ACCEPTED`. Captured in ARAM: `AVAILABLE` (one
+/// may be asked for), `INVALID` (not now) and `BUSY` (the teammate trades with another); `SENT` not
+/// yet.
+pub const TRADE_SENT: &str = "SENT";
+
+/// One champion trade (交换) on offer in champ select, with the teammate in `cell_id`.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ChampSelectTrade {
+    pub id: i64,
+    pub cell_id: i64,
+    pub state: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]

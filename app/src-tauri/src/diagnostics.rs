@@ -92,9 +92,11 @@ fn plugin_check(status: &PluginStatus, auto: bool, connected: bool) -> Check {
     check(CheckId::Plugin, state, reason, detail)
 }
 
-/// The window's shortcut and the callout's: refused when the system refused either.
+/// The window's shortcut, the callout's and the Comebacks page's two: refused when the system
+/// refused any of them, with the first refusal's words.
 fn hotkey_check(status: &HotkeyStatus) -> Check {
-    if status.shortcut.is_none() && status.callout.shortcut.is_none() {
+    let others = [&status.callout, &status.comeback, &status.comeback_all];
+    if status.shortcut.is_none() && others.iter().all(|other| other.shortcut.is_none()) {
         return check(
             CheckId::Hotkey,
             CheckStatus::Skipped,
@@ -105,7 +107,7 @@ fn hotkey_check(status: &HotkeyStatus) -> Check {
     match status
         .error
         .clone()
-        .or_else(|| status.callout.error.clone())
+        .or_else(|| others.iter().find_map(|other| other.error.clone()))
     {
         Some(error) => check(
             CheckId::Hotkey,
@@ -254,6 +256,35 @@ mod tests {
                 error: Some("HotKey already registered".into()),
             },
             ..held
+        };
+        let shown = hotkey_check(&refused);
+        assert_eq!(
+            outcome(&shown),
+            (CheckStatus::Fail, CheckReason::HotkeyRefused)
+        );
+        assert_eq!(shown.detail.as_deref(), Some("HotKey already registered"));
+
+        // The Comebacks page's shortcuts count alike, even with no other shortcut set.
+        let comeback = CalloutHotkeyStatus {
+            shortcut: Some("Alt+3".into()),
+            active: true,
+            error: None,
+        };
+        let only_comebacks = HotkeyStatus {
+            comeback_all: comeback.clone(),
+            ..HotkeyStatus::default()
+        };
+        assert_eq!(
+            outcome(&hotkey_check(&only_comebacks)),
+            (CheckStatus::Ok, CheckReason::Fine)
+        );
+        let refused = HotkeyStatus {
+            comeback: CalloutHotkeyStatus {
+                active: false,
+                error: Some("HotKey already registered".into()),
+                ..comeback
+            },
+            ..only_comebacks
         };
         let shown = hotkey_check(&refused);
         assert_eq!(

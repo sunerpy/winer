@@ -136,6 +136,7 @@ pub fn champ_select_view(
             autofilled: false,
             note: None,
             rating: None,
+            cell_id: Some(player.cell_id),
         }
     };
     let mut my_team: Vec<&ChampSelectPlayer> = session.my_team.iter().collect();
@@ -243,6 +244,7 @@ pub fn game_view(
                         note: None,
                         puuid,
                         rating: None,
+                        cell_id: None,
                     }
                 })
                 .collect::<Vec<_>>()
@@ -795,6 +797,7 @@ mod tests {
             note: None,
             stats: PlayerStats::Loading,
             rating: None,
+            cell_id: None,
         };
         let party = party_of(&lobby(false));
         let mut team = vec![seat("me"), seat("stranger"), seat("mate")];

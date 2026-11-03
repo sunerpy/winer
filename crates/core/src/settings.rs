@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
-    callout,
+    callout, comeback,
     view::{Position, Tier},
 };
 
@@ -26,6 +26,9 @@ pub struct Settings {
     pub builds: BuildSettings,
     /// History: what the history lists show.
     pub history: HistorySettings,
+    /// The Comebacks page (反击): the user's lines, their two shortcuts, champ select's quick
+    /// phrases and the downloaded library (`comeback`).
+    pub comeback: ComebackSettings,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
@@ -601,6 +604,66 @@ pub enum GameTeams {
     Both,
 }
 
+/// The Comebacks page (`comeback`): a press of either shortcut sends one line at random, in champ
+/// select to its chat, while the game runs typed into the game's chat (with [`Self::in_game`]).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ComebackSettings {
+    /// The user's own lines, one a message: control characters out, trimmed, blanks dropped, at
+    /// most [`Self::LINE_LIMIT`] of [`Self::LINE_LENGTH`] characters. winer ships none.
+    pub lines: Vec<String>,
+    /// The shortcut that sends a line to the team: champ select's chat, or the game's team chat.
+    /// In [`normalize_hotkey`]'s form; never one the window or the callout holds.
+    pub hotkey: Option<String>,
+    /// The shortcut that sends a line to everyone in the game (`/all ` before it); in champ select
+    /// to its chat, which only the team reads.
+    pub all_hotkey: Option<String>,
+    /// While the game runs, the shortcuts type the line into the game's chat with synthesized key
+    /// presses. Off by default, as the callout's: third-party input into the game, and abusive
+    /// chat, may get the account muted or banned.
+    pub in_game: bool,
+    /// Champ select's quick phrases (选人快捷语), each sent to one teammate from the Live page, with
+    /// `{seat}`, `{champion}` and `{name}`: at most [`Self::PHRASE_LIMIT`] of
+    /// [`Self::LINE_LENGTH`] characters. Empty means the language's own
+    /// (`comeback::default_phrases`).
+    pub phrases: Vec<String>,
+    /// The shortcut that sends the first quick phrase, in champ select, to the teammate the user
+    /// has just asked to trade champions with (交换). In [`normalize_hotkey`]'s form; never one the
+    /// window, the callout or the comebacks hold.
+    pub phrase_hotkey: Option<String>,
+    /// The library downloaded on the user's request (在线语录), and whether a press picks from it.
+    pub library: LibraryRule,
+}
+
+impl ComebackSettings {
+    pub const LINE_LIMIT: usize = 100;
+    pub const LINE_LENGTH: usize = 200;
+    pub const PHRASE_LIMIT: usize = 20;
+}
+
+/// Whether a comeback may come from the downloaded library (`comeback::Library`), and from which
+/// of its two sets. Nothing changes while no library is downloaded.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LibraryRule {
+    /// Off by default: the user turns it on after downloading, on the Comebacks page.
+    pub enabled: bool,
+    pub level: LibraryLevel,
+}
+
+/// The library's two sets, as its authors named them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum LibraryLevel {
+    /// 口吐芬芳: the library's `min` lines.
+    #[default]
+    Mild,
+    /// 火力全开: its `max` lines.
+    Strong,
+    /// Both sets.
+    Both,
+}
+
 /// ARAM: take a champion off the shared bench as soon as one higher on the wishlist appears.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
@@ -1046,6 +1109,31 @@ impl Settings {
         callout.watch_template = clip(&callout.watch_template, 200);
         callout.target_template = clip(&callout.target_template, 200);
         callout.ally_template = clip(&callout.ally_template, 200);
+        // The Comebacks page's three shortcuts are spelled the same way and take no combination held
+        // before them: the window's, the callout's, then each earlier one of theirs.
+        let mut held = vec![self.general.hotkey.clone(), callout.hotkey.clone()];
+        let comeback = &mut self.comeback;
+        for shortcut in [
+            &mut comeback.hotkey,
+            &mut comeback.all_hotkey,
+            &mut comeback.phrase_hotkey,
+        ] {
+            *shortcut = shortcut
+                .as_deref()
+                .and_then(normalize_hotkey)
+                .filter(|combination| !held.contains(&Some(combination.clone())));
+            held.push(shortcut.clone());
+        }
+        comeback.lines = comeback::clean_lines(
+            &comeback.lines,
+            ComebackSettings::LINE_LIMIT,
+            ComebackSettings::LINE_LENGTH,
+        );
+        comeback.phrases = comeback::clean_lines(
+            &comeback.phrases,
+            ComebackSettings::PHRASE_LIMIT,
+            ComebackSettings::LINE_LENGTH,
+        );
         self
     }
 
@@ -1932,6 +2020,49 @@ mod tests {
         assert!(callout.auto && callout.template == "{name}" && callout.tiers == TierSet::Horses);
         let defaults = CalloutRule::default();
         assert!(defaults.hotkey.is_none() && !defaults.in_game);
+    }
+
+    #[test]
+    fn the_comebacks_shortcuts_are_spelled_one_way_and_never_take_one_held_before() {
+        let with = |team: &str, all: &str, phrase: &str| {
+            let mut settings = Settings::default();
+            settings.general.hotkey = Some("Alt+Backquote".into());
+            settings.automation.callout.hotkey = Some("Alt+3".into());
+            settings.comeback.hotkey = Some(team.into());
+            settings.comeback.all_hotkey = Some(all.into());
+            settings.comeback.phrase_hotkey = Some(phrase.into());
+            let comeback = settings.normalized().comeback;
+            (comeback.hotkey, comeback.all_hotkey, comeback.phrase_hotkey)
+        };
+        assert_eq!(
+            with("alt+5", " ctrl + alt + 5 ", "alt + digit6"),
+            (
+                Some("Alt+5".into()),
+                Some("Ctrl+Alt+5".into()),
+                Some("Alt+6".into())
+            )
+        );
+        assert_eq!(
+            with("Alt+3", "Alt+Backquote", "Alt+6").0,
+            None,
+            "the callout keeps its combination"
+        );
+        assert_eq!(
+            with("Alt+3", "Alt+Backquote", "Alt+6").1,
+            None,
+            "and the window its own"
+        );
+        assert_eq!(
+            with("Alt+5", "Alt+6", "alt+5"),
+            (Some("Alt+5".into()), Some("Alt+6".into()), None),
+            "the quick phrase's never takes a comeback's"
+        );
+        assert_eq!(
+            with("Alt+5", "Alt+6", "Alt+6").2,
+            None,
+            "nor the all-chat one's"
+        );
+        assert_eq!(with("Alt+5", "Alt+6", "7").2, None, "a key alone is typed");
     }
 
     #[test]

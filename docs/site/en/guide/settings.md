@@ -130,6 +130,9 @@ The rating scheme, custom tiers, roast titles and the basis of every rating: see
 The version, whether winer runs as administrator, the log folder, and **Updates**. winer checks for
 updates by itself after it starts and while it runs; this checks again on demand.
 
+**Community**: the QQ group winer交流群 (number 1109319256), for reports and questions.
+**Join the QQ group** opens its invitation link, **Copy the number** copies the number.
+
 **Storage** lists what winer keeps on your PC, how large each is and its limit: the logs, the
 window's WebView data, the game settings backups, the in-client components, the settings and
 remembered setups, update installers and the cache in memory. Where each lives is in
@@ -154,11 +157,12 @@ connects after an update, winer runs them by itself and sends a notice when one 
 
 | Keys             | Does                             |
 | ---------------- | -------------------------------- |
-| `Ctrl` + `1`…`6` | switches pages                   |
+| `Ctrl` + `1`…`7` | switches pages                   |
 | `Ctrl` + `,`     | opens settings                   |
 | `Ctrl` + `B`     | collapses or expands the sidebar |
 
 `Alt` + `` ` `` (changed in **Settings › General**) works everywhere, a game included: it
 shows or hides winer. The others work inside winer's window only. The shortcut to send the callout
 has no combination by default; it is set in **Automation › Callout**, works everywhere as well, and
-is described in [Automation](/en/guide/automation#callout).
+is described in [Automation](/en/guide/automation#callout). So do the comebacks' **Send to the team** and
+**Send to everyone**, set on the **Comebacks** page; see [Comebacks](/en/guide/live#comebacks).

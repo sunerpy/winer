@@ -97,8 +97,9 @@ summoner spells for Jhin"; a failure says why. Nothing is posted to chat.
   callout to the team chat, as **Send to team** on the Live game page does; in a game, with
   **In-game sending** on, it types the in-game lines chosen below into the game's team chat. It
   works while winer's window is hidden, and what it did is noted in **Activity** on the overview. It
-  is set the way the shortcut that brings up winer is (see [Settings](/en/guide/settings)), and the
-  two cannot share a combination.
+  is set the way the shortcut that brings up winer is (see [Settings](/en/guide/settings)); it cannot
+  share a combination with that one, nor can the three shortcuts of the [Comebacks](/en/guide/live#comebacks)
+  page share one with either.
 
 ### Lines in game
 
@@ -107,6 +108,12 @@ The game's own chat has no API in the client, so the only way in is to type like
 type on the keyboard's behalf: `Enter` opens the team chat, a line goes in, `Enter` sends it, line
 by line, and a line too long for one message goes out as several.
 
+- With the game's window in front, Windows' system shortcuts do not reach winer, so while a game
+  runs winer also listens for your combinations (the shortcuts that bring up winer, send the callout
+  and send comebacks) through a keyboard hook: only with the game's window in front, and only an
+  exact one of those combinations, is a press winer's, and that press no longer reaches the game.
+  Every other key goes to the game untouched, and winer keeps no record of it. The hook goes as the
+  game ends.
 - It types only while the game's window is already in front; winer never brings the game there.
   The moment the game's window leaves the foreground, typing stops, and a half-typed line stays in
   the game's chat box unsent.
@@ -116,8 +123,14 @@ by line, and a line too long for one message goes out as several.
   already holds.
 - Typing takes a few seconds, and keys you press meanwhile end up in the line being typed.
 - When the game runs as administrator, winer has to as well to type into it: Windows does not let a
-  program send key presses to a window with more rights than its own. When the client runs as
-  administrator, winer asks to restart that way as it connects anyway.
+  program send key presses to a window with more rights than its own, and says nothing, the keys
+  are simply lost. A client started from WeGame runs as administrator, and so does the game it
+  starts. winer checks before it types, types nothing when its rights fall short and says in
+  **Activity** that it needs to run as administrator. With in-game sending on and a shortcut set (the
+  callout's or a [comeback's](/en/guide/live#comebacks)), winer asks once to restart as administrator
+  when it connects to a client that runs that way; once a run at most, and not again after **No**.
+  While winer does not run as administrator, **In-game sending** also offers
+  **Restart as administrator**.
 - Key presses another program sends to the game are third-party input and may break the game's
   terms of service; you use it at your own risk.
 

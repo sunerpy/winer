@@ -20,6 +20,8 @@ rustls-platform-verifier.workspace = true
 serde.workspace = true
 # Raw values: the client's item sets that are not winer's go back exactly as they came.
 serde_json = { workspace = true, features = ["raw_value"] }
+# The downloaded library is refused unless its SHA-256 is the pinned one (`comeback`).
+sha2.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt", "sync", "time"] }
 tokio-tungstenite.workspace = true

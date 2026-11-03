@@ -7,8 +7,8 @@ host facts in `docs/platform-notes.md`.
 ## Baseline commands
 
 ```bash
-cargo test --workspace        # lcu 12, winer (shell) 40, winer-core 310 — all pass
-pnpm test                     # shared 7, plugin 72, desktop 143 — all pass
+cargo test --workspace        # lcu 12, winer (shell) 52, winer-core 331 — all pass
+pnpm test                     # shared 7, plugin 72, desktop 161 — all pass
 cargo clippy --workspace --all-targets -- -D warnings
 pnpm lint && pnpm typecheck && pnpm format:check && cargo fmt --all --check
 scripts/evidence.sh           # all of the above plus the Windows check, logged with the tree's hash
@@ -135,6 +135,23 @@ scripts/windows/qa.sh log 40
 - **The updater key** (key id `F9ABD555ED709F50`) signs every update; its private half is the
   repository secret `TAURI_SIGNING_PRIVATE_KEY` (password in `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`)
   and the owner's copy. Losing it strands every installed copy (`docs/updater-key-management.md`).
+
+## Shortcuts and typing in a game (measured on the owner's PC, 2026-11-03)
+
+- **The system's shortcuts never fire while the game has the screen.** `RegisterHotKey` (the
+  global-shortcut plugin) logged every press in the lobby and in champ select and none in any
+  game, with winer elevated. While a game runs, `app/src-tauri/src/game_keys.rs` listens through a
+  `WH_KEYBOARD_LL` hook for the same combinations, and that works: the 0.0.19 test build logged
+  `a shortcut pressed in the game` then `typing into the game's chat ... elevated=true
+game=Elevated` and the line reached the team chat. Do not drop the hook for the plugin alone,
+  and keep the hook procedure short (the system silently removes a hook that keeps the keyboard
+  waiting).
+- **A game started from WeGame runs elevated**, so winer must too, or every key it types is
+  dropped without an error. winer asks once at connect when in-game typing is set up
+  (`elevation.rs`); an elevated SSH session can start it elevated on windows-home with a one-shot
+  `schtasks /RL HIGHEST /IT` task, which shows no UAC prompt over the owner's game.
+- Champ select's `trades` states come from the client's `/help` (`ChampSelectSwapState`); `SENT`,
+  the state of a trade the user asked for, is not captured yet (`docs/platform-notes.md`).
 
 ## Conventions a new session gets wrong
 
