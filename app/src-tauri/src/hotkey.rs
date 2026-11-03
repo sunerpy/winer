@@ -26,8 +26,12 @@ use winer_core::{
     Service,
     callout::Press,
     comeback::{ComebackPress, PhrasePress},
+    service::Spaced,
     settings::Audience,
-    view::{CalloutHotkeyStatus, ComebackPlace, HotkeyStatus, NoticeKind, Phase},
+    view::{
+        CalloutHotkeyStatus, CalloutSkip, ComebackPlace, HotkeyStatus, NoticeKind, Phase,
+        PhraseSkip, PhraseTrigger,
+    },
 };
 
 use crate::{events, game_chat, game_keys, window};
@@ -574,9 +578,14 @@ fn come_back<R: Runtime>(app: &AppHandle<R>, all: bool) {
             tauri::async_runtime::spawn(async move {
                 let _sending = sending;
                 service.report(match service.send_comeback(line, game_id).await {
-                    Ok(messages) => NoticeKind::ComebackSent {
+                    Ok(Spaced::Sent) => NoticeKind::ComebackSent {
                         place: ComebackPlace::ChampSelect,
-                        messages,
+                        messages: 1,
+                    },
+                    // Another post went out after the press was decided.
+                    Ok(Spaced::TooSoon(_)) => NoticeKind::ComebackSkipped {
+                        place: ComebackPlace::ChampSelect,
+                        reason: CalloutSkip::TooSoon,
                     },
                     Err(error) => NoticeKind::Failed {
                         action: "comeback".into(),
@@ -603,9 +612,9 @@ fn come_back<R: Runtime>(app: &AppHandle<R>, all: bool) {
     });
 }
 
-/// A press of quick phrase's shortcut. What it does is the core's to say (`Service::phrase_press`):
+/// A press of the quick phrase's shortcut. What it does is the core's to say (`Service::phrase_press`):
 /// in champ select, the first quick phrase goes to the teammate the user has asked to trade with,
-/// posted in its chat as the board's menu posts it (`Service::send_phrase`). What came of it goes
+/// posted in its chat behind the spacing (`Service::send_phrase_by_shortcut`). What came of it goes
 /// to the activity feed. One press at a time, as for the others.
 fn send_phrase<R: Runtime>(app: &AppHandle<R>) {
     let (Some(service), Some(hotkey)) = (app.try_state::<Service>(), app.try_state::<Hotkey>())
@@ -620,21 +629,28 @@ fn send_phrase<R: Runtime>(app: &AppHandle<R>) {
         PhrasePress::Send { game_id, cell_id } => {
             tauri::async_runtime::spawn(async move {
                 let _sending = sending;
-                service.report(match service.send_phrase(0, game_id, cell_id).await {
-                    Ok(_) => {
-                        service.phrase_went_out();
-                        NoticeKind::PhraseSent
-                    }
-                    Err(error) => NoticeKind::Failed {
-                        action: "phrase".into(),
-                        message: error.to_string(),
+                let trigger = PhraseTrigger::Shortcut;
+                service.report(
+                    match service.send_phrase_by_shortcut(game_id, cell_id).await {
+                        Ok(Spaced::Sent) => NoticeKind::PhraseSent { trigger },
+                        Ok(Spaced::TooSoon(_)) => NoticeKind::PhraseSkipped {
+                            reason: PhraseSkip::TooSoon,
+                            trigger,
+                        },
+                        Err(error) => NoticeKind::Failed {
+                            action: "phrase".into(),
+                            message: error.to_string(),
+                        },
                     },
-                });
+                );
             });
         }
         PhrasePress::Skip(reason) => {
             info!(?reason, "the quick phrase's shortcut sent nothing");
-            service.report(NoticeKind::PhraseSkipped { reason });
+            service.report(NoticeKind::PhraseSkipped {
+                reason,
+                trigger: PhraseTrigger::Shortcut,
+            });
         }
     }
 }

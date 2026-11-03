@@ -838,13 +838,30 @@ pub enum NoticeKind {
         place: ComebackPlace,
         reason: CalloutSkip,
     },
-    // The quick phrase's shortcut (`comeback::phrase_press`).
-    /// Sent the first quick phrase to champ select's chat, for the teammate asked to trade.
-    PhraseSent,
-    /// The quick phrase's shortcut sent nothing, for `reason`.
+    // A quick phrase sent without the board's menu: by its shortcut (`comeback::phrase_press`), or
+    // by a trade the user asked for (`comeback::trade_events`).
+    /// Sent a message to champ select's chat for the teammate asked to trade: the first quick
+    /// phrase, or for a trade that went through the thank-you.
+    PhraseSent {
+        trigger: PhraseTrigger,
+    },
+    /// A quick phrase or a thank-you sent nothing, for `reason`.
     PhraseSkipped {
         reason: PhraseSkip,
+        trigger: PhraseTrigger,
     },
+}
+
+/// What sent a quick phrase, or the thank-you, without the board's menu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum PhraseTrigger {
+    /// The quick phrase's shortcut.
+    Shortcut,
+    /// The user asked a teammate to trade (`settings::TradeRule::on_ask`).
+    Asked,
+    /// A trade the user asked for went through (`settings::TradeRule::on_done`): the thank-you.
+    Done,
 }
 
 /// Why the quick phrase's shortcut sent nothing.

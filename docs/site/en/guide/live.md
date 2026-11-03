@@ -148,6 +148,21 @@ filled in, without its window open. With no trade asked, one already answered, o
 seconds since the last line, it sends nothing, and **Activity** on the overview says why. It cannot
 share a combination with the shortcuts that bring up winer, send the callout or send comebacks.
 
+Two switches in the same panel send a line around a trade by themselves, both off by default:
+
+- **Send when you ask to trade**: in champ select, when you click Trade on a teammate in the client,
+  winer posts the first phrase to champ select's chat with that teammate's seat and champion filled
+  in, as the shortcut above does.
+- **Thank them once the trade goes through**: once a trade you asked for has gone through and your
+  champions are swapped, winer posts the **Thank-you**, by default "Thanks, P5!". It takes the
+  phrases' `{seat}`, `{champion}` (the champion you got) and `{name}`; left empty, it is the default.
+
+Each goes to a teammate once per champ select: asking again after a cancel does not post the phrase
+a second time, though that trade is still thanked once it goes through. Within 3 seconds of the last
+line, an automatic one waits out the rest rather than being dropped, and **Activity** lists each one
+sent. Only your own click on Trade sets them off: a trade a teammate asks of you, and pick-order or
+position swaps, send nothing.
+
 ### Online library
 
 **Comebacks › Online library** downloads the library of the open project

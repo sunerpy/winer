@@ -1113,6 +1113,16 @@ export const zhCN = {
   "comeback.newPhrase": "新的快捷语",
   "comeback.newPhrasePlaceholder": "写一句快捷语，按 Enter 添加",
   "comeback.phrasePreview": "预览：发给 {seat} 玩{champion}的 {name}",
+  "comeback.tradeAsk": "发起交换时自动发送",
+  "comeback.tradeAskHint":
+    "英雄选择中，你在客户端里对队友点「交换」时，自动把第一句快捷语发到选人聊天，楼层和英雄填成那位队友的。每局对同一位队友只发一次；离上一句不到 3 秒时，等满 3 秒再发。默认关闭。",
+  "comeback.tradeDone": "交换成功后道谢",
+  "comeback.tradeDoneHint":
+    "你发起的交换成功、英雄互换之后，自动把下面这句感谢发到选人聊天，{champion} 是你换到的英雄。每局对同一位队友只谢一次。默认关闭。",
+  "comeback.thanks": "感谢语",
+  "comeback.thanksReset": "恢复默认感谢语",
+  "comeback.thanksPreview": "交换成功后会发：{text}",
+  "comeback.tradeFirst": "交换时发送",
   "comeback.phraseHotkey": "发给交换的队友",
   "comeback.phraseHotkeyHint":
     "英雄选择中，先在客户端里对想换英雄的队友点「交换」，再按下：把第一句快捷语发到选人聊天，楼层和英雄填成那位队友的。默认不设置。",
@@ -1152,7 +1162,10 @@ export const zhCN = {
   "comeback.place.all": "全体",
   // The quick phrase's shortcut.
   "phrase.notice.sent": "已把快捷语发到选人聊天",
+  "phrase.notice.asked": "已把快捷语发给交换的队友",
+  "phrase.notice.thanked": "已向交换的队友道谢",
   "phrase.notice.skipped": "快捷语没有发送：{reason}",
+  "phrase.notice.thanksSkipped": "感谢没有发送：{reason}",
   "phrase.skip.notChampSelect": "只能在英雄选择中发送",
   "phrase.skip.noTrade": "还没有向队友发起交换，先在客户端里对那位队友点「交换」",
   "phrase.skip.tooSoon": "离上一句还不到 3 秒",

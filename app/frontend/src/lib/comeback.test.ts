@@ -1,7 +1,15 @@
 import type { ComebackSettings } from "@winer/shared";
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_PHRASES, fill, fillPhrase, phrasesOf, seatLabel } from "./comeback";
+import {
+  DEFAULT_PHRASES,
+  DEFAULT_THANKS,
+  fill,
+  fillPhrase,
+  phrasesOf,
+  seatLabel,
+  thanksOf,
+} from "./comeback";
 
 describe("the Comebacks page's quick phrases", () => {
   const rule: ComebackSettings = {
@@ -12,12 +20,21 @@ describe("the Comebacks page's quick phrases", () => {
     phrases: [],
     phraseHotkey: null,
     library: { enabled: false, level: "mild" },
+    trade: { onAsk: false, onDone: false, thanks: "" },
   };
 
   it("offers the language's own phrase while the user has none, as the core numbers them", () => {
     expect(phrasesOf(rule, "zh-CN")).toEqual(["{seat}大佬，小弟想玩下{champion}，给您磕一个了"]);
     expect(phrasesOf(rule, "en")).toEqual(DEFAULT_PHRASES.en);
     expect(phrasesOf({ ...rule, phrases: ["换吗", "谢谢"] }, "zh-CN")).toEqual(["换吗", "谢谢"]);
+  });
+
+  it("thanks with the language's own line while the user has written none, as the core does", () => {
+    expect(thanksOf(rule, "zh-CN")).toBe("谢谢{seat}大佬！");
+    expect(thanksOf(rule, "en")).toBe(DEFAULT_THANKS.en);
+    const own = { ...rule, trade: { ...rule.trade, thanks: "感谢{seat}的{champion}" } };
+    expect(thanksOf(own, "en")).toBe("感谢{seat}的{champion}");
+    expect(fillPhrase(thanksOf(own, "zh-CN"), "5L", "龙王", "")).toBe("感谢5L的龙王");
   });
 
   it("names a seat as the callout does", () => {

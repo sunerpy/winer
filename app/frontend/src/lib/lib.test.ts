@@ -108,6 +108,7 @@ const SETTINGS = {
     phrases: [],
     phraseHotkey: null,
     library: { enabled: false, level: "mild" },
+    trade: { onAsk: false, onDone: false, thanks: "" },
   },
 } satisfies Settings;
 

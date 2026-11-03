@@ -15,6 +15,17 @@ export const DEFAULT_PHRASES: Record<Language, readonly string[]> = {
   en: ["{seat}, may I play {champion}? Thank you!"],
 };
 
+/** The language's thank-you while the user has written none (`comeback::default_thanks`). */
+export const DEFAULT_THANKS: Record<Language, string> = {
+  "zh-CN": "谢谢{seat}大佬！",
+  en: "Thanks, {seat}!",
+};
+
+/** The thank-you a trade that went through sends (`comeback::thanks`). */
+export function thanksOf(rule: ComebackSettings, language: Language): string {
+  return rule.trade.thanks === "" ? DEFAULT_THANKS[language] : rule.trade.thanks;
+}
+
 /** The quick phrases the Live page offers, in the order `send_phrase` numbers them
  *  (`comeback::phrases`): the user's, or the language's own while there are none. */
 export function phrasesOf(rule: ComebackSettings, language: Language): readonly string[] {

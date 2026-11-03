@@ -1,4 +1,4 @@
-import type { NoticeKind } from "@winer/shared";
+import type { NoticeKind, PhraseTrigger } from "@winer/shared";
 import { useEffect, useRef } from "react";
 
 import type { MessageKey, Translate } from "../lib/i18n";
@@ -6,6 +6,13 @@ import { useT } from "../lib/i18n";
 import { namedStatus } from "../lib/presence";
 import { type Catalog, useCatalog, useNotices } from "../lib/store";
 import { toast } from "../ui";
+
+/** What a quick phrase that went out says, by what sent it. */
+const PHRASE_SENT: Record<PhraseTrigger, MessageKey> = {
+  shortcut: "phrase.notice.sent",
+  asked: "phrase.notice.asked",
+  done: "phrase.notice.thanked",
+};
 
 /** One line describing what the core did, in the window's language. */
 export function noticeText(kind: NoticeKind, t: Translate, catalog: Catalog | null): string {
@@ -99,11 +106,13 @@ export function noticeText(kind: NoticeKind, t: Translate, catalog: Catalog | nu
         place: t(`comeback.place.${kind.place}`),
         reason: t(`callout.skip.${kind.reason}`),
       });
-    // The quick phrase's shortcut.
+    // Champ select's quick phrases, sent by their shortcut or by a trade's switches.
     case "phraseSent":
-      return t("phrase.notice.sent");
+      return t(PHRASE_SENT[kind.trigger]);
     case "phraseSkipped":
-      return t("phrase.notice.skipped", { reason: t(`phrase.skip.${kind.reason}`) });
+      return t(kind.trigger === "done" ? "phrase.notice.thanksSkipped" : "phrase.notice.skipped", {
+        reason: t(`phrase.skip.${kind.reason}`),
+      });
   }
 }
 

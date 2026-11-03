@@ -3,31 +3,39 @@
 //! user's request, kept in a file of its own beside the settings.
 
 use std::{
+    collections::VecDeque,
     future::Future,
     io,
     path::PathBuf,
     sync::{Arc, Mutex},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use lcu::Lcu;
 use tracing::{info, warn};
 
-use super::{CHAMP_SELECT, CoreError, Service, champ_select_chat, lock, say};
+use super::{CHAMP_SELECT, Client, CoreError, Service, champ_select_chat, lock, say};
 use crate::{
     callout,
-    comeback::{self, ComebackPress, Library, Memory, PhrasePress},
+    comeback::{self, ComebackPress, Library, Memory, PhrasePress, TradeEvent},
     model::ChampSelectSession,
     settings::{Audience, CalloutDelivery, write_atomic},
-    view::{ComebackLibrary, Phase},
+    view::{ComebackLibrary, NoticeKind, Phase, PhraseTrigger},
 };
 
-/// What the service keeps for the Comebacks page: what went out last, and the library.
+/// What the service keeps for the Comebacks page: what went out last, the library, and champ
+/// select's posts in their order.
 pub(super) struct ComebackState {
     memory: Mutex<Memory>,
     library: LibraryStore,
     /// Downloading and removing the library, one at a time.
     library_work: tokio::sync::Mutex<()>,
+    /// Champ select's posts, one at a time (`Service::post_spaced`): a spaced one checks the
+    /// spacing again once it holds this, so two cannot both pass it while one is in flight.
+    chat: tokio::sync::Mutex<()>,
+    /// The messages trades send (`TradeRule`), in the order their events were seen, and whether a
+    /// task is posting them.
+    trade_queue: Mutex<(VecDeque<TradeMessage>, bool)>,
 }
 
 impl ComebackState {
@@ -40,8 +48,38 @@ impl ComebackState {
                 loaded: Mutex::new(None),
             },
             library_work: tokio::sync::Mutex::new(()),
+            chat: tokio::sync::Mutex::new(()),
+            trade_queue: Mutex::new((VecDeque::new(), false)),
         }
     }
+}
+
+/// A message a trade sends, its text written when its event was seen: the champ select may have
+/// moved on by the time it goes out.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TradeMessage {
+    game_id: i64,
+    text: String,
+    trigger: PhraseTrigger,
+}
+
+/// What came of a spaced post in champ select's chat.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Spaced {
+    Sent,
+    /// Within `comeback::SPACING` of the last line that went out: nothing was posted, and this
+    /// much of the spacing is left.
+    TooSoon(Duration),
+}
+
+/// How a post in champ select's chat counts against the spacing.
+#[derive(Clone, Copy, Debug)]
+enum Spacing<'a> {
+    /// The board's menu: one at a time with the others, but it neither waits nor counts.
+    Apart,
+    /// A shortcut's or a trade's: nothing within the spacing; once it went out it starts the
+    /// spacing, and a comeback's line (`Some`) is the one the next press does not repeat.
+    Kept(Option<&'a str>),
 }
 
 /// The downloaded library's file, read on first use and kept in memory.
@@ -156,6 +194,11 @@ pub(super) async fn post_to(
     chat.post(&room, body).await
 }
 
+/// Now, by the runtime's clock: the system's, except in a test that pauses it.
+fn now() -> Instant {
+    tokio::time::Instant::now().into_std()
+}
+
 /// A random number for [`comeback::pick`]; the clock stands in should the system have none.
 fn random() -> u64 {
     let mut bytes = [0u8; 8];
@@ -210,18 +253,22 @@ impl Service {
     }
 
     /// Posts `line` in the chat of champ select `game_id` as one message, as the callout's 发送到队伍
-    /// does, and nowhere else (`post_to`); remembers it once it went out. Returns the messages sent:
-    /// one.
-    pub async fn send_comeback(&self, line: String, game_id: i64) -> Result<u32, CoreError> {
+    /// does, and nowhere else (`post_to`), unless the spacing has started again meanwhile (another
+    /// post went out since the press was decided); a line that went out is remembered.
+    pub async fn send_comeback(&self, line: String, game_id: i64) -> Result<Spaced, CoreError> {
         let client = self.client()?;
-        post_to(&LcuChat(&client.lcu), game_id, &line).await?;
-        self.comeback_went_out(&line);
-        Ok(1)
+        self.post_spaced(
+            &LcuChat(&client.lcu),
+            game_id,
+            &line,
+            Spacing::Kept(Some(&line)),
+        )
+        .await
     }
 
     /// What a press of the quick phrase's shortcut does now (`comeback::phrase_press`), from the
     /// phase and champ select's session as the client last sent it, its trades among it. The shell
-    /// sends the phrase through [`Self::send_phrase`] and then tells [`Self::phrase_went_out`].
+    /// sends the phrase through [`Self::send_phrase_by_shortcut`].
     pub fn phrase_press(&self) -> PhrasePress {
         let phase = lock(&self.inner.state).phase;
         let session = self
@@ -232,17 +279,29 @@ impl Service {
         comeback::phrase_press(phase, session.as_ref(), &memory, Instant::now())
     }
 
-    /// A quick phrase went out by its shortcut just now: the next press of the Comebacks page's
-    /// shortcuts waits `comeback::SPACING`, and the line not to repeat stays as it was.
-    pub fn phrase_went_out(&self) {
-        lock(&self.inner.comeback.memory).sent_at = Some(Instant::now());
+    /// Posts the first quick phrase for the teammate in cell `cell_id` of champ select `game_id`,
+    /// as its shortcut does: behind the spacing, which a phrase that went out starts again.
+    pub async fn send_phrase_by_shortcut(
+        &self,
+        game_id: i64,
+        cell_id: i64,
+    ) -> Result<Spaced, CoreError> {
+        let client = self.client()?;
+        let text = self.render_phrase(0, game_id, cell_id)?;
+        let spaced = self
+            .post_spaced(&LcuChat(&client.lcu), game_id, &text, Spacing::Kept(None))
+            .await?;
+        if spaced == Spaced::Sent {
+            info!("sent a quick phrase by its shortcut");
+        }
+        Ok(spaced)
     }
 
     /// Sends quick phrase `index` (`comeback::phrases`) to champ select's chat for the teammate in
     /// cell `cell_id` of champ select `game_id`: their seat and champion filled in. Refused outside
     /// champ select (`Busy`), and for another champ select, the user's own cell or a cell not of
     /// the user's team (`Invalid`): a menu left open from an earlier champ select sends nothing.
-    /// Returns the message sent.
+    /// It waits for any other post to go first, and is not spaced. Returns the message sent.
     pub async fn send_phrase(
         &self,
         index: usize,
@@ -251,13 +310,184 @@ impl Service {
     ) -> Result<String, CoreError> {
         let client = self.client()?;
         let text = self.render_phrase(index, game_id, cell_id)?;
-        post_to(&LcuChat(&client.lcu), game_id, &text).await?;
+        self.post_spaced(&LcuChat(&client.lcu), game_id, &text, Spacing::Apart)
+            .await?;
         info!(index, "sent a quick phrase");
         Ok(text)
     }
 
+    /// Posts `text` in the chat of champ select `game_id` (`post_to`), one post at a time
+    /// (`ComebackState::chat`). A `Kept` post checks the spacing once it holds its turn, and only
+    /// one that went out starts the spacing again (and, for a comeback, becomes the line not to
+    /// repeat).
+    async fn post_spaced(
+        &self,
+        chat: &impl ChampSelectChat,
+        game_id: i64,
+        text: &str,
+        spacing: Spacing<'_>,
+    ) -> Result<Spaced, CoreError> {
+        let _turn = self.inner.comeback.chat.lock().await;
+        let Spacing::Kept(line) = spacing else {
+            post_to(chat, game_id, text).await?;
+            return Ok(Spaced::Sent);
+        };
+        if let Some(left) = self.spacing_left(now()) {
+            return Ok(Spaced::TooSoon(left));
+        }
+        post_to(chat, game_id, text).await?;
+        let mut memory = lock(&self.inner.comeback.memory);
+        memory.sent_at = Some(now());
+        if let Some(line) = line {
+            memory.last = Some(line.to_owned());
+        }
+        Ok(Spaced::Sent)
+    }
+
+    /// How much of `comeback::SPACING` is left at `now` since the last line that went out.
+    fn spacing_left(&self, now: Instant) -> Option<Duration> {
+        let sent_at = lock(&self.inner.comeback.memory).sent_at?;
+        comeback::SPACING
+            .checked_sub(now.saturating_duration_since(sent_at))
+            .filter(|left| !left.is_zero())
+    }
+
+    /// What the trades of `session` did (`comeback::trade_events`), and the messages the rule
+    /// sends for it, queued in the order seen ([`Self::trade_messages`]).
+    pub(super) fn trade_phrases(&self, client: &Client, session: &ChampSelectSession) {
+        for message in self.trade_messages(client, session) {
+            if self.enqueue_trade_message(message) {
+                let service = self.clone();
+                self.spawn(async move { service.post_trade_messages().await });
+            }
+        }
+    }
+
+    /// The messages the trades of `session` send under the rule (`TradeRule`): each written now,
+    /// from this session's view, `{champion}` the champion asked for. The events are followed
+    /// whatever the switches say, so a switch turned on later sends nothing for an earlier ask.
+    fn trade_messages(&self, client: &Client, session: &ChampSelectSession) -> Vec<TradeMessage> {
+        let events = comeback::trade_events(&mut lock(&client.live).trade_watch, session);
+        if events.is_empty() {
+            return Vec::new();
+        }
+        let settings = self.settings();
+        let (rule, language) = (&settings.comeback, settings.general.language);
+        let mut messages = Vec::new();
+        for event in events {
+            let (trigger, template, cell_id, theirs) = match event {
+                TradeEvent::Asked { cell_id, theirs } if rule.trade.on_ask => {
+                    let Some(first) = comeback::phrases(rule, language).into_iter().next() else {
+                        continue;
+                    };
+                    (PhraseTrigger::Asked, first, cell_id, theirs)
+                }
+                TradeEvent::Done { cell_id, theirs } if rule.trade.on_done => (
+                    PhraseTrigger::Done,
+                    comeback::thanks(rule, language),
+                    cell_id,
+                    theirs,
+                ),
+                _ => continue,
+            };
+            match self.render_for(&template, session.game_id, cell_id, Some(theirs)) {
+                Ok(text) => messages.push(TradeMessage {
+                    game_id: session.game_id,
+                    text,
+                    trigger,
+                }),
+                Err(error) => warn!(%error, ?trigger, "a trade's message was not written"),
+            }
+        }
+        messages
+    }
+
+    /// Puts `message` behind the others; whether no task posts them yet, so one must start.
+    fn enqueue_trade_message(&self, message: TradeMessage) -> bool {
+        let mut queue = lock(&self.inner.comeback.trade_queue);
+        queue.0.push_back(message);
+        !std::mem::replace(&mut queue.1, true)
+    }
+
+    /// The next queued trade message; `None` once the queue is empty, which also marks that no task
+    /// posts them any more.
+    fn next_trade_message(&self) -> Option<TradeMessage> {
+        let mut queue = lock(&self.inner.comeback.trade_queue);
+        let next = queue.0.pop_front();
+        if next.is_none() {
+            queue.1 = false;
+        }
+        next
+    }
+
+    /// Posts the queued trade messages one after another, in their order, each waiting out the
+    /// spacing rather than being dropped: it is the only one for that teammate. A champ select
+    /// that ended meanwhile gets nothing (`post_to` checks its game id).
+    async fn post_trade_messages(&self) {
+        while let Some(message) = self.next_trade_message() {
+            let notice = match self.client() {
+                Ok(client) => {
+                    self.post_trade_message(&LcuChat(&client.lcu), &message)
+                        .await
+                }
+                Err(error) => NoticeKind::Failed {
+                    action: "phrase".into(),
+                    message: error.to_string(),
+                },
+            };
+            self.report(notice);
+        }
+    }
+
+    /// Posts one trade message through `chat`, waiting out the spacing; what came of it.
+    async fn post_trade_message(
+        &self,
+        chat: &impl ChampSelectChat,
+        message: &TradeMessage,
+    ) -> NoticeKind {
+        loop {
+            match self
+                .post_spaced(chat, message.game_id, &message.text, Spacing::Kept(None))
+                .await
+            {
+                Ok(Spaced::Sent) => {
+                    info!(trigger = ?message.trigger, "sent a trade's message");
+                    return NoticeKind::PhraseSent {
+                        trigger: message.trigger,
+                    };
+                }
+                Ok(Spaced::TooSoon(left)) => tokio::time::sleep(left).await,
+                Err(error) => {
+                    return NoticeKind::Failed {
+                        action: "phrase".into(),
+                        message: error.to_string(),
+                    };
+                }
+            }
+        }
+    }
+
     /// The text quick phrase `index` reads for cell `cell_id` of champ select `game_id`.
     fn render_phrase(&self, index: usize, game_id: i64, cell_id: i64) -> Result<String, CoreError> {
+        let settings = self.settings();
+        let phrases = comeback::phrases(&settings.comeback, settings.general.language);
+        let template = phrases
+            .get(index)
+            .ok_or_else(|| CoreError::Invalid("no such quick phrase".into()))?;
+        self.render_for(template, game_id, cell_id, None)
+    }
+
+    /// `template` filled in for the teammate in cell `cell_id` of champ select `game_id`, from the
+    /// view held now: their seat and name, and `champion`'s name, or the one they hold for `None`.
+    /// Refused outside champ select (`Busy`), and for another champ select, the user's own cell or
+    /// a cell not of the user's team (`Invalid`).
+    fn render_for(
+        &self,
+        template: &str,
+        game_id: i64,
+        cell_id: i64,
+        champion: Option<i64>,
+    ) -> Result<String, CoreError> {
         let (phase, view) = {
             let state = lock(&self.inner.state);
             (state.phase, state.champ_select.clone())
@@ -277,18 +507,14 @@ impl Service {
         if seat.is_self {
             return Err(CoreError::Invalid("that seat is the user's own".into()));
         }
-        let settings = self.settings();
-        let language = settings.general.language;
-        let phrases = comeback::phrases(&settings.comeback, language);
-        let template = phrases
-            .get(index)
-            .ok_or_else(|| CoreError::Invalid("no such quick phrase".into()))?;
+        let language = self.settings().general.language;
+        let champion_id = champion.unwrap_or(seat.champion_id);
         let champion = self
             .game_data()
             .and_then(|data| {
                 data.champions
                     .iter()
-                    .find(|champion| champion.id == seat.champion_id)
+                    .find(|champion| champion.id == champion_id)
                     .map(|champion| champion.short_name.clone())
             })
             .unwrap_or_default();
@@ -396,6 +622,7 @@ mod tests {
     use std::{
         io::{Read as _, Write as _},
         net::TcpListener,
+        sync::atomic::{AtomicBool, AtomicI64, Ordering},
         thread,
     };
 
@@ -405,6 +632,7 @@ mod tests {
     use super::*;
     use crate::{
         service::{Client, Live},
+        settings::TradeRule,
         view::{
             ChampSelectView, ChampionInfo, GameData, PhraseSkip, PlayerStats, RiotId, Seat,
             TimerView,
@@ -572,7 +800,14 @@ mod tests {
             "a comeback just went out"
         );
         lock(&service.inner.comeback.memory).sent_at = None;
-        service.phrase_went_out();
+        let chat = FakeChat::new(&[Some(7), Some(7)], Some("room"));
+        assert_eq!(
+            service
+                .post_spaced(&chat, 7, "2L换吗", Spacing::Kept(None))
+                .await
+                .unwrap(),
+            Spaced::Sent
+        );
         let memory = lock(&service.inner.comeback.memory).clone();
         assert!(memory.sent_at.is_some(), "a phrase starts the spacing");
         assert_eq!(
@@ -620,6 +855,339 @@ mod tests {
             lock(&self.posts).push((room.to_owned(), body.to_owned()));
             Ok(())
         }
+    }
+
+    /// Champ select `game_id` as the client sends it: the user in cell 0, the team's champions by
+    /// cell, and the trades by cell and state.
+    fn trade_session(
+        game_id: i64,
+        team: &[(i64, i64)],
+        trades: &[(i64, &str)],
+    ) -> ChampSelectSession {
+        serde_json::from_value(serde_json::json!({
+            "gameId": game_id,
+            "localPlayerCellId": 0,
+            "myTeam": team
+                .iter()
+                .map(|(cell, champion)| serde_json::json!({ "cellId": cell, "championId": champion }))
+                .collect::<Vec<_>>(),
+            "trades": trades
+                .iter()
+                .map(|(cell, state)| serde_json::json!({ "id": 1, "cellId": cell, "state": state }))
+                .collect::<Vec<_>>(),
+        }))
+        .unwrap()
+    }
+
+    fn trade_rule(service: &Service, game_id: i64, change: impl FnOnce(&mut TradeRule)) {
+        let mut settings = service.settings();
+        change(&mut settings.comeback.trade);
+        service.set_settings(settings).unwrap();
+        seat_champ_select(service, game_id);
+    }
+
+    #[tokio::test]
+    async fn a_trade_writes_its_messages_when_seen_and_only_with_their_switches_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = in_champ_select(&dir, 7);
+        let client = service.client().unwrap();
+        let asked = trade_session(7, &[(0, 1), (1, 136)], &[(1, "SENT")]);
+        let swapped = trade_session(7, &[(0, 136), (1, 1)], &[]);
+        assert_eq!(service.trade_messages(&client, &asked), [], "both off");
+        trade_rule(&service, 7, |rule| {
+            rule.on_ask = true;
+            rule.on_done = true;
+        });
+        assert_eq!(
+            service.trade_messages(&client, &asked),
+            [],
+            "that ask was seen while off"
+        );
+        assert_eq!(
+            service.trade_messages(&client, &swapped),
+            [TradeMessage {
+                game_id: 7,
+                text: "谢谢2L大佬！".into(),
+                trigger: PhraseTrigger::Done
+            }],
+            "but followed: its swap is thanked"
+        );
+        // Another champ select: the ask names the champion asked for, the thank-you the one got.
+        seat_champ_select(&service, 8);
+        assert_eq!(
+            service.trade_messages(
+                &client,
+                &trade_session(8, &[(0, 1), (1, 136)], &[(1, "SENT")])
+            ),
+            [TradeMessage {
+                game_id: 8,
+                text: "2L大佬，小弟想玩下龙王，给您磕一个了".into(),
+                trigger: PhraseTrigger::Asked
+            }]
+        );
+        trade_rule(&service, 8, |rule| {
+            rule.thanks = "{seat}【{name}】，{champion}我拿走了".into();
+        });
+        assert_eq!(
+            service.trade_messages(&client, &trade_session(8, &[(0, 136), (1, 1)], &[])),
+            [TradeMessage {
+                game_id: 8,
+                text: "2L，龙王我拿走了".into(),
+                trigger: PhraseTrigger::Done
+            }]
+        );
+        trade_rule(&service, 9, |rule| rule.on_ask = false);
+        assert_eq!(
+            service.trade_messages(
+                &client,
+                &trade_session(9, &[(0, 1), (1, 136)], &[(1, "SENT")])
+            ),
+            [],
+            "the ask's switch off"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_trades_message_goes_to_the_client_and_what_came_of_it_is_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = in_champ_select(&dir, 7);
+        trade_rule(&service, 7, |rule| rule.on_ask = true);
+        let mut events = service.subscribe();
+        let client = service.client().unwrap();
+        service.trade_phrases(
+            &client,
+            &trade_session(7, &[(0, 1), (1, 136)], &[(1, "SENT")]),
+        );
+        // The test client never answers: the post was tried, and the feed says it failed.
+        let notice = tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                if let Ok(crate::view::Event::Notice(notice)) = events.recv().await {
+                    return notice.kind;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert!(
+            matches!(&notice, NoticeKind::Failed { action, .. } if action == "phrase"),
+            "{notice:?}"
+        );
+    }
+
+    /// A client in champ select `game_id` whose posts each wait for a permit of `gate`, or are
+    /// refused; it keeps what is posted, and when.
+    struct HeldChat {
+        game_id: AtomicI64,
+        gate: tokio::sync::Semaphore,
+        refuse: AtomicBool,
+        posts: Mutex<Vec<(String, tokio::time::Instant)>>,
+    }
+
+    impl HeldChat {
+        fn new(game_id: i64) -> Arc<Self> {
+            Arc::new(Self {
+                game_id: AtomicI64::new(game_id),
+                gate: tokio::sync::Semaphore::new(0),
+                refuse: AtomicBool::new(false),
+                posts: Mutex::default(),
+            })
+        }
+
+        fn bodies(&self) -> Vec<String> {
+            lock(&self.posts)
+                .iter()
+                .map(|(body, _)| body.clone())
+                .collect()
+        }
+    }
+
+    impl ChampSelectChat for HeldChat {
+        async fn game_id(&self) -> Result<Option<i64>, CoreError> {
+            Ok(Some(self.game_id.load(Ordering::SeqCst)))
+        }
+
+        async fn room(&self) -> Result<Option<String>, CoreError> {
+            Ok(Some("room".into()))
+        }
+
+        async fn post(&self, _room: &str, body: &str) -> Result<(), CoreError> {
+            self.gate.acquire().await.unwrap().forget();
+            if self.refuse.load(Ordering::SeqCst) {
+                return Err(CoreError::Invalid("refused".into()));
+            }
+            lock(&self.posts).push((body.to_owned(), tokio::time::Instant::now()));
+            Ok(())
+        }
+    }
+
+    /// Lets every task spawned so far run until it waits.
+    async fn settle() {
+        for _ in 0..20 {
+            tokio::task::yield_now().await;
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn champ_selects_posts_go_one_at_a_time_and_only_one_that_went_out_counts() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = in_champ_select(&dir, 7);
+        let chat = HeldChat::new(7);
+        chat.refuse.store(true, Ordering::SeqCst);
+        chat.gate.add_permits(1);
+        assert!(
+            service
+                .post_spaced(&*chat, 7, "a", Spacing::Kept(None))
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            lock(&service.inner.comeback.memory).sent_at,
+            None,
+            "a refused post starts no spacing"
+        );
+        chat.refuse.store(false, Ordering::SeqCst);
+        let post = |text: &'static str| {
+            let (service, chat) = (service.clone(), chat.clone());
+            tokio::spawn(async move {
+                service
+                    .post_spaced(&*chat, 7, text, Spacing::Kept(None))
+                    .await
+            })
+        };
+        // The first holds its turn while the client takes it; the second, decided meanwhile, finds
+        // the spacing started once its turn comes.
+        let first = post("first");
+        settle().await;
+        let second = post("second");
+        settle().await;
+        chat.gate.add_permits(1);
+        assert_eq!(first.await.unwrap().unwrap(), Spaced::Sent);
+        assert!(matches!(
+            second.await.unwrap().unwrap(),
+            Spaced::TooSoon(left) if left <= comeback::SPACING
+        ));
+        assert_eq!(chat.bodies(), ["first"]);
+        // The board's menu: in turn with the others, neither held back nor counted.
+        let before = lock(&service.inner.comeback.memory).sent_at;
+        tokio::time::advance(Duration::from_secs(1)).await;
+        chat.gate.add_permits(1);
+        assert_eq!(
+            service
+                .post_spaced(&*chat, 7, "menu", Spacing::Apart)
+                .await
+                .unwrap(),
+            Spaced::Sent
+        );
+        assert_eq!(lock(&service.inner.comeback.memory).sent_at, before);
+        assert_eq!(chat.bodies(), ["first", "menu"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_trades_messages_go_out_in_order_each_after_the_spacing_as_they_were_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = in_champ_select(&dir, 7);
+        trade_rule(&service, 7, |rule| {
+            rule.on_ask = true;
+            rule.on_done = true;
+        });
+        let client = service.client().unwrap();
+        let mut messages = service.trade_messages(
+            &client,
+            &trade_session(7, &[(0, 1), (1, 136)], &[(1, "SENT")]),
+        );
+        messages
+            .extend(service.trade_messages(&client, &trade_session(7, &[(0, 136), (1, 1)], &[])));
+        let texts: Vec<String> = messages
+            .iter()
+            .map(|message| message.text.clone())
+            .collect();
+        assert_eq!(
+            texts,
+            ["2L大佬，小弟想玩下龙王，给您磕一个了", "谢谢2L大佬！"]
+        );
+        // The view moves on before they go out: the teammate holds another champion now.
+        lock(&service.inner.state)
+            .champ_select
+            .as_mut()
+            .unwrap()
+            .my_team[1]
+            .champion_id = 2;
+        // Another post holds its turn while both are queued.
+        let chat = HeldChat::new(7);
+        let held = {
+            let (service, chat) = (service.clone(), chat.clone());
+            tokio::spawn(async move {
+                service
+                    .post_spaced(&*chat, 7, "a comeback", Spacing::Kept(Some("a comeback")))
+                    .await
+            })
+        };
+        settle().await;
+        let mut queued = messages.into_iter();
+        assert!(
+            service.enqueue_trade_message(queued.next().unwrap()),
+            "the first starts the task"
+        );
+        assert!(
+            !service.enqueue_trade_message(queued.next().unwrap()),
+            "the second waits behind it"
+        );
+        let drained = {
+            let (service, chat) = (service.clone(), chat.clone());
+            tokio::spawn(async move {
+                let mut notices = Vec::new();
+                while let Some(message) = service.next_trade_message() {
+                    notices.push(service.post_trade_message(&*chat, &message).await);
+                }
+                notices
+            })
+        };
+        settle().await;
+        chat.gate.add_permits(3);
+        assert_eq!(held.await.unwrap().unwrap(), Spaced::Sent);
+        let notices = drained.await.unwrap();
+        assert!(matches!(
+            notices.as_slice(),
+            [
+                NoticeKind::PhraseSent {
+                    trigger: PhraseTrigger::Asked
+                },
+                NoticeKind::PhraseSent {
+                    trigger: PhraseTrigger::Done
+                }
+            ]
+        ));
+        let posts = lock(&chat.posts).clone();
+        let bodies: Vec<&str> = posts.iter().map(|(body, _)| body.as_str()).collect();
+        assert_eq!(
+            bodies,
+            ["a comeback", texts[0].as_str(), texts[1].as_str()],
+            "in order, as written when seen"
+        );
+        assert!(
+            posts[1].1 - posts[0].1 >= comeback::SPACING,
+            "the ask waited out the spacing"
+        );
+        assert!(
+            posts[2].1 - posts[1].1 >= comeback::SPACING,
+            "and the thank-you after it"
+        );
+        assert!(
+            service.enqueue_trade_message(TradeMessage {
+                game_id: 7,
+                text: "late".into(),
+                trigger: PhraseTrigger::Done
+            }),
+            "drained, a new message starts a task again"
+        );
+        // A champ select that ended during the wait gets nothing.
+        let message = service.next_trade_message().unwrap();
+        chat.game_id.store(8, Ordering::SeqCst);
+        assert!(matches!(
+            service.post_trade_message(&*chat, &message).await,
+            NoticeKind::Failed { .. }
+        ));
+        assert!(!chat.bodies().contains(&"late".to_owned()));
     }
 
     #[tokio::test]

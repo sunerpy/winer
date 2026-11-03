@@ -1,7 +1,8 @@
 // The Comebacks page (反击): the user's own lines, which the page's two shortcuts send one at a time
 // at random; typing them into the game; champ select's quick phrases, which the Live page sends to
-// one teammate; and the library a user may download (在线语录), opted into twice: a confirmation
-// before the download and a switch after it.
+// one teammate, and the two switches that send one by themselves around a trade; and the library a
+// user may download (在线语录), opted into twice: a confirmation before the download and a switch
+// after it.
 import type { ComebackLibrary, ComebackSettings, Language, LibraryLevel } from "@winer/shared";
 import { Download, MessageSquareQuote, Plus, Trash2, TriangleAlert } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -9,10 +10,12 @@ import { type ReactNode, useState } from "react";
 import { errorMessage } from "../lib/backend";
 import {
   DEFAULT_PHRASES,
+  DEFAULT_THANKS,
   LINE_LENGTH,
   LINE_LIMIT,
   PHRASE_LIMIT,
   fillPhrase,
+  thanksOf,
 } from "../lib/comeback";
 import { useT } from "../lib/i18n";
 import { useSettings, useStore } from "../lib/store";
@@ -71,6 +74,7 @@ function TextList({
   newLabel,
   placeholder,
   empty,
+  firstMark,
   onChange,
 }: {
   items: readonly string[];
@@ -82,6 +86,8 @@ function TextList({
   newLabel: string;
   placeholder: string;
   empty: ReactNode;
+  /** What the first row is used for, shown beside it. */
+  firstMark?: string;
   /** A change to the newest list. */
   onChange: (change: (items: readonly string[]) => string[]) => void;
 }) {
@@ -103,6 +109,7 @@ function TextList({
               <span aria-hidden className="mono w-6 shrink-0 text-right text-[11px] text-fg-subtle">
                 {index + 1}
               </span>
+              {index === 0 && firstMark !== undefined && <Badge tone="info">{firstMark}</Badge>}
               <CommitInput
                 aria-label={label(index + 1)}
                 value={item}
@@ -234,17 +241,21 @@ function GamePanel() {
 }
 
 /** 选人快捷语: the templates the Live page offers for a teammate, the language's own while the user
- *  has none, the shortcut that sends the first to the teammate asked to trade, and how they read
- *  for a sample teammate. */
+ *  has none, and how they read for a sample teammate; then what goes out around a trade: the
+ *  shortcut that sends the first to the teammate asked to trade, the switches that send it by
+ *  themselves when the user asks and a thank-you once the trade went through. */
 function PhrasesPanel() {
   const t = useT();
   const save = useSave();
   const settings = useSettings();
   const language = settings.general.language;
   const own = settings.comeback.phrases;
+  const trade = settings.comeback.trade;
   const defaults = DEFAULT_PHRASES[language];
   const sample = SAMPLE[language];
   const preview = t("comeback.phrasePreview", sample);
+  const saveTrade = (change: Partial<typeof trade>) =>
+    save((rule) => ({ ...rule, trade: { ...rule.trade, ...change } }));
   return (
     <Panel
       eyebrow={t("comeback.phrases")}
@@ -264,7 +275,6 @@ function PhrasesPanel() {
       }
     >
       <p className="pb-2 text-[12px] leading-4 text-fg-muted">{t("comeback.phrasesHint")}</p>
-      <PhraseHotkeyRow />
       <TextList
         items={own}
         limit={PHRASE_LIMIT}
@@ -273,15 +283,17 @@ function PhrasesPanel() {
         removeLabel={(n) => t("comeback.removePhrase", { n })}
         newLabel={t("comeback.newPhrase")}
         placeholder={t("comeback.newPhrasePlaceholder")}
+        firstMark={t("comeback.tradeFirst")}
         empty={
           <>
             <ul className="flex flex-col">
-              {defaults.map((phrase) => (
+              {defaults.map((phrase, index) => (
                 <li
                   key={phrase}
                   className="flex min-h-11 items-center gap-2 border-b border-border py-1.5"
                 >
                   <Badge>{t("comeback.phraseDefault")}</Badge>
+                  {index === 0 && <Badge tone="info">{t("comeback.tradeFirst")}</Badge>}
                   <span className="min-w-0 flex-1 text-[12.5px] break-words text-fg-muted">
                     {phrase}
                   </span>
@@ -305,6 +317,57 @@ function PhrasesPanel() {
             </li>
           ))}
         </ol>
+      </div>
+      <div className="mt-2">
+        <PhraseHotkeyRow />
+        <Row label={t("comeback.tradeAsk")} help={t("comeback.tradeAskHint")}>
+          <Toggle
+            checked={trade.onAsk}
+            onChange={(onAsk) => saveTrade({ onAsk })}
+            label={t("comeback.tradeAsk")}
+          />
+        </Row>
+        <Row label={t("comeback.tradeDone")} help={t("comeback.tradeDoneHint")}>
+          <Toggle
+            checked={trade.onDone}
+            onChange={(onDone) => saveTrade({ onDone })}
+            label={t("comeback.tradeDone")}
+          />
+        </Row>
+        <div className="flex flex-col gap-2 py-3">
+          <label htmlFor="comeback-thanks" className="text-[14px] font-medium text-fg">
+            {t("comeback.thanks")}
+          </label>
+          <div className="flex items-center gap-2">
+            <CommitInput
+              id="comeback-thanks"
+              value={trade.thanks}
+              maxLength={LINE_LENGTH}
+              placeholder={DEFAULT_THANKS[language]}
+              onCommit={(thanks) => saveTrade({ thanks })}
+              className="min-w-0 flex-1"
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label={t("comeback.thanksReset")}
+              disabled={trade.thanks === ""}
+              onClick={() => saveTrade({ thanks: "" })}
+            >
+              {t("auto.reset")}
+            </Button>
+          </div>
+          <p className="text-[12px] leading-4 break-words text-fg-muted">
+            {t("comeback.thanksPreview", {
+              text: fillPhrase(
+                thanksOf(settings.comeback, language),
+                sample.seat,
+                sample.champion,
+                sample.name,
+              ),
+            })}
+          </p>
+        </div>
       </div>
     </Panel>
   );

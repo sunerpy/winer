@@ -2499,6 +2499,44 @@ describe("comebacks", () => {
     expect(within(preview).getByText("5L大佬，小弟想玩下龙王，给您磕一个了")).toBeInTheDocument();
   });
 
+  it("sends the first phrase on a trade and a thank-you once it went through only when switched on", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openComebacks(backend);
+    const ask = screen.getByRole("switch", { name: zhCN["comeback.tradeAsk"] });
+    const done = screen.getByRole("switch", { name: zhCN["comeback.tradeDone"] });
+    expect(ask, "off until asked").not.toBeChecked();
+    expect(done, "off until asked").not.toBeChecked();
+    expect(
+      screen.getByText(zhCN["comeback.tradeFirst"]),
+      "the phrase a trade sends is marked",
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("交换成功后会发：谢谢5L大佬！"),
+      "the default thank-you",
+    ).toBeInTheDocument();
+
+    await user.click(ask);
+    await saved(call, { trade: { onAsk: true, onDone: false, thanks: "" } });
+    await user.click(done);
+    await saved(call, { trade: { onAsk: true, onDone: true, thanks: "" } });
+    expect(ask).toBeChecked();
+    expect(done).toBeChecked();
+
+    const thanks = screen.getByRole("textbox", { name: zhCN["comeback.thanks"] });
+    expect(thanks).toHaveAttribute("placeholder", "谢谢{seat}大佬！");
+    const reset = screen.getByRole("button", { name: zhCN["comeback.thanksReset"] });
+    expect(reset).toBeDisabled();
+    // `{{` types a brace; `{Enter}` leaves the field, which saves it.
+    await user.type(thanks, "感谢{{seat}让出{{champion}{Enter}");
+    await saved(call, { trade: { onAsk: true, onDone: true, thanks: "感谢{seat}让出{champion}" } });
+    expect(screen.getByText("交换成功后会发：感谢5L让出龙王")).toBeInTheDocument();
+
+    await user.click(reset);
+    await saved(call, { trade: { onAsk: true, onDone: true, thanks: "" } });
+    expect(screen.getByText("交换成功后会发：谢谢5L大佬！")).toBeInTheDocument();
+  });
+
   it("downloads the online library only after its confirmation, and keeps its switch off until asked", async () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");

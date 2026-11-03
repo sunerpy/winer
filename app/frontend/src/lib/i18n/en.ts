@@ -1165,6 +1165,16 @@ export const en: Record<MessageKey, string> = {
   "comeback.removePhrase": "Remove phrase {n}",
   "comeback.newPhrase": "New phrase",
   "comeback.newPhrasePlaceholder": "Write a phrase and press Enter",
+  "comeback.tradeAsk": "Send when you ask to trade",
+  "comeback.tradeAskHint":
+    "In champ select, when you click Trade on a teammate in the client, the first phrase goes to the champ-select chat, their place and champion filled in. Once per teammate per champ select; within 3 seconds of the last line, it waits out the rest. Off by default.",
+  "comeback.tradeDone": "Thank them once the trade goes through",
+  "comeback.tradeDoneHint":
+    "Once a trade you asked for has gone through and the champions are swapped, the thank-you below goes to the champ-select chat; {champion} is the champion you got. Once per teammate per champ select. Off by default.",
+  "comeback.thanks": "Thank-you",
+  "comeback.thanksReset": "Reset the thank-you",
+  "comeback.thanksPreview": "Once the trade goes through: {text}",
+  "comeback.tradeFirst": "Sent on a trade",
   "comeback.phraseHotkey": "Send to the teammate you asked to trade",
   "comeback.phraseHotkeyHint":
     "In champ select, first click Trade on the teammate whose champion you want in the client, then press it: the first phrase goes to the champ-select chat, their place and champion filled in. None by default.",
@@ -1205,7 +1215,10 @@ export const en: Record<MessageKey, string> = {
   "comeback.place.all": "everyone",
   // The quick phrase's shortcut.
   "phrase.notice.sent": "Sent the phrase to the champ-select chat",
+  "phrase.notice.asked": "Sent the phrase to the teammate you asked to trade",
+  "phrase.notice.thanked": "Thanked the teammate you traded with",
   "phrase.notice.skipped": "Phrase not sent: {reason}",
+  "phrase.notice.thanksSkipped": "Thank-you not sent: {reason}",
   "phrase.skip.notChampSelect": "it goes out in champ select only",
   "phrase.skip.noTrade": "no trade asked yet: click Trade on that teammate in the client first",
   "phrase.skip.tooSoon": "less than 3 seconds since the last line",

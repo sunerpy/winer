@@ -194,6 +194,8 @@ pub fn typescript() -> String {
         view::ComebackPlace,
         view::ComebackLibrary,
         view::PhraseSkip,
+        view::PhraseTrigger,
+        settings::TradeRule,
     );
     out
 }

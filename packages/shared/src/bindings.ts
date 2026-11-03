@@ -328,7 +328,7 @@ runes: PageOutcome | null,
 /**
  * The two summoner spells are the ones set up.
  */
-spells: boolean, } | { "kind": "itemSetWritten", championId: number, } | { "kind": "itemSetsFull" } | { "kind": "rewardsClaimed", claimed: number, left: number, } | { "kind": "rewardsFailed", failed: number, } | { "kind": "typedInGame", lines: number, } | { "kind": "typingStopped", lines: number, reason: CalloutSkip, } | { "kind": "calloutSkipped", reason: CalloutSkip, } | { "kind": "comebackSent", place: ComebackPlace, messages: number, } | { "kind": "comebackStopped", place: ComebackPlace, sent: number, reason: CalloutSkip, } | { "kind": "comebackSkipped", place: ComebackPlace, reason: CalloutSkip, } | { "kind": "phraseSent" } | { "kind": "phraseSkipped", reason: PhraseSkip, };
+spells: boolean, } | { "kind": "itemSetWritten", championId: number, } | { "kind": "itemSetsFull" } | { "kind": "rewardsClaimed", claimed: number, left: number, } | { "kind": "rewardsFailed", failed: number, } | { "kind": "typedInGame", lines: number, } | { "kind": "typingStopped", lines: number, reason: CalloutSkip, } | { "kind": "calloutSkipped", reason: CalloutSkip, } | { "kind": "comebackSent", place: ComebackPlace, messages: number, } | { "kind": "comebackStopped", place: ComebackPlace, sent: number, reason: CalloutSkip, } | { "kind": "comebackSkipped", place: ComebackPlace, reason: CalloutSkip, } | { "kind": "phraseSent", trigger: PhraseTrigger, } | { "kind": "phraseSkipped", reason: PhraseSkip, trigger: PhraseTrigger, };
 
 export type PlayerProfile = { puuid: string, name: RiotId | null, level: number, iconId: number, private: boolean, ranked: Ranked, };
 
@@ -1259,7 +1259,12 @@ phraseHotkey: string | null,
 /**
  * The library downloaded on the user's request (在线语录), and whether a press picks from it.
  */
-library: LibraryRule, };
+library: LibraryRule, 
+/**
+ * What champ select's trades (交换) send by themselves, off by default: the first quick phrase
+ * when the user asks a teammate, a thank-you once the champions are swapped.
+ */
+trade: TradeRule, };
 
 export type LibraryRule = { 
 /**
@@ -1286,3 +1291,21 @@ mild: number, strong: number,
 fetchedAt: number | null, };
 
 export type PhraseSkip = "notChampSelect" | "noTrade" | "tooSoon";
+
+export type PhraseTrigger = "shortcut" | "asked" | "done";
+
+export type TradeRule = { 
+/**
+ * When the user asks a teammate to trade, the first quick phrase goes to that teammate.
+ */
+onAsk: boolean, 
+/**
+ * When a trade the user asked for went through, [`Self::thanks`] goes to that teammate.
+ */
+onDone: boolean, 
+/**
+ * The thank-you, with the quick phrases' `{seat}`, `{champion}` (the champion the user got)
+ * and `{name}`: one line of at most [`ComebackSettings::LINE_LENGTH`] characters. Empty means
+ * the language's own (`comeback::default_thanks`).
+ */
+thanks: string, };

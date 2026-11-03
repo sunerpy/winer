@@ -1003,6 +1003,7 @@ const DEFAULT_SETTINGS: Settings = {
     phrases: [],
     phraseHotkey: null,
     library: { enabled: false, level: "mild" },
+    trade: { onAsk: false, onDone: false, thanks: "" },
   },
 };
 

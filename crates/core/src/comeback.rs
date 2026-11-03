@@ -1,10 +1,10 @@
 //! The Comebacks page (反击): which line a press of its two shortcuts sends and where, the quick
-//! phrases a teammate is sent from champ select's board or by their own shortcut, and the library a
-//! user may download (在线语录). Pure: the service keeps what went out last and the downloaded file
-//! (`service/comeback.rs`); the shell types into the game.
+//! phrases a teammate is sent from champ select's board, by their own shortcut or by a trade the
+//! user asks for (交换), and the library a user may download (在线语录). Pure: the service keeps what
+//! went out last and the downloaded file (`service/comeback.rs`); the shell types into the game.
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     time::{Duration, Instant},
 };
 
@@ -13,7 +13,7 @@ use sha2::{Digest as _, Sha256};
 
 use crate::{
     callout,
-    model::ChampSelectSession,
+    model::{ChampSelectSession, TRADE_SENT},
     settings::{ComebackSettings, Language, LibraryLevel},
     sqlite::{self, Value},
     view::{CalloutSkip, ComebackLibrary, ComebackPlace, Phase, PhraseSkip},
@@ -199,6 +199,140 @@ pub fn phrase_press(
         cell_id,
     }
 }
+
+// ---- Trades (交换): what the user's own requests send by themselves (`settings::TradeRule`) ----
+
+/// The thank-you a trade that went through sends while the user has written none.
+pub fn default_thanks(language: Language) -> &'static str {
+    match language {
+        Language::ZhCn => "谢谢{seat}大佬！",
+        Language::En => "Thanks, {seat}!",
+    }
+}
+
+/// The thank-you template the rule holds, or the language's own.
+pub fn thanks(rule: &ComebackSettings, language: Language) -> String {
+    if rule.trade.thanks.is_empty() {
+        default_thanks(language).to_owned()
+    } else {
+        rule.trade.thanks.clone()
+    }
+}
+
+/// What a trade the user asked for did, as one champ select's sessions show it (`trade_events`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TradeEvent {
+    /// The user asked the teammate in `cell_id` for their champion, `theirs`: the first ask of that
+    /// teammate this champ select.
+    Asked { cell_id: i64, theirs: i64 },
+    /// A trade the user asked of the teammate in `cell_id` went through: the user now holds
+    /// `theirs`. Once per teammate per champ select.
+    Done { cell_id: i64, theirs: i64 },
+}
+
+/// The request being followed: the teammate's cell, and both champions as they were when it was
+/// made.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Ask {
+    cell_id: i64,
+    mine: i64,
+    theirs: i64,
+}
+
+/// What [`trade_events`] keeps from one session of a champ select to the next.
+#[derive(Clone, Debug, Default)]
+pub struct TradeWatch {
+    game_id: Option<i64>,
+    /// Each cell's trade state in the last session, so a cell turning `SENT` is seen.
+    states: HashMap<i64, String>,
+    /// The cells asked, and the cells thanked: a message each, once per champ select. Kept apart
+    /// from `pending`, so an ask made again after a cancel is still followed to its end.
+    asked: HashSet<i64>,
+    thanked: HashSet<i64>,
+    /// The user's request now; the latest replaces any other.
+    pending: Option<Ask>,
+}
+
+/// What the trades of `session` did since the last session `watch` saw. A new request is a cell
+/// whose trade reads `SENT` and did not before; it went through once the user holds the champion
+/// that teammate had and they hold the user's, whatever the trades read then (the client rebuilds
+/// them after a swap). It is still waiting while the cell reads `SENT` or `ACCEPTED`, or has no
+/// trade at all, and neither champion moved; any other state, or another champion, ends it with no
+/// event. A session of another champ select starts the watch afresh.
+pub fn trade_events(watch: &mut TradeWatch, session: &ChampSelectSession) -> Vec<TradeEvent> {
+    if watch.game_id != Some(session.game_id) {
+        *watch = TradeWatch {
+            game_id: Some(session.game_id),
+            ..TradeWatch::default()
+        };
+    }
+    let champion = |cell_id: i64| {
+        session
+            .my_team
+            .iter()
+            .find(|player| player.cell_id == cell_id)
+            .map(|player| player.champion_id)
+    };
+    let mine = champion(session.local_player_cell_id);
+    let mut events = Vec::new();
+    if let Some(ask) = watch.pending {
+        let theirs = champion(ask.cell_id);
+        if mine == Some(ask.theirs) && theirs == Some(ask.mine) {
+            watch.pending = None;
+            if watch.thanked.insert(ask.cell_id) {
+                events.push(TradeEvent::Done {
+                    cell_id: ask.cell_id,
+                    theirs: ask.theirs,
+                });
+            }
+        } else {
+            let unmoved = mine == Some(ask.mine) && theirs == Some(ask.theirs);
+            let waiting = session
+                .trades
+                .iter()
+                .find(|trade| trade.cell_id == ask.cell_id)
+                .is_none_or(|trade| {
+                    trade.state.eq_ignore_ascii_case(TRADE_SENT)
+                        || trade.state.eq_ignore_ascii_case(TRADE_ACCEPTED)
+                });
+            if !(unmoved && waiting) {
+                watch.pending = None;
+            }
+        }
+    }
+    for trade in &session.trades {
+        let was_sent = watch
+            .states
+            .get(&trade.cell_id)
+            .is_some_and(|state| state.eq_ignore_ascii_case(TRADE_SENT));
+        if !trade.state.eq_ignore_ascii_case(TRADE_SENT) || was_sent {
+            continue;
+        }
+        let (Some(mine), Some(theirs)) = (mine, champion(trade.cell_id)) else {
+            continue;
+        };
+        watch.pending = Some(Ask {
+            cell_id: trade.cell_id,
+            mine,
+            theirs,
+        });
+        if watch.asked.insert(trade.cell_id) {
+            events.push(TradeEvent::Asked {
+                cell_id: trade.cell_id,
+                theirs,
+            });
+        }
+    }
+    watch.states = session
+        .trades
+        .iter()
+        .map(|trade| (trade.cell_id, trade.state.clone()))
+        .collect();
+    events
+}
+
+/// The state of a trade the teammate accepted, which the client may report before the swap.
+const TRADE_ACCEPTED: &str = "ACCEPTED";
 
 // ---- Lines as a message holds them ----
 
@@ -425,6 +559,164 @@ mod tests {
             in_game,
             ..ComebackSettings::default()
         }
+    }
+
+    /// A champ select of game 9 as the client sends it: the user in cell 7, the team's champions by
+    /// cell, and the trades by cell and state.
+    fn trading(game_id: i64, team: &[(i64, i64)], trades: &[(i64, &str)]) -> ChampSelectSession {
+        serde_json::from_value(serde_json::json!({
+            "gameId": game_id,
+            "localPlayerCellId": 7,
+            "myTeam": team
+                .iter()
+                .map(|(cell, champion)| serde_json::json!({ "cellId": cell, "championId": champion }))
+                .collect::<Vec<_>>(),
+            "trades": trades
+                .iter()
+                .enumerate()
+                .map(|(id, (cell, state))| serde_json::json!({
+                    "id": id + 40, "cellId": cell, "state": state
+                }))
+                .collect::<Vec<_>>(),
+        }))
+        .unwrap()
+    }
+
+    /// The user (cell 7) on Talon (32), the teammate in cell 5 on Annie (1) and in cell 6 on Ahri (103).
+    const TEAM: [(i64, i64); 3] = [(5, 1), (6, 103), (7, 32)];
+    /// The same after the user and cell 5 swapped.
+    const SWAPPED: [(i64, i64); 3] = [(5, 32), (6, 103), (7, 1)];
+
+    #[test]
+    fn a_trade_asked_sends_once_and_thanks_once_its_champions_are_swapped() {
+        let mut watch = TradeWatch::default();
+        let events = |watch: &mut TradeWatch, team: &[(i64, i64)], trades: &[(i64, &str)]| {
+            trade_events(watch, &trading(9, team, trades))
+        };
+        assert_eq!(
+            events(&mut watch, &TEAM, &[(5, "AVAILABLE"), (6, "INVALID")]),
+            []
+        );
+        assert_eq!(
+            events(&mut watch, &TEAM, &[(5, "SENT"), (6, "INVALID")]),
+            [TradeEvent::Asked {
+                cell_id: 5,
+                theirs: 1
+            }]
+        );
+        assert_eq!(
+            events(&mut watch, &TEAM, &[(5, "SENT"), (6, "INVALID")]),
+            [],
+            "still the same ask"
+        );
+        assert_eq!(
+            events(&mut watch, &TEAM, &[(5, "ACCEPTED"), (6, "INVALID")]),
+            [],
+            "accepted, not swapped yet: still followed"
+        );
+        assert_eq!(
+            events(&mut watch, &SWAPPED, &[(5, "AVAILABLE"), (6, "AVAILABLE")]),
+            [TradeEvent::Done {
+                cell_id: 5,
+                theirs: 1
+            }],
+            "the trades are rebuilt after the swap"
+        );
+        assert_eq!(events(&mut watch, &SWAPPED, &[(5, "AVAILABLE")]), []);
+    }
+
+    #[test]
+    fn an_ask_made_again_after_a_cancel_is_not_sent_twice_but_still_thanked() {
+        let mut watch = TradeWatch::default();
+        let mut events = |team: &[(i64, i64)], trades: &[(i64, &str)]| {
+            trade_events(&mut watch, &trading(9, team, trades))
+        };
+        assert_eq!(events(&TEAM, &[(5, "SENT")]).len(), 1);
+        assert_eq!(events(&TEAM, &[(5, "CANCELLED")]), []);
+        assert_eq!(events(&TEAM, &[(5, "AVAILABLE")]), []);
+        assert_eq!(
+            events(&TEAM, &[(5, "SENT")]),
+            [],
+            "that teammate was asked already"
+        );
+        assert_eq!(
+            events(&TEAM, &[]),
+            [],
+            "no trade in the list while nothing moved: still followed"
+        );
+        assert_eq!(
+            events(&SWAPPED, &[]),
+            [TradeEvent::Done {
+                cell_id: 5,
+                theirs: 1
+            }]
+        );
+    }
+
+    #[test]
+    fn nothing_is_thanked_but_the_users_own_trade_that_went_through() {
+        // Declined, then the two swap all the same: the ask had ended.
+        let mut watch = TradeWatch::default();
+        trade_events(&mut watch, &trading(9, &TEAM, &[(5, "SENT")]));
+        assert_eq!(
+            trade_events(&mut watch, &trading(9, &TEAM, &[(5, "DECLINED")])),
+            []
+        );
+        assert_eq!(trade_events(&mut watch, &trading(9, &SWAPPED, &[])), []);
+        // The teammate took another champion: the ask ended, and its swap never comes.
+        let mut watch = TradeWatch::default();
+        trade_events(&mut watch, &trading(9, &TEAM, &[(5, "SENT")]));
+        let other = [(5, 22), (6, 103), (7, 32)];
+        assert_eq!(
+            trade_events(&mut watch, &trading(9, &other, &[(5, "SENT")])),
+            []
+        );
+        assert_eq!(trade_events(&mut watch, &trading(9, &SWAPPED, &[])), []);
+        // Two other teammates trading each other, a request to the user, a cell never asked.
+        let mut watch = TradeWatch::default();
+        assert_eq!(
+            trade_events(&mut watch, &trading(9, &TEAM, &[(5, "BUSY"), (6, "BUSY")])),
+            []
+        );
+        assert_eq!(
+            trade_events(&mut watch, &trading(9, &TEAM, &[(5, "RECEIVED")])),
+            []
+        );
+        assert_eq!(trade_events(&mut watch, &trading(9, &SWAPPED, &[])), []);
+    }
+
+    #[test]
+    fn another_champ_select_starts_the_watch_afresh() {
+        let mut watch = TradeWatch::default();
+        assert_eq!(
+            trade_events(&mut watch, &trading(9, &TEAM, &[(5, "SENT")])).len(),
+            1
+        );
+        assert_eq!(
+            trade_events(&mut watch, &trading(10, &TEAM, &[(5, "SENT")])),
+            [TradeEvent::Asked {
+                cell_id: 5,
+                theirs: 1
+            }],
+            "game 10 is another champ select"
+        );
+        assert_eq!(
+            trade_events(&mut watch, &trading(9, &SWAPPED, &[])),
+            [],
+            "nor does game 9's swap count after it"
+        );
+    }
+
+    #[test]
+    fn the_thank_you_is_the_users_or_the_languages() {
+        let mut rule = ComebackSettings::default();
+        assert_eq!(thanks(&rule, Language::ZhCn), "谢谢{seat}大佬！");
+        assert_eq!(thanks(&rule, Language::En), "Thanks, {seat}!");
+        rule.trade.thanks = "{seat}，{champion}我拿走了，谢谢".into();
+        assert_eq!(
+            thanks(&rule, Language::ZhCn),
+            "{seat}，{champion}我拿走了，谢谢"
+        );
     }
 
     #[test]
