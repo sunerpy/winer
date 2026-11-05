@@ -178,6 +178,10 @@ function line(
     spells: [4, 14],
     items: [3031, 3006, 3094, 0, 0, 0, 3340],
     augments: [],
+    primaryStyle: 8000,
+    primaryRunes: [8005, 9111, 9104, 8014],
+    secondaryRunes: [8139, 8135],
+    statShards: [5005, 5008, 5001],
     keystone: 8005,
     subStyle: 8100,
     kills,
@@ -1282,6 +1286,24 @@ export function demoBackend(): Backend {
         .map(([puuid, note]) => ({ puuid, note }))
         .sort((a, b) => b.note.updatedAt - a.note.updatedAt),
     delete_player_note: ({ puuid }) => notes.delete(puuid),
+    get_report_directory: () => null,
+    choose_report_directory: () => {
+      throw new Error("Folder export is available in the desktop app / 文件夹导出请使用桌面版");
+    },
+    save_report_image: () => {
+      throw new Error("Folder export requires the desktop app");
+    },
+    save_report_archive: ({ contents }) => {
+      const url = URL.createObjectURL(
+        new Blob([new Uint8Array(contents)], { type: "application/zip" }),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "Winer_Battle_Reports.zip";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      return link.download;
+    },
     save_export: ({ stem, format }) => `${stem}.${format}`,
     retry_player: () => null,
     run_diagnostics: () => ({

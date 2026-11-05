@@ -246,7 +246,11 @@ export type PlayerLine = { puuid: string, name: RiotId | null, iconId: number, c
 /**
  * Arena and Hextech ARAM augments, in the order picked.
  */
-augments: Array<number>, keystone: number, subStyle: number, kills: number, deaths: number, assists: number, cs: number, gold: number, damage: number, damageTaken: number, vision: number, largestMultiKill: number, win: boolean, remake: boolean, 
+augments: Array<number>, primaryStyle: number, primaryRunes: Array<number>, secondaryRunes: Array<number>, 
+/**
+ * Offense, flex and defense shards, in that order. Zero means unavailable.
+ */
+statShards: [number, number, number], keystone: number, subStyle: number, kills: number, deaths: number, assists: number, cs: number, gold: number, damage: number, damageTaken: number, vision: number, largestMultiKill: number, win: boolean, remake: boolean, 
 /**
  * Arena placement, 1–8.
  */
