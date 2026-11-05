@@ -1,5 +1,6 @@
-// The Comebacks page (反击) as the core keeps it (crates/core/src/comeback.rs and settings.rs): its
-// limits, champ select's default quick phrases and how a phrase reads for one teammate.
+// The Comebacks (反击) and Phrases (快捷语) pages as the core keeps them (crates/core/src/comeback.rs
+// and settings.rs): their limits, champ select's default quick phrases and how a phrase reads for one
+// teammate.
 import type { ComebackSettings, Language } from "@winer/shared";
 
 /** At most this many lines, and quick phrases, of this many characters each

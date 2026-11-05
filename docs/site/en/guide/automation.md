@@ -98,8 +98,8 @@ summoner spells for Jhin"; a failure says why. Nothing is posted to chat.
   **In-game sending** on, it types the in-game lines chosen below into the game's team chat. It
   works while winer's window is hidden, and what it did is noted in **Activity** on the overview. It
   is set the way the shortcut that brings up winer is (see [Settings](/en/guide/settings)); it cannot
-  share a combination with that one, nor can the three shortcuts of the [Comebacks](/en/guide/live#comebacks)
-  page share one with either.
+  share a combination with that one, nor can the [Comebacks](/en/guide/live#comebacks) page's two
+  shortcuts or the [Phrases](/en/guide/live#champ-select-phrases) page's one share one with either.
 
 ### Lines in game
 

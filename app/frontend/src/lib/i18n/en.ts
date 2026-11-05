@@ -11,6 +11,7 @@ export const en: Record<MessageKey, string> = {
   "nav.tools": "Tools",
   "nav.plugin": "In-client",
   "nav.comeback": "Comebacks",
+  "nav.phrases": "Phrases",
   "nav.settings": "Settings",
   "nav.theme": "Theme",
   "nav.collapse": "Collapse sidebar",
@@ -1003,7 +1004,7 @@ export const en: Record<MessageKey, string> = {
   "loadout.what.runes": "runes",
   "loadout.what.spells": "summoner spells",
 
-  "status.shortcuts": "Ctrl 1–7 pages · Ctrl , settings · Ctrl B sidebar",
+  "status.shortcuts": "Ctrl 1–8 pages · Ctrl , settings · Ctrl B sidebar",
   "error.title": "This page hit an error",
   "error.hint":
     "Other pages are fine. Retry, or open the log folder and send the newest log to the developers.",
@@ -1119,34 +1120,34 @@ export const en: Record<MessageKey, string> = {
   "elevation.gameNote":
     "A game started from WeGame runs as administrator: unless winer does too, Windows drops the keys it presses and nothing reaches the game.",
 
-  // The Comebacks page: the user's own lines, their two shortcuts, typing into the game, champ
-  // select's quick phrases and the library downloaded on request.
+  // Lists of lines edited in place, on the Comebacks and Phrases pages.
+  "list.count": "{n} / {max}",
+  "list.add": "Add",
+  "list.full": "{n} at most.",
+
+  // The Comebacks page: the user's own lines, their two shortcuts, typing into the game and the
+  // library downloaded on request.
   "comeback.title": "Comebacks",
   "comeback.lines": "Comeback lines",
   "comeback.linesHint":
     "One press sends one line, at random, never the same line twice in a row. A line goes out as one message of 200 characters at most. winer ships none: these are your own.",
-  "comeback.count": "{n} / {max}",
   "comeback.linesEmpty": "No lines yet",
   "comeback.linesEmptyHint": "Write one below, then press Enter or Add.",
   "comeback.line": "Line {n}",
   "comeback.removeLine": "Remove line {n}",
   "comeback.newLine": "New comeback line",
   "comeback.newLinePlaceholder": "Write a line and press Enter",
-  "comeback.add": "Add",
-  "comeback.full": "{n} at most.",
   "comeback.shortcuts": "Shortcuts",
-  "comeback.hotkey": "Send to the team",
+  "comeback.hotkey": "Send a comeback to the team",
   "comeback.hotkeyHint":
     "In champ select it posts a random line to the champ-select chat; in a game, with Type in the game on below, it types the line into the game's team chat. None by default.",
-  "comeback.allHotkey": "Send to everyone",
+  "comeback.allHotkey": "Send a comeback to everyone",
   "comeback.allHotkeyHint":
-    "In a game, with Type in the game on, it types the line into the all chat with /all before it, where the enemy reads it too; in champ select it posts to the champ-select chat, which only your team reads, as Send to the team does. None by default.",
+    "In a game, with Type in the game on, it types the line into the all chat with /all before it, where the enemy reads it too; in champ select it posts to the champ-select chat, which only your team reads, as Send a comeback to the team does. None by default.",
   "comeback.hotkeyTakenByTeam": "This combination sends a comeback to the team. Choose another.",
   "comeback.hotkeyTakenByAll": "This combination sends a comeback to everyone. Choose another.",
-  "comeback.hotkeyTakenByPhrase":
-    "This combination sends the phrase to the teammate you asked to trade. Choose another.",
   "comeback.spacing":
-    "Two lines go out at least 3 seconds apart: a press within 3 seconds of the last line sends nothing, so the chat is never flooded.",
+    "Two lines go out at least 3 seconds apart, champ-select phrases included: a press within 3 seconds of the last line sends nothing, so the chat is never flooded.",
   "comeback.noLinesYet":
     "There is no line to send yet, so these shortcuts send nothing: add lines under Comeback lines above, or download the online library below and turn on Use the online library.",
   "comeback.gameSection": "In-game sending",
@@ -1155,30 +1156,6 @@ export const en: Record<MessageKey, string> = {
     "The game's chat has no API, so winer types for you with synthesized key presses: Enter opens the chat, the line goes in, Enter sends it, a long line in several messages. It types only while the game's window is already in front and stops the moment it is not; close the chat box before pressing a shortcut.",
   "comeback.inGameRisk":
     "Key presses another program sends to the game are third-party input and may break the game's terms of service, and abusive chat gets reported. Either can get the account muted or banned; you use it at your own risk. Off by default.",
-  "comeback.phrases": "Champ-select phrases",
-  "comeback.phrasesHint":
-    "On the Live page in champ select, the button at the end of a teammate's row sends that teammate one line, such as when you want to swap champions. Use {seat} (their place in your team's list, like P5), {champion} (their champion) and {name} (their name); a value that cannot be read goes, with the brackets it sits in. 20 at most.",
-  "comeback.phraseDefault": "Default",
-  "comeback.phraseDefaultHint":
-    "Offered while you have none of your own; once you add one, only yours are.",
-  "comeback.phrase": "Phrase {n}",
-  "comeback.removePhrase": "Remove phrase {n}",
-  "comeback.newPhrase": "New phrase",
-  "comeback.newPhrasePlaceholder": "Write a phrase and press Enter",
-  "comeback.tradeAsk": "Send when you ask to trade",
-  "comeback.tradeAskHint":
-    "In champ select, when you click Trade on a teammate in the client, the first phrase goes to the champ-select chat, their place and champion filled in. Once per teammate per champ select; within 3 seconds of the last line, it waits out the rest. Off by default.",
-  "comeback.tradeDone": "Thank them once the trade goes through",
-  "comeback.tradeDoneHint":
-    "Once a trade you asked for has gone through and the champions are swapped, the thank-you below goes to the champ-select chat; {champion} is the champion you got. Once per teammate per champ select. Off by default.",
-  "comeback.thanks": "Thank-you",
-  "comeback.thanksReset": "Reset the thank-you",
-  "comeback.thanksPreview": "Once the trade goes through: {text}",
-  "comeback.tradeFirst": "Sent on a trade",
-  "comeback.phraseHotkey": "Send to the teammate you asked to trade",
-  "comeback.phraseHotkeyHint":
-    "In champ select, first click Trade on the teammate whose champion you want in the client, then press it: the first phrase goes to the champ-select chat, their place and champion filled in. None by default.",
-  "comeback.phrasePreview": "Preview, sent to {name} in {seat} on {champion}",
   "comeback.library": "Online library",
   "comeback.libraryAbout":
     "The 祖安语录 trash-talk collection of the open project github.com/cndiandian/zuanbot.com (Apache-2.0), in two sets: 口吐芬芳 (mild) and 火力全开 (strong). winer does not ship it; it is downloaded only after you click Download and confirm.",
@@ -1213,7 +1190,38 @@ export const en: Record<MessageKey, string> = {
   "comeback.place.champSelect": "the champ-select chat",
   "comeback.place.team": "the team",
   "comeback.place.all": "everyone",
-  // The quick phrase's shortcut.
+  // The Phrases page (快捷语): champ select's quick phrases and what goes out around a trade.
+  "phrase.title": "Champ-select phrases",
+  "phrase.list": "Phrases",
+  "phrase.listHint":
+    "On the Live page in champ select, the button at the end of a teammate's row sends that teammate one line, such as when you want to swap champions. Use {seat} (their place in your team's list, like P5), {champion} (their champion) and {name} (their name); a value that cannot be read goes, with the brackets it sits in. 20 at most.",
+  "phrase.default": "Default",
+  "phrase.defaultHint":
+    "Offered while you have none of your own; once you add one, only yours are.",
+  "phrase.item": "Phrase {n}",
+  "phrase.remove": "Remove phrase {n}",
+  "phrase.new": "New phrase",
+  "phrase.newPlaceholder": "Write a phrase and press Enter",
+  "phrase.preview": "Preview, sent to {name} in {seat} on {champion}",
+  "phrase.tradeFirst": "Sent on a trade",
+  "phrase.trade": "Champion trades",
+  "phrase.hotkey": "Send to the teammate you asked to trade",
+  "phrase.hotkeyHint":
+    "In champ select, first click Trade on the teammate whose champion you want in the client, then press it: the first phrase goes to the champ-select chat, their place and champion filled in. None by default.",
+  "phrase.hotkeyTaken":
+    "This combination sends the phrase to the teammate you asked to trade. Choose another.",
+  "phrase.tradeAsk": "Send when you ask to trade",
+  "phrase.tradeAskHint":
+    "In champ select, when you click Trade on a teammate in the client, the first phrase goes to the champ-select chat, their place and champion filled in. Once per teammate per champ select; within 3 seconds of the last line, it waits out the rest. Off by default.",
+  "phrase.tradeDone": "Thank them once the trade goes through",
+  "phrase.tradeDoneHint":
+    "Once a trade you asked for has gone through and the champions are swapped, the thank-you below goes to the champ-select chat; {champion} is the champion you got. Once per teammate per champ select. Off by default.",
+  "phrase.thanks": "Thank-you",
+  "phrase.thanksReset": "Reset the thank-you",
+  "phrase.thanksPreview": "Once the trade goes through: {text}",
+  "phrase.spacing":
+    "Lines in the champ-select chat go out at least 3 seconds apart, comebacks and phrases alike: a press within 3 seconds sends nothing, an automatic message waits out the rest.",
+  // The quick phrase's shortcut and the trade's messages, which act while the window may be hidden.
   "phrase.notice.sent": "Sent the phrase to the champ-select chat",
   "phrase.notice.asked": "Sent the phrase to the teammate you asked to trade",
   "phrase.notice.thanked": "Thanked the teammate you traded with",

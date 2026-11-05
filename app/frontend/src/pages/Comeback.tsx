@@ -1,34 +1,21 @@
 // The Comebacks page (反击): the user's own lines, which the page's two shortcuts send one at a time
-// at random; typing them into the game; champ select's quick phrases, which the Live page sends to
-// one teammate, and the two switches that send one by themselves around a trade; and the library a
-// user may download (在线语录), opted into twice: a confirmation before the download and a switch
-// after it.
-import type { ComebackLibrary, ComebackSettings, Language, LibraryLevel } from "@winer/shared";
-import { Download, MessageSquareQuote, Plus, Trash2, TriangleAlert } from "lucide-react";
-import { type ReactNode, useState } from "react";
+// at random; typing them into the game; and the library a user may download (在线语录), opted into
+// twice: a confirmation before the download and a switch after it. Champ select's quick phrases
+// have their own page (Phrases.tsx).
+import type { ComebackLibrary, ComebackSettings, LibraryLevel } from "@winer/shared";
+import { Download, MessageSquareQuote, Trash2, TriangleAlert } from "lucide-react";
+import { useState } from "react";
 
 import { errorMessage } from "../lib/backend";
-import {
-  DEFAULT_PHRASES,
-  DEFAULT_THANKS,
-  LINE_LENGTH,
-  LINE_LIMIT,
-  PHRASE_LIMIT,
-  fillPhrase,
-  thanksOf,
-} from "../lib/comeback";
+import { LINE_LIMIT } from "../lib/comeback";
 import { useT } from "../lib/i18n";
 import { useSettings, useStore } from "../lib/store";
 import { useAsync } from "../lib/useAsync";
 import {
-  Badge,
   Button,
-  CommitInput,
   Dialog,
   EmptyState,
   ErrorNote,
-  IconButton,
-  Input,
   Panel,
   Row,
   Segmented,
@@ -37,15 +24,10 @@ import {
   toast,
 } from "../ui";
 import { GameRightsNote, PageBody } from "./common";
-import { ComebackHotkeyRow, PhraseHotkeyRow } from "./settings/HotkeyRow";
+import { Count, TextList } from "./TextList";
+import { ComebackHotkeyRow } from "./settings/HotkeyRow";
 
 const LEVELS: readonly LibraryLevel[] = ["mild", "strong", "both"];
-
-/** The teammate the quick phrases are previewed for, in the user's language. */
-const SAMPLE: Record<Language, { seat: string; champion: string; name: string }> = {
-  "zh-CN": { seat: "5L", champion: "龙王", name: "峡谷清道夫" },
-  en: { seat: "P5", champion: "Aurelion Sol", name: "RiftSweeper" },
-};
 
 /** Saves a change to the page's settings, made on the newest ones. */
 function useSave() {
@@ -54,108 +36,6 @@ function useSave() {
     void store
       .updateSettings((settings) => ({ ...settings, comeback: change(settings.comeback) }))
       .catch((error: unknown) => toast(errorMessage(error), "danger"));
-}
-
-/** `n` of `max`, for a panel's header. */
-function Count({ n, max }: { n: number; max: number }) {
-  const t = useT();
-  return <span className="mono text-[12px] text-fg-subtle">{t("comeback.count", { n, max })}</span>;
-}
-
-/** Lines of text one to a row, each edited in place (saved when the field is left) or removed,
- *  and a field below that adds one; `empty` stands in for the rows while there are none. The core
- *  trims, clips and drops blanks on save. */
-function TextList({
-  items,
-  limit,
-  listLabel,
-  label,
-  removeLabel,
-  newLabel,
-  placeholder,
-  empty,
-  firstMark,
-  onChange,
-}: {
-  items: readonly string[];
-  limit: number;
-  listLabel: string;
-  /** The accessible names of row `n`, counted from 1, and of its remove button. */
-  label: (n: number) => string;
-  removeLabel: (n: number) => string;
-  newLabel: string;
-  placeholder: string;
-  empty: ReactNode;
-  /** What the first row is used for, shown beside it. */
-  firstMark?: string;
-  /** A change to the newest list. */
-  onChange: (change: (items: readonly string[]) => string[]) => void;
-}) {
-  const t = useT();
-  const [draft, setDraft] = useState("");
-  const full = items.length >= limit;
-  const add = () => {
-    const text = draft.trim();
-    if (!text || full) return;
-    onChange((list) => [...list, text]);
-    setDraft("");
-  };
-  return (
-    <>
-      {items.length > 0 ? (
-        <ol aria-label={listLabel} className="flex flex-col">
-          {items.map((item, index) => (
-            <li key={index} className="flex items-center gap-2 border-b border-border py-1.5">
-              <span aria-hidden className="mono w-6 shrink-0 text-right text-[11px] text-fg-subtle">
-                {index + 1}
-              </span>
-              {index === 0 && firstMark !== undefined && <Badge tone="info">{firstMark}</Badge>}
-              <CommitInput
-                aria-label={label(index + 1)}
-                value={item}
-                maxLength={LINE_LENGTH}
-                onCommit={(text) =>
-                  onChange((list) => list.map((old, at) => (at === index ? text : old)))
-                }
-                className="min-w-0 flex-1"
-              />
-              <IconButton
-                icon={Trash2}
-                tone="danger"
-                label={removeLabel(index + 1)}
-                onClick={() => onChange((list) => list.filter((_, at) => at !== index))}
-              />
-            </li>
-          ))}
-        </ol>
-      ) : (
-        empty
-      )}
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          add();
-        }}
-        className="mt-3 flex items-center gap-2"
-      >
-        <Input
-          aria-label={newLabel}
-          value={draft}
-          maxLength={LINE_LENGTH}
-          placeholder={placeholder}
-          disabled={full}
-          onChange={(event) => setDraft(event.target.value)}
-          className="min-w-0 flex-1"
-        />
-        <Button type="submit" icon={Plus} disabled={full || draft.trim() === ""}>
-          {t("comeback.add")}
-        </Button>
-      </form>
-      {full && (
-        <p className="pt-1.5 text-[11.5px] text-fg-subtle">{t("comeback.full", { n: limit })}</p>
-      )}
-    </>
-  );
 }
 
 /** 反击语句: the user's own lines; winer ships none. */
@@ -236,139 +116,6 @@ function GamePanel() {
         />
       </Row>
       <GameRightsNote />
-    </Panel>
-  );
-}
-
-/** 选人快捷语: the templates the Live page offers for a teammate, the language's own while the user
- *  has none, and how they read for a sample teammate; then what goes out around a trade: the
- *  shortcut that sends the first to the teammate asked to trade, the switches that send it by
- *  themselves when the user asks and a thank-you once the trade went through. */
-function PhrasesPanel() {
-  const t = useT();
-  const save = useSave();
-  const settings = useSettings();
-  const language = settings.general.language;
-  const own = settings.comeback.phrases;
-  const trade = settings.comeback.trade;
-  const defaults = DEFAULT_PHRASES[language];
-  const sample = SAMPLE[language];
-  const preview = t("comeback.phrasePreview", sample);
-  const saveTrade = (change: Partial<typeof trade>) =>
-    save((rule) => ({ ...rule, trade: { ...rule.trade, ...change } }));
-  return (
-    <Panel
-      eyebrow={t("comeback.phrases")}
-      className="col-span-12"
-      right={
-        <>
-          <Count n={own.length} max={PHRASE_LIMIT} />
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={own.length === 0}
-            onClick={() => save((rule) => ({ ...rule, phrases: [] }))}
-          >
-            {t("auto.reset")}
-          </Button>
-        </>
-      }
-    >
-      <p className="pb-2 text-[12px] leading-4 text-fg-muted">{t("comeback.phrasesHint")}</p>
-      <TextList
-        items={own}
-        limit={PHRASE_LIMIT}
-        listLabel={t("comeback.phrases")}
-        label={(n) => t("comeback.phrase", { n })}
-        removeLabel={(n) => t("comeback.removePhrase", { n })}
-        newLabel={t("comeback.newPhrase")}
-        placeholder={t("comeback.newPhrasePlaceholder")}
-        firstMark={t("comeback.tradeFirst")}
-        empty={
-          <>
-            <ul className="flex flex-col">
-              {defaults.map((phrase, index) => (
-                <li
-                  key={phrase}
-                  className="flex min-h-11 items-center gap-2 border-b border-border py-1.5"
-                >
-                  <Badge>{t("comeback.phraseDefault")}</Badge>
-                  {index === 0 && <Badge tone="info">{t("comeback.tradeFirst")}</Badge>}
-                  <span className="min-w-0 flex-1 text-[12.5px] break-words text-fg-muted">
-                    {phrase}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <p className="pt-1.5 text-[11.5px] text-fg-subtle">{t("comeback.phraseDefaultHint")}</p>
-          </>
-        }
-        onChange={(change) => save((rule) => ({ ...rule, phrases: change(rule.phrases) }))}
-      />
-      <div className="mt-4 flex flex-col gap-2">
-        <p className="text-[14px] font-medium text-fg">{preview}</p>
-        <ol
-          aria-label={preview}
-          className="flex flex-col gap-1 rounded-6 bg-inset px-3 py-2 hairline"
-        >
-          {(own.length > 0 ? own : defaults).map((phrase, index) => (
-            <li key={index} className="text-[12.5px] leading-5 break-words text-fg">
-              {fillPhrase(phrase, sample.seat, sample.champion, sample.name)}
-            </li>
-          ))}
-        </ol>
-      </div>
-      <div className="mt-2">
-        <PhraseHotkeyRow />
-        <Row label={t("comeback.tradeAsk")} help={t("comeback.tradeAskHint")}>
-          <Toggle
-            checked={trade.onAsk}
-            onChange={(onAsk) => saveTrade({ onAsk })}
-            label={t("comeback.tradeAsk")}
-          />
-        </Row>
-        <Row label={t("comeback.tradeDone")} help={t("comeback.tradeDoneHint")}>
-          <Toggle
-            checked={trade.onDone}
-            onChange={(onDone) => saveTrade({ onDone })}
-            label={t("comeback.tradeDone")}
-          />
-        </Row>
-        <div className="flex flex-col gap-2 py-3">
-          <label htmlFor="comeback-thanks" className="text-[14px] font-medium text-fg">
-            {t("comeback.thanks")}
-          </label>
-          <div className="flex items-center gap-2">
-            <CommitInput
-              id="comeback-thanks"
-              value={trade.thanks}
-              maxLength={LINE_LENGTH}
-              placeholder={DEFAULT_THANKS[language]}
-              onCommit={(thanks) => saveTrade({ thanks })}
-              className="min-w-0 flex-1"
-            />
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label={t("comeback.thanksReset")}
-              disabled={trade.thanks === ""}
-              onClick={() => saveTrade({ thanks: "" })}
-            >
-              {t("auto.reset")}
-            </Button>
-          </div>
-          <p className="text-[12px] leading-4 break-words text-fg-muted">
-            {t("comeback.thanksPreview", {
-              text: fillPhrase(
-                thanksOf(settings.comeback, language),
-                sample.seat,
-                sample.champion,
-                sample.name,
-              ),
-            })}
-          </p>
-        </div>
-      </div>
     </Panel>
   );
 }
@@ -542,7 +289,6 @@ export function ComebackPage() {
       <LinesPanel />
       <ShortcutsPanel />
       <GamePanel />
-      <PhrasesPanel />
       <LibraryPanel />
     </PageBody>
   );

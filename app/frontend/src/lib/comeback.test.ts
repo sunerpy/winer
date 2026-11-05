@@ -11,7 +11,7 @@ import {
   thanksOf,
 } from "./comeback";
 
-describe("the Comebacks page's quick phrases", () => {
+describe("the Phrases page's quick phrases", () => {
   const rule: ComebackSettings = {
     lines: [],
     hotkey: null,

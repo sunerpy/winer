@@ -1,6 +1,6 @@
-//! The Comebacks page (反击): which line a press of its two shortcuts sends and where, the quick
-//! phrases a teammate is sent from champ select's board, by their own shortcut or by a trade the
-//! user asks for (交换), and the library a user may download (在线语录). Pure: the service keeps what
+//! The Comebacks page (反击): which line a press of its two shortcuts sends and where, and the
+//! library a user may download (在线语录); and the Phrases page (快捷语): the quick phrases a teammate
+//! is sent from champ select's board, by their own shortcut or by a trade the user asks for (交换). Pure: the service keeps what
 //! went out last and the downloaded file (`service/comeback.rs`); the shell types into the game.
 
 use std::{

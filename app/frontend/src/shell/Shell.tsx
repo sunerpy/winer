@@ -21,6 +21,7 @@ import { ComebackPage } from "../pages/Comeback";
 import { HistoryPage } from "../pages/History";
 import { LivePage } from "../pages/Live";
 import { OverviewPage } from "../pages/Overview";
+import { PhrasesPage } from "../pages/Phrases";
 import { PluginPage } from "../pages/Plugin";
 import { ToolsPage } from "../pages/Tools";
 import { SettingsDialog } from "../pages/settings/SettingsDialog";
@@ -98,6 +99,7 @@ const TITLES: Record<Page, Parameters<ReturnType<typeof useT>>[0]> = {
   tools: "tools.title",
   plugin: "plugin.title",
   comeback: "comeback.title",
+  phrases: "phrase.title",
 };
 
 function PageView({ route }: { route: Route }): ReactNode {
@@ -116,6 +118,8 @@ function PageView({ route }: { route: Route }): ReactNode {
       return <PluginPage />;
     case "comeback":
       return <ComebackPage />;
+    case "phrases":
+      return <PhrasesPage />;
   }
 }
 

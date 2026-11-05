@@ -186,7 +186,7 @@ pub fn typescript() -> String {
         view::PlayerStanding,
         settings::HistorySettings,
     );
-    // The Comebacks page (`comeback`).
+    // The Comebacks and Phrases pages (`comeback`).
     declare!(
         settings::ComebackSettings,
         settings::LibraryRule,

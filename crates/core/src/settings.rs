@@ -26,8 +26,9 @@ pub struct Settings {
     pub builds: BuildSettings,
     /// History: what the history lists show.
     pub history: HistorySettings,
-    /// The Comebacks page (反击): the user's lines, their two shortcuts, champ select's quick
-    /// phrases and the downloaded library (`comeback`).
+    /// The Comebacks page (反击): the user's lines, their two shortcuts and the downloaded library;
+    /// and the Phrases page's (快捷语) quick phrases, their shortcut and the trade's messages, kept
+    /// here where 0.0.19 saved them (`comeback`).
     pub comeback: ComebackSettings,
 }
 
@@ -606,6 +607,7 @@ pub enum GameTeams {
 
 /// The Comebacks page (`comeback`): a press of either shortcut sends one line at random, in champ
 /// select to its chat, while the game runs typed into the game's chat (with [`Self::in_game`]).
+/// The Phrases page edits [`Self::phrases`], [`Self::phrase_hotkey`] and [`Self::trade`].
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ComebackSettings {
@@ -1127,8 +1129,9 @@ impl Settings {
         callout.watch_template = clip(&callout.watch_template, 200);
         callout.target_template = clip(&callout.target_template, 200);
         callout.ally_template = clip(&callout.ally_template, 200);
-        // The Comebacks page's three shortcuts are spelled the same way and take no combination held
-        // before them: the window's, the callout's, then each earlier one of theirs.
+        // The Comebacks page's two shortcuts and the Phrases page's one are spelled the same way and
+        // take no combination held before them: the window's, the callout's, then each earlier one
+        // of theirs.
         let mut held = vec![self.general.hotkey.clone(), callout.hotkey.clone()];
         let comeback = &mut self.comeback;
         for shortcut in [

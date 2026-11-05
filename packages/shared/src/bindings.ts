@@ -502,8 +502,9 @@ builds: BuildSettings,
  */
 history: HistorySettings, 
 /**
- * The Comebacks page (反击): the user's lines, their two shortcuts, champ select's quick
- * phrases and the downloaded library (`comeback`).
+ * The Comebacks page (反击): the user's lines, their two shortcuts and the downloaded library;
+ * and the Phrases page's (快捷语) quick phrases, their shortcut and the trade's messages, kept
+ * here where 0.0.19 saved them (`comeback`).
  */
 comeback: ComebackSettings, };
 

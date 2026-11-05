@@ -1391,7 +1391,7 @@ export function demoBackend(): Backend {
       ];
       return typedLines(enemies, allies, rule.gameTeams);
     },
-    // The Comebacks page: a quick phrase for a teammate of the demo's champ select, refused as the
+    // The Phrases page: a quick phrase for a teammate of the demo's champ select, refused as the
     // core refuses it (`Service::send_phrase`).
     send_phrase: ({ index, gameId, cellId }) => {
       const view = champSelect();

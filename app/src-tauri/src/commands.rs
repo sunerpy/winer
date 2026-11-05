@@ -102,7 +102,7 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         clear_loadouts,
         // The callout typed into the game's chat.
         preview_game_callout,
-        // The Comebacks page (反击): champ select's quick phrases and the downloaded library.
+        // The Phrases page's quick phrases (快捷语) and the Comebacks page's downloaded library.
         send_phrase,
         comeback_library,
         download_comeback_library,
@@ -798,7 +798,7 @@ mod tests {
                 preview_game_callout(handle.clone(), CalloutRule::default(), General::default())
                     .await
                     .unwrap_err(),
-                // The Comebacks page: a quick phrase goes to champ select's chat.
+                // The Phrases page: a quick phrase goes to champ select's chat.
                 send_phrase(handle.clone(), 0, 1, 2).await.unwrap_err(),
                 // History.
                 get_player_standing(handle.clone(), "p".into())

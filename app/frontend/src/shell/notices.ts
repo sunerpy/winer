@@ -127,7 +127,7 @@ export function isFailure(kind: NoticeKind): boolean {
     // The callout's shortcut.
     kind.kind === "typingStopped" ||
     kind.kind === "calloutSkipped" ||
-    // The Comebacks page's shortcuts.
+    // The Comebacks and Phrases pages' shortcuts.
     kind.kind === "comebackStopped" ||
     kind.kind === "comebackSkipped" ||
     kind.kind === "phraseSkipped"

@@ -10,6 +10,7 @@ export const zhCN = {
   "nav.tools": "工具",
   "nav.plugin": "客户端增强",
   "nav.comeback": "反击",
+  "nav.phrases": "快捷语",
   "nav.settings": "设置",
   "nav.theme": "主题",
   "nav.collapse": "收起侧栏",
@@ -963,7 +964,7 @@ export const zhCN = {
   "loadout.what.runes": "符文",
   "loadout.what.spells": "召唤师技能",
 
-  "status.shortcuts": "Ctrl 1–7 切换页面 · Ctrl , 设置 · Ctrl B 侧栏",
+  "status.shortcuts": "Ctrl 1–8 切换页面 · Ctrl , 设置 · Ctrl B 侧栏",
   "error.title": "这一页出错了",
   "error.hint": "其他页面不受影响。可以重试，或打开日志目录把最新的日志发给开发者。",
 
@@ -1069,32 +1070,34 @@ export const zhCN = {
   "elevation.gameNote":
     "从 WeGame 启动的游戏以管理员身份运行：winer 不是管理员时，它模拟的按键会被 Windows 丢弃，游戏里收不到。",
 
-  // The Comebacks page (反击): the user's own lines, their two shortcuts, typing into the game,
-  // champ select's quick phrases and the library downloaded on request.
+  // Lists of lines edited in place, on the Comebacks and Phrases pages.
+  "list.count": "{n} / {max}",
+  "list.add": "添加",
+  "list.full": "最多 {n} 句。",
+
+  // The Comebacks page (反击): the user's own lines, their two shortcuts, typing into the game and
+  // the library downloaded on request.
   "comeback.title": "反击",
   "comeback.lines": "反击语句",
   "comeback.linesHint":
     "按一次发一句，随机，不会连着两次同一句。一句发成一条消息，最多 200 字；winer 不自带任何语句，这里只有你自己写的。",
-  "comeback.count": "{n} / {max}",
   "comeback.linesEmpty": "还没有反击语句",
   "comeback.linesEmptyHint": "在下面写一句，按 Enter 或点“添加”。",
   "comeback.line": "第 {n} 句",
   "comeback.removeLine": "删除第 {n} 句",
   "comeback.newLine": "新的反击语句",
   "comeback.newLinePlaceholder": "写一句反击，按 Enter 添加",
-  "comeback.add": "添加",
-  "comeback.full": "最多 {n} 句。",
   "comeback.shortcuts": "快捷键",
-  "comeback.hotkey": "发到队伍",
+  "comeback.hotkey": "反击发到队伍",
   "comeback.hotkeyHint":
     "英雄选择中按下，随机发一句到选人聊天；游戏中打开下面的「在游戏里输入」后，输入游戏的队伍聊天。默认不设置。",
-  "comeback.allHotkey": "发到全体",
+  "comeback.allHotkey": "反击发到全体",
   "comeback.allHotkeyHint":
-    "游戏中打开「在游戏里输入」后，在这一句前加上 /all 输入全体聊天，对面也看得到；英雄选择中和「发到队伍」一样，发到只有本队看得到的选人聊天。默认不设置。",
+    "游戏中打开「在游戏里输入」后，在这一句前加上 /all 输入全体聊天，对面也看得到；英雄选择中和「反击发到队伍」一样，发到只有本队看得到的选人聊天。默认不设置。",
   "comeback.hotkeyTakenByTeam": "这个组合键已用于把反击发到队伍，请换一个。",
   "comeback.hotkeyTakenByAll": "这个组合键已用于把反击发到全体，请换一个。",
-  "comeback.hotkeyTakenByPhrase": "这个组合键已用于把快捷语发给交换的队友，请换一个。",
-  "comeback.spacing": "两次发送至少隔 3 秒：上一句发出后 3 秒内再按，这一下不发，以免刷屏被举报。",
+  "comeback.spacing":
+    "两次发送至少隔 3 秒，和选人快捷语一起算：上一句发出后 3 秒内再按，这一下不发，以免刷屏被举报。",
   "comeback.noLinesYet":
     "还没有可以发的语句，现在按这两个快捷键什么也不会发：在上面的「反击语句」里添加，或下载下面的在线语录并打开「使用在线语录」。",
   "comeback.gameSection": "游戏内发送",
@@ -1103,29 +1106,6 @@ export const zhCN = {
     "游戏的聊天没有接口，winer 用模拟按键代你输入：按 Enter 打开聊天，输入这一句，再按 Enter 发送，太长的一句分成几条。只在游戏窗口已经在前台时输入，窗口一被切走就停下；按快捷键前先关上聊天框。",
   "comeback.inGameRisk":
     "向游戏模拟按键属于第三方输入，可能违反游戏的服务条款；辱骂性的聊天会被举报。两者都可能让账号被禁言或封禁，使用风险由你自行承担。默认关闭。",
-  "comeback.phrases": "选人快捷语",
-  "comeback.phrasesHint":
-    "在对局页的英雄选择里，点队友这一行右端的按钮，单独给他发一句，比如想和他换英雄时。可用 {seat}（他在本队列表里的位置，如 5L）、{champion}（他选的英雄）和 {name}（他的名字）；读不到的值连同所在的括号一起省去。最多 20 句。",
-  "comeback.phraseDefault": "默认",
-  "comeback.phraseDefaultHint": "还没有自己的快捷语时用这一句；添加之后只用你自己写的。",
-  "comeback.phrase": "第 {n} 句快捷语",
-  "comeback.removePhrase": "删除第 {n} 句快捷语",
-  "comeback.newPhrase": "新的快捷语",
-  "comeback.newPhrasePlaceholder": "写一句快捷语，按 Enter 添加",
-  "comeback.phrasePreview": "预览：发给 {seat} 玩{champion}的 {name}",
-  "comeback.tradeAsk": "发起交换时自动发送",
-  "comeback.tradeAskHint":
-    "英雄选择中，你在客户端里对队友点「交换」时，自动把第一句快捷语发到选人聊天，楼层和英雄填成那位队友的。每局对同一位队友只发一次；离上一句不到 3 秒时，等满 3 秒再发。默认关闭。",
-  "comeback.tradeDone": "交换成功后道谢",
-  "comeback.tradeDoneHint":
-    "你发起的交换成功、英雄互换之后，自动把下面这句感谢发到选人聊天，{champion} 是你换到的英雄。每局对同一位队友只谢一次。默认关闭。",
-  "comeback.thanks": "感谢语",
-  "comeback.thanksReset": "恢复默认感谢语",
-  "comeback.thanksPreview": "交换成功后会发：{text}",
-  "comeback.tradeFirst": "交换时发送",
-  "comeback.phraseHotkey": "发给交换的队友",
-  "comeback.phraseHotkeyHint":
-    "英雄选择中，先在客户端里对想换英雄的队友点「交换」，再按下：把第一句快捷语发到选人聊天，楼层和英雄填成那位队友的。默认不设置。",
   "comeback.library": "在线语录",
   "comeback.libraryAbout":
     "开源项目 github.com/cndiandian/zuanbot.com 收集的祖安语录（Apache-2.0 许可），分「口吐芬芳」和「火力全开」两档。winer 不自带它，只在你点“下载”并确认后才从网上下载。",
@@ -1160,7 +1140,36 @@ export const zhCN = {
   "comeback.place.champSelect": "选人聊天",
   "comeback.place.team": "队伍",
   "comeback.place.all": "全体",
-  // The quick phrase's shortcut.
+  // The Phrases page (快捷语): champ select's quick phrases and what goes out around a trade.
+  "phrase.title": "选人快捷语",
+  "phrase.list": "快捷语",
+  "phrase.listHint":
+    "在对局页的英雄选择里，点队友这一行右端的按钮，单独给他发一句，比如想和他换英雄时。可用 {seat}（他在本队列表里的位置，如 5L）、{champion}（他选的英雄）和 {name}（他的名字）；读不到的值连同所在的括号一起省去。最多 20 句。",
+  "phrase.default": "默认",
+  "phrase.defaultHint": "还没有自己的快捷语时用这一句；添加之后只用你自己写的。",
+  "phrase.item": "第 {n} 句快捷语",
+  "phrase.remove": "删除第 {n} 句快捷语",
+  "phrase.new": "新的快捷语",
+  "phrase.newPlaceholder": "写一句快捷语，按 Enter 添加",
+  "phrase.preview": "预览：发给 {seat} 玩{champion}的 {name}",
+  "phrase.tradeFirst": "交换时发送",
+  "phrase.trade": "交换英雄",
+  "phrase.hotkey": "发给交换的队友",
+  "phrase.hotkeyHint":
+    "英雄选择中，先在客户端里对想换英雄的队友点「交换」，再按下：把第一句快捷语发到选人聊天，楼层和英雄填成那位队友的。默认不设置。",
+  "phrase.hotkeyTaken": "这个组合键已用于把快捷语发给交换的队友，请换一个。",
+  "phrase.tradeAsk": "发起交换时自动发送",
+  "phrase.tradeAskHint":
+    "英雄选择中，你在客户端里对队友点「交换」时，自动把第一句快捷语发到选人聊天，楼层和英雄填成那位队友的。每局对同一位队友只发一次；离上一句不到 3 秒时，等满 3 秒再发。默认关闭。",
+  "phrase.tradeDone": "交换成功后道谢",
+  "phrase.tradeDoneHint":
+    "你发起的交换成功、英雄互换之后，自动把下面这句感谢发到选人聊天，{champion} 是你换到的英雄。每局对同一位队友只谢一次。默认关闭。",
+  "phrase.thanks": "感谢语",
+  "phrase.thanksReset": "恢复默认感谢语",
+  "phrase.thanksPreview": "交换成功后会发：{text}",
+  "phrase.spacing":
+    "选人聊天里两句至少隔 3 秒，反击和快捷语一起算：3 秒内按下的这一下不发，自动发的等满 3 秒再发。",
+  // The quick phrase's shortcut and the trade's messages, which act while the window may be hidden.
   "phrase.notice.sent": "已把快捷语发到选人聊天",
   "phrase.notice.asked": "已把快捷语发给交换的队友",
   "phrase.notice.thanked": "已向交换的队友道谢",

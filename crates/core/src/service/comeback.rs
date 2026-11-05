@@ -1,6 +1,6 @@
-//! The Comebacks page's side of the service (`crate::comeback`): what a press of its shortcuts does
-//! now, a line or a quick phrase posted in champ select's chat, and the library downloaded on the
-//! user's request, kept in a file of its own beside the settings.
+//! The Comebacks and Phrases pages' side of the service (`crate::comeback`): what a press of their
+//! shortcuts does now, a line or a quick phrase posted in champ select's chat, and the library
+//! downloaded on the user's request, kept in a file of its own beside the settings.
 
 use std::{
     collections::VecDeque,
@@ -23,8 +23,8 @@ use crate::{
     view::{ComebackLibrary, NoticeKind, Phase, PhraseTrigger},
 };
 
-/// What the service keeps for the Comebacks page: what went out last, the library, and champ
-/// select's posts in their order.
+/// What the service keeps for the Comebacks and Phrases pages: what went out last, the library,
+/// and champ select's posts in their order.
 pub(super) struct ComebackState {
     memory: Mutex<Memory>,
     library: LibraryStore,
