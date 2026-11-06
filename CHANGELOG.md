@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.0.20](https://github.com/sunerpy/winer/compare/v0.0.19...v0.0.20) (2026-11-06)
+
+
+### 新功能
+
+* 在线语录可以查看和编辑：分档浏览、搜索，逐句修改、删除和添加；改过的语录标「已修改」，移除前会先确认 ([#46](https://github.com/sunerpy/winer/issues/46)) ([711dea6](https://github.com/sunerpy/winer/commit/711dea6140ef5bb6ccb5e3100f461fcca6f31526))
+* 选人快捷语独立成「快捷语」页（Ctrl+8），与反击页分开；反击的两个快捷键改名为「反击发到队伍」「反击发到全体」 ([#46](https://github.com/sunerpy/winer/issues/46)) ([711dea6](https://github.com/sunerpy/winer/commit/711dea6140ef5bb6ccb5e3100f461fcca6f31526))
+* 选人时交换英雄可自动发消息：向队友发起交换时自动发出第一条快捷语，交换成功后自动道谢；两个开关默认关闭，感谢语可自定义 ([#46](https://github.com/sunerpy/winer/issues/46)) ([711dea6](https://github.com/sunerpy/winer/commit/711dea6140ef5bb6ccb5e3100f461fcca6f31526))
+
 ## [0.0.19](https://github.com/sunerpy/winer/compare/v0.0.18...v0.0.19) (2026-11-03)
 
 
