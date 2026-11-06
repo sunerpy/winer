@@ -20,7 +20,10 @@ use crate::{
     comeback::{self, ComebackPress, Library, Memory, PhrasePress, TradeEvent},
     model::ChampSelectSession,
     settings::{Audience, CalloutDelivery, write_atomic},
-    view::{ComebackLibrary, NoticeKind, Phase, PhraseTrigger},
+    view::{
+        ComebackLibrary, ComebackLibraryLines, ComebackLibrarySaved, NoticeKind, Phase,
+        PhraseTrigger,
+    },
 };
 
 /// What the service keeps for the Comebacks and Phrases pages: what went out last, the library,
@@ -28,7 +31,7 @@ use crate::{
 pub(super) struct ComebackState {
     memory: Mutex<Memory>,
     library: LibraryStore,
-    /// Downloading and removing the library, one at a time.
+    /// Downloading, editing and removing the library, one at a time.
     library_work: tokio::sync::Mutex<()>,
     /// Champ select's posts, one at a time (`Service::post_spaced`): a spaced one checks the
     /// spacing again once it holds this, so two cannot both pass it while one is in flight.
@@ -80,6 +83,11 @@ enum Spacing<'a> {
     /// A shortcut's or a trade's: nothing within the spacing; once it went out it starts the
     /// spacing, and a comeback's line (`Some`) is the one the next press does not repeat.
     Kept(Option<&'a str>),
+}
+
+/// Why the library's lines cannot be listed or edited.
+fn no_library() -> CoreError {
+    CoreError::Invalid("no library is downloaded".into())
 }
 
 /// The downloaded library's file, read on first use and kept in memory.
@@ -590,6 +598,43 @@ impl Service {
             "downloaded the library"
         );
         Ok(library.status())
+    }
+
+    /// The downloaded library's lines by set, for the Comebacks page to list and edit; refused
+    /// (`invalid`) while none is downloaded.
+    pub fn comeback_library_lines(&self) -> Result<ComebackLibraryLines, CoreError> {
+        let library = self.inner.comeback.library.get().ok_or_else(no_library)?;
+        Ok(library.sets())
+    }
+
+    /// Saves `lines` as the library's two sets, cleaned (`comeback::edited_lines`), and marks it
+    /// edited where they differ from what it held; its source, download time and switch stay.
+    /// Refused (`invalid`) while none is downloaded. Answers the new status and the lines as kept.
+    pub async fn edit_comeback_library(
+        &self,
+        lines: ComebackLibraryLines,
+    ) -> Result<ComebackLibrarySaved, CoreError> {
+        let _work = self.inner.comeback.library_work.lock().await;
+        let library = self.inner.comeback.library.get().ok_or_else(no_library)?;
+        let mild = comeback::edited_lines(&lines.mild);
+        let strong = comeback::edited_lines(&lines.strong);
+        let changed = mild != library.mild || strong != library.strong;
+        let library = self.inner.comeback.library.put(Library {
+            edited: library.edited || changed,
+            mild,
+            strong,
+            ..(*library).clone()
+        })?;
+        info!(
+            mild = library.mild.len(),
+            strong = library.strong.len(),
+            changed,
+            "saved the edited library"
+        );
+        Ok(ComebackLibrarySaved {
+            status: library.status(),
+            lines: library.sets(),
+        })
     }
 
     /// Deletes the downloaded library, its switch turned off first; a press after it finds none.
@@ -1376,6 +1421,77 @@ mod tests {
             crate::view::CalloutSkip::NoLines,
             "switched on again, nothing left to pick"
         );
+    }
+
+    #[tokio::test]
+    async fn the_library_is_listed_and_edited_and_its_edits_kept_until_removal() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = serve(vec![("/ok", 200, FIXTURE.to_vec())], 1);
+        let service = in_champ_select(&dir, 7);
+        assert!(
+            matches!(service.comeback_library_lines(), Err(CoreError::Invalid(_))),
+            "nothing to list before a download"
+        );
+        assert!(matches!(
+            service
+                .edit_comeback_library(ComebackLibraryLines::default())
+                .await,
+            Err(CoreError::Invalid(_))
+        ));
+        let downloaded = download(&service, &[format!("{base}/ok")]).await.unwrap();
+        assert!(!downloaded.edited);
+        let lines = service.comeback_library_lines().unwrap();
+        assert_eq!(lines.mild.len() as u32, downloaded.mild);
+        assert_eq!(lines.strong.len() as u32, downloaded.strong);
+
+        // The same sets back: nothing changed, nothing marked.
+        let same = service.edit_comeback_library(lines.clone()).await.unwrap();
+        assert!(!same.status.edited);
+        assert_eq!(same.lines, lines);
+
+        switch_on(&service);
+        let edited = service
+            .edit_comeback_library(ComebackLibraryLines {
+                mild: vec!["  泉水见 ".into(), "泉水见".into(), String::new()],
+                strong: Vec::new(),
+            })
+            .await
+            .unwrap();
+        assert!(edited.status.edited);
+        assert_eq!(edited.status.mild, 1);
+        assert_eq!(edited.status.strong, 0);
+        assert_eq!(
+            edited.status.fetched_at, downloaded.fetched_at,
+            "still that download"
+        );
+        assert_eq!(
+            edited.lines.mild,
+            ["泉水见"],
+            "cleaned, the repeat and the blank gone"
+        );
+        assert!(
+            service.settings().comeback.library.enabled,
+            "an edit leaves the switch as it was"
+        );
+        seat_champ_select(&service, 7);
+        let ComebackPress::ChampSelect { line, .. } = service.comeback_press(false) else {
+            panic!("a line from the edited library");
+        };
+        assert_eq!(line, "泉水见");
+
+        let restarted = Service::new(dir.path().join("settings.json"), Handle::current());
+        assert_eq!(
+            restarted.comeback_library(),
+            edited.status,
+            "kept across a restart"
+        );
+        assert_eq!(restarted.comeback_library_lines().unwrap(), edited.lines);
+
+        service.remove_comeback_library().await.unwrap();
+        assert!(matches!(
+            service.comeback_library_lines(),
+            Err(CoreError::Invalid(_))
+        ));
     }
 
     fn library_now(service: &Service) -> Arc<Library> {

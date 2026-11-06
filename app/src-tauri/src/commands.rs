@@ -18,9 +18,10 @@ use winer_core::{
     rewards::{ClaimReport, GrantChoice, RewardsView},
     settings::{Audience, CalloutRule, General, Language, Mode},
     view::{
-        AppInfo, AugmentDetail, CleanupReport, ComebackLibrary, DiagnosticsReport, ErrorCode,
-        GameData, HotkeyStatus, IpcError, MatchDetail, MatchPage, PlayerProfile, PlayerStanding,
-        PlayerSummary, Position, Presence, RiotId, Snapshot, StorageReport, UpdateStatus,
+        AppInfo, AugmentDetail, CleanupReport, ComebackLibrary, ComebackLibraryLines,
+        ComebackLibrarySaved, DiagnosticsReport, ErrorCode, GameData, HotkeyStatus, IpcError,
+        MatchDetail, MatchPage, PlayerProfile, PlayerStanding, PlayerSummary, Position, Presence,
+        RiotId, Snapshot, StorageReport, UpdateStatus,
     },
 };
 
@@ -105,6 +106,8 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         // The Phrases page's quick phrases (快捷语) and the Comebacks page's downloaded library.
         send_phrase,
         comeback_library,
+        comeback_library_lines,
+        edit_comeback_library,
         download_comeback_library,
         remove_comeback_library,
         // History.
@@ -665,6 +668,23 @@ async fn comeback_library<R: Runtime>(app: AppHandle<R>) -> Result<ComebackLibra
     blocking(move || Ok(service.comeback_library())).await
 }
 
+/// The downloaded library's lines by set, for the Comebacks page to list and edit; refused while
+/// none is downloaded.
+#[tauri::command]
+async fn comeback_library_lines<R: Runtime>(app: AppHandle<R>) -> Result<ComebackLibraryLines> {
+    let service = service(&app);
+    blocking(move || service.comeback_library_lines()).await
+}
+
+/// Saves the library's two sets as the user edited them; answers its status and the lines as kept.
+#[tauri::command]
+async fn edit_comeback_library<R: Runtime>(
+    app: AppHandle<R>,
+    lines: ComebackLibraryLines,
+) -> Result<ComebackLibrarySaved> {
+    Ok(service(&app).edit_comeback_library(lines).await?)
+}
+
 /// Downloads the library: the window calls it only after the user has confirmed. Its switch is off
 /// afterwards, so each download is opted into again; a failed one changes nothing.
 #[tauri::command]
@@ -816,6 +836,18 @@ mod tests {
                 remove_comeback_library(handle.clone()).await.unwrap(),
                 ComebackLibrary::default()
             );
+            // Nothing downloaded, nothing to list or edit.
+            assert_eq!(
+                comeback_library_lines(handle.clone())
+                    .await
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Invalid
+            );
+            let error = edit_comeback_library(handle.clone(), ComebackLibraryLines::default())
+                .await
+                .unwrap_err();
+            assert_eq!(error.code, ErrorCode::Invalid);
             // The QQ group needs no client either; this app runs no opener, so nothing opens.
             let error = open_community(handle.clone()).await.unwrap_err();
             assert_eq!(error.code, ErrorCode::Internal, "{}", error.message);

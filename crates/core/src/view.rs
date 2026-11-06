@@ -927,6 +927,27 @@ pub struct ComebackLibrary {
     pub strong: u32,
     /// When it was downloaded, in milliseconds since the epoch.
     pub fetched_at: Option<i64>,
+    /// The user changed its lines since the download: removing it loses that.
+    pub edited: bool,
+}
+
+/// What saving the edited library answers: its status, and its lines as the core kept them.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ComebackLibrarySaved {
+    pub status: ComebackLibrary,
+    pub lines: ComebackLibraryLines,
+}
+
+/// The downloaded library's lines by set, as the Comebacks page lists and edits them; the window
+/// sends both sets back whole, and the core answers them cleaned (`comeback::edited_lines`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ComebackLibraryLines {
+    /// 口吐芬芳.
+    pub mild: Vec<String>,
+    /// 火力全开.
+    pub strong: Vec<String>,
 }
 
 /// A player found by Riot ID.

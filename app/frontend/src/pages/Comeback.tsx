@@ -3,7 +3,7 @@
 // twice: a confirmation before the download and a switch after it. Champ select's quick phrases
 // have their own page (Phrases.tsx).
 import type { ComebackLibrary, ComebackSettings, LibraryLevel } from "@winer/shared";
-import { Download, MessageSquareQuote, Trash2, TriangleAlert } from "lucide-react";
+import { Download, MessageSquareQuote, PencilLine, Trash2, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 
 import { errorMessage } from "../lib/backend";
@@ -24,6 +24,7 @@ import {
   toast,
 } from "../ui";
 import { GameRightsNote, PageBody } from "./common";
+import { LibraryEditor } from "./LibraryEditor";
 import { Count, TextList } from "./TextList";
 import { ComebackHotkeyRow } from "./settings/HotkeyRow";
 
@@ -121,8 +122,9 @@ function GamePanel() {
 }
 
 /** 在线语录: what the library is and what sending it risks; a download only after the confirmation
- *  says so again; then its counts, its removal, and the switch that puts it to use, which every
- *  download and removal turns off (the core saves it, and the settings follow). */
+ *  says so again; then its counts, its editor, its removal (confirmed first once the user has
+ *  edited it), and the switch that puts it to use, which every download and removal turns off (the
+ *  core saves it, and the settings follow). */
 function LibraryPanel() {
   const t = useT();
   const store = useStore();
@@ -133,6 +135,8 @@ function LibraryPanel() {
   /** What a download or a removal answered, newer than the status read on opening the page. */
   const [answer, setAnswer] = useState<ComebackLibrary | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [confirmingRemoval, setConfirmingRemoval] = useState(false);
   const [busy, setBusy] = useState<"download" | "remove" | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const status = answer ?? query.data;
@@ -154,6 +158,7 @@ function LibraryPanel() {
     }
   };
   const remove = async () => {
+    setConfirmingRemoval(false);
     setBusy("remove");
     setFailure(null);
     try {
@@ -192,27 +197,40 @@ function LibraryPanel() {
             status === undefined ? (
               <Skeleton className="mt-1 h-3.5 w-48" />
             ) : downloaded ? (
-              t("comeback.libraryCounts", {
-                mild: status.mild,
-                strong: status.strong,
-                date: status.fetchedAt === null ? "—" : day.format(status.fetchedAt),
-              })
+              <>
+                {t("comeback.libraryCounts", {
+                  mild: status.mild,
+                  strong: status.strong,
+                  date: status.fetchedAt === null ? "—" : day.format(status.fetchedAt),
+                })}
+                {status.edited && <> · {t("comeback.libraryEdited")}</>}
+              </>
             ) : (
               t("comeback.libraryNone")
             )
           }
         >
           {downloaded ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={Trash2}
-              loading={busy === "remove"}
-              disabled={busy !== null}
-              onClick={() => void remove()}
-            >
-              {t("comeback.libraryRemove")}
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                icon={PencilLine}
+                disabled={busy !== null}
+                onClick={() => setEditing(true)}
+              >
+                {t("comeback.libraryEdit")}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={Trash2}
+                loading={busy === "remove"}
+                disabled={busy !== null}
+                onClick={() => (status.edited ? setConfirmingRemoval(true) : void remove())}
+              >
+                {t("comeback.libraryRemove")}
+              </Button>
+            </div>
           ) : (
             <Button
               size="sm"
@@ -257,6 +275,27 @@ function LibraryPanel() {
           />
         </Row>
       )}
+      <LibraryEditor open={editing} onClose={() => setEditing(false)} onSaved={setAnswer} />
+      <Dialog
+        open={confirmingRemoval}
+        onClose={() => setConfirmingRemoval(false)}
+        title={t("comeback.libraryRemoveTitle")}
+        closeLabel={t("common.close")}
+        footer={
+          <>
+            <Button variant="ghost" data-autofocus onClick={() => setConfirmingRemoval(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button variant="danger" icon={Trash2} onClick={() => void remove()}>
+              {t("comeback.libraryRemove")}
+            </Button>
+          </>
+        }
+      >
+        <p className="px-5 py-4 text-[12.5px] leading-5 text-fg-muted">
+          {t("comeback.libraryRemoveEdited")}
+        </p>
+      </Dialog>
       <Dialog
         open={confirming}
         onClose={() => setConfirming(false)}

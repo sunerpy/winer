@@ -1289,7 +1289,23 @@ mild: number, strong: number,
 /**
  * When it was downloaded, in milliseconds since the epoch.
  */
-fetchedAt: number | null, };
+fetchedAt: number | null, 
+/**
+ * The user changed its lines since the download: removing it loses that.
+ */
+edited: boolean, };
+
+export type ComebackLibraryLines = { 
+/**
+ * 口吐芬芳.
+ */
+mild: Array<string>, 
+/**
+ * 火力全开.
+ */
+strong: Array<string>, };
+
+export type ComebackLibrarySaved = { status: ComebackLibrary, lines: ComebackLibraryLines, };
 
 export type PhraseSkip = "notChampSelect" | "noTrade" | "tooSoon";
 

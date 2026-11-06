@@ -16,7 +16,7 @@ use crate::{
     model::{ChampSelectSession, TRADE_SENT},
     settings::{ComebackSettings, Language, LibraryLevel},
     sqlite::{self, Value},
-    view::{CalloutSkip, ComebackLibrary, ComebackPlace, Phase, PhraseSkip},
+    view::{CalloutSkip, ComebackLibrary, ComebackLibraryLines, ComebackPlace, Phase, PhraseSkip},
 };
 
 /// The least time between two comebacks that go out: presses one after another flood the chat,
@@ -376,6 +376,9 @@ pub const LIBRARY_SIZE: usize = 970_752;
 pub const LIBRARY_SHA256: &str = "ee2a22eeee994ee51d6acfc30e88e61ab0f61eae4a328a8c80fdbd60d5171ce2";
 /// The longest line the library keeps, as the user's own: a longer one is dropped, not cut.
 pub const LIBRARY_LINE_LENGTH: usize = ComebackSettings::LINE_LENGTH;
+/// The most lines either set keeps once the user edits it: the pinned file has under a thousand a
+/// set, and this bounds what the window sends and the file holds.
+pub const LIBRARY_LINE_LIMIT: usize = 5000;
 
 /// Where the file is fetched from, in order: three of jsDelivr's hosts, which serve the
 /// repository at that commit and are usually reachable in China, then GitHub itself.
@@ -487,9 +490,22 @@ pub fn library_from(file: &[u8], fetched_at: i64) -> Result<Library, String> {
         source: format!("{LIBRARY_REPOSITORY}@{LIBRARY_COMMIT}"),
         sha256: digest(file),
         fetched_at,
+        edited: false,
         mild,
         strong,
     })
+}
+
+/// A set of the library as the user edited it: each line cleaned ([`clean_line`]) and cut to
+/// [`LIBRARY_LINE_LENGTH`] characters, blanks and repeats within the set dropped (the first kept),
+/// at most [`LIBRARY_LINE_LIMIT`].
+pub fn edited_lines(lines: &[String]) -> Vec<String> {
+    let mut seen = HashSet::new();
+    clean_lines(lines, usize::MAX, LIBRARY_LINE_LENGTH)
+        .into_iter()
+        .filter(|line| seen.insert(line.clone()))
+        .take(LIBRARY_LINE_LIMIT)
+        .collect()
 }
 
 /// The library as kept beside the settings (`comeback-library.json`): its lines cleaned, by set.
@@ -502,6 +518,9 @@ pub struct Library {
     pub sha256: String,
     /// When it was downloaded, in milliseconds since the epoch.
     pub fetched_at: i64,
+    /// The user changed its lines since the download (`edited_lines`): removing it loses that.
+    #[serde(default)]
+    pub edited: bool,
     /// 口吐芬芳: the rows whose `level` is `min`.
     pub mild: Vec<String>,
     /// 火力全开: the rows whose `level` is `max`.
@@ -529,6 +548,15 @@ impl Library {
             mild: u32::try_from(self.mild.len()).unwrap_or(u32::MAX),
             strong: u32::try_from(self.strong.len()).unwrap_or(u32::MAX),
             fetched_at: Some(self.fetched_at),
+            edited: self.edited,
+        }
+    }
+
+    /// Its lines by set, as the Comebacks page lists them for editing.
+    pub fn sets(&self) -> ComebackLibraryLines {
+        ComebackLibraryLines {
+            mild: self.mild.clone(),
+            strong: self.strong.clone(),
         }
     }
 }
@@ -908,6 +936,41 @@ mod tests {
         );
         assert_eq!(library.status().mild, 1);
         assert_eq!(library.status().strong, 1);
+    }
+
+    #[test]
+    fn an_edited_set_is_cleaned_cut_and_kept_once_a_line() {
+        let long = "长".repeat(LIBRARY_LINE_LENGTH + 5);
+        let lines = [
+            "  泉水\n见 ".to_owned(),
+            String::new(),
+            "泉水 见".to_owned(),
+            long,
+            "下次一定".to_owned(),
+        ];
+        let kept = edited_lines(&lines);
+        assert_eq!(
+            kept[0], "泉水 见",
+            "whitespace and controls fold to one space"
+        );
+        assert_eq!(kept.len(), 3, "the blank and the repeat go: {kept:?}");
+        assert_eq!(
+            kept[1].chars().count(),
+            LIBRARY_LINE_LENGTH,
+            "cut, not dropped"
+        );
+        assert_eq!(kept[2], "下次一定");
+        let many: Vec<String> = (0..LIBRARY_LINE_LIMIT + 3).map(|n| n.to_string()).collect();
+        assert_eq!(edited_lines(&many).len(), LIBRARY_LINE_LIMIT);
+    }
+
+    #[test]
+    fn a_library_file_from_before_edits_reads_as_unedited() {
+        let file = r#"{"source":"s","sha256":"h","fetchedAt":1,"mild":["m"],"strong":[]}"#;
+        let library: Library = serde_json::from_str(file).unwrap();
+        assert!(!library.edited);
+        assert!(!library.status().edited);
+        assert_eq!(library.sets().mild, ["m"]);
     }
 
     #[test]

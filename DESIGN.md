@@ -141,8 +141,12 @@ under a `warning` line while there is no line to send and the library is off;
 游戏内发送, the 在游戏里输入 switch with its `warning` risk line and, while winer is not elevated, the
 rights note with 以管理员身份重启 (shared with 自动化's 游戏内发送); and 在线语录, which says whose library it is, its licence and its risk, then 下载, which opens a Dialog whose
 only download button is 我已了解，下载 (the initial focus is 取消). Downloaded, it shows the counts, the
-date and 移除, the 使用在线语录 switch (disabled until there is a library) and the level as a Segmented
-(口吐芬芳 · 火力全开 · 两者).
+date and 已修改 once edited, 查看和编辑 and 移除 (which asks first, focus on 取消, once the library is
+edited), the 使用在线语录 switch (disabled until there is a library) and the level as a Segmented
+(口吐芬芳 · 火力全开 · 两者). 查看和编辑 opens a large Dialog: a Segmented of the two sets with their
+counts and a search field, a subtle line saying edits save at once, an add row (new lines go on top),
+a scrolling list of 50 numbered CommitInputs a page, each with a danger ✕, and a footer with the range
+shown and a Pager.
 
 快捷语 Phrases (page title 选人快捷语) is a page of two Panels, kept apart from the comebacks: 快捷语, the
 phrases as the comebacks' numbered list, with the default one marked 默认 while the user has none and the

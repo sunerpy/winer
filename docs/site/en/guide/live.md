@@ -139,7 +139,13 @@ and sending them can get you reported, muted or banned; winer neither writes nor
 - After the download **Use the online library** is still off: you turn it on and choose a set, or
   both. Then a press picks from your own lines and these. Every new download has to be turned on
   again.
-- **Remove** deletes the downloaded library and turns **Use the online library** off.
+- **View and edit** opens the downloaded library: **Mild** and **Strong** listed apart, 50 lines a
+  page, with a search. Every line can be changed or removed in place, and a field above adds one.
+  Changes are saved at once and only to your copy; a line repeated within a set is kept once, and
+  a line holds 200 characters at most. Once you have changed it, the panel says **edited**.
+- **Remove** deletes the downloaded library and turns **Use the online library** off. An edited
+  library asks first, since your changes go with it; downloading it again brings back the original
+  lines.
 
 ## Champ-select phrases
 
