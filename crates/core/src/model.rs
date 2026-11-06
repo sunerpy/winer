@@ -147,8 +147,8 @@ impl ChampSelectSession {
 /// The state of a trade the user asked for and the teammate has not answered yet. The client's own
 /// API help (`/help`, type `ChampSelectSwapState`, 2026-11-03) lists `AVAILABLE`, `BUSY`, `INVALID`,
 /// `SENT`, `RECEIVED`, `DECLINED`, `CANCELLED` and `ACCEPTED`. Captured in ARAM: `AVAILABLE` (one
-/// may be asked for), `INVALID` (not now) and `BUSY` (the teammate trades with another); `SENT` not
-/// yet.
+/// may be asked for), `INVALID` (not now), `BUSY` (the teammate trades with another), and `SENT` on
+/// the asked teammate's cell, every other cell `INVALID` meanwhile (2026-11-06).
 pub const TRADE_SENT: &str = "SENT";
 
 /// One champion trade (交换) on offer in champ select, with the teammate in `cell_id`.

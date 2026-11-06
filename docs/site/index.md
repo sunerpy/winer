@@ -52,10 +52,14 @@ home:
             body: 按档位排好的聊天内容，一键发到队伍或只给自己看，也可以每局自动发送；第一行带上红蓝方和 winer 署名。
             status: available
             link: /guide/live#战力喊话
-          - title: 反击与选人快捷语
-            body: 按快捷键随机发一句自己写的反击语句，选人时点一下快捷语发给某位队友；在线语录要你自己下载并打开。
+          - title: 反击
+            body: 按快捷键随机发一句自己写的反击语句，选人时发到选人聊天，游戏中可以输入聊天；在线语录要你自己下载并打开。
             status: experimental
             link: /guide/live#反击
+          - title: 选人快捷语
+            body: 点一下快捷语发给某位队友，楼层和英雄自动填好；可选在点「交换」时自动发出、交换成功后道谢。
+            status: experimental
+            link: /guide/live#选人快捷语
           - title: 大乱斗备选席
             body: 点一下立刻换成备选席上的英雄，不等冷却；设好心愿英雄后自动换。
             status: available

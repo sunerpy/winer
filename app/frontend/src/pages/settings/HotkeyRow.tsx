@@ -1,8 +1,9 @@
 // The global shortcuts as settings rows: Settings › 通用's, which brings winer up from anywhere,
-// 自动化 › 战力喊话's, which sends the callout, and the Comebacks page's three. The recorder takes the
-// window's next keydown before anything else does (capture phase: the shell's own shortcuts and the
-// dialog's Escape never see it), and the shell lets every shortcut go while it listens, or pressing
-// one would act instead of being recorded. No shortcut takes another's combination.
+// 自动化 › 战力喊话's, which sends the callout, the Comebacks page's two and the Phrases page's one.
+// The recorder takes the window's next keydown before anything else does (capture phase: the
+// shell's own shortcuts and the dialog's Escape never see it), and the shell lets every shortcut go
+// while it listens, or pressing one would act instead of being recorded. No shortcut takes another's
+// combination.
 import type { Settings } from "@winer/shared";
 import { Keyboard, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -261,14 +262,16 @@ export function CalloutHotkeyRow() {
   );
 }
 
-// The Comebacks page's three shortcuts, beside the window's and the callout's.
+// The Comebacks page's two shortcuts and the Phrases page's one, beside the window's and the
+// callout's.
 
-/** The Comebacks page's combinations, which neither the window's nor the callout's shortcut takes. */
+/** The Comebacks and Phrases pages' combinations, which neither the window's nor the callout's
+ *  shortcut takes. */
 function comebackTaken(settings: Settings, t: Translate): Taken[] {
   return [
     { combo: settings.comeback.hotkey, message: t("comeback.hotkeyTakenByTeam") },
     { combo: settings.comeback.allHotkey, message: t("comeback.hotkeyTakenByAll") },
-    { combo: settings.comeback.phraseHotkey, message: t("comeback.hotkeyTakenByPhrase") },
+    { combo: settings.comeback.phraseHotkey, message: t("phrase.hotkeyTaken") },
   ];
 }
 
@@ -294,7 +297,7 @@ export function ComebackHotkeyRow({ all }: { all: boolean }) {
         all
           ? { combo: settings.comeback.hotkey, message: t("comeback.hotkeyTakenByTeam") }
           : { combo: settings.comeback.allHotkey, message: t("comeback.hotkeyTakenByAll") },
-        { combo: settings.comeback.phraseHotkey, message: t("comeback.hotkeyTakenByPhrase") },
+        { combo: settings.comeback.phraseHotkey, message: t("phrase.hotkeyTaken") },
       ]}
       onSave={(next) =>
         store.updateSettings((value) => ({
@@ -308,7 +311,7 @@ export function ComebackHotkeyRow({ all }: { all: boolean }) {
   );
 }
 
-/** The Comebacks page's 选人快捷语: the shortcut that sends the first phrase to the teammate asked to
+/** The Phrases page's 交换英雄: the shortcut that sends the first phrase to the teammate asked to
  *  trade in champ select; off until a combination is set. */
 export function PhraseHotkeyRow() {
   const t = useT();
@@ -320,8 +323,8 @@ export function PhraseHotkeyRow() {
     status && !status.suspended && status.phrase.shortcut === combo ? status.phrase : null;
   return (
     <ShortcutRow
-      label={t("comeback.phraseHotkey")}
-      hint={t("comeback.phraseHotkeyHint")}
+      label={t("phrase.hotkey")}
+      hint={t("phrase.hotkeyHint")}
       combo={combo}
       held={settled}
       taken={[

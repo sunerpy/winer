@@ -1,5 +1,6 @@
-// The Comebacks page (反击) as the core keeps it (crates/core/src/comeback.rs and settings.rs): its
-// limits, champ select's default quick phrases and how a phrase reads for one teammate.
+// The Comebacks (反击) and Phrases (快捷语) pages as the core keeps them (crates/core/src/comeback.rs
+// and settings.rs): their limits, champ select's default quick phrases and how a phrase reads for one
+// teammate.
 import type { ComebackSettings, Language } from "@winer/shared";
 
 /** At most this many lines, and quick phrases, of this many characters each
@@ -14,6 +15,17 @@ export const DEFAULT_PHRASES: Record<Language, readonly string[]> = {
   "zh-CN": ["{seat}大佬，小弟想玩下{champion}，给您磕一个了"],
   en: ["{seat}, may I play {champion}? Thank you!"],
 };
+
+/** The language's thank-you while the user has written none (`comeback::default_thanks`). */
+export const DEFAULT_THANKS: Record<Language, string> = {
+  "zh-CN": "谢谢{seat}大佬！",
+  en: "Thanks, {seat}!",
+};
+
+/** The thank-you a trade that went through sends (`comeback::thanks`). */
+export function thanksOf(rule: ComebackSettings, language: Language): string {
+  return rule.trade.thanks === "" ? DEFAULT_THANKS[language] : rule.trade.thanks;
+}
 
 /** The quick phrases the Live page offers, in the order `send_phrase` numbers them
  *  (`comeback::phrases`): the user's, or the language's own while there are none. */

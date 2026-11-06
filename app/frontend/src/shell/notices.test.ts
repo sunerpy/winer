@@ -80,16 +80,39 @@ describe("notices", () => {
   });
 
   it("says when the quick phrase went to the teammate asked to trade, and why not", () => {
-    expect(zh({ kind: "phraseSent" })).toBe("已把快捷语发到选人聊天");
-    expect(en({ kind: "phraseSent" })).toBe("Sent the phrase to the champ-select chat");
-    expect(zh({ kind: "phraseSkipped", reason: "noTrade" })).toBe(
+    expect(zh({ kind: "phraseSent", trigger: "shortcut" })).toBe("已把快捷语发到选人聊天");
+    expect(en({ kind: "phraseSent", trigger: "shortcut" })).toBe(
+      "Sent the phrase to the champ-select chat",
+    );
+    expect(zh({ kind: "phraseSkipped", reason: "noTrade", trigger: "shortcut" })).toBe(
       "快捷语没有发送：还没有向队友发起交换，先在客户端里对那位队友点「交换」",
     );
     for (const reason of ["notChampSelect", "noTrade", "tooSoon"] as const) {
-      expect(en({ kind: "phraseSkipped", reason }), reason).not.toContain("phrase.skip");
+      expect(en({ kind: "phraseSkipped", reason, trigger: "shortcut" }), reason).not.toContain(
+        "phrase.skip",
+      );
     }
-    expect(isFailure({ kind: "phraseSent" })).toBe(false);
-    expect(isFailure({ kind: "phraseSkipped", reason: "tooSoon" })).toBe(true);
+    expect(isFailure({ kind: "phraseSent", trigger: "shortcut" })).toBe(false);
+    expect(isFailure({ kind: "phraseSkipped", reason: "tooSoon", trigger: "shortcut" })).toBe(true);
+  });
+
+  it("says what a trade's switches sent: the phrase on asking, the thank-you once swapped", () => {
+    expect(zh({ kind: "phraseSent", trigger: "asked" })).toBe("已把快捷语发给交换的队友");
+    expect(zh({ kind: "phraseSent", trigger: "done" })).toBe("已向交换的队友道谢");
+    expect(en({ kind: "phraseSent", trigger: "asked" })).toBe(
+      "Sent the phrase to the teammate you asked to trade",
+    );
+    expect(en({ kind: "phraseSent", trigger: "done" })).toBe(
+      "Thanked the teammate you traded with",
+    );
+    expect(zh({ kind: "phraseSkipped", reason: "tooSoon", trigger: "done" })).toBe(
+      "感谢没有发送：离上一句还不到 3 秒",
+    );
+    expect(en({ kind: "phraseSkipped", reason: "tooSoon", trigger: "asked" })).toBe(
+      "Phrase not sent: less than 3 seconds since the last line",
+    );
+    expect(isFailure({ kind: "phraseSent", trigger: "done" })).toBe(false);
+    expect(isFailure({ kind: "phraseSkipped", reason: "tooSoon", trigger: "done" })).toBe(true);
   });
 
   it("says what the automatic claim did", () => {

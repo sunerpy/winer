@@ -157,12 +157,14 @@ connects after an update, winer runs them by itself and sends a notice when one 
 
 | Keys             | Does                             |
 | ---------------- | -------------------------------- |
-| `Ctrl` + `1`…`7` | switches pages                   |
+| `Ctrl` + `1`…`8` | switches pages                   |
 | `Ctrl` + `,`     | opens settings                   |
 | `Ctrl` + `B`     | collapses or expands the sidebar |
 
 `Alt` + `` ` `` (changed in **Settings › General**) works everywhere, a game included: it
 shows or hides winer. The others work inside winer's window only. The shortcut to send the callout
 has no combination by default; it is set in **Automation › Callout**, works everywhere as well, and
-is described in [Automation](/en/guide/automation#callout). So do the comebacks' **Send to the team** and
-**Send to everyone**, set on the **Comebacks** page; see [Comebacks](/en/guide/live#comebacks).
+is described in [Automation](/en/guide/automation#callout). So do **Send a comeback to the team** and
+**Send a comeback to everyone**, set on the **Comebacks** page (see [Comebacks](/en/guide/live#comebacks)),
+and the phrases' **Send to the teammate you asked to trade**, set on the **Phrases** page (see
+[Champ-select phrases](/en/guide/live#champ-select-phrases)).

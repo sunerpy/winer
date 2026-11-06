@@ -7,6 +7,7 @@ mod loadout;
 mod rewards;
 mod ux;
 
+pub use comeback::Spaced;
 pub use ux::{Readiness, UiRestart};
 
 use std::{
@@ -304,6 +305,8 @@ struct Live {
     recommend: Option<recommend::RecommendState>,
     /// What was set up for the champion in hand, and the champ select to remember (`loadout`).
     loadout: loadout::LoadoutLive,
+    /// The trades the user asks for in this champ select (`crate::comeback::trade_events`).
+    trade_watch: crate::comeback::TradeWatch,
 }
 
 impl Live {
@@ -315,6 +318,7 @@ impl Live {
         self.champ_select_opened = None;
         self.swaps.clear();
         self.recommend = None;
+        self.trade_watch = crate::comeback::TradeWatch::default();
     }
 }
 
@@ -1414,6 +1418,7 @@ impl Service {
         }
         self.render(client);
         self.automate(client);
+        self.trade_phrases(client, &session);
         self.loadout_champ_select(client, &session);
     }
 

@@ -52,10 +52,14 @@ home:
             body: A chat message ranked by tier, sent to the team or to you alone in one click or every game by itself, its first line naming your side and winer.
             status: available
             link: /en/guide/live#callout
-          - title: Comebacks and quick phrases
-            body: A shortcut sends one of your own lines at random; in champ select a quick phrase goes to one teammate in one click; an online library only once you download it and turn it on.
+          - title: Comebacks
+            body: A shortcut sends one of your own lines at random, to champ select's chat or typed into a game's; an online library only once you download it and turn it on.
             status: experimental
             link: /en/guide/live#comebacks
+          - title: Champ-select phrases
+            body: One click sends a teammate a quick phrase with their seat and champion filled in; optionally sent by itself when you ask to trade, with a thank-you once it goes through.
+            status: experimental
+            link: /en/guide/live#champ-select-phrases
           - title: ARAM bench
             body: Swap to a bench champion in one click without the cooldown, or let a wishlist do it.
             status: available

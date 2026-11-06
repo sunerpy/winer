@@ -26,8 +26,9 @@ pub struct Settings {
     pub builds: BuildSettings,
     /// History: what the history lists show.
     pub history: HistorySettings,
-    /// The Comebacks page (反击): the user's lines, their two shortcuts, champ select's quick
-    /// phrases and the downloaded library (`comeback`).
+    /// The Comebacks page (反击): the user's lines, their two shortcuts and the downloaded library;
+    /// and the Phrases page's (快捷语) quick phrases, their shortcut and the trade's messages, kept
+    /// here where 0.0.19 saved them (`comeback`).
     pub comeback: ComebackSettings,
 }
 
@@ -606,6 +607,7 @@ pub enum GameTeams {
 
 /// The Comebacks page (`comeback`): a press of either shortcut sends one line at random, in champ
 /// select to its chat, while the game runs typed into the game's chat (with [`Self::in_game`]).
+/// The Phrases page edits [`Self::phrases`], [`Self::phrase_hotkey`] and [`Self::trade`].
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ComebackSettings {
@@ -633,6 +635,24 @@ pub struct ComebackSettings {
     pub phrase_hotkey: Option<String>,
     /// The library downloaded on the user's request (在线语录), and whether a press picks from it.
     pub library: LibraryRule,
+    /// What champ select's trades (交换) send by themselves, off by default: the first quick phrase
+    /// when the user asks a teammate, a thank-you once the champions are swapped.
+    pub trade: TradeRule,
+}
+
+/// The two messages a trade the user asks for (交换) may send without a key press, once each per
+/// teammate per champ select (`comeback::trade_events`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TradeRule {
+    /// When the user asks a teammate to trade, the first quick phrase goes to that teammate.
+    pub on_ask: bool,
+    /// When a trade the user asked for went through, [`Self::thanks`] goes to that teammate.
+    pub on_done: bool,
+    /// The thank-you, with the quick phrases' `{seat}`, `{champion}` (the champion the user got)
+    /// and `{name}`: one line of at most [`ComebackSettings::LINE_LENGTH`] characters. Empty means
+    /// the language's own (`comeback::default_thanks`).
+    pub thanks: String,
 }
 
 impl ComebackSettings {
@@ -1109,8 +1129,9 @@ impl Settings {
         callout.watch_template = clip(&callout.watch_template, 200);
         callout.target_template = clip(&callout.target_template, 200);
         callout.ally_template = clip(&callout.ally_template, 200);
-        // The Comebacks page's three shortcuts are spelled the same way and take no combination held
-        // before them: the window's, the callout's, then each earlier one of theirs.
+        // The Comebacks page's two shortcuts and the Phrases page's one are spelled the same way and
+        // take no combination held before them: the window's, the callout's, then each earlier one
+        // of theirs.
         let mut held = vec![self.general.hotkey.clone(), callout.hotkey.clone()];
         let comeback = &mut self.comeback;
         for shortcut in [
@@ -1134,6 +1155,13 @@ impl Settings {
             ComebackSettings::PHRASE_LIMIT,
             ComebackSettings::LINE_LENGTH,
         );
+        comeback.trade.thanks = comeback::clean_lines(
+            std::slice::from_ref(&comeback.trade.thanks),
+            1,
+            ComebackSettings::LINE_LENGTH,
+        )
+        .pop()
+        .unwrap_or_default();
         self
     }
 
@@ -2020,6 +2048,28 @@ mod tests {
         assert!(callout.auto && callout.template == "{name}" && callout.tiers == TierSet::Horses);
         let defaults = CalloutRule::default();
         assert!(defaults.hotkey.is_none() && !defaults.in_game);
+    }
+
+    #[test]
+    fn a_trades_messages_are_off_in_an_old_file_and_the_thank_you_is_one_clean_line() {
+        let old: Settings = serde_json::from_value(serde_json::json!({
+            "comeback": { "lines": ["泉水见"], "phrases": [] }
+        }))
+        .unwrap();
+        assert_eq!(old.comeback.trade, TradeRule::default());
+        assert!(!old.comeback.trade.on_ask && !old.comeback.trade.on_done);
+        let mut settings = Settings::default();
+        settings.comeback.trade.thanks = format!("  谢谢\n{{seat}}\t大佬  {}", "！".repeat(300));
+        let thanks = settings.normalized().comeback.trade.thanks;
+        assert!(thanks.starts_with("谢谢 {seat} 大佬 ！"), "{thanks}");
+        assert_eq!(thanks.chars().count(), ComebackSettings::LINE_LENGTH);
+        let mut blank = Settings::default();
+        blank.comeback.trade.thanks = " \n ".into();
+        assert_eq!(
+            blank.normalized().comeback.trade.thanks,
+            "",
+            "blank is the default"
+        );
     }
 
     #[test]

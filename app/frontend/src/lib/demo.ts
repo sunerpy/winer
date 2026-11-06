@@ -13,6 +13,7 @@ import type {
   ChallengeToken,
   ChampSelectView,
   ComebackLibrary,
+  ComebackLibraryLines,
   Event,
   Feat,
   FormScope,
@@ -1003,11 +1004,35 @@ const DEFAULT_SETTINGS: Settings = {
     phrases: [],
     phraseHotkey: null,
     library: { enabled: false, level: "mild" },
+    trade: { onAsk: false, onDone: false, thanks: "" },
   },
 };
 
 /** The downloaded library's status before any download (`ComebackLibrary::default`). */
-const NO_LIBRARY: ComebackLibrary = { downloaded: false, mild: 0, strong: 0, fetchedAt: null };
+const NO_LIBRARY: ComebackLibrary = {
+  downloaded: false,
+  mild: 0,
+  strong: 0,
+  fetchedAt: null,
+  edited: false,
+};
+
+/** Stand-ins for the downloaded lines: the demo ships none of the real library. */
+const DEMO_LIBRARY: ComebackLibraryLines = {
+  mild: Array.from({ length: 62 }, (_, n) => `示例语句 ${n + 1}`),
+  strong: Array.from({ length: 7 }, (_, n) => `示例重话 ${n + 1}`),
+};
+
+/** As `comeback::edited_lines` keeps a set: spaces folded, cut to 200 characters, blanks and
+ *  repeats dropped. */
+function editedLines(lines: readonly string[]): string[] {
+  const kept = lines
+    .map((line) =>
+      Array.from(line.split(/\s+/u).filter(Boolean).join(" ")).slice(0, 200).join("").trimEnd(),
+    )
+    .filter((line) => line !== "");
+  return [...new Set(kept)].slice(0, 5000);
+}
 
 /** The tier names `rule` ranks with, best first, as the core resolves them (`callout::tier_names`):
  *  fewer than two names of the user's own stand in for none. */
@@ -1046,6 +1071,7 @@ export function demoBackend(): Backend {
   };
   // The Comebacks page: no library until one is downloaded.
   let library = NO_LIBRARY;
+  let libraryLines: ComebackLibraryLines = { mild: [], strong: [] };
   /** As the core does after a download or a removal: the library's switch saved off. */
   const switchLibraryOff = () => {
     if (!settings.comeback.library.enabled) return;
@@ -1390,7 +1416,7 @@ export function demoBackend(): Backend {
       ];
       return typedLines(enemies, allies, rule.gameTeams);
     },
-    // The Comebacks page: a quick phrase for a teammate of the demo's champ select, refused as the
+    // The Phrases page: a quick phrase for a teammate of the demo's champ select, refused as the
     // core refuses it (`Service::send_phrase`).
     send_phrase: ({ index, gameId, cellId }) => {
       const view = champSelect();
@@ -1415,13 +1441,44 @@ export function demoBackend(): Backend {
     // again.
     download_comeback_library: () => {
       switchLibraryOff();
-      library = { downloaded: true, mild: 682, strong: 994, fetchedAt: Date.now() };
+      libraryLines = { mild: [...DEMO_LIBRARY.mild], strong: [...DEMO_LIBRARY.strong] };
+      library = {
+        downloaded: true,
+        mild: libraryLines.mild.length,
+        strong: libraryLines.strong.length,
+        fetchedAt: Date.now(),
+        edited: false,
+      };
       return library;
     },
     remove_comeback_library: () => {
       switchLibraryOff();
       library = NO_LIBRARY;
+      libraryLines = { mild: [], strong: [] };
       return library;
+    },
+    comeback_library_lines: () => {
+      if (!library.downloaded) {
+        throw { code: "invalid", message: "no library is downloaded" };
+      }
+      return libraryLines;
+    },
+    edit_comeback_library: ({ lines }) => {
+      if (!library.downloaded) {
+        throw { code: "invalid", message: "no library is downloaded" };
+      }
+      const kept = { mild: editedLines(lines.mild), strong: editedLines(lines.strong) };
+      const changed =
+        kept.mild.join("\n") !== libraryLines.mild.join("\n") ||
+        kept.strong.join("\n") !== libraryLines.strong.join("\n");
+      libraryLines = kept;
+      library = {
+        ...library,
+        mild: kept.mild.length,
+        strong: kept.strong.length,
+        edited: library.edited || changed,
+      };
+      return { status: library, lines: libraryLines };
     },
     // History.
     get_player_standing: ({ puuid }) => {

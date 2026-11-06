@@ -14,6 +14,8 @@ import type {
   ClaimReport,
   CleanupReport,
   ComebackLibrary,
+  ComebackLibraryLines,
+  ComebackLibrarySaved,
   Crest,
   CrestChange,
   DiagnosticsReport,
@@ -164,6 +166,11 @@ export interface Commands {
   download_comeback_library: Command<undefined, ComebackLibrary>;
   /** Removes the library, its switch saved off first. */
   remove_comeback_library: Command<undefined, ComebackLibrary>;
+  /** The downloaded library's lines by set; refused while none is downloaded. */
+  comeback_library_lines: Command<undefined, ComebackLibraryLines>;
+  /** Saves both sets as edited; the core cleans them (folded spaces, cut to 200 characters,
+   *  blanks and repeats dropped) and answers its status and the lines as kept. */
+  edit_comeback_library: Command<{ lines: ComebackLibraryLines }, ComebackLibrarySaved>;
 }
 
 export type CommandName = keyof Commands;

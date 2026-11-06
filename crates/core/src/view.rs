@@ -838,13 +838,30 @@ pub enum NoticeKind {
         place: ComebackPlace,
         reason: CalloutSkip,
     },
-    // The quick phrase's shortcut (`comeback::phrase_press`).
-    /// Sent the first quick phrase to champ select's chat, for the teammate asked to trade.
-    PhraseSent,
-    /// The quick phrase's shortcut sent nothing, for `reason`.
+    // A quick phrase sent without the board's menu: by its shortcut (`comeback::phrase_press`), or
+    // by a trade the user asked for (`comeback::trade_events`).
+    /// Sent a message to champ select's chat for the teammate asked to trade: the first quick
+    /// phrase, or for a trade that went through the thank-you.
+    PhraseSent {
+        trigger: PhraseTrigger,
+    },
+    /// A quick phrase or a thank-you sent nothing, for `reason`.
     PhraseSkipped {
         reason: PhraseSkip,
+        trigger: PhraseTrigger,
     },
+}
+
+/// What sent a quick phrase, or the thank-you, without the board's menu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum PhraseTrigger {
+    /// The quick phrase's shortcut.
+    Shortcut,
+    /// The user asked a teammate to trade (`settings::TradeRule::on_ask`).
+    Asked,
+    /// A trade the user asked for went through (`settings::TradeRule::on_done`): the thank-you.
+    Done,
 }
 
 /// Why the quick phrase's shortcut sent nothing.
@@ -910,6 +927,27 @@ pub struct ComebackLibrary {
     pub strong: u32,
     /// When it was downloaded, in milliseconds since the epoch.
     pub fetched_at: Option<i64>,
+    /// The user changed its lines since the download: removing it loses that.
+    pub edited: bool,
+}
+
+/// What saving the edited library answers: its status, and its lines as the core kept them.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ComebackLibrarySaved {
+    pub status: ComebackLibrary,
+    pub lines: ComebackLibraryLines,
+}
+
+/// The downloaded library's lines by set, as the Comebacks page lists and edits them; the window
+/// sends both sets back whole, and the core answers them cleaned (`comeback::edited_lines`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ComebackLibraryLines {
+    /// 口吐芬芳.
+    pub mild: Vec<String>,
+    /// 火力全开.
+    pub strong: Vec<String>,
 }
 
 /// A player found by Riot ID.
