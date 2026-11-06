@@ -735,6 +735,153 @@ mod tests {
         );
     }
 
+    /// A recorder's sample: `(cell, champion)` for the team, and the trades as the client listed
+    /// them, `(id, cell, state)`.
+    type Sample = ([(i64, i64); 5], &'static [(i64, i64, &'static str)]);
+
+    /// One sample of the read-only recorder on the owner's PC: the local cell, `cell:champion` for
+    /// the team, and the trades as the client listed them (`id`, `cell`, `state`).
+    fn recorded(
+        game_id: i64,
+        local: i64,
+        team: [(i64, i64); 5],
+        trades: &[(i64, i64, &str)],
+    ) -> ChampSelectSession {
+        serde_json::from_value(serde_json::json!({
+            "gameId": game_id,
+            "localPlayerCellId": local,
+            "benchEnabled": true,
+            "myTeam": team
+                .iter()
+                .map(|(cell, champion)| serde_json::json!({ "cellId": cell, "championId": champion }))
+                .collect::<Vec<_>>(),
+            "trades": trades
+                .iter()
+                .map(|(id, cell, state)| serde_json::json!({ "id": id, "cellId": cell, "state": state }))
+                .collect::<Vec<_>>(),
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn the_champ_selects_recorded_on_the_owners_pc_ask_and_thank_exactly_once() {
+        // ARAM, 2026-11-06 22:46 CST: the user in cell 3, on champion 6, asks cell 4, on 202.
+        let game = 601027531658;
+        let samples: [Sample; 6] = [
+            (
+                [(0, 39), (1, 50), (2, 10), (3, 6), (4, 202)],
+                &[
+                    (44, 2, "AVAILABLE"),
+                    (46, 1, "AVAILABLE"),
+                    (48, 0, "AVAILABLE"),
+                    (57, 4, "AVAILABLE"),
+                ],
+            ),
+            (
+                [(0, 39), (1, 50), (2, 10), (3, 6), (4, 202)],
+                &[
+                    (44, 2, "INVALID"),
+                    (46, 1, "INVALID"),
+                    (48, 0, "INVALID"),
+                    (57, 4, "SENT"),
+                ],
+            ),
+            (
+                [(0, 39), (1, 50), (2, 10), (3, 202), (4, 6)],
+                &[
+                    (64, 0, "AVAILABLE"),
+                    (71, 4, "AVAILABLE"),
+                    (60, 2, "AVAILABLE"),
+                    (62, 1, "AVAILABLE"),
+                ],
+            ),
+            // Cell 4 took a bench champion, then cell 2 did.
+            (
+                [(0, 39), (1, 50), (2, 10), (3, 202), (4, 99)],
+                &[
+                    (64, 0, "AVAILABLE"),
+                    (79, 4, "AVAILABLE"),
+                    (60, 2, "AVAILABLE"),
+                    (62, 1, "AVAILABLE"),
+                ],
+            ),
+            (
+                [(0, 39), (1, 50), (2, 221), (3, 202), (4, 99)],
+                &[
+                    (64, 0, "AVAILABLE"),
+                    (79, 4, "AVAILABLE"),
+                    (86, 2, "AVAILABLE"),
+                    (62, 1, "AVAILABLE"),
+                ],
+            ),
+            ([(0, 39), (1, 50), (2, 221), (3, 202), (4, 99)], &[]),
+        ];
+        let mut watch = TradeWatch::default();
+        let events: Vec<_> = samples
+            .iter()
+            .map(|(team, trades)| trade_events(&mut watch, &recorded(game, 3, *team, trades)))
+            .collect();
+        assert_eq!(
+            events,
+            [
+                vec![],
+                vec![TradeEvent::Asked {
+                    cell_id: 4,
+                    theirs: 202
+                }],
+                vec![TradeEvent::Done {
+                    cell_id: 4,
+                    theirs: 202
+                }],
+                vec![],
+                vec![],
+                vec![],
+            ]
+        );
+
+        // ARAM, 2026-11-06 21:57 CST: the user in cell 2 swaps from the bench (85 for 16) while cells
+        // 1 and 4 trade each other (BUSY on both, then 85 and 17 change places).
+        let game = 601027440794;
+        let samples: [Sample; 4] = [
+            (
+                [(0, 91), (1, 85), (2, 16), (3, 64), (4, 17)],
+                &[
+                    (77, 0, "INVALID"),
+                    (78, 4, "AVAILABLE"),
+                    (80, 3, "AVAILABLE"),
+                    (85, 1, "AVAILABLE"),
+                ],
+            ),
+            (
+                [(0, 91), (1, 85), (2, 16), (3, 64), (4, 17)],
+                &[
+                    (77, 0, "INVALID"),
+                    (78, 4, "BUSY"),
+                    (85, 1, "BUSY"),
+                    (92, 3, "AVAILABLE"),
+                ],
+            ),
+            (
+                [(0, 518), (1, 17), (2, 16), (3, 64), (4, 85)],
+                &[
+                    (102, 4, "AVAILABLE"),
+                    (107, 1, "AVAILABLE"),
+                    (119, 0, "INVALID"),
+                    (92, 3, "AVAILABLE"),
+                ],
+            ),
+            ([(0, 518), (1, 17), (2, 16), (3, 64), (4, 83)], &[]),
+        ];
+        let mut watch = TradeWatch::default();
+        for (team, trades) in samples {
+            assert_eq!(
+                trade_events(&mut watch, &recorded(game, 2, team, trades)),
+                [],
+                "nobody asked the user, and the user asked nobody"
+            );
+        }
+    }
+
     #[test]
     fn the_thank_you_is_the_users_or_the_languages() {
         let mut rule = ComebackSettings::default();

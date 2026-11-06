@@ -2756,6 +2756,128 @@ describe("comebacks", () => {
     expect(removals()).toBe(before + 1);
   });
 
+  /** The demo's backend, with `edit_comeback_library` held: each call waits in `held` until the
+   *  test lets it go, then is carried out by the demo. */
+  function holdingEdits() {
+    const backend = demoBackend();
+    const call = backend.call.bind(backend) as (
+      command: CommandName,
+      ...args: unknown[]
+    ) => Promise<unknown>;
+    const held: { lines: { mild: string[]; strong: string[] }; release: () => void }[] = [];
+    let fail = 0;
+    return {
+      held,
+      /** The next `n` edits are refused once released. */
+      failNext: (n: number) => {
+        fail = n;
+      },
+      backend: {
+        ...backend,
+        call: ((command: CommandName, ...args: unknown[]) => {
+          if (command !== "edit_comeback_library") return call(command, ...args);
+          const { lines } = args[0] as { lines: { mild: string[]; strong: string[] } };
+          return new Promise<unknown>((resolve, reject) => {
+            held.push({
+              lines,
+              release: () => {
+                if (fail > 0) {
+                  fail -= 1;
+                  reject({ code: "internal", message: "the disk is full" });
+                } else {
+                  resolve(call(command, ...args));
+                }
+              },
+            });
+          });
+        }) as Backend["call"],
+      } satisfies Backend,
+    };
+  }
+
+  it("keeps the newest edit on screen while the saves before it answer, one after another", async () => {
+    const { backend, held } = holdingEdits();
+    const { user } = await openComebacks(backend);
+    await downloadLibrary(user);
+    await user.click(screen.getByRole("button", { name: zhCN["comeback.libraryEdit"] }));
+    const dialog = within(
+      await screen.findByRole("dialog", { name: zhCN["comeback.libraryEditTitle"] }),
+    );
+    const first = await dialog.findByRole("textbox", { name: "第 1 句语录" });
+    await user.clear(first);
+    await user.type(first, "第一处修改{Enter}");
+    await waitFor(() => expect(held).toHaveLength(1));
+    const second = dialog.getByRole("textbox", { name: "第 2 句语录" });
+    await user.clear(second);
+    await user.type(second, "第二处修改{Enter}");
+    expect(held, "the second save waits for the first").toHaveLength(1);
+
+    await act(async () => held[0]!.release());
+    await waitFor(() => expect(held, "then goes out").toHaveLength(2));
+    expect(held[1]!.lines.mild.slice(0, 2), "with both edits").toEqual([
+      "第一处修改",
+      "第二处修改",
+    ]);
+    expect(second, "the older answer does not undo the newer edit").toHaveValue("第二处修改");
+    expect(first).toHaveValue("第一处修改");
+
+    await act(async () => held[1]!.release());
+    await waitFor(() =>
+      expect(
+        screen.getByText(/已下载：口吐芬芳 62 句，火力全开 7 句 .* · 已修改/),
+      ).toBeInTheDocument(),
+    );
+    expect(second).toHaveValue("第二处修改");
+  });
+
+  it("says when the library's lines cannot be read, and shows the kept lines again after a failed save", async () => {
+    let reads = 0;
+    const holding = holdingEdits();
+    const base = holding.backend.call;
+    const backend: Backend = {
+      ...holding.backend,
+      call: ((command: CommandName, ...args: unknown[]) => {
+        if (command === "comeback_library_lines" && reads++ === 0) {
+          return Promise.reject({ code: "unavailable", message: "the file is locked" });
+        }
+        return (base as (command: CommandName, ...args: unknown[]) => Promise<unknown>)(
+          command,
+          ...args,
+        );
+      }) as Backend["call"],
+    };
+    const { user } = await openComebacks(backend);
+    await downloadLibrary(user);
+    await user.click(screen.getByRole("button", { name: zhCN["comeback.libraryEdit"] }));
+    const dialog = within(
+      await screen.findByRole("dialog", { name: zhCN["comeback.libraryEditTitle"] }),
+    );
+    expect(await dialog.findByText(zhCN["comeback.libraryLinesFailed"])).toBeInTheDocument();
+    expect(dialog.getByText("the file is locked")).toBeInTheDocument();
+    await user.click(dialog.getByRole("button", { name: zhCN["common.retry"] }));
+    const first = await dialog.findByRole("textbox", { name: "第 1 句语录" });
+    expect(first).toHaveValue("示例语句 1");
+
+    holding.failNext(1);
+    await user.click(dialog.getByRole("button", { name: "删除第 1 句语录" }));
+    await waitFor(() => expect(holding.held).toHaveLength(1));
+    expect(dialog.getByRole("radio", { name: "口吐芬芳 61" }), "removed at once").toBeChecked();
+    await act(async () => holding.held[0]!.release());
+    expect(await screen.findByText("the disk is full")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        dialog.getByRole("radio", { name: "口吐芬芳 62" }),
+        "the core's lines again",
+      ).toBeChecked(),
+    );
+    // The field takes a new value from its effect, a moment after the list renders.
+    await waitFor(() =>
+      expect(dialog.getByRole("textbox", { name: "第 1 句语录" })).toHaveValue("示例语句 1"),
+    );
+    await user.click(dialog.getByRole("button", { name: zhCN["common.close"] }));
+    expect(screen.queryByText(/· 已修改/), "nothing was saved").toBeNull();
+  });
+
   it("sends a teammate a quick phrase from champ select's board, for that champ select's cell", async () => {
     // Saved in the demo client, which renders the phrase as the core does.
     const backend = demoBackend();
