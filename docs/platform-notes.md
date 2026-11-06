@@ -120,10 +120,16 @@ for one client build or one privilege level, it says so.
   measured) and `BUSY`
   on two teammates' cells at once while those two trade with each other (1.3 s later their
   champions had swapped). The client's own `/help` (type `ChampSelectSwapState`) lists `ACCEPTED`,
-  `AVAILABLE`, `BUSY`, `CANCELLED`, `DECLINED`, `INVALID`, `RECEIVED` and `SENT`; the state of the
-  cell the user asked (`SENT`, by its name) is not captured yet, since the owner asked nobody.
+  `AVAILABLE`, `BUSY`, `CANCELLED`, `DECLINED`, `INVALID`, `RECEIVED` and `SENT`.
   `/lol-champ-select/v1/ongoing-trade` answered `404` throughout. The quick phrase's shortcut sends
   to the cell whose trade is `SENT`.
+- **A trade the user asks for** (ARAM, 2026-11-06 22:46, the same recorder every 0.4 s, winer's
+  test build 005e9ab with both trade switches on): the asked teammate's cell read `SENT` and every
+  other teammate's `INVALID`; 5.6 s later the two champions had swapped and all four cells were
+  `AVAILABLE` again, each under a new id. winer logged the first quick phrase sent
+  (`trigger=Asked`) 0.24 s before the recorder's first `SENT` sample, and the thank-you
+  (`trigger=Done`) 0.02 s before its first sample with the champions swapped. `RECEIVED`,
+  `ACCEPTED`, `DECLINED` and `CANCELLED` are still not captured.
 
 ## Profile and chat presence
 

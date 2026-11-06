@@ -150,8 +150,9 @@ game=Elevated` and the line reached the team chat. Do not drop the hook for the 
   dropped without an error. winer asks once at connect when in-game typing is set up
   (`elevation.rs`); an elevated SSH session can start it elevated on windows-home with a one-shot
   `schtasks /RL HIGHEST /IT` task, which shows no UAC prompt over the owner's game.
-- Champ select's `trades` states come from the client's `/help` (`ChampSelectSwapState`); `SENT`,
-  the state of a trade the user asked for, is not captured yet (`docs/platform-notes.md`).
+- Champ select's `trades` states come from the client's `/help` (`ChampSelectSwapState`). `SENT`,
+  on the asked teammate's cell, was captured on 2026-11-06 with the other cells `INVALID`;
+  `RECEIVED`, `ACCEPTED`, `DECLINED` and `CANCELLED` are not captured yet (`docs/platform-notes.md`).
 
 ## Conventions a new session gets wrong
 
