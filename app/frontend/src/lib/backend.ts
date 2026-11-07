@@ -151,6 +151,10 @@ export interface Commands {
   list_player_notes: Command<undefined, NoteEntry[]>;
   delete_player_note: Command<{ puuid: string }, boolean>;
   /** Into Downloads under a new name when the one asked for is taken; answers the file's name. */
+  get_report_directory: Command<undefined, string | null>;
+  choose_report_directory: Command<undefined, string | null>;
+  save_report_image: Command<{ name: string; contents: number[] }, string>;
+  save_report_archive: Command<{ contents: number[] }, string | null>;
   save_export: Command<{ stem: string; format: ExportFormat; contents: string }, string>;
   /** Asks again for a player whose record failed to load; nothing for one that loaded. */
   retry_player: Command<{ puuid: string }, null>;

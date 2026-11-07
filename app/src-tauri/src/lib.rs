@@ -11,6 +11,7 @@ mod game_keys;
 mod hotkey;
 mod logging;
 mod plugin_host;
+mod report_export;
 mod storage;
 mod tray;
 mod updater;

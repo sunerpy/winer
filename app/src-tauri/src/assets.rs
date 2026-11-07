@@ -27,6 +27,7 @@ pub(crate) fn protocol<R: Runtime>(
         let response = match service.asset(&path).await {
             Ok(asset) => Response::builder()
                 .header(header::CONTENT_TYPE, asset.content_type.as_str())
+                .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                 .header(header::CACHE_CONTROL, "max-age=86400, immutable")
                 .body(asset.bytes.clone())
                 .unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR)),

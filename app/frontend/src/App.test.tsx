@@ -16,6 +16,7 @@ import type {
 } from "@winer/shared";
 
 import { App } from "./App";
+import * as reports from "./pages/history/reports";
 import type { Backend, CommandName } from "./lib/backend";
 import { demoBackend, demoGame, demoLobby } from "./lib/demo";
 import { AppStore, EMPTY_SNAPSHOT, StoreContext } from "./lib/store";
@@ -2176,6 +2177,65 @@ describe("history", () => {
     expect(how).toHaveTextContent(`落在「${rating.label}」`);
   });
 
+  it("exports complete scoreboards with rune groups directly to the remembered folder", async () => {
+    const saved = vi.fn((_args: unknown) => "D:/Reports/match.png");
+    const backend = demoWith({
+      get_report_directory: () => "D:/Reports",
+      save_report_image: saved,
+    });
+    const capture = vi.spyOn(reports, "captureReport").mockImplementation(async (node) => {
+      expect(node.querySelectorAll("li")).toHaveLength(10);
+      expect(node.querySelectorAll('[aria-label="主系符文"]')).toHaveLength(10);
+      expect(node.querySelectorAll('[aria-label="属性碎片"]')).toHaveLength(10);
+      return new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    });
+    try {
+      const user = await openHistory(backend);
+      await screen.findByText("D:/Reports");
+      const checks = screen.getAllByRole("checkbox", { name: /选择对局/ });
+      await user.click(checks[0]!);
+      await user.click(checks[1]!);
+      await user.click(screen.getByRole("button", { name: zhCN["history.exportToFolder"] }));
+      await waitFor(() => expect(saved).toHaveBeenCalledTimes(2));
+      expect(capture).toHaveBeenCalledTimes(2);
+      expect(saved.mock.calls[0]?.[0]).toEqual(
+        expect.objectContaining({
+          name: expect.stringMatching(/\.png$/),
+          contents: [137, 80, 78, 71, 13, 10, 26, 10],
+        }),
+      );
+    } finally {
+      capture.mockRestore();
+    }
+  });
+
+  it("shows only custom games despite the hide setting and selects across pages", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const user = await openHistory(backend);
+    await user.type(
+      screen.getByRole("textbox", { name: zhCN["history.search"] }),
+      "野区观光客#10005",
+    );
+    await user.click(screen.getByRole("button", { name: zhCN["history.find"] }));
+    await screen.findByRole("button", { name: zhCN["history.mine"] }, { timeout: 5000 });
+    await screen.findByText("已隐藏 2 场");
+    await user.click(screen.getByRole("radio", { name: zhCN["history.custom"] }));
+    expect(await screen.findByText("第 1–2 场 · 共 2 场")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: zhCN["history.hideCustom"] })).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: zhCN["history.selectVisible"] }));
+    expect(screen.getByText("已选择 2 场（跨页保留）")).toBeInTheDocument();
+    expect(screen.getAllByRole("checkbox", { name: /选择对局/, checked: true })).toHaveLength(2);
+    expect(call).not.toHaveBeenCalledWith("set_settings", expect.anything());
+    await user.click(screen.getByRole("radio", { name: zhCN["history.all"] }));
+    await user.click(screen.getByRole("checkbox", { name: zhCN["history.selectVisible"] }));
+    expect(screen.getByText("已选择 12 场（跨页保留）")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    expect(screen.getAllByRole("checkbox", { name: /选择对局/, checked: false })).toHaveLength(10);
+    await user.click(screen.getByRole("button", { name: zhCN["history.clearSelection"] }));
+    expect(screen.getByRole("button", { name: zhCN["history.exportReports"] })).toBeDisabled();
+  });
+
   it("hides custom games by default, says how many, and shows them once switched", async () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");
@@ -2186,6 +2246,7 @@ describe("history", () => {
       "野区观光客#10005",
     );
     await user.click(screen.getByRole("button", { name: zhCN["history.find"] }));
+    await screen.findByRole("button", { name: zhCN["history.mine"] }, { timeout: 5000 });
     expect(await screen.findByText("已隐藏 2 场")).toBeInTheDocument();
     expect(await screen.findByText("第 1–50 场 · 共 60 场")).toBeInTheDocument();
     expect(screen.queryByText("嚎哭深渊 全随机"), "custom games are hidden").toBeNull();

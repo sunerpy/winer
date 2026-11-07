@@ -392,6 +392,16 @@ fn line(game: &Game, participant: &Participant) -> PlayerLine {
         spells: [participant.spell1_id, participant.spell2_id],
         items: stats.items(),
         augments: stats.augments(),
+        primary_style: stats.perk_primary_style,
+        primary_runes: [stats.perk0, stats.perk1, stats.perk2, stats.perk3]
+            .into_iter()
+            .filter(|id| *id > 0)
+            .collect(),
+        secondary_runes: [stats.perk4, stats.perk5]
+            .into_iter()
+            .filter(|id| *id > 0)
+            .collect(),
+        stat_shards: [stats.stat_perk0, stats.stat_perk1, stats.stat_perk2],
         keystone: stats.perk0,
         sub_style: stats.perk_sub_style,
         kills: stats.kills,
@@ -1428,6 +1438,24 @@ mod tests {
         );
         let summary = match_summary("p", &custom, &Roles::new(), &kinds).unwrap();
         assert_eq!(summary.kind, GameKind::Custom, "a list row says it too");
+    }
+
+    #[test]
+    fn lcu_runes_reach_the_player_line() {
+        let participant: Participant = serde_json::from_value(serde_json::json!({"stats": {
+            "perkPrimaryStyle":8000,"perkSubStyle":8300,
+            "perk0":8005,"perk1":9111,"perk2":9104,"perk3":8014,"perk4":8304,"perk5":8345,
+            "statPerk0":5005,"statPerk1":5008,"statPerk2":5001
+        }}))
+        .unwrap();
+        let shown = line(&Game::default(), &participant);
+        assert_eq!(shown.primary_runes, [8005, 9111, 9104, 8014]);
+        assert_eq!(shown.secondary_runes, [8304, 8345]);
+        assert_eq!(shown.stat_shards, [5005, 5008, 5001]);
+        assert_eq!((shown.primary_style, shown.sub_style), (8000, 8300));
+        let missing = line(&Game::default(), &Participant::default());
+        assert!(missing.primary_runes.is_empty());
+        assert_eq!(missing.stat_shards, [0, 0, 0]);
     }
 
     #[test]
