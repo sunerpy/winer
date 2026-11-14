@@ -3,6 +3,7 @@
 
 mod caches;
 mod comeback;
+mod cross_region;
 mod loadout;
 mod rewards;
 mod ux;
@@ -207,6 +208,7 @@ struct Inner {
     loadout: loadout::LoadoutState,
     /// History: pages, whole games and Riot ID lookups, for the signed-in account (`history`).
     history: Mutex<HistoryCache>,
+    regional_history: Mutex<cross_region::RegionalHistory>,
     /// The shard's match-history server as requests to it have found it (`HistoryServer`).
     history_server: HistoryServer,
     /// Counts the plugins' hellos on the bridge: a restarted interface is back once it changes
@@ -472,6 +474,7 @@ impl Service {
                 backups: OnceLock::new(),
                 loadout: loadout::LoadoutState::new(loadouts),
                 history: Mutex::new(HistoryCache::default()),
+                regional_history: Mutex::new(cross_region::RegionalHistory::default()),
                 history_server: HistoryServer::new(),
                 plugin_hellos: watch::Sender::new(0),
                 versions,
@@ -2884,6 +2887,7 @@ impl Service {
     /// Makes every cache the signed-in account's: another account's pages, games, lookups and
     /// players' records go, so nothing fetched for one is shown to the next.
     fn scope_account(&self, me: &str) {
+        lock(&self.inner.regional_history).scope(me);
         if lock(&self.inner.history).scope(me) {
             lock(&self.inner.players).clear();
         }

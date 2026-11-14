@@ -60,6 +60,18 @@ pub fn discover() -> Result<Credentials, DiscoverError> {
     imp::discover()
 }
 
+/// Reads Riot Client credentials from the already-connected League client process.
+pub fn discover_riot_client(pid: u32) -> Result<Credentials, DiscoverError> {
+    imp::discover_riot_client(pid)
+}
+
+/// Riot Client flags are separate from the League client's own API credentials.
+pub fn parse_riot_client_command_line(command_line: &str) -> Option<(u16, String)> {
+    let port: u16 = flag(command_line, "--riotclient-app-port=")?.parse().ok()?;
+    let token = flag(command_line, "--riotclient-auth-token=")?;
+    (port != 0 && !token.is_empty()).then(|| (port, token.to_owned()))
+}
+
 /// `--app-port=<n>` and `--remoting-auth-token=<token>` from a `LeagueClientUx` command line,
 /// quoted or not.
 pub fn parse_command_line(command_line: &str) -> Option<(u16, String)> {
@@ -102,8 +114,37 @@ pub fn parse_lockfile(contents: &str) -> Option<(u16, String)> {
 mod imp {
     use std::{fs, io::ErrorKind, path::Path};
 
-    use super::{Credentials, DiscoverError, parse_command_line, parse_lockfile};
+    use super::{
+        Credentials, DiscoverError, parse_command_line, parse_lockfile,
+        parse_riot_client_command_line,
+    };
     use crate::process::{Process, pids_named};
+
+    pub(super) fn discover_riot_client(pid: u32) -> Result<Credentials, DiscoverError> {
+        let process = Process::open(pid).map_err(|error| {
+            if error.kind() == ErrorKind::PermissionDenied {
+                DiscoverError::AccessDenied
+            } else {
+                DiscoverError::Io(error)
+            }
+        })?;
+        let image = process.image_path().ok_or(DiscoverError::AccessDenied)?;
+        if !image.file_name().is_some_and(|name| {
+            name.to_string_lossy()
+                .eq_ignore_ascii_case("LeagueClientUx.exe")
+        }) {
+            return Err(DiscoverError::NotRunning);
+        }
+        let command_line = process.command_line()?;
+        let (port, token) =
+            parse_riot_client_command_line(&command_line).ok_or(DiscoverError::NotRunning)?;
+        Ok(Credentials {
+            port,
+            token,
+            pid: Some(pid),
+            client_dir: None,
+        })
+    }
 
     pub(super) fn discover() -> Result<Credentials, DiscoverError> {
         let mut denied = false;
@@ -149,6 +190,10 @@ mod imp {
 #[cfg(not(windows))]
 mod imp {
     use super::{Credentials, DiscoverError};
+
+    pub(super) fn discover_riot_client(_pid: u32) -> Result<Credentials, DiscoverError> {
+        Err(DiscoverError::NotRunning)
+    }
 
     /// The supported clients are Windows builds; elsewhere there is never a client to find.
     pub(super) fn discover() -> Result<Credentials, DiscoverError> {
@@ -196,6 +241,32 @@ mod tests {
             None
         );
         assert_eq!(parse_command_line("--remoting-auth-token=t"), None);
+    }
+
+    #[test]
+    fn parse_riot_client_credentials_without_confusing_league_flags() {
+        assert_eq!(
+            parse_riot_client_command_line(COMMAND_LINE),
+            Some((62087, "AAAA".to_owned()))
+        );
+        assert_eq!(
+            parse_riot_client_command_line(
+                "LeagueClientUx.exe --riotclient-app-port=4321 --riotclient-auth-token=rc --app-port=1234 --remoting-auth-token=lcu"
+            ),
+            Some((4321, "rc".to_owned()))
+        );
+    }
+
+    #[test]
+    fn parse_riot_client_rejects_league_only_or_invalid_credentials() {
+        for line in [
+            "--app-port=4321 --remoting-auth-token=lcu",
+            "--riotclient-app-port=1 --riotclient-auth-token=",
+            "--riotclient-app-port=65536 --riotclient-auth-token=x",
+            "--riotclient-app-port=0 --riotclient-auth-token=x",
+        ] {
+            assert_eq!(parse_riot_client_command_line(line), None);
+        }
     }
 
     #[test]

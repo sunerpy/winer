@@ -37,6 +37,20 @@ type PageSize = (typeof PAGE_SIZES)[number];
 const PAGE_SIZE_KEY = "winer.history.pageSize";
 /** Games asked for at a time, the most one request returns. */
 const CHUNK = 50;
+const HISTORY_REGIONS = [
+  ["HN1", "history.region.hn1"],
+  ["HN10", "history.region.hn10"],
+  ["TJ100", "history.region.tj100"],
+  ["TJ101", "history.region.tj101"],
+  ["NJ100", "history.region.nj100"],
+  ["GZ100", "history.region.gz100"],
+  ["CQ100", "history.region.cq100"],
+  ["BGP2", "history.region.bgp2"],
+] as const;
+
+function regionArgs(platformId?: string): { platformId?: string } {
+  return platformId ? { platformId } : {};
+}
 
 function readPageSize(): PageSize {
   try {
@@ -148,6 +162,7 @@ function PlayerHeader({
   puuid,
   viewer,
   connected,
+  platformId,
   isMe,
   onMine,
 }: {
@@ -155,6 +170,7 @@ function PlayerHeader({
   /** The signed-in account, whose cache this is. */
   viewer: string;
   connected: boolean;
+  platformId?: string;
   isMe: boolean;
   onMine: () => void;
 }) {
@@ -163,18 +179,18 @@ function PlayerHeader({
   const settings = useSettings();
   // Drawn at once on a revisit, then read again: a game may have ended since.
   const summary = useCached(
-    store.history.summary(viewer, puuid),
-    () => store.backend.call("get_player_summary", { puuid }),
-    (value) => store.history.putSummary(viewer, value),
-    { refresh: connected, deps: [puuid], enabled: connected },
+    store.history.summary(viewer, puuid, platformId),
+    () => store.backend.call("get_player_summary", { puuid, ...regionArgs(platformId) }),
+    (value) => store.history.putSummary(viewer, value, platformId),
+    { refresh: connected, deps: [puuid, platformId], enabled: connected },
   );
   // The tier and its words follow the rating settings; asked once the record is in, so the core
   // reads the player once.
   const { tiers, customTiers } = settings.automation.callout;
   const { language, titles } = settings.general;
   const standing = useAsync(
-    () => store.backend.call("get_player_standing", { puuid }),
-    [puuid, tiers, customTiers.join("\n"), language, titles],
+    () => store.backend.call("get_player_standing", { puuid, ...regionArgs(platformId) }),
+    [puuid, platformId, tiers, customTiers.join("\n"), language, titles],
     connected && summary.data !== undefined,
   );
   const player = summary.data;
@@ -194,14 +210,20 @@ function PlayerHeader({
                 </span>
               </span>
             </span>
-            <span className="flex flex-col gap-1">
-              <span className="text-[11px] text-fg-subtle">{t("common.solo")}</span>
-              <RankBadge rank={player.ranked.solo} />
-            </span>
-            <span className="flex flex-col gap-1">
-              <span className="text-[11px] text-fg-subtle">{t("common.flex")}</span>
-              <RankBadge rank={player.ranked.flex} />
-            </span>
+            {platformId ? (
+              <span className="text-[12px] text-fg-subtle">{t("history.crossRegionRanks")}</span>
+            ) : (
+              <>
+                <span className="flex flex-col gap-1">
+                  <span className="text-[11px] text-fg-subtle">{t("common.solo")}</span>
+                  <RankBadge rank={player.ranked.solo} />
+                </span>
+                <span className="flex flex-col gap-1">
+                  <span className="text-[11px] text-fg-subtle">{t("common.flex")}</span>
+                  <RankBadge rank={player.ranked.flex} />
+                </span>
+              </>
+            )}
             {player.recent.games > 0 && (
               <span className="flex flex-col gap-1">
                 <span className="text-[11px] text-fg-subtle">
@@ -261,15 +283,19 @@ function PlayerHeader({
 function SearchBar({
   viewer,
   connected,
+  platformId,
   onFound,
 }: {
   viewer: string;
   connected: boolean;
-  onFound: (puuid: string) => void;
+  platformId?: string;
+  onFound: (puuid: string, platformId?: string) => void;
 }) {
   const t = useT();
   const store = useStore();
   const [query, setQuery] = useState("");
+  const [targetRegion, setTargetRegion] = useState(platformId ?? "");
+  useEffect(() => setTargetRegion(platformId ?? ""), [platformId]);
   const [busy, setBusy] = useState(false);
   const [invalid, setInvalid] = useState(false);
 
@@ -279,18 +305,21 @@ function SearchBar({
     setInvalid(false);
     try {
       if (!connected) {
-        const cached = store.history.find(viewer, query);
+        const cached = store.history.find(viewer, query, targetRegion || undefined);
         if (!cached) throw new Error(t("history.offlineMissing"));
-        onFound(cached);
+        onFound(cached, targetRegion || undefined);
         return;
       }
-      const player = await store.backend.call("find_player", { riotId: query });
-      store.history.remember(viewer, player);
-      onFound(player.puuid);
+      const player = await store.backend.call("find_player", {
+        riotId: query,
+        ...regionArgs(targetRegion),
+      });
+      store.history.remember(viewer, player, targetRegion || undefined);
+      onFound(player.puuid, targetRegion || undefined);
     } catch (error) {
-      const cached = store.history.find(viewer, query);
+      const cached = store.history.find(viewer, query, targetRegion || undefined);
       if (cached) {
-        onFound(cached);
+        onFound(cached, targetRegion || undefined);
         return;
       }
       setInvalid(true);
@@ -298,7 +327,7 @@ function SearchBar({
         !connected
           ? t("history.offlineMissing")
           : errorCode(error) === "notFound"
-            ? t("history.notFound")
+            ? t("history.notFoundRegion")
             : errorMessage(error),
         "danger",
       );
@@ -310,12 +339,29 @@ function SearchBar({
   return (
     <form
       role="search"
-      className="flex items-center gap-2"
+      className="flex flex-wrap items-center gap-2"
       onSubmit={(event) => {
         event.preventDefault();
         void submit();
       }}
     >
+      <select
+        aria-label={t("history.region")}
+        value={targetRegion}
+        disabled={busy}
+        onChange={(event) => {
+          setTargetRegion(event.target.value);
+          setInvalid(false);
+        }}
+        className="h-8 max-w-48 rounded-6 bg-surface px-2.5 text-[13px] text-fg outline-none hairline transition-colors duration-150 hover:border-border-strong focus:border-accent disabled:opacity-50"
+      >
+        <option value="">{t("history.region.current")}</option>
+        {HISTORY_REGIONS.map(([value, label]) => (
+          <option key={value} value={value}>
+            {t(label)}
+          </option>
+        ))}
+      </select>
       <Input
         icon={Search}
         value={query}
@@ -366,17 +412,19 @@ function GameList({
   puuid,
   viewer,
   connected,
+  platformId,
 }: {
   puuid: string;
   viewer: string;
   connected: boolean;
+  platformId?: string;
 }) {
   const t = useT();
   const store = useStore();
   const { navigate } = useShell();
   const hideCustom = useSettings().history.hideCustomGames;
   // Where the list was left on the last visit, if it was this account's.
-  const [kept] = useState(() => store.history.list(viewer, puuid));
+  const [kept] = useState(() => store.history.list(viewer, puuid, platformId));
   const [loaded, setLoaded] = useState<Loaded>(() =>
     kept ? { ...NOTHING_YET, ...kept, stale: true } : NOTHING_YET,
   );
@@ -435,7 +483,8 @@ function GameList({
             : t("history.result.loss"),
     };
     const contents = format === "csv" ? gamesCsv(shown, words) : gamesJson(shown, words);
-    const name = riotId(store.history.summary(viewer, puuid)?.name ?? null) || puuid.slice(0, 8);
+    const name =
+      riotId(store.history.summary(viewer, puuid, platformId)?.name ?? null) || puuid.slice(0, 8);
     try {
       const file = await store.backend.call("save_export", {
         stem: exportStem(t("history.exportPrefix"), name, new Date()),
@@ -451,15 +500,31 @@ function GameList({
   // Kept for the next visit, the page and the filter with it.
   useEffect(() => {
     if (loaded.games.length === 0 && loaded.more) return;
-    store.history.putList(viewer, puuid, {
-      games: loaded.games,
-      next: loaded.next,
-      more: loaded.more,
-      source: loaded.source,
-      page,
-      filter,
-    });
-  }, [loaded.games, loaded.next, loaded.more, loaded.source, page, filter, puuid, viewer, store]);
+    store.history.putList(
+      viewer,
+      puuid,
+      {
+        games: loaded.games,
+        next: loaded.next,
+        more: loaded.more,
+        source: loaded.source,
+        page,
+        filter,
+      },
+      platformId,
+    );
+  }, [
+    loaded.games,
+    loaded.next,
+    loaded.more,
+    loaded.source,
+    page,
+    filter,
+    puuid,
+    viewer,
+    store,
+    platformId,
+  ]);
 
   // One request at a time. A list drawn from the cache asks for the newest games first: the same
   // ones keep it as it was, new ones start it over from them (the older games have moved down).
@@ -475,7 +540,7 @@ function GameList({
     const before = loaded.games;
     setLoaded((previous) => ({ ...previous, loading: true }));
     store.backend
-      .call("get_match_history", { puuid, begin, count: CHUNK })
+      .call("get_match_history", { puuid, begin, count: CHUNK, ...regionArgs(platformId) })
       .then((result) => {
         if (!mounted.current) return;
         const short = result.hasMore && result.next - begin < CHUNK;
@@ -528,6 +593,7 @@ function GameList({
     loaded.more,
     paused,
     puuid,
+    platformId,
     store,
   ]);
 
@@ -710,7 +776,10 @@ function GameList({
                       puuid={puuid}
                       viewer={viewer}
                       connected={connected}
-                      onPlayer={(other) => navigate({ page: "history", puuid: other })}
+                      platformId={platformId}
+                      onPlayer={(other) =>
+                        navigate({ page: "history", puuid: other, ...regionArgs(platformId) })
+                      }
                     />
                   )}
                 </li>
@@ -770,12 +839,14 @@ function Detail({
   puuid,
   viewer,
   connected,
+  platformId,
   onPlayer,
 }: {
   gameId: number;
   puuid: string;
   viewer: string;
   connected: boolean;
+  platformId?: string;
   onPlayer: (puuid: string) => void;
 }) {
   const t = useT();
@@ -783,10 +854,10 @@ function Detail({
   const titles = useSettings().general.titles;
   // A finished game never changes: once read, it opens from the cache.
   const detail = useCached(
-    store.history.detail(viewer, gameId),
-    () => store.backend.call("get_match_detail", { gameId }),
-    (value) => store.history.putDetail(viewer, value),
-    { refresh: false, deps: [gameId], enabled: connected },
+    store.history.detail(viewer, gameId, platformId),
+    () => store.backend.call("get_match_detail", { gameId, ...regionArgs(platformId) }),
+    (value) => store.history.putDetail(viewer, value, platformId),
+    { refresh: false, deps: [gameId, platformId], enabled: connected },
   );
   return (
     <Card className="ml-1" aria-label={t("history.detail")}>
@@ -817,7 +888,13 @@ function Detail({
   );
 }
 
-export function HistoryPage({ puuid: requested }: { puuid?: string }) {
+export function HistoryPage({
+  puuid: requested,
+  platformId,
+}: {
+  puuid?: string;
+  platformId?: string;
+}) {
   const t = useT();
   const store = useStore();
   const { navigate } = useShell();
@@ -827,31 +904,39 @@ export function HistoryPage({ puuid: requested }: { puuid?: string }) {
   const viewer = me ?? store.history.viewer ?? "";
   const puuid = requested ?? me ?? (viewer || undefined);
   const cached = Boolean(
-    puuid && viewer && (store.history.summary(viewer, puuid) || store.history.list(viewer, puuid)),
+    puuid &&
+    viewer &&
+    (store.history.summary(viewer, puuid, platformId) ||
+      store.history.list(viewer, puuid, platformId)),
   );
   return (
     <PageBody className="flex flex-col gap-3">
       <SearchBar
         viewer={viewer}
         connected={connected}
-        onFound={(found) => navigate({ page: "history", puuid: found })}
+        platformId={platformId}
+        onFound={(found, region) =>
+          navigate({ page: "history", puuid: found, ...regionArgs(region) })
+        }
       />
       {!connected && <p className="text-[12px] text-fg-muted">{t("history.offline")}</p>}
       {puuid && (connected || cached) ? (
         <>
           <PlayerHeader
-            key={`header:${viewer}:${puuid}`}
+            key={`header:${viewer}:${platformId ?? ""}:${puuid}`}
             puuid={puuid}
             viewer={viewer}
             connected={connected}
-            isMe={puuid === me || (!connected && puuid === viewer)}
+            platformId={platformId}
+            isMe={!platformId && (puuid === me || (!connected && puuid === viewer))}
             onMine={() => navigate({ page: "history" })}
           />
           <GameList
-            key={`list:${viewer}:${puuid}`}
+            key={`list:${viewer}:${platformId ?? ""}:${puuid}`}
             puuid={puuid}
             viewer={viewer}
             connected={connected}
+            platformId={platformId}
           />
         </>
       ) : !connected ? (

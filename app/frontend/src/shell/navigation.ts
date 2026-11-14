@@ -24,7 +24,9 @@ export type Page =
   | "phrases";
 
 /** Where the window is. History can be opened on someone else's games. */
-export type Route = { page: Exclude<Page, "history"> } | { page: "history"; puuid?: string };
+export type Route =
+  | { page: Exclude<Page, "history"> }
+  | { page: "history"; puuid?: string; platformId?: string };
 
 export type SettingsSection = "appearance" | "general" | "rating" | "about";
 

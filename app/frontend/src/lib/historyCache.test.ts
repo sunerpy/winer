@@ -18,6 +18,33 @@ const summary = (puuid: string) => ({ puuid }) as PlayerSummary;
 const detail = (gameId: number) => ({ gameId }) as MatchDetail;
 
 describe("history cache", () => {
+  it("isolates region lists, same-ID scoreboards, summaries and Riot ID aliases", () => {
+    const cache = new HistoryCache();
+    cache.scope("me");
+    const local = { ...summary("p"), name: { gameName: "周周喵", tagLine: "0520" } };
+    const remote = { ...local, level: 99 };
+    cache.putList("me", "p", list([1]));
+    cache.putList("me", "p", list([2]), "HN1");
+    cache.putDetail("me", { ...detail(1), duration: 10 });
+    cache.putDetail("me", { ...detail(1), duration: 20 }, "HN1");
+    cache.putSummary("me", local);
+    cache.putSummary("me", remote, "HN1");
+    cache.remember("me", { ...local, puuid: "other-region-p" }, "HN10");
+    expect(cache.list("me", "p")?.games[0]?.gameId).toBe(1);
+    expect(cache.list("me", "p", "HN1")?.games[0]?.gameId).toBe(2);
+    expect(cache.detail("me", 1)?.duration).toBe(10);
+    expect(cache.detail("me", 1, "HN1")?.duration).toBe(20);
+    expect(cache.detail("me", 1, "HN10")).toBeUndefined();
+    expect(cache.summary("me", "p", "HN1")?.level).toBe(99);
+    expect(cache.summary("me", "p")).toEqual(local);
+    expect(cache.find("me", "周周喵#0520")).toBe("p");
+    expect(cache.find("me", "周周喵#0520", "HN10")).toBe("other-region-p");
+    expect(cache.find("me", "周周喵#520", "HN1")).toBeUndefined();
+    cache.scope("other-account");
+    expect(cache.detail("other-account", 1, "HN1")).toBeUndefined();
+    expect(cache.find("other-account", "周周喵#0520", "HN10")).toBeUndefined();
+  });
+
   it("lets the least recently used entries go", () => {
     const lru = new Lru<string, number>(2);
     lru.set("a", 1);

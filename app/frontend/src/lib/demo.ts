@@ -1044,6 +1044,10 @@ function tierNames(rule: CalloutRule): string[] {
 
 export function demoBackend(): Backend {
   let settings = DEFAULT_SETTINGS;
+  // Browser-only sample identities; these never represent a real server lookup.
+  const regionalPlayers = new Map<string, PlayerSummary>();
+  const samplePlayer = (puuid: string, platformId?: string) =>
+    regionalPlayers.get(`${platformId ?? ""}:${puuid}`) ?? SUMMARIES.get(puuid);
   const listeners = new Set<(event: Event) => void>();
   const updateListeners = new Set<(status: UpdateStatus) => void>();
   const hotkeyListeners = new Set<(status: HotkeyStatus) => void>();
@@ -1189,10 +1193,10 @@ export function demoBackend(): Backend {
       return settings;
     },
     get_game_data: () => GAME_DATA,
-    get_match_history: ({ puuid, begin, count }): MatchPage => {
+    get_match_history: ({ puuid, begin, count, platformId }): MatchPage => {
       const all = history(
         puuid,
-        SUMMARIES.get(puuid)?.name?.gameName ?? "对手",
+        samplePlayer(puuid, platformId)?.name?.gameName ?? "对手",
         puuid.length,
         historyLength(puuid),
       );
@@ -1216,10 +1220,23 @@ export function demoBackend(): Backend {
       { id: 1116, description: "你的闪现有3层充能。在120秒后，再次获得所有充能。" },
       { id: 2102, description: "每一秒，对附近的敌方英雄们施加一层可叠加的灼烧。" },
     ],
-    find_player: ({ riotId }) => {
-      const found = SUMMARIES.get("demo-3");
+    find_player: ({ riotId, platformId }) => {
+      let found = SUMMARIES.get("demo-3");
       if (!found || !riotId.includes("#"))
         throw { code: "notFound", message: `no player is called ${riotId}` };
+      if (platformId) {
+        const split = riotId.lastIndexOf("#");
+        found = {
+          ...found,
+          puuid: `demo-${platformId}-${riotId}`,
+          name: {
+            gameName: riotId.slice(0, split).trim(),
+            tagLine: riotId.slice(split + 1).trim(),
+          },
+          ranked: { solo: null, flex: null },
+        };
+        regionalPlayers.set(`${platformId}:${found.puuid}`, found);
+      }
       return {
         puuid: found.puuid,
         name: found.name,
@@ -1229,8 +1246,9 @@ export function demoBackend(): Backend {
         ranked: found.ranked,
       };
     },
-    get_player_summary: ({ puuid }) =>
-      SUMMARIES.get(puuid) ?? summary(puuid, "对手", seedOf(puuid), rank("GOLD", "III", 40)),
+    get_player_summary: ({ puuid, platformId }) =>
+      samplePlayer(puuid, platformId) ??
+      summary(puuid, "对手", seedOf(puuid), rank("GOLD", "III", 40)),
     get_presence: () => presence,
     set_availability: ({ availability }) => {
       presence = { ...presence, availability };
@@ -1481,9 +1499,10 @@ export function demoBackend(): Backend {
       return { status: library, lines: libraryLines };
     },
     // History.
-    get_player_standing: ({ puuid }) => {
+    get_player_standing: ({ puuid, platformId }) => {
       const player =
-        SUMMARIES.get(puuid) ?? summary(puuid, "对手", seedOf(puuid), rank("GOLD", "III", 40));
+        samplePlayer(puuid, platformId) ??
+        summary(puuid, "对手", seedOf(puuid), rank("GOLD", "III", 40));
       const name = player.name?.gameName ?? "对手";
       return standingOf(player, scopeOf(puuid, name, seedOf(puuid)), settings);
     },

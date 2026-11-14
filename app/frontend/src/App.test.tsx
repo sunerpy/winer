@@ -2052,6 +2052,64 @@ describe("history", () => {
         ),
     ).length;
 
+  it("keeps the selected region through lookup, pages, details and player navigation", async () => {
+    const demo = demoBackend();
+    const backend = demoWith({
+      find_player: async () => ({
+        ...(await demo.call("find_player", { riotId: "周周喵#0520" })),
+        puuid: "cross-player",
+        name: { gameName: "周周喵", tagLine: "0520" },
+      }),
+    });
+    const call = vi.spyOn(backend, "call");
+    const user = await openHistory(backend);
+    await user.selectOptions(screen.getByRole("combobox", { name: "查询大区" }), "HN1");
+    await user.type(screen.getByRole("textbox", { name: zhCN["history.search"] }), "周周喵#0520");
+    await user.click(screen.getByRole("button", { name: zhCN["history.find"] }));
+    await screen.findByRole("button", { name: zhCN["history.mine"] });
+    expect(call).toHaveBeenCalledWith("find_player", {
+      riotId: "周周喵#0520",
+      platformId: "HN1",
+    });
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("get_match_history", {
+        puuid: "cross-player",
+        begin: 50,
+        count: 50,
+        platformId: "HN1",
+      }),
+    );
+    expect(call).toHaveBeenCalledWith("get_player_summary", {
+      puuid: "cross-player",
+      platformId: "HN1",
+    });
+    expect(call).toHaveBeenCalledWith("get_player_standing", {
+      puuid: "cross-player",
+      platformId: "HN1",
+    });
+    expect(screen.getByText("跨区暂不提供排位信息")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    const row = screen.getAllByRole("button", { pressed: false })[0] as HTMLElement;
+    await user.click(row);
+    const panel = await screen.findByLabelText(zhCN["history.detail"]);
+    const detail = call.mock.calls.find(([name]) => name === "get_match_detail")?.[1] as
+      | { gameId: number; platformId?: string }
+      | undefined;
+    expect(detail?.platformId).toBe("HN1");
+    const gameId = detail!.gameId;
+    const player = await within(panel).findAllByRole("button");
+    const nextPuuid = (await demo.call("get_match_detail", { gameId })).teams[0]!.players[0]!.puuid;
+    await user.click(player[0]!);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("get_player_summary", {
+        puuid: nextPuuid,
+        platformId: "HN1",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: zhCN["history.mine"] }));
+    expect(screen.getByRole("combobox", { name: "查询大区" })).toHaveValue("");
+  });
+
   it("loads every available game before summing champions and exporting", async () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");
