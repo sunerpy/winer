@@ -344,18 +344,18 @@ export const en: Record<MessageKey, string> = {
   "history.formLabel": "Last {n} · all modes",
   "history.formHint": "How these numbers are counted",
   "history.formWindow":
-    "The newest {window} of the {listed} recent games read (20 at most), every mode, not only ranked.",
+    "The newest {window} of the {listed} recent games read (50 at most), every mode, not only ranked.",
   "history.formWindowShort":
-    "The newest {window} of the recent games (20 at most), every mode, not only ranked.",
+    "The newest {window} of the recent games (50 at most), every mode, not only ranked.",
   "history.formModes": "The {n} counted: {modes}.",
   "history.formMode": "{mode} {n}",
   "history.formModeJoin": ", ",
   "history.formRemakes":
     "{n} remakes among them show as grey ticks and count toward nothing: not wins, KDA, streak or form.",
   "history.formLeftOut":
-    "Left out, without taking a place among the 20: custom games ({custom} passed over this time) and games against the computer, the tutorial included ({bots} passed over).",
+    "Left out, without taking a place among the 50: custom games ({custom} passed over this time) and games against the computer, the tutorial included ({bots} passed over).",
   "history.formLeftOutShort":
-    "Left out, without taking a place among the 20: custom games and games against the computer, the tutorial included.",
+    "Left out, without taking a place among the 50: custom games and games against the computer, the tutorial included.",
   "history.formSame":
     "In champ select, in game and in a lobby the numbers read the mode being played only, the Rift apart from ARAM and never mixed, and ratings, titles and callout use those.",
   "history.formRuleShort":
@@ -627,7 +627,7 @@ export const en: Record<MessageKey, string> = {
     "Titles from the numbers, leaning the way the tier does: above the middle only praise, such as “Patch Champion” for three wins in a row; only below it a “Grey-screen Regular”. Kills, deaths and assists are set against the same mode's average player; from 8 games, how steady the games were too (“Rock Solid”, “Slot Machine”).",
   "rating.basis": "How it is rated",
   "rating.basis.form":
-    "Recent form (0–10): the score of each of the last 20 games (custom games, games against the computer and remakes left out; in champ select the mode being played only), set against its position or champion role and averaged, the newest weighed most; few games pull it toward the average and the win rate counts a twentieth; then it is read as a share of players, 5.0 the average.",
+    "Recent form (0–10): the score of each of the last 50 games (custom games, games against the computer and remakes left out; in champ select the mode being played only), set against its position or champion role and averaged, the newest weighed most; few games pull it toward the average and the win rate counts a twentieth; then it is read as a share of players, 5.0 the average.",
   "rating.basis.tiers":
     "Rift five, the horses, the food chain and custom names rank the team by recent form and split it evenly over the tiers, so five players in five tiers get one each; Rift grades use fixed bands and no comparison: S+ from 9.5, S 8.5, A 7.0, B 5.0, C 3.0, D 1.5, E 0.5, lower is F.",
   "rating.basis.game":

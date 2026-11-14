@@ -1762,7 +1762,7 @@ describe("callout", () => {
     const allies = within(panel().getByRole("region", { name: zhCN["callout.gameTeams.allies"] }));
     expect(allies.getByText("【我方·蓝色方】winer 战绩鉴定")).toBeInTheDocument();
     expect(
-      allies.getByText(/^【阿狸】\|档位峡谷通天代\|近20场胜率60%/),
+      allies.getByText(/^【阿狸】\|档位峡谷通天代\|近50场胜率60%/),
       "the champion where champ select names the seat and the player",
     ).toBeInTheDocument();
     expect(allies.getAllByRole("listitem")).toHaveLength(6);
@@ -1991,7 +1991,7 @@ describe("callout", () => {
       await screen.findByText("【我方·蓝色方】winer 战绩鉴定"),
       "the preview types the team",
     ).toBeInTheDocument();
-    expect(screen.getByText(/^【阿狸】\|档位峡谷通天代\|近20场胜率60%/)).toBeInTheDocument();
+    expect(screen.getByText(/^【阿狸】\|档位峡谷通天代\|近50场胜率60%/)).toBeInTheDocument();
     expect(screen.queryByText("【敌方·红色方】winer 战绩鉴定")).toBeNull();
 
     await user.click(within(teams).getByRole("radio", { name: "双方" }));
@@ -2154,7 +2154,7 @@ describe("history", () => {
   it("says what the form counts and rates the player alone, with the rule behind each", async () => {
     const backend = demoBackend();
     const user = await openHistory(backend);
-    expect(await screen.findByText("近 20 场 · 所有模式")).toBeInTheDocument();
+    expect(await screen.findByText("近 50 场 · 所有模式")).toBeInTheDocument();
     const standing = await backend.call("get_player_standing", { puuid: "demo-me" });
     const rating = standing.rating;
     if (!rating) throw new Error("the demo player has games to rate");
@@ -2164,7 +2164,7 @@ describe("history", () => {
 
     await user.click(screen.getByRole("button", { name: zhCN["history.formHint"] }));
     const rule = screen.getByRole("dialog", { name: zhCN["history.formHint"] });
-    expect(rule).toHaveTextContent("取读到的最近 30 场对局里最新的 20 场");
+    expect(rule).toHaveTextContent("取读到的最近 60 场对局里最新的 50 场");
     expect(rule).toHaveTextContent("不只是排位");
     expect(rule).toHaveTextContent("自定义对局（这次跳过 0 场）");
     await user.keyboard("{Escape}");
@@ -2225,7 +2225,7 @@ describe("history", () => {
     await user.click(await screen.findByRole("button", { name: zhCN["history.mine"] }));
     // Drawn from what was shown: no skeleton, the second page, the header.
     expect(screen.getByText("第 11–20 场 · 共 60 场")).toBeInTheDocument();
-    expect(screen.getByText("近 20 场 · 所有模式")).toBeInTheDocument();
+    expect(screen.getByText("近 50 场 · 所有模式")).toBeInTheDocument();
     const mine = { puuid: "demo-me", begin: 0, count: 50 };
     // The newest games asked for once more, in the background: the same ones, the list stays.
     await waitFor(() => expect(asked(call, "get_match_history", mine)).toBe(2));
@@ -2254,7 +2254,7 @@ describe("history", () => {
       },
     });
     await renderApp(backend);
-    expect(await screen.findByText("近 20 场 · 所有模式")).toBeInTheDocument();
+    expect(await screen.findByText("近 50 场 · 所有模式")).toBeInTheDocument();
     const recent = (await screen.findByText(zhCN["overview.recentMatches"])).closest(
       "div.rounded-10",
     ) as HTMLElement;

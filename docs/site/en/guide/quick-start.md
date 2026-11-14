@@ -17,7 +17,7 @@ administrator, it asks to restart that way; choose **Yes**. See
 ## 2. Enter champ select
 
 In champ select, the **Live game** page lists every player on your team: rank, win rate and KDA over
-the last 20 games, the champion and line of each recent game, and a tier, a title and a quip from
+the last 50 games, the champion and line of each recent game, and a tier, a title and a quip from
 their recent form. On a map with two sides the heading says whether your team is blue or red. Choose
 any player to open their full history.
 

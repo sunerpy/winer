@@ -259,9 +259,11 @@ Measured on NJ100, 16.19, 2026-10-05.
 - The newest entry can be a game left before it was recorded: `gameId` 0, no players. Custom and
   tutorial games are marked `private: true` but complete.
 - Twenty games (`count=20`) are about 2.2 MB and took 0.07–3.0 s, 0.7 s on average (41 players on
-  one Tencent shard, 2026-10-06). A player record reads that page first and then 40 at a time, 100
-  games at most, until it holds 20 games against players of the kind being played
-  (`record_games`).
+  one Tencent shard, 2026-10-06). Fifty games (`count=50`) were 4.8 MB and came in 0.57 s on NJ100
+  at 22:52 Beijing time on 2026-11-14, an evening that shard was not busy; the 132 pages of fifty
+  read to sample players that night all answered 200. A player record reads fifty games, then fifty
+  more, 100 games at most, until it holds 50 games against players of the kind being played
+  (`record_games`; 20 games, read 20 then 40 at a time, before 2026-11-14).
   The client renews its entitlements token: one read minutes earlier answered 401 where the one it
   held then worked, so the token is read again for every request.
 - Each participant carries `teamPosition`: `TOP`, `JUNGLE`, `MIDDLE`, `BOTTOM` or `UTILITY` on the
@@ -297,7 +299,7 @@ constant ...InfoType`). The client's own match history failed the same way that 
   holds 94 `503`s for `SUMMARY?startIndex=0&count=30&tagsQueryType=AND`, and its own list then
   answers from what it cached. So while the server is busy winer reads every game on its own
   (`read_places`, ten slots at once, three tries a place): History pages of ten, a record's window
-  of twenty. A record that still gets nothing is asked for again after 30 s, and nobody is read
+  of fifty (twenty before 2026-11-14). A record that still gets nothing is asked for again after 30 s, and nobody is read
   again after the game.
 - The server compresses when asked (GZ100, 2026-10-07): a page of 20 games was 22,485 bytes as
   JSON and 4,067 on the wire with `Accept-Encoding: gzip` (`content-encoding: gzip`), the same

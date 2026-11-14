@@ -13,7 +13,7 @@ One row per player:
   queue, result and age. When a player's history could not be read, **Retry** here reads it again;
   in champ select and the lobby winer also reads it again by itself after half a minute. While the
   match-history server is busy (mostly in the evening), whole pages time out, so winer reads each
-  player's newest 20 games one at a time, many at once, and tiers come some seconds later; when a
+  player's newest 50 games one at a time, many at once, and tiers can come half a minute to a minute later (an estimate); when a
   few games do not come, the default callout says how many it rests on.
 
 Choose a name to open that player's history. When both teams are known, a switch at the top right
@@ -35,7 +35,7 @@ moves between them.
 ## Lobby
 
 In a lobby (and while it queues or a match is found), the **Live game** page lists every member of
-your party: name, the positions asked for, rank, win rate and KDA over the last 20 games, recent
+your party: name, the positions asked for, rank, win rate and KDA over the last 50 games, recent
 form score and the latest games; the party's leader carries **Leader**. Choose a member to open
 their history. In a custom lobby, everyone in it is listed.
 
@@ -57,7 +57,7 @@ default, rich style adds the tier's emoji, the title and the quip, for example:
 
 ```text
 📢 [Blue side] winer rating
-👑 Rift Demigod: P1 Light in the Dark, 60% in 20 games, KDA 4.1, form 7.4 [Patch Champion], the other team is filing a boosting report
+👑 Rift Demigod: P1 Light in the Dark, 60% in 50 games, KDA 4.1, form 7.4 [Patch Champion], the other team is filing a boosting report
 ```
 
 With **Callout style** set to compact in **Automation › Callout**, each player gets one short line,
@@ -87,8 +87,8 @@ without name or seat; where the champion is not known, the name stands in. For e
 
 ```text
 [Enemy · Red side] winer rating
-Watch Kha'Zix: Rift Demigod, 65% in 20 games, KDA 4.6
-Go after Yasuo: Pure Workhorse, 35% in 20 games
+Watch Kha'Zix: Rift Demigod, 65% in 50 games, KDA 4.6
+Go after Yasuo: Pure Workhorse, 35% in 50 games
 ```
 
 The game's chat has no API, so the panel has no send button then: with **In-game sending** on,

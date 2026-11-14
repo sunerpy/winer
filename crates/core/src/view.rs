@@ -367,7 +367,7 @@ pub enum PlayerStats {
     Ready(Box<PlayerSummary>),
 }
 
-/// A player at a glance: identity, rank and the last twenty games.
+/// A player at a glance: identity, rank and the last fifty games.
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct PlayerSummary {
@@ -1305,7 +1305,7 @@ pub enum GameKind {
 pub struct FormScope {
     /// Games in the client's list the form was read from.
     pub listed: u32,
-    /// Custom games passed over on the way to the newest twenty.
+    /// Custom games passed over on the way to the newest fifty.
     pub custom: u32,
     /// Games against the computer passed over likewise.
     pub bots: u32,

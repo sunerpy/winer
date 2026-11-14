@@ -1193,7 +1193,7 @@ export type FormScope = {
  */
 listed: number, 
 /**
- * Custom games passed over on the way to the newest twenty.
+ * Custom games passed over on the way to the newest fifty.
  */
 custom: number, 
 /**

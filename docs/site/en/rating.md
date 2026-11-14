@@ -17,27 +17,27 @@ reproduce the client's, WeGame's or another tool's ratings. The scheme and the t
 ## Recent form (0–10)
 
 Recent form reads how each game was played, not only wins and KDA: the score of every one of the last
-20 games (see one game's score, below), averaged with weights, then read as a place among players. 5.0 is the average player, 9.0 better than nine in ten.
+50 games (see one game's score, below), averaged with weights, then read as a place among players. 5.0 is the average player, 9.0 better than nine in ten.
 
 ### Which games
 
-- The newest 20 games played against other players. Custom games (the practice tool included) and
-  games against the computer are left out and take no place among the 20. Which games are against
+- The newest 50 games played against other players. Custom games (the practice tool included) and
+  games against the computer are left out and take no place among the 50. Which games are against
   the computer is the client's own queue catalog's word: queues in its co-op vs AI category, and
   queues whose type names the computer as the opponent (Doom Bots, for one); the tutorial counts as
   well.
-- Remakes among the 20 are shown, and count toward no win, KDA, streak or form.
+- Remakes among the 50 are shown, and count toward no win, KDA, streak or form.
 - In champ select, in game and in a lobby only the mode being played counts, never mixed with
   another: Summoner's Rift (ranked, normal, quickplay) apart from ARAM (classic and Hextech), Arena
-  and the rotating modes each on their own. With fewer than 20 games of it, the games there are
+  and the rotating modes each on their own. With fewer than 50 games of it, the games there are
   count, and the fewer they are the harder they are pulled toward the average; with none, the
   player gets no tier there. The History page reads every mode.
 - The games come from the shard's match-history server first, with all ten players of each: the
-  newest 20, then 40 further back at a time, until there are 20 games that count as above, 100 games
-  at most: older games are not read. Where the server cannot be read (a shard other than
+  newest 50, then 50 further back, until there are 50 games that count as above, 100 games at most:
+  older games are not read. Where the server cannot be read (a shard other than
   Tencent's, or the server failing), they come from the client's own list, which holds the
   player's own row of each game only. A Tencent client's list holds 5 games right after signing
-  in, 20 a few minutes later.
+  in, 20 a few minutes later, so a form read from it holds fewer than 50.
 
 ### Each game's score
 
@@ -68,33 +68,35 @@ Recent form reads how each game was played, not only wins and KDA: the score of 
 
 ### Putting it together
 
-1. **Weighted average**: the newest game weighs 1 and each older one 0.93 times the next, so about
-   ten games halve a game's weight. A game in which someone else left or idled (on either side; the
+1. **Weighted average**: the newest game weighs 1 and each older one 0.97 times the next, so about
+   twenty-three games halve a game's weight. A game in which someone else left or idled (on either side; the
    player's own leaving does not count) weighs 0.4 times as much again.
 2. **Pulled toward the average**: `performance = c × weighted average + (1 − c) × average line`,
-   with `c = n / (n + k)`. `n` is how many whole games the weights add up to, `(Σw)² / Σw²`, about 17
-   for twenty games; `k` is 25 on the Rift and 10 in ARAM, 1.4 times that with the player's own rows
+   with `c = n / (n + k)`. `n` is how many whole games the weights add up to, `(Σw)² / Σw²`, about 42
+   for fifty games; `k` is 17 on the Rift and 7 in ARAM, 1.16 times that with the player's own rows
    only. It is larger on the Rift because Rift scores swing more: one player's games scatter about
-   1.81 around their own level (1.20 in ARAM), while players' levels differ by only 0.34 (0.41), so
-   twenty Rift games say less than twenty ARAM games. The average line is the score of a game's
-   average player once set against position or role: 6.04 on the Rift, 5.83 in ARAM.
+   1.79 around their own level (1.16 in ARAM), while players' levels differ by only 0.43 (0.43 in
+   ARAM too), so as many Rift games say less than ARAM ones. The average line is the score of a
+   game's average player once set against position or role: 6.01 on the Rift, 5.84 in ARAM.
 3. **The win rate counts a twentieth**: `raw form = 0.95 × performance + 0.05 × 10 × (wins + 5) /
 (games + 10)`. A game's score already holds what wins games (gold, kills, staying alive), so the
    result itself only corrects it, and only after five wins and five losses are added: two wins of
    two count as 58%.
 4. **Read as a place among players**: the raw form is set on a normal curve centred on a player with
    an average line in every game and half of them won, as wide as the measured players' raw forms
-   spread: 0.232 on the Rift and 0.300 in ARAM, 0.189 and 0.255 with the player's own rows only. The
+   spread: 0.353 on the Rift and 0.398 in ARAM, 0.331 and 0.379 with the player's own rows only. The
    share of players below, times ten, is the form: 5.0 the average player, 7.0 better than seven in
    ten, 9.5 better than 95%.
 5. **Recent trend**: with ten or more scored games, a tenth of how far the newest five average above
    or below the fifteen before them is added, at most ±0.2.
 
-For reference: on the Rift, a 6.04 in every game with half of them won is 5.0; 7.0 in every game is
-9.4, and 5.0 in every game is 0.4.
+For reference: on the Rift, fifty games of 6.01 each with half of them won is 5.0; 7.0 in every game
+is 9.7, and 5.0 in every game is 0.3.
 
-Every number above was measured. In October 2026, 70 real players on one Tencent shard were sampled
-with their newest 20 games each: 40 met in Hextech ARAM and 30 met on Summoner's Rift. Only each
+Every number above was measured. In November 2026, 70 real players on one Tencent shard were sampled,
+each read as winer reads a record (100 games at most) and kept up to their fiftieth counted game,
+ten at least: 40 met in Hextech ARAM and 30 met on Summoner's Rift (the first version, in October
+2026, took each player's newest 20 games). Only each
 game's numbers were kept, no names, ids or times (`fixtures/sgp/players.json`), and the tests check
 every constant above against them. The game score itself is unchanged: on 155 Hextech ARAM games
 WeGame scored, it orders each game's ten players with a rank correlation of 0.85 to WeGame's, and its
@@ -157,8 +159,8 @@ default line:
 
   ```text
   📢 [Blue side] winer rating
-  👑 Rift Demigod: P1 Light in the Dark, 60% in 20 games, KDA 4.1, form 7.4 [Patch Champion], the other team is filing a boosting report
-  👌 Rift Civil Servant: P2 Rift Sweeper, 50% in 20 games, KDA 2.9, form 5.2 [Business as Usual], not flashy, but every job got done
+  👑 Rift Demigod: P1 Light in the Dark, 60% in 50 games, KDA 4.1, form 7.4 [Patch Champion], the other team is filing a boosting report
+  👌 Rift Civil Servant: P2 Rift Sweeper, 50% in 50 games, KDA 2.9, form 5.2 [Business as Usual], not flashy, but every job got done
   ```
 
 - **Compact**: one short line a player, the same fields in the same order and the name last, so

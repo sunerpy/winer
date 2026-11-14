@@ -163,14 +163,17 @@ export function StreakBadge({ streak }: { streak: number }) {
   return <Badge tone={streak > 0 ? "win" : "loss"}>{label}</Badge>;
 }
 
-/** The last games as ticks, newest first: blue a win, red a loss, grey a remake. */
+/** The last games as ticks, newest first: blue a win, red a loss, grey a remake. `dense` packs a
+ *  whole fifty-game window into about 300px: 4px ticks, 2px apart. */
 export function ResultStrip({
   matches,
   limit = 10,
+  dense = false,
   className,
 }: {
   matches: RecentMatch[];
   limit?: number;
+  dense?: boolean;
   className?: string;
 }) {
   const t = useT();
@@ -178,7 +181,7 @@ export function ResultStrip({
   const shown = matches.slice(0, limit);
   return (
     <span
-      className={cx("inline-flex items-end gap-[3px]", className)}
+      className={cx("inline-flex items-end", dense ? "gap-[2px]" : "gap-[3px]", className)}
       aria-label={shown
         .map((game) =>
           game.remake ? t("common.remake") : game.win ? t("common.win") : t("common.loss"),
@@ -190,7 +193,8 @@ export function ResultStrip({
           key={game.gameId}
           title={`${catalog?.champions.get(game.championId)?.name ?? ""} ${game.kills}/${game.deaths}/${game.assists}`}
           className={cx(
-            "block h-3.5 w-1.5 rounded-[2px]",
+            "block h-3.5 rounded-[2px]",
+            dense ? "w-1" : "w-1.5",
             game.remake ? "bg-border-strong" : game.win ? "bg-win" : "bg-loss",
           )}
         />

@@ -15,8 +15,9 @@ use crate::{
     },
 };
 
-/// Recent form covers this many games at most, newest first.
-pub const RECENT_GAMES: usize = 20;
+/// Recent form covers this many games at most, newest first (the owner's choice of 2026-11-14;
+/// twenty before).
+pub const RECENT_GAMES: usize = 50;
 
 /// Each queue's kind of game, by queue id, from the client's catalog (`catalog::queue_kind`).
 pub type QueueKinds = HashMap<i64, GameKind>;
@@ -150,7 +151,7 @@ fn row_of<'a>(game: &'a Game, puuid: &str) -> Option<&'a Participant> {
 /// and games against the computer are passed over on the way to the newest [`RECENT_GAMES`], and
 /// the remakes among those are shown but left out of every figure.
 ///
-/// With a `focus`, the form reads that kind of game only, the newest twenty of it, and never mixes
+/// With a `focus`, the form reads that kind of game only, the newest fifty of it, and never mixes
 /// in another: a player with fewer has fewer, which pulls the strength toward the average harder,
 /// and one with none of it has no strength there.
 ///
@@ -278,7 +279,7 @@ fn form(
     for game in newest {
         match game_kind(game, catalog.kinds) {
             GameKind::Matched => matched.push(game),
-            // Counted on the way to the newest twenty, as the window over every kind goes.
+            // Counted on the way to the newest fifty, as the window over every kind goes.
             GameKind::Custom if matched.len() < RECENT_GAMES => scope.custom += 1,
             GameKind::Bots if matched.len() < RECENT_GAMES => scope.bots += 1,
             GameKind::Custom | GameKind::Bots => {}
@@ -1226,33 +1227,33 @@ mod tests {
     }
 
     #[test]
-    fn a_window_is_filled_by_twenty_games_against_players_of_the_focused_kind() {
+    fn a_window_is_filled_by_the_forms_games_against_players_of_the_focused_kind() {
         let mode = |mut game: Game, mode: &str| {
             game.game_mode = mode.into();
             game
         };
         let kinds = QueueKinds::new();
-        let mut games: Vec<Game> = (0..19)
+        let mut games: Vec<Game> = (0..RECENT_GAMES as i64 - 1)
             .map(|at| mode(game(at, true, 1, 1, 1, false), "KIWI"))
             .collect();
-        let mut custom = mode(game(50, true, 1, 1, 1, false), "KIWI");
+        let mut custom = mode(game(100, true, 1, 1, 1, false), "KIWI");
         custom.game_type = "CUSTOM_GAME".into();
         games.push(custom);
-        games.push(mode(game(60, true, 1, 1, 1, false), "CLASSIC"));
+        games.push(mode(game(110, true, 1, 1, 1, false), "CLASSIC"));
         assert!(
             !window_filled(&games, &kinds, Focus::of("ARAM").as_ref()),
             "a custom game takes no place"
         );
         assert!(
             window_filled(&games, &kinds, None),
-            "twenty against players"
+            "a window's worth against players"
         );
         assert!(!window_filled(
             &games,
             &kinds,
             Focus::of("CLASSIC").as_ref()
         ));
-        games.push(mode(game(70, false, 1, 1, 1, true), "ARAM"));
+        games.push(mode(game(120, false, 1, 1, 1, true), "ARAM"));
         assert!(
             window_filled(&games, &kinds, Focus::of("ARAM").as_ref()),
             "a remake is in the window, shown and not counted"
@@ -1310,10 +1311,10 @@ mod tests {
             &QueueKinds::new(),
         );
         assert_eq!((form.games, form.wins, form.matches.len()), (1, 1, 1));
-        let many: Vec<Game> = (0..30).map(|at| game(at, true, 1, 1, 1, false)).collect();
+        let many: Vec<Game> = (0..60).map(|at| game(at, true, 1, 1, 1, false)).collect();
         let form = form_of("p", &many, &QueueKinds::new());
-        assert_eq!(form.matches.len(), RECENT_GAMES, "the newest twenty only");
-        assert_eq!(form.matches[0].started_at, 29);
+        assert_eq!(form.matches.len(), 50, "the newest fifty only");
+        assert_eq!(form.matches[0].started_at, 59);
     }
 
     #[test]
@@ -1345,17 +1346,18 @@ mod tests {
     }
 
     #[test]
-    fn form_reads_the_newest_twenty_games_against_players_on_a_measured_list() {
+    fn form_reads_every_game_against_players_a_short_measured_list_holds() {
         let (games, kinds) = (client_list(), live_kinds());
         let form = form_of("PUUID-0001", &games, &kinds);
         let scope = scope_of("PUUID-0001", &games, &kinds);
         assert_eq!(
             (scope.listed, scope.custom, scope.bots, scope.remakes),
-            (30, 2, 0, 2)
+            (30, 2, 0, 3)
         );
-        assert_eq!(form.matches.len(), RECENT_GAMES);
-        // What the window showed as 10胜8负 · 56%, with nothing to say it was not ranked.
-        assert_eq!((form.games, form.wins), (18, 10));
+        // Thirty listed, fewer than the window: every one against players, the custom two left out.
+        assert_eq!(form.matches.len(), 28);
+        // The newest twenty of them showed as 10胜8负 · 56% when the window was twenty.
+        assert_eq!((form.games, form.wins), (25, 13));
         assert!(
             form.matches.iter().all(|game| games
                 .iter()
@@ -1365,7 +1367,7 @@ mod tests {
         );
         assert_eq!(
             form.matches.iter().filter(|game| game.remake).count(),
-            2,
+            3,
             "remakes are shown and not counted"
         );
     }
@@ -1378,6 +1380,14 @@ mod tests {
         games[2].queue_id = 870;
         games[3].queue_id = 4220;
         games[4].game_type = "TUTORIAL_GAME".into();
+        // Thirty games more against players, older than the list's, so the window can fill.
+        let (template, oldest) = (games[5].clone(), games[29].game_creation);
+        for extra in 1..=30 {
+            let mut older = template.clone();
+            older.game_id = template.game_id + 1_000_000 + extra;
+            older.game_creation = oldest - extra * 3_600_000;
+            games.push(older);
+        }
         assert_eq!(
             [&games[0], &games[2], &games[3], &games[4], &games[5]]
                 .map(|game| game_kind(game, &kinds)),
@@ -1401,9 +1411,11 @@ mod tests {
             ![games[2].game_id, games[3].game_id, games[4].game_id].contains(&game.game_id)
         }));
         assert_eq!(form.matches[0].game_id, games[5].game_id);
+        // Fifty against players, none of the five passed over among them: the fiftieth is the
+        // list's 55th game.
         assert_eq!(
             form.matches.last().map(|game| game.game_id),
-            Some(games[24].game_id)
+            Some(games[54].game_id)
         );
     }
 

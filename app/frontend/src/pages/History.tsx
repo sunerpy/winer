@@ -211,7 +211,7 @@ function PlayerHeader({
                   <FormLine form={player.recent} />
                   <StreakBadge streak={player.recent.streak} />
                 </span>
-                <ResultStrip matches={player.recent.matches} limit={20} />
+                <ResultStrip matches={player.recent.matches} limit={50} dense />
               </span>
             )}
             {standing.data && rating && (

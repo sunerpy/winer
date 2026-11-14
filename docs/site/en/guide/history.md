@@ -13,9 +13,9 @@ does not persist the login token or that history cache to disk.
 The top of the page is the player: their solo/duo and flex ranks, their recent form, and the tier
 that form earns.
 
-- **Recent form** reads "Last 18 · all modes": the newest 20 of the recent games the client lists,
+- **Recent form** reads "Last 18 · all modes": the newest 50 of the recent games the client lists,
   every mode, not only ranked. Custom games and games against the computer (the tutorial included)
-  are left out and take no place among the 20; remakes show as grey ticks and count toward no win,
+  are left out and take no place among the 50; remakes show as grey ticks and count toward no win,
   KDA or streak. The question mark beside it says how it went this time: how many games the client
   listed, how many of each mode were counted, how many custom and computer games were passed over.
 - **Recent form's tier** is the tier, roast title and quip champ select shows. With one player
