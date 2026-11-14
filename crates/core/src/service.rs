@@ -105,9 +105,10 @@ const CHAT_WAIT_ATTEMPTS: u32 = 10;
 /// How long a player's stats are reused before they are fetched again.
 const PLAYER_TTL: Duration = Duration::from_secs(600);
 /// The pages of the shard server's history a player's record reads, newest first, until they hold
-/// the form's window (`analysis::window_filled`): twenty games, then forty at a time, a hundred at
-/// most. Twenty games are about 2.2 MB and 0.7 s (41 players measured, 2026-10-06).
-const RECORD_PAGES: [(u32, u32); 3] = [(0, 20), (20, 40), (60, 40)];
+/// the form's window (`analysis::window_filled`): fifty games, then fifty more, a hundred at most.
+/// Fifty games are 4.8–6.5 MB of JSON and took 0.4–0.75 s (NJ100, 2026-10-05; 0.57 s for 4.8 MB on
+/// the evening of 2026-11-14).
+const RECORD_PAGES: [(u32, u32); 2] = [(0, 50), (50, 50)];
 /// The most games one page of a player's history holds.
 const HISTORY_PAGE: u32 = 50;
 /// How long the server's last busy answer is remembered ([`HistoryServer`]); whole pages are asked
@@ -1393,11 +1394,29 @@ impl Service {
 
     fn on_champ_select(&self, client: &Client, session: Option<ChampSelectSession>) {
         let Some(session) = session else {
-            let mut live = lock(&client.live);
-            if live.champ_select.take().is_some() {
-                live.reset_champ_select();
+            let ended = {
+                let mut live = lock(&client.live);
+                let ended = live
+                    .champ_select
+                    .take()
+                    .map(|ended| (ended.queue_id, live.callout_sent));
+                if ended.is_some() {
+                    live.reset_champ_select();
+                }
+                ended
+            };
+            // At the server's busiest the records can come after champ select has ended, and the
+            // automatic callout with them never goes: say so, since nothing else would.
+            if let Some((queue_id, false)) = ended {
+                let automation = self.settings().automation;
+                if automation.callout.auto
+                    && automation
+                        .scopes
+                        .covers(Scoped::Callout, queue_mode(client, queue_id))
+                {
+                    info!(queue_id, "champ select ended without the automatic callout");
+                }
             }
-            drop(live);
             self.patch(Patch::ChampSelect(None));
             return;
         };
@@ -3434,9 +3453,18 @@ async fn record_games(
             None => {}
         }
     }
-    // Wider than the form's twenty, so games form leaves out do not shrink it where the client has
-    // more (a Tencent client answers with what it holds whatever the range). It is all there is.
-    match history(&client.lcu, puuid, me, 0, 30).await {
+    // Wider than the form's fifty, so games form leaves out do not shrink it where the client has
+    // more (a Tencent client answers with what it holds, twenty or thirty, whatever the range). It
+    // is all there is.
+    match history(
+        &client.lcu,
+        puuid,
+        me,
+        0,
+        analysis::RECENT_GAMES as u32 + 10,
+    )
+    .await
+    {
         Ok(list) => Ok((list.games.games, true)),
         Err(error) if busy => Err(CoreError::Unavailable(format!(
             "the match-history server is busy, and the client's own list failed: {error}"
@@ -4474,8 +4502,8 @@ mod tests {
     #[tokio::test]
     async fn a_record_pages_back_until_it_holds_the_forms_window() {
         let kinds = analysis::QueueKinds::new();
-        // The newest twenty are Rift games, ARAM ones after them.
-        let mode = |index: u32| if index < 20 { "CLASSIC" } else { "KIWI" };
+        // The newest fifty are Rift games, ARAM ones after them.
+        let mode = |index: u32| if index < 50 { "CLASSIC" } else { "KIWI" };
         let asked = std::sync::Mutex::new(Vec::new());
         let fetch = |begin: u32, count: u32| {
             asked.lock().unwrap().push((begin, count));
@@ -4489,22 +4517,26 @@ mod tests {
             analysis::window_filled(games, &kinds, analysis::Focus::of("CLASSIC").as_ref())
         })
         .await;
-        assert!(matches!(&rift, Paged::Games(games, false) if games.len() == 20));
-        assert_eq!(*asked.lock().unwrap(), [(0, 20)], "the first page holds it");
+        assert!(matches!(&rift, Paged::Games(games, false) if games.len() == 50));
+        assert_eq!(*asked.lock().unwrap(), [(0, 50)], "the first page holds it");
 
         asked.lock().unwrap().clear();
         let aram = page_through(&fetch, |games| {
             analysis::window_filled(games, &kinds, analysis::Focus::of("KIWI").as_ref())
         })
         .await;
-        assert!(matches!(&aram, Paged::Games(games, false) if games.len() == 60));
-        assert_eq!(*asked.lock().unwrap(), [(0, 20), (20, 40)]);
+        assert!(matches!(&aram, Paged::Games(games, false) if games.len() == 100));
+        assert_eq!(
+            *asked.lock().unwrap(),
+            [(0, 50), (50, 50)],
+            "the second page fills it"
+        );
 
         // Never more than a hundred games.
         asked.lock().unwrap().clear();
         let never = page_through(&fetch, |_| false).await;
         assert!(matches!(&never, Paged::Games(games, false) if games.len() == 100));
-        assert_eq!(*asked.lock().unwrap(), [(0, 20), (20, 40), (60, 40)]);
+        assert_eq!(*asked.lock().unwrap(), [(0, 50), (50, 50)]);
     }
 
     #[tokio::test]
@@ -4538,7 +4570,7 @@ mod tests {
         )
         .await;
         assert!(
-            matches!(&later, Paged::Games(games, false) if games.len() == 20),
+            matches!(&later, Paged::Games(games, false) if games.len() == 50),
             "a later page failing keeps the first"
         );
     }
@@ -4685,7 +4717,7 @@ mod tests {
         assert_eq!(
             asked.lock().unwrap().len(),
             analysis::RECENT_GAMES + 2 + 2,
-            "twenty at once, then the refused ones: places 2, 5 and 7, then 7 again"
+            "the window's fifty at once, then the refused ones: places 2, 5 and 7, then 7 again"
         );
 
         // Nothing came: the server's own word.
@@ -4834,11 +4866,15 @@ mod tests {
                 .flatten()
                 .collect()
         };
-        let fetched = record(analysis::Focus::of("KIWI"), false, aram(20));
+        let fetched = record(
+            analysis::Focus::of("KIWI"),
+            false,
+            aram(analysis::RECENT_GAMES as u32),
+        );
         assert!(fetched.serves(analysis::Focus::of("ARAM").as_ref(), &kinds));
         assert!(
             fetched.serves(None, &kinds),
-            "twenty games against players fill every-kind's window"
+            "a window's worth of games against players fills every-kind's window"
         );
         assert!(
             !fetched.serves(analysis::Focus::of("CLASSIC").as_ref(), &kinds),

@@ -265,17 +265,17 @@ fn line_score(player: &Contribution, average: &Average, scoring: &Scoring) -> f6
 
 /// What the average player of a kind of game does a minute: kills, assists, damage to champions,
 /// damage taken, gold, minions and monsters, vision score and crowd control seconds, then deaths.
-/// Measured on real players' games from the shard's server (`fixtures/sgp/`, October 2026): 4,590
-/// Rift lines and 8,370 of the two ARAMs. Arena and the rotating modes have none.
+/// Measured on real players' games from the shard's server (`fixtures/sgp/`, November 2026): 14,510
+/// Rift lines and 27,470 of the two ARAMs. Arena and the rotating modes have none.
 fn per_minute(family: ModeFamily) -> Option<Average> {
     match family {
         ModeFamily::Rift => Some(Average {
-            parts: [0.240, 0.289, 779.3, 960.7, 419.3, 5.51, 0.975, 0.999],
-            deaths: 0.241,
+            parts: [0.229, 0.302, 745.7, 919.6, 420.7, 5.80, 1.093, 0.897],
+            deaths: 0.230,
         }),
         ModeFamily::Aram => Some(Average {
-            parts: [0.658, 1.513, 2204.8, 2426.5, 956.8, 2.24, 0.005, 1.880],
-            deaths: 0.660,
+            parts: [0.674, 1.564, 2162.8, 2368.9, 952.8, 2.23, 0.0046, 1.747],
+            deaths: 0.676,
         }),
         ModeFamily::Arena | ModeFamily::Other => None,
     }
@@ -531,13 +531,14 @@ pub fn form_title(form: &RecentForm, lean: Lean) -> Option<FormTitle> {
 /// A spread ([`Strength::spread`]) at or below this is steady enough for 定海神针, at or above
 /// [`WILD_SPREAD`] wild enough for 峡谷老虎机: about the steadiest and the wildest sixth of the
 /// sampled players.
-pub const STEADY_SPREAD: f64 = 0.8;
-pub const WILD_SPREAD: f64 = 1.15;
+pub const STEADY_SPREAD: f64 = 0.9;
+pub const WILD_SPREAD: f64 = 1.1;
 
 // ---- Recent strength: the games' scores, weighed and read against the players winer measured ----
 
-/// Each game one older counts this much less, so about ten games halve a game's weight.
-pub const RECENCY: f64 = 0.93;
+/// Each game one older counts this much less, so about twenty-three games halve a game's weight
+/// (the owner's choice of 2026-11-14, with the fifty-game window; 0.93 before).
+pub const RECENCY: f64 = 0.97;
 /// A game in which someone else left or idled counts this much: four played against five, or five
 /// against four, say little about the player.
 pub const AWAY_WEIGHT: f64 = 0.4;
@@ -546,29 +547,31 @@ pub const AWAY_WEIGHT: f64 = 0.4;
 pub const WIN_SHARE: f64 = 0.05;
 const WIN_PRIOR: (f64, f64) = (5.0, 10.0);
 /// A game read against the mode's average instead of its own players says less: its prior weighs
-/// this many times as many games (measured 1.35 on the Rift, 1.45 in ARAM).
-const LITE_PRIOR: f64 = 1.4;
+/// this many times as many games (measured 1.15 on the Rift, 1.18 in ARAM).
+const LITE_PRIOR: f64 = 1.16;
 /// The newest five games against the next fifteen nudge the strength by a tenth of the difference,
-/// never more than 0.2 either way, once ten games have scores.
+/// never more than 0.2 either way, once ten games have scores. The trend is a recent swing, so it
+/// keeps to the newest twenty however long the window.
 const TREND_GAMES: usize = 10;
 const TREND_RECENT: usize = 5;
+const TREND_BEFORE: usize = 15;
 const TREND_GAIN: f64 = 0.1;
 const TREND_CAP: f64 = 0.2;
 /// A spread is read from this many scored games.
 const SPREAD_GAMES: usize = 8;
 
-/// What the recent strength knows of a kind of game, measured on real players' newest twenty games
-/// from the shard's server (`fixtures/sgp/`, October 2026): 30 players met on the Rift, 40 in
-/// Hextech ARAM.
+/// What the recent strength knows of a kind of game, measured on real players' newest games from
+/// the shard's server, each read as a record reads them and kept to its fifty-game window
+/// (`fixtures/sgp/`, November 2026): 30 players met on the Rift, 40 in Hextech ARAM.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Model {
     /// The average line's score once set against its position or role ([`par`]): where few games
     /// leave a player, and where a strength of 5.0 stands.
     baseline: f64,
     /// How many games the average weighs as before a player's own pull them away from it: a game's
-    /// score scatters around the player's own level (1.81 on the Rift, 1.20 in ARAM) far more than
-    /// the players' levels do around each other (0.34, 0.41), so twenty Rift games say less than
-    /// twenty ARAM games.
+    /// score scatters around the player's own level (1.79 on the Rift, 1.16 in ARAM) far more than
+    /// the players' levels do around each other (0.43, 0.43), so fifty Rift games say less than
+    /// fifty ARAM games.
     prior: f64,
     /// The standard deviation of the sampled players' raw strengths, their games scored against
     /// each game's players and against the mode's average.
@@ -578,23 +581,23 @@ struct Model {
 }
 
 const RIFT_MODEL: Model = Model {
-    baseline: 6.04,
-    prior: 25.0,
-    spread_of_players: [0.232, 0.189],
-    spread: [1.85, 1.815],
+    baseline: 6.01,
+    prior: 17.0,
+    spread_of_players: [0.353, 0.331],
+    spread: [1.732, 1.783],
 };
 const ARAM_MODEL: Model = Model {
-    baseline: 5.83,
-    prior: 10.0,
-    spread_of_players: [0.300, 0.255],
-    spread: [1.134, 1.298],
+    baseline: 5.84,
+    prior: 7.0,
+    spread_of_players: [0.398, 0.379],
+    spread: [1.146, 1.232],
 };
 /// Arena and the rotating modes were not measured: between the two.
 const OTHER_MODEL: Model = Model {
     baseline: 5.93,
-    prior: 15.0,
-    spread_of_players: [0.27, 0.22],
-    spread: [1.5, 1.55],
+    prior: 12.0,
+    spread_of_players: [0.376, 0.355],
+    spread: [1.439, 1.507],
 };
 
 impl Model {
@@ -608,27 +611,27 @@ impl Model {
 }
 
 /// What a game's score is set against for the strength: the average line of the player's position
-/// on the Rift, of the champion's role in ARAM. A support's line on the Rift scores 5.24 on
-/// average, a jungler's 6.49, though neither is the better player for it; in ARAM, where the
-/// champion is drawn, a support's scores 6.44 and an assassin's 5.69. The offset brings each to the
+/// on the Rift, of the champion's role in ARAM. A support's line on the Rift scores 4.88 on
+/// average, a jungler's 6.60, though neither is the better player for it; in ARAM, where the
+/// champion is drawn, a support's scores 6.40 and an assassin's 5.74. The offset brings each to the
 /// mode's average line (measured on the sampled games); nothing where the position or role is
 /// unknown.
 pub fn par(family: ModeFamily, position: Option<Position>, role: Option<Role>) -> f64 {
     match family {
         ModeFamily::Rift => match position {
-            Some(Position::Top) => 0.16,
-            Some(Position::Jungle) => -0.46,
-            Some(Position::Middle) => -0.07,
-            Some(Position::Bottom) => -0.41,
-            Some(Position::Utility) => 0.79,
+            Some(Position::Top) => 0.20,
+            Some(Position::Jungle) => -0.59,
+            Some(Position::Middle) => -0.14,
+            Some(Position::Bottom) => -0.61,
+            Some(Position::Utility) => 1.13,
             None => 0.0,
         },
         ModeFamily::Aram => match role {
-            Some(Role::Assassin) => 0.14,
-            Some(Role::Fighter) => 0.05,
-            Some(Role::Mage) => -0.15,
-            Some(Role::Marksman) => 0.13,
-            Some(Role::Support) => -0.61,
+            Some(Role::Assassin) => 0.10,
+            Some(Role::Fighter) => 0.11,
+            Some(Role::Mage) => -0.11,
+            Some(Role::Marksman) => 0.06,
+            Some(Role::Support) => -0.56,
             Some(Role::Tank) => 0.08,
             None => 0.0,
         },
@@ -665,10 +668,10 @@ pub struct Strength {
 /// them are decides what they are read against ([`Model`]).
 ///
 /// - **Performance**: the games' scores, set against the player's position or role ([`par`]), each
-///   weighed `0.93^i` for the `i`-th newest and by [`AWAY_WEIGHT`] where someone else left, then
+///   weighed `0.97^i` for the `i`-th newest and by [`AWAY_WEIGHT`] where someone else left, then
 ///   averaged; then pulled toward the average line by `c = n / (n + prior)`, where `n` is how many
-///   games the weights add up to (`(Σw)² / Σw²`, 17 for twenty games) and the prior is 25 games on
-///   the Rift and 10 in ARAM (1.4 times that for games read against the mode's average).
+///   games the weights add up to (`(Σw)² / Σw²`, about 42 for fifty games) and the prior is 17 games
+///   on the Rift and 7 in ARAM (1.16 times that for games read against the mode's average).
 /// - **Win score**: `10 × (wins + 5) / (games + 10)` over every counted game.
 /// - **Raw strength**: `0.95 × performance + 0.05 × win score`, read on a normal curve around a
 ///   player with an average line in every game and half of them won, as wide as the sampled
@@ -767,7 +770,7 @@ fn main_family(games: &[Played]) -> ModeFamily {
     main.map_or(ModeFamily::Rift, |(family, _)| family)
 }
 
-/// The newest [`TREND_RECENT`] scores against the next fifteen: a tenth of the difference, at most
+/// The newest [`TREND_RECENT`] scores against the next [`TREND_BEFORE`]: a tenth of the difference, at most
 /// [`TREND_CAP`] either way; nothing before [`TREND_GAMES`] games have scores.
 fn trend(scored: &[(f64, f64)]) -> f64 {
     if scored.len() < TREND_GAMES {
@@ -777,7 +780,7 @@ fn trend(scored: &[(f64, f64)]) -> f64 {
         games.iter().map(|(score, _)| score).sum::<f64>() / games.len() as f64
     };
     let (recent, before) = scored.split_at(TREND_RECENT);
-    let before = &before[..before.len().min(15)];
+    let before = &before[..before.len().min(TREND_BEFORE)];
     (TREND_GAIN * (mean(recent) - mean(before))).clamp(-TREND_CAP, TREND_CAP)
 }
 
@@ -1273,21 +1276,39 @@ mod tests {
     #[test]
     fn strength_reads_every_games_score_and_needs_games() {
         assert_eq!(strength(&[]), None);
-        let rift = |score, wins| score_of(&played(&[score; 20], wins, ModeFamily::Rift));
+        let window = crate::analysis::RECENT_GAMES;
+        let rift = |score, wins| score_of(&played(&vec![score; window], wins, ModeFamily::Rift));
+        let half = window / 2;
         assert!(
-            rift(7.0, 10) > 9.0 && rift(5.0, 10) < 1.0,
+            rift(7.0, half) > 9.0 && rift(5.0, half) < 1.0,
             "{} {}",
-            rift(7.0, 10),
-            rift(5.0, 10)
+            rift(7.0, half),
+            rift(5.0, half)
         );
-        // Winning counts a twentieth: ten more wins of twenty count for less than half a point
-        // more in every game.
-        let (fewer, more) = (rift(6.04, 5), rift(6.04, 15));
-        assert!(more > fewer && more < rift(6.6, 5), "{fewer} {more}");
-        // Two great games are not twenty good ones.
+        // Winning counts a twentieth: half the window's games more won count for less than half a
+        // point more in every game.
+        let average = RIFT_MODEL.baseline;
+        let (fewer, more) = (rift(average, window / 4), rift(average, window * 3 / 4));
+        assert!(
+            more > fewer && more < rift(average + 0.56, window / 4),
+            "{fewer} {more}"
+        );
+        // Two great games are not a window of good ones.
         let two = score_of(&played(&[9.0, 9.0], 2, ModeFamily::Aram));
-        let twenty = score_of(&played(&[7.0; 20], 10, ModeFamily::Aram));
-        assert!(two < twenty, "{two} {twenty}");
+        let full = score_of(&played(&vec![7.0; window], half, ModeFamily::Aram));
+        assert!(two < full, "{two} {full}");
+    }
+
+    #[test]
+    fn a_full_window_weighs_as_about_forty_two_games() {
+        // The owner's choice (2026-11-14): fifty games, each older one 0.97 times the next.
+        assert_eq!((crate::analysis::RECENT_GAMES, RECENCY), (50, 0.97));
+        let weights: Vec<f64> = (0..crate::analysis::RECENT_GAMES)
+            .map(|index| RECENCY.powi(index as i32))
+            .collect();
+        let total: f64 = weights.iter().sum();
+        let games = total * total / weights.iter().map(|weight| weight * weight).sum::<f64>();
+        assert!((42.0..42.5).contains(&games), "{games}");
     }
 
     #[test]
@@ -1395,7 +1416,7 @@ mod tests {
                 Some(Position::Utility),
                 Some(Role::Support)
             ),
-            0.79
+            1.13
         );
         assert_eq!(
             par(ModeFamily::Rift, None, Some(Role::Support)),
@@ -1408,7 +1429,7 @@ mod tests {
                 Some(Position::Utility),
                 Some(Role::Support)
             ),
-            -0.61
+            -0.56
         );
         assert_eq!(
             par(ModeFamily::Arena, Some(Position::Top), Some(Role::Tank)),
@@ -1725,7 +1746,8 @@ mod tests {
         }
     }
 
-    /// Each sampled player's newest twenty counted games of `family`, for those with ten.
+    /// Each sampled player's newest counted games of `family`, as many as the form's window
+    /// holds, for those with ten.
     fn histories(players: &[Vec<SampledGame>], family: ModeFamily) -> Vec<Vec<&SampledGame>> {
         players
             .iter()
@@ -1733,7 +1755,7 @@ mod tests {
                 games
                     .iter()
                     .filter(|game| game.counted(family))
-                    .take(20)
+                    .take(crate::analysis::RECENT_GAMES)
                     .collect::<Vec<_>>()
             })
             .filter(|games| games.len() >= 10)

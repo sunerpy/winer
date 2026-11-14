@@ -27,8 +27,9 @@ pub(super) const ASSETS: Limits = Limits {
     idle: Duration::from_secs(30 * 60),
 };
 
-/// Players' records kept at most (a few tens of kilobytes each), besides those being fetched or on
-/// screen: champ select, the game and the lobby show twenty at a time.
+/// Players' records kept at most (a record of the server's games holds all ten players of each,
+/// roughly half a megabyte at fifty games by the size of a parsed game), besides those being
+/// fetched or on screen: champ select, the game and the lobby show twenty at a time.
 pub(super) const PLAYERS: usize = 200;
 
 /// Augment descriptions are read again after this long, so a new patch's arrive the same day.

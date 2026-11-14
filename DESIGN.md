@@ -183,7 +183,7 @@ Primitives (`app/frontend/src/ui`), each with its states:
 
 Game primitives (`app/frontend/src/game`): `ChampionIcon` (rounded square, hairline ring; initials
 while the client is not connected), `ProfileIcon` (circle), `AssetIcon` (items, spells, runes),
-`RankBadge` (tier dot + tier name + division + LP), `ResultStrip` (last games as W/L ticks),
+`RankBadge` (tier dot + tier name + division + LP), `ResultStrip` (last games as W/L ticks; `dense` packs the fifty-game window into about 300px: 4px ticks 2px apart),
 `KdaValue`, `WinRate`, `StreakBadge`, `TeamBoard` (a team in champ select or in game), `MatchRow`,
 `MatchDetailView` (the scoreboard) and `ChampionList` / `ChampionPoolEditor`.
 

@@ -166,11 +166,11 @@ and `{seat}` their place in their team's list. With **Both**, one press types, f
 
 ```text
 [Enemy · Red side] winer rating
-Watch Kha'Zix: Rift Demigod, 65% in 20 games, KDA 4.6
-Go after Yasuo: Pure Workhorse, 35% in 20 games
+Watch Kha'Zix: Rift Demigod, 65% in 50 games, KDA 4.6
+Go after Yasuo: Pure Workhorse, 35% in 50 games
 [My team · Blue side] winer rating
-Rift Demigod: Ahri, 60% in 20 games, KDA 4.1, form 7.4 [Patch Champion], the other team is filing a boosting report
-Human Turret: Lee Sin, 55% in 20 games, KDA 3.6, form 6.8 [Reliable Teammate], absurdly steady: carries and survives
+Rift Demigod: Ahri, 60% in 50 games, KDA 4.1, form 7.4 [Patch Champion], the other team is filing a boosting report
+Human Turret: Lee Sin, 55% in 50 games, KDA 3.6, form 6.8 [Reliable Teammate], absurdly steady: carries and survives
 ```
 
 In the compact style a teammate's line reads "Human Turret [Lee Sin] | 55% | KDA 3.6 | form 6.8".

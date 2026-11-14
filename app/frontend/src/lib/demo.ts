@@ -1,5 +1,5 @@
 // A believable client for `pnpm dev` in a browser: one summoner in champ select with a full team,
-// twenty games of history and a working settings round trip. Never part of a release bundle.
+// sixty games of history and a working settings round trip. Never part of a release bundle.
 import type {
   BackupInfo,
   BannerChoice,
@@ -313,13 +313,13 @@ function historyLength(puuid: string): number {
   return 60 + Object.values(LEFT_OUT[puuid] ?? {}).filter((kind) => kind === "custom").length;
 }
 
-/** The newest twenty games against players among `games`, and what was passed over on the way,
+/** The newest fifty games against players among `games`, and what was passed over on the way,
  *  as the core reads form (`analysis::recent_form`). */
 function formGames(games: MatchSummary[]): { counted: MatchSummary[]; scope: FormScope } {
   const scope: FormScope = { listed: games.length, custom: 0, bots: 0, remakes: 0 };
   const counted: MatchSummary[] = [];
   for (const game of games) {
-    if (counted.length === 20) break;
+    if (counted.length === 50) break;
     if (game.kind === "custom") scope.custom += 1;
     else if (game.kind === "bots") scope.bots += 1;
     else counted.push(game);
@@ -350,7 +350,7 @@ function strengthOf(matches: RecentMatch[]): number | null {
   matches
     .filter((game) => game.score !== null)
     .forEach((game, index) => {
-      const weight = 0.93 ** index;
+      const weight = 0.97 ** index;
       total += weight;
       sum += weight * (game.score ?? 0);
       squares += weight * weight;
@@ -479,12 +479,12 @@ function history(puuid: string, name: string, seed: number, count: number): Matc
   });
 }
 
-/** What a demo player's form counts: their thirty newest games, as a client lists them. */
+/** What a demo player's form counts: their sixty newest games, as the server pages them. */
 const scopeOf = (puuid: string, name: string, seed: number): FormScope =>
-  formGames(history(puuid, name, seed, 30)).scope;
+  formGames(history(puuid, name, seed, 60)).scope;
 
 function summary(puuid: string, name: string, seed: number, rank: Rank | null): PlayerSummary {
-  const games = formGames(history(puuid, name, seed, 30)).counted;
+  const games = formGames(history(puuid, name, seed, 60)).counted;
   const matches: RecentMatch[] = games.map((game) => ({
     gameId: game.gameId,
     queueId: game.queueId,
@@ -654,11 +654,11 @@ function champSelect(): ChampSelectView {
     recommendations: [],
     callout: [
       "📢【蓝色方】winer 战绩鉴定",
-      "1L: 👑 峡谷通天代|近20场胜率60%|KDA4.1|战力7.4",
-      "3L: 🔥 人形防御塔|近20场胜率55%|KDA3.6|战力6.8",
-      "2L: 👌 峡谷公务员|近20场胜率50%|KDA2.9|战力5.2",
-      "4L: 😅 移动眼位|近20场胜率45%|KDA2.4|战力4.6",
-      "5L: 💀 纯正牛马|近20场胜率40%|KDA2.0|战力3.9",
+      "1L: 👑 峡谷通天代|近50场胜率60%|KDA4.1|战力7.4",
+      "3L: 🔥 人形防御塔|近50场胜率55%|KDA3.6|战力6.8",
+      "2L: 👌 峡谷公务员|近50场胜率50%|KDA2.9|战力5.2",
+      "4L: 😅 移动眼位|近50场胜率45%|KDA2.4|战力4.6",
+      "5L: 💀 纯正牛马|近50场胜率40%|KDA2.0|战力3.9",
     ],
   };
 }
@@ -699,17 +699,17 @@ export function demoGame(): GameView {
     sides: true,
     callout: [
       "【敌方·红色方】winer 战绩鉴定",
-      "小心【卡兹克】|档位峡谷通天代|近20场胜率65%|KDA4.6",
-      "对面【亚索】|档位纯正牛马|近20场胜率35%|可以多抓",
+      "小心【卡兹克】|档位峡谷通天代|近50场胜率65%|KDA4.6",
+      "对面【亚索】|档位纯正牛马|近50场胜率35%|可以多抓",
     ],
     // As champ select's lines, the champion in brackets where the seat and the name were.
     allyCallout: [
       "【我方·蓝色方】winer 战绩鉴定",
-      "【阿狸】|档位峡谷通天代|近20场胜率60%|KDA4.1|战力7.4",
-      "【李青】|档位人形防御塔|近20场胜率55%|KDA3.6|战力6.8",
-      "【盖伦】|档位峡谷公务员|近20场胜率50%|KDA2.9|战力5.2",
-      "【金克丝】|档位移动眼位|近20场胜率45%|KDA2.4|战力4.6",
-      "【锤石】|档位纯正牛马|近20场胜率40%|KDA2.0|战力3.9",
+      "【阿狸】|档位峡谷通天代|近50场胜率60%|KDA4.1|战力7.4",
+      "【李青】|档位人形防御塔|近50场胜率55%|KDA3.6|战力6.8",
+      "【盖伦】|档位峡谷公务员|近50场胜率50%|KDA2.9|战力5.2",
+      "【金克丝】|档位移动眼位|近50场胜率45%|KDA2.4|战力4.6",
+      "【锤石】|档位纯正牛马|近50场胜率40%|KDA2.0|战力3.9",
     ],
   };
 }
@@ -1251,7 +1251,7 @@ export function demoBackend(): Backend {
       const lines = names.map((name, index) =>
         rule.style === "compact"
           ? `${index + 1}L: ${name}|胜率60%|KDA4.1|战力7.4`
-          : `${index + 1}L: ${tierEmoji(index, names.length, graded)} ${name}|近20场胜率60%|KDA4.1|战力7.4`,
+          : `${index + 1}L: ${tierEmoji(index, names.length, graded)} ${name}|近50场胜率60%|KDA4.1|战力7.4`,
       );
       // As the core does: the side and winer's name lead the first line, the opening line after
       // in 【】, unless it opens with a bracket of its own.
@@ -1402,8 +1402,8 @@ export function demoBackend(): Backend {
       const names = tierNames(rule);
       const enemies = [
         "【敌方·红色方】winer 战绩鉴定",
-        `小心【阿狸】|档位${names[0]}|近20场胜率60%|KDA4.1`,
-        `对面【阿狸】|档位${names[names.length - 1]}|近20场胜率60%|可以多抓`,
+        `小心【阿狸】|档位${names[0]}|近50场胜率60%|KDA4.1`,
+        `对面【阿狸】|档位${names[names.length - 1]}|近50场胜率60%|可以多抓`,
       ];
       // No emoji in the game's chat.
       const allies = [
@@ -1411,7 +1411,7 @@ export function demoBackend(): Backend {
         ...names.map((name) =>
           rule.style === "compact"
             ? `【阿狸】|档位${name}|胜率60%|KDA4.1|战力7.4`
-            : `【阿狸】|档位${name}|近20场胜率60%|KDA4.1|战力7.4`,
+            : `【阿狸】|档位${name}|近50场胜率60%|KDA4.1|战力7.4`,
         ),
       ];
       return typedLines(enemies, allies, rule.gameTeams);

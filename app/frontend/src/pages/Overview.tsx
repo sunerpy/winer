@@ -151,7 +151,7 @@ function FormCard() {
               <FormLine form={form} />
             </div>
           </div>
-          <ResultStrip matches={form.matches} limit={20} className="[&>span]:h-5 [&>span]:w-2" />
+          <ResultStrip matches={form.matches} limit={50} dense className="[&>span]:h-5" />
           <div>
             <p className="mb-2 text-[11px] text-fg-subtle">{t("overview.mostPlayed")}</p>
             <ul className="flex flex-wrap gap-3">
