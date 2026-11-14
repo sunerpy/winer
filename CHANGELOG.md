@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.21](https://github.com/sunerpy/winer/compare/v0.0.20...v0.0.21) (2026-11-14)
+
+
+### 新功能
+
+* 近期战力改为参考最近 50 场对局（原 20 场），越早的对局权重降得更慢，并按新抽样重新标定评分 ([#50](https://github.com/sunerpy/winer/issues/50)) ([aeddeab](https://github.com/sunerpy/winer/commit/aeddeab52c2ebebe1803a91706dbcc5f49e3bd94))
+
 ## [0.0.20](https://github.com/sunerpy/winer/compare/v0.0.19...v0.0.20) (2026-11-06)
 
 
