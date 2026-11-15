@@ -58,11 +58,16 @@ export interface Commands {
   get_settings: Command<undefined, Settings>;
   set_settings: Command<{ settings: Settings }, Settings>;
   get_game_data: Command<undefined, GameData | null>;
-  get_match_history: Command<{ puuid: string; begin: number; count: number }, MatchPage>;
-  get_match_detail: Command<{ gameId: number }, MatchDetail>;
+  get_match_history: Command<
+    { puuid: string; begin: number; count: number; platformId?: string },
+    MatchPage
+  >;
+  get_match_detail: Command<{ gameId: number; platformId?: string }, MatchDetail>;
   get_augment_details: Command<undefined, AugmentDetail[]>;
-  find_player: Command<{ riotId: string }, PlayerProfile>;
-  get_player_summary: Command<{ puuid: string }, PlayerSummary>;
+  find_player: Command<{ riotId: string; platformId?: string }, PlayerProfile>;
+  /** The other regions holding a full Riot ID's account, for a player found on this one. */
+  get_player_regions: Command<{ riotId: string }, string[]>;
+  get_player_summary: Command<{ puuid: string; platformId?: string }, PlayerSummary>;
   get_presence: Command<undefined, Presence>;
   /** Answers the presence afterwards: with the mobile message on, the message follows the state. */
   set_availability: Command<{ availability: string }, Presence>;
@@ -140,7 +145,7 @@ export interface Commands {
   preview_game_callout: Command<{ rule: CalloutRule; general: General }, string[]>;
   // History.
   /** What a player's form counts, and the tier, title and quip it earns on its own. */
-  get_player_standing: Command<{ puuid: string }, PlayerStanding>;
+  get_player_standing: Command<{ puuid: string; platformId?: string }, PlayerStanding>;
   // The user's notes on other players.
   get_player_note: Command<{ puuid: string }, PlayerNote | null>;
   /** Neither a tag nor text removes the note, and answers null. */

@@ -24,7 +24,18 @@ export type Page =
   | "phrases";
 
 /** Where the window is. History can be opened on someone else's games. */
-export type Route = { page: Exclude<Page, "history"> } | { page: "history"; puuid?: string };
+export type Route =
+  | { page: Exclude<Page, "history"> }
+  | {
+      page: "history";
+      puuid?: string;
+      /** Another region the player is shown from; none for the connected one. */
+      platformId?: string;
+      /** The regions holding the account, the one first found first: from a search alone. */
+      regions?: string[];
+      /** The full Riot ID searched for: from a search alone, cleared by every other way there. */
+      riotId?: string;
+    };
 
 export type SettingsSection = "appearance" | "general" | "rating" | "about";
 

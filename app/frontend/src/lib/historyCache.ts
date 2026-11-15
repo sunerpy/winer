@@ -55,7 +55,7 @@ export interface HistoryList {
 export class HistoryCache {
   #viewer: string | null = null;
   readonly #lists = new Lru<string, HistoryList>(12);
-  readonly #details = new Lru<number, MatchDetail>(200);
+  readonly #details = new Lru<string, MatchDetail>(200);
   readonly #summaries = new Lru<string, PlayerSummary>(40);
   readonly #aliases = new Lru<string, string>(80);
 
@@ -82,46 +82,56 @@ export class HistoryCache {
     this.#aliases.clear();
   }
 
-  list(viewer: string, puuid: string): HistoryList | undefined {
-    return viewer === this.#viewer ? this.#lists.get(puuid) : undefined;
+  list(viewer: string, puuid: string, platformId?: string): HistoryList | undefined {
+    return viewer === this.#viewer ? this.#lists.get(regionKey(puuid, platformId)) : undefined;
   }
 
   /** Keeps `list`, unless it was read for an account that has signed out since. */
-  putList(viewer: string, puuid: string, list: HistoryList): void {
-    if (viewer === this.#viewer) this.#lists.set(puuid, list);
+  putList(viewer: string, puuid: string, list: HistoryList, platformId?: string): void {
+    if (viewer === this.#viewer) this.#lists.set(regionKey(puuid, platformId), list);
   }
 
-  detail(viewer: string, gameId: number): MatchDetail | undefined {
-    return viewer === this.#viewer ? this.#details.get(gameId) : undefined;
+  detail(viewer: string, gameId: number, platformId?: string): MatchDetail | undefined {
+    return viewer === this.#viewer ? this.#details.get(regionKey(gameId, platformId)) : undefined;
   }
 
-  putDetail(viewer: string, detail: MatchDetail): void {
-    if (viewer === this.#viewer) this.#details.set(detail.gameId, detail);
+  putDetail(viewer: string, detail: MatchDetail, platformId?: string): void {
+    if (viewer === this.#viewer) this.#details.set(regionKey(detail.gameId, platformId), detail);
   }
 
-  summary(viewer: string, puuid: string): PlayerSummary | undefined {
-    return viewer === this.#viewer ? this.#summaries.get(puuid) : undefined;
+  summary(viewer: string, puuid: string, platformId?: string): PlayerSummary | undefined {
+    return viewer === this.#viewer ? this.#summaries.get(regionKey(puuid, platformId)) : undefined;
   }
 
-  putSummary(viewer: string, summary: PlayerSummary): void {
+  putSummary(viewer: string, summary: PlayerSummary, platformId?: string): void {
     if (viewer !== this.#viewer) return;
-    this.#summaries.set(summary.puuid, summary);
-    this.remember(viewer, summary);
+    this.#summaries.set(regionKey(summary.puuid, platformId), summary);
+    this.remember(viewer, summary, platformId);
   }
 
   /** Remembers how a Riot ID resolved during this run, without persisting account data to disk. */
   remember(
     viewer: string,
     player: { puuid: string; name: { gameName: string; tagLine: string } | null },
+    platformId?: string,
   ): void {
     if (viewer !== this.#viewer || !player.name) return;
-    this.#aliases.set(alias(player.name.gameName, player.name.tagLine), player.puuid);
+    this.#aliases.set(
+      regionKey(alias(player.name.gameName, player.name.tagLine), platformId),
+      player.puuid,
+    );
   }
 
   /** A player already resolved during this run, usable while the League client is signed out. */
-  find(viewer: string, riotId: string): string | undefined {
-    return viewer === this.#viewer ? this.#aliases.get(aliasOf(riotId)) : undefined;
+  find(viewer: string, riotId: string, platformId?: string): string | undefined {
+    return viewer === this.#viewer
+      ? this.#aliases.get(regionKey(aliasOf(riotId), platformId))
+      : undefined;
   }
+}
+
+function regionKey(id: string | number, platformId?: string): string {
+  return JSON.stringify([platformId?.trim().toUpperCase() ?? "", id]);
 }
 
 function alias(gameName: string, tagLine: string): string {

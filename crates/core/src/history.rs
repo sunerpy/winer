@@ -605,6 +605,8 @@ mod tests {
             icon_id: 0,
             private: false,
             ranked: Ranked::default(),
+            region: None,
+            other_regions: Vec::new(),
         }
     }
 

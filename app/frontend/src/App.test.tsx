@@ -2052,6 +2052,137 @@ describe("history", () => {
         ),
     ).length;
 
+  it("finds a Riot ID on another region by itself and keeps that region through pages, details and players", async () => {
+    const demo = demoBackend();
+    const call = vi.spyOn(demo, "call");
+    const user = await openHistory(demo);
+    expect(screen.queryByRole("combobox")).toBeNull();
+    await user.type(screen.getByRole("textbox", { name: zhCN["history.search"] }), "周周喵#0520");
+    await user.click(screen.getByRole("button", { name: zhCN["history.find"] }));
+    await screen.findByRole("button", { name: zhCN["history.mine"] });
+    expect(call).toHaveBeenCalledWith("find_player", { riotId: "周周喵#0520" });
+    const found = (await demo.call("find_player", { riotId: "周周喵#0520" })).puuid;
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("get_match_history", {
+        puuid: found,
+        begin: 50,
+        count: 50,
+        platformId: "HN1",
+      }),
+    );
+    expect(call).toHaveBeenCalledWith("get_player_summary", { puuid: found, platformId: "HN1" });
+    expect(call).toHaveBeenCalledWith("get_player_standing", { puuid: found, platformId: "HN1" });
+    expect(screen.getByText("跨区暂不提供排位信息")).toBeInTheDocument();
+    expect(asked(call, "get_player_regions"), "opened elsewhere: the lookup listed the rest").toBe(
+      0,
+    );
+
+    // The account plays on TJ100 too: one press there, and HN1 is the way back.
+    const also = screen.getByRole("group", { name: zhCN["history.alsoIn"] });
+    await user.click(within(also).getByRole("button", { name: zhCN["history.region.tj100"] }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("get_player_summary", {
+        puuid: found,
+        platformId: "TJ100",
+      }),
+    );
+    // The header is drawn again once that region's summary is in.
+    const back = await screen.findByRole("group", { name: zhCN["history.alsoIn"] });
+    expect(
+      within(back).getByRole("button", { name: zhCN["history.region.hn1"] }),
+    ).toBeInTheDocument();
+    expect(within(back).queryByRole("button", { name: zhCN["history.region.tj100"] })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    const row = screen.getAllByRole("button", { pressed: false })[0] as HTMLElement;
+    await user.click(row);
+    const panel = await screen.findByLabelText(zhCN["history.detail"]);
+    const detail = call.mock.calls.find(([name]) => name === "get_match_detail")?.[1] as
+      | { gameId: number; platformId?: string }
+      | undefined;
+    expect(detail?.platformId).toBe("TJ100");
+    const gameId = detail!.gameId;
+    const player = await within(panel).findAllByRole("button");
+    const nextPuuid = (await demo.call("get_match_detail", { gameId })).teams[0]!.players[0]!.puuid;
+    await user.click(player[0]!);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("get_player_summary", {
+        puuid: nextPuuid,
+        platformId: "TJ100",
+      }),
+    );
+    expect(
+      screen.queryByRole("group", { name: zhCN["history.alsoIn"] }),
+      "another player",
+    ).toBeNull();
+    await user.click(screen.getByRole("button", { name: zhCN["history.mine"] }));
+    expect(screen.queryByText("跨区暂不提供排位信息")).toBeNull();
+  });
+
+  it("asks which other regions hold an account found on this one, and shows ranks back on it", async () => {
+    const backend = demoWith({ get_player_regions: () => ["HN1"] });
+    const call = vi.spyOn(backend, "call");
+    const user = await openHistory(backend);
+    await user.type(screen.getByRole("textbox", { name: zhCN["history.search"] }), "某人#1");
+    await user.click(screen.getByRole("button", { name: zhCN["history.find"] }));
+    const local = (await backend.call("find_player", { riotId: "某人#1" })).puuid;
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("get_player_regions", { riotId: "某人#1" }),
+    );
+    const also = await screen.findByRole("group", { name: zhCN["history.alsoIn"] });
+    expect(screen.queryByText("跨区暂不提供排位信息"), "found here: ranks shown").toBeNull();
+    expect(
+      within(also).queryByRole("button", { name: zhCN["history.region.hn10"] }),
+      "the region shown is not one to go to",
+    ).toBeNull();
+    await user.click(within(also).getByRole("button", { name: zhCN["history.region.hn1"] }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("get_player_summary", { puuid: local, platformId: "HN1" }),
+    );
+    expect(await screen.findByText("跨区暂不提供排位信息")).toBeInTheDocument();
+    // Back on the connected region: its own path, its ranks.
+    const back = await screen.findByRole("group", { name: zhCN["history.alsoIn"] });
+    await user.click(within(back).getByRole("button", { name: zhCN["history.region.hn10"] }));
+    await waitFor(() => expect(screen.queryByText("跨区暂不提供排位信息")).toBeNull());
+    expect(asked(call, "get_player_summary", { puuid: local })).toBeGreaterThan(1);
+  });
+
+  it("keeps a late answer about one player's other regions off the next player's page", async () => {
+    let answer: (regions: string[]) => void = () => {};
+    const late = new Promise<string[]>((resolve) => (answer = resolve));
+    const backend = demoWith({
+      get_player_regions: ({ riotId }) => (riotId === "甲#1" ? late : []),
+    });
+    const user = await openHistory(backend);
+    const search = screen.getByRole("textbox", { name: zhCN["history.search"] });
+    await user.type(search, "甲#1");
+    await user.click(screen.getByRole("button", { name: zhCN["history.find"] }));
+    await user.clear(search);
+    await user.type(search, "乙#2");
+    await user.click(screen.getByRole("button", { name: zhCN["history.find"] }));
+    answer(["HN1"]);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByRole("group", { name: zhCN["history.alsoIn"] })).toBeNull();
+  });
+
+  it("says a Riot ID is on no region when no region has it", async () => {
+    const backend = demoWith({
+      find_player: () => {
+        throw { code: "notFound", message: "no player is called 没有#0" };
+      },
+    });
+    const user = await openHistory(backend);
+    const search = screen.getByRole("textbox", { name: zhCN["history.search"] });
+    await user.type(search, "没有#0");
+    await user.click(screen.getByRole("button", { name: zhCN["history.find"] }));
+    expect(await screen.findByText(zhCN["history.notFoundAnywhere"])).toBeInTheDocument();
+    // A name alone was looked for on this region only, and says so.
+    await user.clear(search);
+    await user.type(search, "没有");
+    await user.click(screen.getByRole("button", { name: zhCN["history.find"] }));
+    expect(await screen.findByText(zhCN["history.notFound"])).toBeInTheDocument();
+  });
+
   it("loads every available game before summing champions and exporting", async () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");

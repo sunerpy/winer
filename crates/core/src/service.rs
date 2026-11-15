@@ -3,6 +3,7 @@
 
 mod caches;
 mod comeback;
+mod cross_region;
 mod loadout;
 mod rewards;
 mod ux;
@@ -207,6 +208,7 @@ struct Inner {
     loadout: loadout::LoadoutState,
     /// History: pages, whole games and Riot ID lookups, for the signed-in account (`history`).
     history: Mutex<HistoryCache>,
+    regional_history: Mutex<cross_region::RegionalHistory>,
     /// The shard's match-history server as requests to it have found it (`HistoryServer`).
     history_server: HistoryServer,
     /// Counts the plugins' hellos on the bridge: a restarted interface is back once it changes
@@ -472,6 +474,7 @@ impl Service {
                 backups: OnceLock::new(),
                 loadout: loadout::LoadoutState::new(loadouts),
                 history: Mutex::new(HistoryCache::default()),
+                regional_history: Mutex::new(cross_region::RegionalHistory::default()),
                 history_server: HistoryServer::new(),
                 plugin_hellos: watch::Sender::new(0),
                 versions,
@@ -867,6 +870,37 @@ impl Service {
         Ok(())
     }
 
+    /// The shard the connected client is on, read again from the entitlements issuer where chat
+    /// had not said at connection; `None` when neither knows or no client is connected.
+    pub(crate) async fn current_platform(&self) -> Option<String> {
+        let client = self.client().ok()?;
+        if !client.platform_id.trim().is_empty() {
+            return Some(client.platform_id.trim().to_owned());
+        }
+        let issuer = client
+            .lcu
+            .get::<Entitlements>("/entitlements/v1/token")
+            .await
+            .ok()
+            .map(|entitlements| entitlements.issuer);
+        platform_from("", issuer.as_deref())
+    }
+
+    /// The other shard a request names, or `None` where it names none or the connected client's
+    /// own, which then takes the connected shard's own path.
+    pub async fn other_region(&self, platform: Option<&str>) -> Option<String> {
+        let platform = platform?.trim();
+        (!self.is_current_platform(platform).await).then(|| platform.to_owned())
+    }
+
+    /// Whether `platform` is the connected client's own shard, so that a request for it takes the
+    /// connected shard's own path (its caches, its server's slots, its ranks).
+    pub async fn is_current_platform(&self, platform: &str) -> bool {
+        self.current_platform()
+            .await
+            .is_some_and(|current| current.eq_ignore_ascii_case(platform.trim()))
+    }
+
     fn client(&self) -> Result<Client, CoreError> {
         self.inner
             .client
@@ -1116,11 +1150,20 @@ impl Service {
         let lcu = Lcu::new(&credentials)?;
         let summoner = wait_until_ready(&lcu).await?;
         let mut events = lcu::subscribe(&credentials, SUBSCRIPTIONS).await?;
-        let platform_id = lcu
+        let chat_platform = lcu
             .get::<ChatMe>(CHAT_ME)
             .await
             .map(|me| me.platform_id)
             .unwrap_or_default();
+        let issuer = if chat_platform.trim().is_empty() {
+            lcu.get::<Entitlements>("/entitlements/v1/token")
+                .await
+                .ok()
+                .map(|entitlements| entitlements.issuer)
+        } else {
+            None
+        };
+        let platform_id = platform_from(&chat_platform, issuer.as_deref()).unwrap_or_default();
         let client = Client {
             lcu,
             credentials,
@@ -2884,6 +2927,7 @@ impl Service {
     /// Makes every cache the signed-in account's: another account's pages, games, lookups and
     /// players' records go, so nothing fetched for one is shown to the next.
     fn scope_account(&self, me: &str) {
+        lock(&self.inner.regional_history).scope(me);
         if lock(&self.inner.history).scope(me) {
             lock(&self.inner.players).clear();
         }
@@ -3021,6 +3065,16 @@ fn queue_info(data: Option<&GameData>, queue_id: i64) -> Option<&QueueInfo> {
 }
 
 /// The kind of game a queue is; `None` before the catalog arrives or for a queue it does not list.
+/// The shard the client is on: chat's word (`CHAT_ME`), else the one the entitlements issuer
+/// names, since chat may not have said when winer connected.
+fn platform_from(chat: &str, issuer: Option<&str>) -> Option<String> {
+    let chat = chat.trim();
+    if !chat.is_empty() {
+        return Some(chat.to_owned());
+    }
+    issuer.and_then(sgp::platform_of_issuer)
+}
+
 fn queue_mode(client: &Client, queue_id: i64) -> Option<Mode> {
     let data = lock(&client.data).clone();
     queue_info(data.as_deref(), queue_id).map(QueueInfo::mode)
@@ -3818,6 +3872,39 @@ mod tests {
             !service.wants_play_again(&client),
             "the user went back first"
         );
+    }
+
+    #[test]
+    fn the_shard_is_chats_word_else_the_entitlements_issuers() {
+        assert_eq!(platform_from("HN10", None).as_deref(), Some("HN10"));
+        assert_eq!(
+            platform_from("HN10", Some("http://gz100-bcs-internal.lol.qq.com:28088")).as_deref(),
+            Some("HN10"),
+            "chat's word first"
+        );
+        assert_eq!(
+            platform_from("", Some("http://gz100-bcs-internal.lol.qq.com:28088")).as_deref(),
+            Some("GZ100"),
+            "chat had not said: the issuer names the shard"
+        );
+        assert_eq!(platform_from(" ", None), None);
+    }
+
+    #[tokio::test]
+    async fn a_region_is_the_current_one_whatever_its_case() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        assert!(!service.is_current_platform("GZ100").await, "not connected");
+        let mut client = quiet_client(Phase::None);
+        client.platform_id = "GZ100".into();
+        *service
+            .inner
+            .client
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(client);
+        assert!(service.is_current_platform("gz100").await);
+        assert!(service.is_current_platform(" GZ100 ").await);
+        assert!(!service.is_current_platform("HN1").await);
     }
 
     /// A connection whose client never answers (port 1): enough for what the views do with the

@@ -42,6 +42,7 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         get_match_detail,
         get_augment_details,
         find_player,
+        get_player_regions,
         get_player_summary,
         get_presence,
         set_availability,
@@ -171,13 +172,30 @@ async fn get_match_history<R: Runtime>(
     puuid: String,
     begin: u32,
     count: u32,
+    platform_id: Option<String>,
 ) -> Result<MatchPage> {
-    Ok(service(&app).match_history(&puuid, begin, count).await?)
+    let service = service(&app);
+    Ok(match service.other_region(platform_id.as_deref()).await {
+        Some(platform) => {
+            service
+                .match_history_in(&puuid, begin, count, &platform)
+                .await?
+        }
+        None => service.match_history(&puuid, begin, count).await?,
+    })
 }
 
 #[tauri::command]
-async fn get_match_detail<R: Runtime>(app: AppHandle<R>, game_id: i64) -> Result<MatchDetail> {
-    Ok(service(&app).match_detail(game_id).await?)
+async fn get_match_detail<R: Runtime>(
+    app: AppHandle<R>,
+    game_id: i64,
+    platform_id: Option<String>,
+) -> Result<MatchDetail> {
+    let service = service(&app);
+    Ok(match service.other_region(platform_id.as_deref()).await {
+        Some(platform) => service.match_detail_in(game_id, &platform).await?,
+        None => service.match_detail(game_id).await?,
+    })
 }
 
 /// What each Hextech ARAM augment does (ARAM.GG), empty while the user has switched it off.
@@ -187,13 +205,39 @@ async fn get_augment_details<R: Runtime>(app: AppHandle<R>) -> Result<Vec<Augmen
 }
 
 #[tauri::command]
-async fn find_player<R: Runtime>(app: AppHandle<R>, riot_id: String) -> Result<PlayerProfile> {
-    Ok(service(&app).find_player(&riot_id).await?)
+async fn find_player<R: Runtime>(
+    app: AppHandle<R>,
+    riot_id: String,
+    platform_id: Option<String>,
+) -> Result<PlayerProfile> {
+    let service = service(&app);
+    Ok(match platform_id.as_deref() {
+        // No shard named: the connected one first, then wherever the account plays.
+        None => service.find_player_anywhere(&riot_id).await?,
+        Some(platform) => match service.other_region(Some(platform)).await {
+            Some(platform) => service.find_player_in(&riot_id, &platform).await?,
+            None => service.find_player(&riot_id).await?,
+        },
+    })
+}
+
+/// The other shards holding a full Riot ID's account, for a player found on the connected one.
+#[tauri::command]
+async fn get_player_regions<R: Runtime>(app: AppHandle<R>, riot_id: String) -> Result<Vec<String>> {
+    Ok(service(&app).player_regions(&riot_id).await?)
 }
 
 #[tauri::command]
-async fn get_player_summary<R: Runtime>(app: AppHandle<R>, puuid: String) -> Result<PlayerSummary> {
-    Ok(service(&app).player_summary(&puuid).await?)
+async fn get_player_summary<R: Runtime>(
+    app: AppHandle<R>,
+    puuid: String,
+    platform_id: Option<String>,
+) -> Result<PlayerSummary> {
+    let service = service(&app);
+    Ok(match service.other_region(platform_id.as_deref()).await {
+        Some(platform) => service.player_summary_in(&puuid, &platform).await?,
+        None => service.player_summary(&puuid).await?,
+    })
 }
 
 #[tauri::command]
@@ -705,8 +749,13 @@ async fn remove_comeback_library<R: Runtime>(app: AppHandle<R>) -> Result<Comeba
 async fn get_player_standing<R: Runtime>(
     app: AppHandle<R>,
     puuid: String,
+    platform_id: Option<String>,
 ) -> Result<PlayerStanding> {
-    Ok(service(&app).player_standing(&puuid).await?)
+    let service = service(&app);
+    Ok(match service.other_region(platform_id.as_deref()).await {
+        Some(platform) => service.player_standing_in(&puuid, &platform).await?,
+        None => service.player_standing(&puuid).await?,
+    })
 }
 
 #[cfg(test)]
@@ -799,9 +848,11 @@ mod tests {
                 HotkeyStatus::default(),
                 "no shortcut state without the shell's setup"
             );
-            let error = get_match_detail(handle.clone(), 1).await.unwrap_err();
+            let error = get_match_detail(handle.clone(), 1, None).await.unwrap_err();
             assert_eq!(error.code, ErrorCode::NotConnected);
-            let error = find_player(handle.clone(), "  ".into()).await.unwrap_err();
+            let error = find_player(handle.clone(), "  ".into(), None)
+                .await
+                .unwrap_err();
             assert_eq!(error.code, ErrorCode::Invalid);
             for error in [
                 send_callout(handle.clone(), None).await.unwrap_err(),
@@ -821,7 +872,27 @@ mod tests {
                 // The Phrases page: a quick phrase goes to champ select's chat.
                 send_phrase(handle.clone(), 0, 1, 2).await.unwrap_err(),
                 // History.
-                get_player_standing(handle.clone(), "p".into())
+                get_player_standing(handle.clone(), "p".into(), None)
+                    .await
+                    .unwrap_err(),
+            ] {
+                assert_eq!(error.code, ErrorCode::NotConnected);
+            }
+            // Explicit regions use the cross-region service, with the same disconnected error.
+            for error in [
+                find_player(handle.clone(), "周周喵#0520".into(), Some("HN1".into()))
+                    .await
+                    .unwrap_err(),
+                get_match_history(handle.clone(), "p".into(), 0, 20, Some("HN1".into()))
+                    .await
+                    .unwrap_err(),
+                get_match_detail(handle.clone(), 1, Some("HN1".into()))
+                    .await
+                    .unwrap_err(),
+                get_player_summary(handle.clone(), "p".into(), Some("HN1".into()))
+                    .await
+                    .unwrap_err(),
+                get_player_standing(handle.clone(), "p".into(), Some("HN1".into()))
                     .await
                     .unwrap_err(),
             ] {
@@ -851,7 +922,7 @@ mod tests {
             // The QQ group needs no client either; this app runs no opener, so nothing opens.
             let error = open_community(handle.clone()).await.unwrap_err();
             assert_eq!(error.code, ErrorCode::Internal, "{}", error.message);
-            let error = get_player_standing(handle.clone(), "../x".into())
+            let error = get_player_standing(handle.clone(), "../x".into(), None)
                 .await
                 .unwrap_err();
             assert_eq!(

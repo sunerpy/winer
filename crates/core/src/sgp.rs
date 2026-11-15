@@ -20,6 +20,11 @@ use crate::{
 /// Fifty games, the most one page asks for, are about 6.5 MB.
 const TIMEOUT: Duration = Duration::from_secs(20);
 
+/// The Tencent shards with a server here ([`base`]), in the order a lookup lists them.
+pub const PLATFORMS: [&str; 8] = [
+    "HN1", "HN10", "TJ100", "TJ101", "NJ100", "GZ100", "CQ100", "BGP2",
+];
+
 /// The match-history server of a Tencent shard. Other platforms have none here.
 pub fn base(platform_id: &str) -> Option<&'static str> {
     Some(match platform_id.to_ascii_uppercase().as_str() {
@@ -105,6 +110,116 @@ pub async fn history(
     let history: History =
         serde_json::from_slice(&body).map_err(|error| Failure::Other(error.to_string()))?;
     Ok(history.into_page())
+}
+
+/// A summoner on the explicitly selected shard, using its league-session bearer.
+pub(crate) async fn summoner_by_puuid(
+    base: &str,
+    token: &str,
+    user_agent: &str,
+    platform: &str,
+    puuid: &str,
+) -> Result<Option<crate::model::Summoner>, String> {
+    let path = format!("/summoner-ledge/v1/regions/{platform}/summoners/puuids");
+    let body = serde_json::to_vec(&[puuid]).map_err(|e| e.to_string())?;
+    let Some(value) = identity_request(base, token, user_agent, &path, Some(body)).await? else {
+        return Ok(None);
+    };
+    let values = value
+        .as_array()
+        .ok_or_else(|| "the summoner server did not return a list".to_owned())?;
+    values
+        .iter()
+        .find(|v| v.get("puuid").and_then(|v| v.as_str()) == Some(puuid))
+        .cloned()
+        .map(decode_summoner)
+        .transpose()
+}
+
+async fn identity_request(
+    base: &str,
+    token: &str,
+    user_agent: &str,
+    path: &str,
+    body: Option<Vec<u8>>,
+) -> Result<Option<serde_json::Value>, String> {
+    let http = net::client()?;
+    let url = format!("{base}{path}");
+    let request = match body {
+        Some(body) => http
+            .post(url)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(body),
+        None => http.get(url),
+    };
+    let response = request
+        .header(AUTHORIZATION, format!("Bearer {token}"))
+        .header(USER_AGENT, user_agent)
+        .header(ACCEPT, "application/json")
+        .timeout(TIMEOUT)
+        .send()
+        .await
+        .map_err(|e| e.without_url().to_string())?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let response = response
+        .error_for_status()
+        .map_err(|e| e.without_url().to_string())?;
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| e.without_url().to_string())?;
+    serde_json::from_slice(&bytes)
+        .map(Some)
+        .map_err(|e| e.to_string())
+}
+
+fn decode_summoner(value: serde_json::Value) -> Result<crate::model::Summoner, String> {
+    let mut summoner: crate::model::Summoner =
+        serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
+    if summoner.summoner_level == 0 {
+        summoner.summoner_level = value.get("level").and_then(|v| v.as_i64()).unwrap_or(0);
+    }
+    if summoner.summoner_id == 0 {
+        summoner.summoner_id = value.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
+    }
+    if summoner.game_name.is_empty()
+        && let Some(name) = value.get("name").and_then(|v| v.as_str())
+    {
+        let (name, tag) = name.rsplit_once('#').unwrap_or((name, ""));
+        summoner.game_name = name.to_owned();
+        if summoner.tag_line.is_empty() {
+            summoner.tag_line = tag.to_owned();
+        }
+    }
+    if summoner.puuid.is_empty() {
+        return Err("the summoner server returned no player identity".into());
+    }
+    Ok(summoner)
+}
+
+/// A scoreboard not retained by a history page, fetched from its own shard rather than the LCU.
+pub(crate) async fn game(
+    base: &str,
+    token: &str,
+    user_agent: &str,
+    platform: &str,
+    game_id: i64,
+) -> Result<Game, String> {
+    let path = format!("/match-history-query/v1/products/lol/{platform}_{game_id}/SUMMARY");
+    let value = identity_request(base, token, user_agent, &path, None)
+        .await?
+        .ok_or_else(|| "this game's scoreboard was not found on the selected server".to_owned())?;
+    let entry: Entry = serde_json::from_value(value).map_err(|e| e.to_string())?;
+    let game = entry
+        .json
+        .into_game()
+        .ok_or_else(|| "the game has not been recorded".to_owned())?;
+    if game.game_id != game_id {
+        return Err("the scoreboard belongs to a different game".into());
+    }
+    Ok(game)
 }
 
 /// Whether the server answers one game of `puuid`'s, for the self-check: how it failed, without
@@ -596,5 +711,128 @@ mod tests {
             (game.teams[0].win.as_str(), game.teams[0].tower_kills),
             ("Win", 3)
         );
+    }
+
+    fn reply_once(status: &str, body: &str) -> (String, std::thread::JoinHandle<String>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        let status = status.to_owned();
+        let body = body.to_owned();
+        let task = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut bytes = Vec::new();
+            let mut chunk = [0u8; 4096];
+            loop {
+                let read = stream.read(&mut chunk).unwrap();
+                if read == 0 {
+                    break;
+                }
+                bytes.extend_from_slice(&chunk[..read]);
+                if let Some(end) = bytes.windows(4).position(|b| b == b"\r\n\r\n") {
+                    let head = String::from_utf8_lossy(&bytes[..end]).to_ascii_lowercase();
+                    let length = head
+                        .lines()
+                        .find_map(|l| {
+                            l.strip_prefix("content-length:")
+                                .and_then(|n| n.trim().parse::<usize>().ok())
+                        })
+                        .unwrap_or(0);
+                    if bytes.len() >= end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            let response = format!(
+                "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+            String::from_utf8(bytes).unwrap()
+        });
+        (base, task)
+    }
+
+    #[tokio::test]
+    async fn cross_region_summoner_post_uses_selected_shard_and_maps_its_real_shape() {
+        let (base, server) = reply_once(
+            "200 OK",
+            r#"[{"id":42,"puuid":"player","name":"","profileIconId":7215,"level":533,"privacy":"PUBLIC"}]"#,
+        );
+        let shown = summoner_by_puuid(&base, "test-session", "test-agent", "HN1", "player")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (
+                shown.summoner_id,
+                shown.summoner_level,
+                shown.profile_icon_id
+            ),
+            (42, 533, 7215)
+        );
+        let request = server.join().unwrap();
+        assert!(
+            request.starts_with("POST /summoner-ledge/v1/regions/HN1/summoners/puuids HTTP/1.1")
+        );
+        assert!(
+            request
+                .to_ascii_lowercase()
+                .contains("authorization: bearer test-session")
+        );
+        assert!(request.ends_with(r#"["player"]"#));
+    }
+
+    #[tokio::test]
+    async fn cross_region_summoner_auth_failure_is_an_error_and_hides_request_identity() {
+        let (base, server) = reply_once("403 Forbidden", r#"{"error":"forbidden"}"#);
+        let error = summoner_by_puuid(&base, "test-session", "test-agent", "HN1", "private-player")
+            .await
+            .unwrap_err();
+        server.join().unwrap();
+        assert!(error.contains("403"));
+        assert!(!error.contains("private-player"));
+        assert!(!error.contains("test-session"));
+        assert!(!error.contains(&base));
+    }
+
+    #[tokio::test]
+    async fn cross_region_game_uses_the_target_prefixed_id_and_unwraps_the_summary() {
+        let (base, server) = reply_once(
+            "200 OK",
+            r#"{"metadata":{},"json":{"gameId":77,"gameMode":"ARAM","participants":[{"puuid":"p","participantId":1,"championId":1}]}}"#,
+        );
+        let shown = game(&base, "test-entitlement", "test-agent", "GZ100", 77)
+            .await
+            .unwrap();
+        assert_eq!(
+            (
+                shown.game_id,
+                shown.game_mode.as_str(),
+                shown.participants.len()
+            ),
+            (77, "ARAM", 1)
+        );
+        let request = server.join().unwrap();
+        assert!(
+            request
+                .starts_with("GET /match-history-query/v1/products/lol/GZ100_77/SUMMARY HTTP/1.1")
+        );
+        assert!(
+            request
+                .to_ascii_lowercase()
+                .contains("authorization: bearer test-entitlement")
+        );
+        let (base, server) = reply_once("200 OK", r#"{"json":{"gameId":99}}"#);
+        assert!(
+            game(&base, "t", "u", "HN1", 77)
+                .await
+                .unwrap_err()
+                .contains("different game")
+        );
+        server.join().unwrap();
     }
 }

@@ -37,6 +37,43 @@ type PageSize = (typeof PAGE_SIZES)[number];
 const PAGE_SIZE_KEY = "winer.history.pageSize";
 /** Games asked for at a time, the most one request returns. */
 const CHUNK = 50;
+const HISTORY_REGIONS = [
+  ["HN1", "history.region.hn1"],
+  ["HN10", "history.region.hn10"],
+  ["TJ100", "history.region.tj100"],
+  ["TJ101", "history.region.tj101"],
+  ["NJ100", "history.region.nj100"],
+  ["GZ100", "history.region.gz100"],
+  ["CQ100", "history.region.cq100"],
+  ["BGP2", "history.region.bgp2"],
+] as const;
+
+/** `name#tag` with both halves, trimmed; `null` for anything less. */
+function fullRiotId(input: string): string | null {
+  const at = input.lastIndexOf("#");
+  if (at < 0) return null;
+  const [name, tag] = [input.slice(0, at).trim(), input.slice(at + 1).trim()];
+  return name && tag ? `${name}#${tag}` : null;
+}
+
+/** A region's name, `HN1` → 艾欧尼亚; the id itself for one winer does not know. */
+function regionName(t: ReturnType<typeof useT>, platformId: string): string {
+  const known = HISTORY_REGIONS.find(([id]) => id === platformId.trim().toUpperCase());
+  return known ? t(known[1]) : platformId;
+}
+
+/** Where a search lands: the player, the region it was found on (none for this one), the regions
+ *  holding the account, and the Riot ID searched for. */
+interface Found {
+  puuid: string;
+  platformId?: string;
+  regions?: string[];
+  riotId?: string;
+}
+
+function regionArgs(platformId?: string): { platformId?: string } {
+  return platformId ? { platformId } : {};
+}
 
 function readPageSize(): PageSize {
   try {
@@ -144,37 +181,80 @@ function matches(filter: Filter, game: MatchSummary): boolean {
   return QUEUES[filter].includes(game.queueId);
 }
 
+/** The other regions holding the account shown, one press each to see it there. */
+function AlsoIn({
+  regions,
+  showing,
+  onRegion,
+}: {
+  regions?: string[];
+  /** The region shown now, which is not one to go to. */
+  showing: string;
+  onRegion: (region: string) => void;
+}) {
+  const t = useT();
+  const others = (regions ?? []).filter(
+    (region) => region.toUpperCase() !== showing.trim().toUpperCase(),
+  );
+  if (others.length === 0) return null;
+  return (
+    <span
+      role="group"
+      aria-label={t("history.alsoIn")}
+      className="flex flex-wrap items-center gap-1.5 text-[12px] text-fg-subtle"
+    >
+      <span aria-hidden>{t("history.alsoIn")}</span>
+      {others.map((region) => (
+        <Button key={region} size="sm" variant="outline" onClick={() => onRegion(region)}>
+          {regionName(t, region)}
+        </Button>
+      ))}
+    </span>
+  );
+}
+
 function PlayerHeader({
   puuid,
   viewer,
   connected,
+  platformId,
+  current,
+  regions,
   isMe,
   onMine,
+  onRegion,
 }: {
   puuid: string;
   /** The signed-in account, whose cache this is. */
   viewer: string;
   connected: boolean;
+  platformId?: string;
+  /** The connected client's own region, empty when it is not known. */
+  current: string;
+  /** The regions holding this account, from the search that found it. */
+  regions?: string[];
   isMe: boolean;
   onMine: () => void;
+  /** Shows the account from `region`: the connected one's own path where it is that one. */
+  onRegion: (region: string) => void;
 }) {
   const t = useT();
   const store = useStore();
   const settings = useSettings();
   // Drawn at once on a revisit, then read again: a game may have ended since.
   const summary = useCached(
-    store.history.summary(viewer, puuid),
-    () => store.backend.call("get_player_summary", { puuid }),
-    (value) => store.history.putSummary(viewer, value),
-    { refresh: connected, deps: [puuid], enabled: connected },
+    store.history.summary(viewer, puuid, platformId),
+    () => store.backend.call("get_player_summary", { puuid, ...regionArgs(platformId) }),
+    (value) => store.history.putSummary(viewer, value, platformId),
+    { refresh: connected, deps: [puuid, platformId], enabled: connected },
   );
   // The tier and its words follow the rating settings; asked once the record is in, so the core
   // reads the player once.
   const { tiers, customTiers } = settings.automation.callout;
   const { language, titles } = settings.general;
   const standing = useAsync(
-    () => store.backend.call("get_player_standing", { puuid }),
-    [puuid, tiers, customTiers.join("\n"), language, titles],
+    () => store.backend.call("get_player_standing", { puuid, ...regionArgs(platformId) }),
+    [puuid, platformId, tiers, customTiers.join("\n"), language, titles],
     connected && summary.data !== undefined,
   );
   const player = summary.data;
@@ -194,14 +274,21 @@ function PlayerHeader({
                 </span>
               </span>
             </span>
-            <span className="flex flex-col gap-1">
-              <span className="text-[11px] text-fg-subtle">{t("common.solo")}</span>
-              <RankBadge rank={player.ranked.solo} />
-            </span>
-            <span className="flex flex-col gap-1">
-              <span className="text-[11px] text-fg-subtle">{t("common.flex")}</span>
-              <RankBadge rank={player.ranked.flex} />
-            </span>
+            <AlsoIn regions={regions} showing={platformId ?? current} onRegion={onRegion} />
+            {platformId ? (
+              <span className="text-[12px] text-fg-subtle">{t("history.crossRegionRanks")}</span>
+            ) : (
+              <>
+                <span className="flex flex-col gap-1">
+                  <span className="text-[11px] text-fg-subtle">{t("common.solo")}</span>
+                  <RankBadge rank={player.ranked.solo} />
+                </span>
+                <span className="flex flex-col gap-1">
+                  <span className="text-[11px] text-fg-subtle">{t("common.flex")}</span>
+                  <RankBadge rank={player.ranked.flex} />
+                </span>
+              </>
+            )}
             {player.recent.games > 0 && (
               <span className="flex flex-col gap-1">
                 <span className="text-[11px] text-fg-subtle">
@@ -265,7 +352,7 @@ function SearchBar({
 }: {
   viewer: string;
   connected: boolean;
-  onFound: (puuid: string) => void;
+  onFound: (found: Found) => void;
 }) {
   const t = useT();
   const store = useStore();
@@ -273,24 +360,41 @@ function SearchBar({
   const [busy, setBusy] = useState(false);
   const [invalid, setInvalid] = useState(false);
 
+  /** A player looked up before, on this region or another. */
+  const cached = (): Found | undefined => {
+    for (const platformId of [undefined, ...HISTORY_REGIONS.map(([id]) => id)]) {
+      const puuid = store.history.find(viewer, query, platformId);
+      if (puuid) return { puuid, platformId };
+    }
+    return undefined;
+  };
+
   const submit = async () => {
     if (!query.trim()) return;
     setBusy(true);
     setInvalid(false);
+    const riotId = fullRiotId(query) ?? undefined;
     try {
       if (!connected) {
-        const cached = store.history.find(viewer, query);
-        if (!cached) throw new Error(t("history.offlineMissing"));
-        onFound(cached);
+        const kept = cached();
+        if (!kept) throw new Error(t("history.offlineMissing"));
+        onFound(kept);
         return;
       }
+      // No region asked for: the connected one first, then wherever the account plays.
       const player = await store.backend.call("find_player", { riotId: query });
-      store.history.remember(viewer, player);
-      onFound(player.puuid);
+      const platformId = player.region ?? undefined;
+      store.history.remember(viewer, player, platformId);
+      onFound({
+        puuid: player.puuid,
+        platformId,
+        regions: platformId ? [platformId, ...player.otherRegions] : undefined,
+        riotId,
+      });
     } catch (error) {
-      const cached = store.history.find(viewer, query);
-      if (cached) {
-        onFound(cached);
+      const kept = cached();
+      if (kept) {
+        onFound(kept);
         return;
       }
       setInvalid(true);
@@ -298,7 +402,7 @@ function SearchBar({
         !connected
           ? t("history.offlineMissing")
           : errorCode(error) === "notFound"
-            ? t("history.notFound")
+            ? t(riotId ? "history.notFoundAnywhere" : "history.notFound")
             : errorMessage(error),
         "danger",
       );
@@ -310,7 +414,7 @@ function SearchBar({
   return (
     <form
       role="search"
-      className="flex items-center gap-2"
+      className="flex flex-wrap items-center gap-2"
       onSubmit={(event) => {
         event.preventDefault();
         void submit();
@@ -366,17 +470,19 @@ function GameList({
   puuid,
   viewer,
   connected,
+  platformId,
 }: {
   puuid: string;
   viewer: string;
   connected: boolean;
+  platformId?: string;
 }) {
   const t = useT();
   const store = useStore();
   const { navigate } = useShell();
   const hideCustom = useSettings().history.hideCustomGames;
   // Where the list was left on the last visit, if it was this account's.
-  const [kept] = useState(() => store.history.list(viewer, puuid));
+  const [kept] = useState(() => store.history.list(viewer, puuid, platformId));
   const [loaded, setLoaded] = useState<Loaded>(() =>
     kept ? { ...NOTHING_YET, ...kept, stale: true } : NOTHING_YET,
   );
@@ -435,7 +541,8 @@ function GameList({
             : t("history.result.loss"),
     };
     const contents = format === "csv" ? gamesCsv(shown, words) : gamesJson(shown, words);
-    const name = riotId(store.history.summary(viewer, puuid)?.name ?? null) || puuid.slice(0, 8);
+    const name =
+      riotId(store.history.summary(viewer, puuid, platformId)?.name ?? null) || puuid.slice(0, 8);
     try {
       const file = await store.backend.call("save_export", {
         stem: exportStem(t("history.exportPrefix"), name, new Date()),
@@ -451,15 +558,31 @@ function GameList({
   // Kept for the next visit, the page and the filter with it.
   useEffect(() => {
     if (loaded.games.length === 0 && loaded.more) return;
-    store.history.putList(viewer, puuid, {
-      games: loaded.games,
-      next: loaded.next,
-      more: loaded.more,
-      source: loaded.source,
-      page,
-      filter,
-    });
-  }, [loaded.games, loaded.next, loaded.more, loaded.source, page, filter, puuid, viewer, store]);
+    store.history.putList(
+      viewer,
+      puuid,
+      {
+        games: loaded.games,
+        next: loaded.next,
+        more: loaded.more,
+        source: loaded.source,
+        page,
+        filter,
+      },
+      platformId,
+    );
+  }, [
+    loaded.games,
+    loaded.next,
+    loaded.more,
+    loaded.source,
+    page,
+    filter,
+    puuid,
+    viewer,
+    store,
+    platformId,
+  ]);
 
   // One request at a time. A list drawn from the cache asks for the newest games first: the same
   // ones keep it as it was, new ones start it over from them (the older games have moved down).
@@ -475,7 +598,7 @@ function GameList({
     const before = loaded.games;
     setLoaded((previous) => ({ ...previous, loading: true }));
     store.backend
-      .call("get_match_history", { puuid, begin, count: CHUNK })
+      .call("get_match_history", { puuid, begin, count: CHUNK, ...regionArgs(platformId) })
       .then((result) => {
         if (!mounted.current) return;
         const short = result.hasMore && result.next - begin < CHUNK;
@@ -528,6 +651,7 @@ function GameList({
     loaded.more,
     paused,
     puuid,
+    platformId,
     store,
   ]);
 
@@ -710,7 +834,10 @@ function GameList({
                       puuid={puuid}
                       viewer={viewer}
                       connected={connected}
-                      onPlayer={(other) => navigate({ page: "history", puuid: other })}
+                      platformId={platformId}
+                      onPlayer={(other) =>
+                        navigate({ page: "history", puuid: other, ...regionArgs(platformId) })
+                      }
                     />
                   )}
                 </li>
@@ -770,12 +897,14 @@ function Detail({
   puuid,
   viewer,
   connected,
+  platformId,
   onPlayer,
 }: {
   gameId: number;
   puuid: string;
   viewer: string;
   connected: boolean;
+  platformId?: string;
   onPlayer: (puuid: string) => void;
 }) {
   const t = useT();
@@ -783,10 +912,10 @@ function Detail({
   const titles = useSettings().general.titles;
   // A finished game never changes: once read, it opens from the cache.
   const detail = useCached(
-    store.history.detail(viewer, gameId),
-    () => store.backend.call("get_match_detail", { gameId }),
-    (value) => store.history.putDetail(viewer, value),
-    { refresh: false, deps: [gameId], enabled: connected },
+    store.history.detail(viewer, gameId, platformId),
+    () => store.backend.call("get_match_detail", { gameId, ...regionArgs(platformId) }),
+    (value) => store.history.putDetail(viewer, value, platformId),
+    { refresh: false, deps: [gameId, platformId], enabled: connected },
   );
   return (
     <Card className="ml-1" aria-label={t("history.detail")}>
@@ -817,41 +946,96 @@ function Detail({
   );
 }
 
-export function HistoryPage({ puuid: requested }: { puuid?: string }) {
+export function HistoryPage({
+  puuid: requested,
+  platformId,
+  regions: searched,
+  riotId,
+}: {
+  puuid?: string;
+  platformId?: string;
+  regions?: string[];
+  riotId?: string;
+}) {
   const t = useT();
   const store = useStore();
   const { navigate } = useShell();
   const me = useLive((snapshot) => snapshot.me?.puuid);
   const connected = useLive((snapshot) => snapshot.connection.status === "connected");
+  const current = useLive((snapshot) =>
+    snapshot.connection.status === "connected" ? snapshot.connection.platformId : "",
+  );
   // History: what is drawn belongs to the signed-in account; another one starts the page over.
   const viewer = me ?? store.history.viewer ?? "";
   const puuid = requested ?? me ?? (viewer || undefined);
   const cached = Boolean(
-    puuid && viewer && (store.history.summary(viewer, puuid) || store.history.list(viewer, puuid)),
+    puuid &&
+    viewer &&
+    (store.history.summary(viewer, puuid, platformId) ||
+      store.history.list(viewer, puuid, platformId)),
   );
+  // Found on the connected region: whether the account plays on others too is asked afterwards,
+  // and its answer is taken only while the page still shows the player it was asked for.
+  const [elsewhere, setElsewhere] = useState<{ key: string; regions: string[] } | null>(null);
+  const asking = `${puuid ?? ""}\n${riotId ?? ""}`;
+  useEffect(() => {
+    if (!connected || !puuid || !riotId || platformId || searched || !current) return;
+    let live = true;
+    store.backend.call("get_player_regions", { riotId }).then(
+      (others) => {
+        if (live && others.length > 0) setElsewhere({ key: asking, regions: [current, ...others] });
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [store, connected, puuid, riotId, platformId, searched, current, asking]);
+  const regions = searched ?? (elsewhere?.key === asking ? elsewhere.regions : undefined);
   return (
     <PageBody className="flex flex-col gap-3">
       <SearchBar
         viewer={viewer}
         connected={connected}
-        onFound={(found) => navigate({ page: "history", puuid: found })}
+        onFound={(found) =>
+          navigate({
+            page: "history",
+            puuid: found.puuid,
+            ...regionArgs(found.platformId),
+            ...(found.regions ? { regions: found.regions } : {}),
+            ...(found.riotId ? { riotId: found.riotId } : {}),
+          })
+        }
       />
       {!connected && <p className="text-[12px] text-fg-muted">{t("history.offline")}</p>}
       {puuid && (connected || cached) ? (
         <>
           <PlayerHeader
-            key={`header:${viewer}:${puuid}`}
+            key={`header:${viewer}:${platformId ?? ""}:${puuid}`}
             puuid={puuid}
             viewer={viewer}
             connected={connected}
-            isMe={puuid === me || (!connected && puuid === viewer)}
+            platformId={platformId}
+            current={current}
+            regions={regions}
+            isMe={!platformId && (puuid === me || (!connected && puuid === viewer))}
             onMine={() => navigate({ page: "history" })}
+            onRegion={(region) =>
+              navigate({
+                page: "history",
+                puuid,
+                ...(region.toUpperCase() === current.toUpperCase() ? {} : { platformId: region }),
+                ...(regions ? { regions } : {}),
+                ...(riotId ? { riotId } : {}),
+              })
+            }
           />
           <GameList
-            key={`list:${viewer}:${puuid}`}
+            key={`list:${viewer}:${platformId ?? ""}:${puuid}`}
             puuid={puuid}
             viewer={viewer}
             connected={connected}
+            platformId={platformId}
           />
         </>
       ) : !connected ? (

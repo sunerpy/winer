@@ -78,7 +78,8 @@ impl Service {
             players.retain(|puuid, entry| shown.contains(puuid) || !expired(entry, now));
             before - players.len()
         };
-        let history = lock(&self.inner.history).sweep(now);
+        let history =
+            lock(&self.inner.history).sweep(now) + lock(&self.inner.regional_history).sweep(now);
         let builds = self.inner.loadout.sweep(now);
         let augments = self
             .inner
@@ -108,7 +109,8 @@ impl Service {
             });
             before - players.len()
         };
-        let history = lock(&self.inner.history).clear();
+        let history =
+            lock(&self.inner.history).clear() + lock(&self.inner.regional_history).clear();
         let builds = self.inner.loadout.clear();
         let augments = self
             .inner
@@ -139,7 +141,8 @@ impl Service {
             (assets.len(), assets.bytes())
         };
         let players = lock(&self.inner.players).len();
-        let history = lock(&self.inner.history).entries();
+        let history =
+            lock(&self.inner.history).entries() + lock(&self.inner.regional_history).entries();
         let builds = self.inner.loadout.entries();
         let augments = self
             .inner

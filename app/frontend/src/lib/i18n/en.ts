@@ -243,6 +243,18 @@ export const en: Record<MessageKey, string> = {
   "live.phrasesEdit": "Edit the phrases",
 
   "history.title": "History",
+  "history.alsoIn": "Also on:",
+  "history.region.hn1": "Ionia",
+  "history.region.hn10": "Black Rose",
+  "history.region.tj100": "Alliance 1",
+  "history.region.tj101": "Alliance 2",
+  "history.region.nj100": "Alliance 3",
+  "history.region.gz100": "Alliance 4",
+  "history.region.cq100": "Alliance 5",
+  "history.region.bgp2": "Baron",
+  "history.crossRegionRanks": "Ranked information is unavailable across regions",
+  "history.notFoundAnywhere":
+    "No summoner by that Riot ID on any Tencent region. Check the name and the tag after #.",
   "history.search": "Summoner name, e.g. name#tag",
   "history.find": "Search",
   "history.mine": "My games",

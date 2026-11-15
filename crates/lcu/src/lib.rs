@@ -12,7 +12,10 @@ mod http;
 mod process;
 mod tls;
 
-pub use credentials::{Credentials, DiscoverError, discover, parse_command_line, parse_lockfile};
+pub use credentials::{
+    Credentials, DiscoverError, discover, discover_riot_client, parse_command_line, parse_lockfile,
+    parse_riot_client_command_line,
+};
 pub use error::Error;
 pub use events::{Event, EventKind, EventStream, subscribe, subscription_name};
 pub use http::Lcu;

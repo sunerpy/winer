@@ -109,7 +109,14 @@ function PageView({ route }: { route: Route }): ReactNode {
     case "live":
       return <LivePage />;
     case "history":
-      return <HistoryPage puuid={route.puuid} />;
+      return (
+        <HistoryPage
+          puuid={route.puuid}
+          platformId={route.platformId}
+          regions={route.regions}
+          riotId={route.riotId}
+        />
+      );
     case "automation":
       return <AutomationPage />;
     case "tools":
