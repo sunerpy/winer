@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.22](https://github.com/sunerpy/winer/compare/v0.0.21...v0.0.22) (2026-11-15)
+
+
+### 新功能
+
+* 战绩页可以查询其他腾讯大区的玩家：输入完整的 名称#编号 会自动找到玩家所在的大区，同一账号在几个大区都有号时可一键切换 ([#52](https://github.com/sunerpy/winer/issues/52)) ([6be8bba](https://github.com/sunerpy/winer/commit/6be8bbaed4984e5555970d3caf53c9ba98c7c30c))
+
 ## [0.0.21](https://github.com/sunerpy/winer/compare/v0.0.20...v0.0.21) (2026-11-14)
 
 
