@@ -42,6 +42,7 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         get_match_detail,
         get_augment_details,
         find_player,
+        get_player_regions,
         get_player_summary,
         get_presence,
         set_availability,
@@ -174,10 +175,10 @@ async fn get_match_history<R: Runtime>(
     platform_id: Option<String>,
 ) -> Result<MatchPage> {
     let service = service(&app);
-    Ok(match platform_id.as_deref() {
+    Ok(match service.other_region(platform_id.as_deref()).await {
         Some(platform) => {
             service
-                .match_history_in(&puuid, begin, count, platform)
+                .match_history_in(&puuid, begin, count, &platform)
                 .await?
         }
         None => service.match_history(&puuid, begin, count).await?,
@@ -191,8 +192,8 @@ async fn get_match_detail<R: Runtime>(
     platform_id: Option<String>,
 ) -> Result<MatchDetail> {
     let service = service(&app);
-    Ok(match platform_id.as_deref() {
-        Some(platform) => service.match_detail_in(game_id, platform).await?,
+    Ok(match service.other_region(platform_id.as_deref()).await {
+        Some(platform) => service.match_detail_in(game_id, &platform).await?,
         None => service.match_detail(game_id).await?,
     })
 }
@@ -211,9 +212,19 @@ async fn find_player<R: Runtime>(
 ) -> Result<PlayerProfile> {
     let service = service(&app);
     Ok(match platform_id.as_deref() {
-        Some(platform) => service.find_player_in(&riot_id, platform).await?,
-        None => service.find_player(&riot_id).await?,
+        // No shard named: the connected one first, then wherever the account plays.
+        None => service.find_player_anywhere(&riot_id).await?,
+        Some(platform) => match service.other_region(Some(platform)).await {
+            Some(platform) => service.find_player_in(&riot_id, &platform).await?,
+            None => service.find_player(&riot_id).await?,
+        },
     })
+}
+
+/// The other shards holding a full Riot ID's account, for a player found on the connected one.
+#[tauri::command]
+async fn get_player_regions<R: Runtime>(app: AppHandle<R>, riot_id: String) -> Result<Vec<String>> {
+    Ok(service(&app).player_regions(&riot_id).await?)
 }
 
 #[tauri::command]
@@ -223,8 +234,8 @@ async fn get_player_summary<R: Runtime>(
     platform_id: Option<String>,
 ) -> Result<PlayerSummary> {
     let service = service(&app);
-    Ok(match platform_id.as_deref() {
-        Some(platform) => service.player_summary_in(&puuid, platform).await?,
+    Ok(match service.other_region(platform_id.as_deref()).await {
+        Some(platform) => service.player_summary_in(&puuid, &platform).await?,
         None => service.player_summary(&puuid).await?,
     })
 }
@@ -741,8 +752,8 @@ async fn get_player_standing<R: Runtime>(
     platform_id: Option<String>,
 ) -> Result<PlayerStanding> {
     let service = service(&app);
-    Ok(match platform_id.as_deref() {
-        Some(platform) => service.player_standing_in(&puuid, platform).await?,
+    Ok(match service.other_region(platform_id.as_deref()).await {
+        Some(platform) => service.player_standing_in(&puuid, &platform).await?,
         None => service.player_standing(&puuid).await?,
     })
 }

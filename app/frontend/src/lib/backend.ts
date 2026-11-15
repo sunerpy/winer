@@ -65,6 +65,8 @@ export interface Commands {
   get_match_detail: Command<{ gameId: number; platformId?: string }, MatchDetail>;
   get_augment_details: Command<undefined, AugmentDetail[]>;
   find_player: Command<{ riotId: string; platformId?: string }, PlayerProfile>;
+  /** The other regions holding a full Riot ID's account, for a player found on this one. */
+  get_player_regions: Command<{ riotId: string }, string[]>;
   get_player_summary: Command<{ puuid: string; platformId?: string }, PlayerSummary>;
   get_presence: Command<undefined, Presence>;
   /** Answers the presence afterwards: with the mobile message on, the message follows the state. */

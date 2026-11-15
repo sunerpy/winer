@@ -8,6 +8,19 @@ history too. A new lookup needs the active client's sign-in credentials. After t
 players and games already read during this app run remain searchable and pageable in memory; winer
 does not persist the login token or that history cache to disk.
 
+A `name#tag` is unique across every region, so there is no region to choose: winer looks on the
+region you are signed in to first and, when the player is not there, on every other Tencent region
+at once (Ionia, Black Rose, Baron and the rest), then opens the player where it found them, without
+signing out of the client. When the account plays on several regions, the one with the highest
+level opens and **Also on:** beside the name lists the others, one press each; for a player found on
+your own region winer asks the other regions afterwards. Pages, scoreboards and other players keep
+the region shown; **My history** goes back to you. A name without its `#tag` is looked for on your
+region only. Every lookup uses the client's current sign-in, so it is not a signed-out search.
+
+Profiles and games from another region come from that region's match-history server; ranks are not
+available across regions and say so rather than showing as unranked. "No summoner by that Riot ID on
+any Tencent region" means checking the full `name#tag`.
+
 ## The player
 
 The top of the page is the player: their solo/duo and flex ranks, their recent form, and the tier

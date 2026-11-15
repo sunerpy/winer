@@ -58,6 +58,8 @@ pub fn profile(summoner: &Summoner, ranked_stats: Option<&RankedStats>) -> Playe
         icon_id: summoner.profile_icon_id,
         private: summoner.privacy.eq_ignore_ascii_case("PRIVATE"),
         ranked: ranked_stats.map(ranked).unwrap_or_default(),
+        region: None,
+        other_regions: Vec::new(),
     }
 }
 

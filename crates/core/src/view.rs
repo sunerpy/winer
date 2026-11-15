@@ -960,6 +960,10 @@ pub struct PlayerProfile {
     pub icon_id: i64,
     pub private: bool,
     pub ranked: Ranked,
+    /// The other shard the player was found on (`HN1`); `None` for the connected client's own.
+    pub region: Option<String>,
+    /// Other shards that hold the same account too, as a lookup lists them.
+    pub other_regions: Vec<String>,
 }
 
 /// The chat presence the client shows to friends.

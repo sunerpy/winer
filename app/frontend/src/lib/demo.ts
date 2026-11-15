@@ -127,6 +127,8 @@ function random(seed: number): () => number {
 }
 
 const NOW = Date.now();
+/** The demo's Riot ID of a player on another region. */
+const CROSS_REGION_ID = "周周喵#0520";
 const champion = (pick: () => number) => CHAMPIONS[Math.floor(pick() * CHAMPIONS.length)]?.[0] ?? 1;
 
 /** Stand-in for the core's score (`rating.rs`): enough to tell a good line from a bad one. */
@@ -1224,6 +1226,37 @@ export function demoBackend(): Backend {
       let found = SUMMARIES.get("demo-3");
       if (!found || !riotId.includes("#"))
         throw { code: "notFound", message: `no player is called ${riotId}` };
+      // A Riot ID that plays elsewhere: found on HN1, its account on TJ100 too.
+      if (!platformId && riotId.trim() === CROSS_REGION_ID) {
+        const split = riotId.lastIndexOf("#");
+        const puuid = `demo-xr-${riotId.trim()}`;
+        const name = {
+          gameName: riotId.slice(0, split).trim(),
+          tagLine: riotId.slice(split + 1).trim(),
+        };
+        for (const [region, level] of [
+          ["HN1", 312],
+          ["TJ100", 41],
+        ] as const) {
+          regionalPlayers.set(`${region}:${puuid}`, {
+            ...found,
+            puuid,
+            name,
+            level,
+            ranked: { solo: null, flex: null },
+          });
+        }
+        return {
+          puuid,
+          name,
+          level: 312,
+          iconId: found.iconId,
+          private: false,
+          ranked: { solo: null, flex: null },
+          region: "HN1",
+          otherRegions: ["TJ100"],
+        };
+      }
       if (platformId) {
         const split = riotId.lastIndexOf("#");
         found = {
@@ -1244,8 +1277,11 @@ export function demoBackend(): Backend {
         iconId: found.iconId,
         private: false,
         ranked: found.ranked,
+        region: platformId ?? null,
+        otherRegions: [],
       };
     },
+    get_player_regions: () => [],
     get_player_summary: ({ puuid, platformId }) =>
       samplePlayer(puuid, platformId) ??
       summary(puuid, "对手", seedOf(puuid), rank("GOLD", "III", 40)),

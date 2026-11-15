@@ -3,6 +3,8 @@ use super::*;
 use serde::Deserialize;
 
 const IDENTITIES: usize = 200;
+/// What a lookup says when Riot Client, which resolves Riot IDs across shards, cannot be reached.
+const NO_RIOT_CLIENT: &str = "Riot Client credentials are unavailable; reconnect the League client";
 const RECORDS: usize = 32;
 
 /// At most the eight supported shards; each history keeps its own bounded pages and games.
@@ -115,6 +117,46 @@ impl RegionalCache {
     }
 }
 
+/// The most places of a player's history a regional record reads, as the connected shard's record
+/// does (`RECORD_PAGES`).
+const REGIONAL_MOST: u32 = 100;
+
+/// A regional record's games and whether they are all there are: pages of up to fifty
+/// ([`HISTORY_PAGE`]), each starting where the last one's entries ended, since a busy server gives
+/// ten at a time (`history_page`); never past [`REGIONAL_MOST`] places, and no further once
+/// `filled` says the form's window is held or the history ends. A page failing after the first
+/// keeps what came, as the connected shard's `page_through` does.
+async fn regional_games<F, Fut>(
+    mut fetch: F,
+    filled: impl Fn(&[Game]) -> bool,
+) -> Result<(Vec<Game>, bool), CoreError>
+where
+    F: FnMut(u32, u32) -> Fut,
+    Fut: Future<Output = Result<HistoryPage, CoreError>>,
+{
+    let mut games = Vec::new();
+    let mut begin = 0;
+    let mut complete = false;
+    while begin < REGIONAL_MOST {
+        let page = match fetch(begin, HISTORY_PAGE.min(REGIONAL_MOST - begin)).await {
+            Ok(page) => page,
+            Err(error) if begin == 0 => return Err(error),
+            Err(error) => {
+                debug!(%error, "a later page of a regional record failed; keeping what came");
+                break;
+            }
+        };
+        let read = page.entries.len() as u32;
+        begin += read;
+        complete = !page.more;
+        games.extend(page.entries.into_iter().flatten().map(|g| (*g).clone()));
+        if complete || read == 0 || filled(&games) {
+            break;
+        }
+    }
+    Ok((games, complete))
+}
+
 fn platform(input: &str) -> Result<String, CoreError> {
     let platform = input.trim().to_ascii_uppercase();
     if sgp::base(&platform).is_none() {
@@ -134,15 +176,116 @@ struct Context {
     server: Arc<HistoryServer>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct AccountAlias {
     alias: AccountName,
     puuid: String,
 }
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct AccountName {
     game_name: String,
     tag_line: String,
+}
+
+/// `name#tag` with both halves there, trimmed; `None` for anything else.
+fn full_riot_id(riot_id: &str) -> Option<(&str, &str)> {
+    let (name, tag) = riot_id.trim().rsplit_once('#')?;
+    let (name, tag) = (name.trim(), tag.trim());
+    (!name.is_empty() && !tag.is_empty()).then_some((name, tag))
+}
+
+/// The supported shards other than `current`, in [`sgp::PLATFORMS`] order.
+fn other_platforms(current: Option<&str>) -> Vec<String> {
+    sgp::PLATFORMS
+        .iter()
+        .filter(|platform| {
+            current.is_none_or(|current| !platform.eq_ignore_ascii_case(current.trim()))
+        })
+        .map(|platform| (*platform).to_owned())
+        .collect()
+}
+
+/// Where in [`sgp::PLATFORMS`] a shard stands, for ordering hits of equal level.
+fn platform_rank(platform: &str) -> usize {
+    sgp::PLATFORMS
+        .iter()
+        .position(|known| known.eq_ignore_ascii_case(platform))
+        .unwrap_or(usize::MAX)
+}
+
+/// The shard a lookup opens among those that hold the account: the highest level, then the shards'
+/// own order; and the others, in the same order.
+fn pick_regions(mut hits: Vec<(String, Summoner)>) -> Option<((String, Summoner), Vec<String>)> {
+    hits.sort_by(|a, b| {
+        b.1.summoner_level
+            .cmp(&a.1.summoner_level)
+            .then(platform_rank(&a.0).cmp(&platform_rank(&b.0)))
+    });
+    let mut hits = hits.into_iter();
+    let open = hits.next()?;
+    Some((open, hits.map(|(platform, _)| platform).collect()))
+}
+
+/// Asks every shard in `platforms` for the account at once (`probe`): those that hold it, and
+/// whether any of them did not answer (which is said in a debug line, not to the user).
+async fn probe_regions<F, Fut>(platforms: Vec<String>, probe: F) -> (Vec<(String, Summoner)>, bool)
+where
+    F: Fn(String) -> Fut,
+    Fut: Future<Output = Result<Option<Summoner>, String>>,
+{
+    let answers = futures_util::future::join_all(platforms.into_iter().map(|platform| {
+        let answer = probe(platform.clone());
+        async move { (platform, answer.await) }
+    }))
+    .await;
+    let mut hits = Vec::new();
+    let mut failed = false;
+    for (platform, answer) in answers {
+        match answer {
+            Ok(Some(summoner)) => hits.push((platform, summoner)),
+            Ok(None) => {}
+            Err(error) => {
+                debug!(%platform, %error, "a shard did not answer a cross-region lookup");
+                failed = true;
+            }
+        }
+    }
+    (hits, failed)
+}
+
+/// A lookup that tries the connected shard first (`local`) and only when it has nobody of a full
+/// Riot ID asks the other shards (`elsewhere`).
+async fn anywhere<L, E, Fut>(
+    riot_id: &str,
+    local: L,
+    elsewhere: E,
+) -> Result<PlayerProfile, CoreError>
+where
+    L: Future<Output = Result<PlayerProfile, CoreError>>,
+    E: FnOnce() -> Fut,
+    Fut: Future<Output = Result<PlayerProfile, CoreError>>,
+{
+    match local.await {
+        Err(CoreError::PlayerNotFound(_)) if full_riot_id(riot_id).is_some() => elsewhere().await,
+        other => other,
+    }
+}
+
+/// Keeps each shard's own summoner of the account, named as the alias names it (a shard's ledger
+/// may give no name), so that a record read there later, games or none, shows who it is.
+fn record_hits(
+    state: &mut RegionalHistory,
+    viewer: &str,
+    alias: &AccountAlias,
+    hits: &[(String, Summoner)],
+) -> Result<(), CoreError> {
+    for (platform, summoner) in hits {
+        let mut summoner = summoner.clone();
+        summoner.game_name = alias.alias.game_name.clone();
+        summoner.tag_line = alias.alias.tag_line.clone();
+        state.region_for(viewer, platform)?.remember(summoner);
+    }
+    Ok(())
 }
 
 fn exact_alias<'a>(aliases: &'a [AccountAlias], name: &str, tag: &str) -> Option<&'a AccountAlias> {
@@ -193,19 +336,15 @@ impl Service {
     }
 
     async fn riot_client(&self, context: &Context) -> Result<Lcu, CoreError> {
-        let pid = context.client.credentials.pid.ok_or_else(|| {
-            CoreError::Remote(
-                "Riot Client credentials are unavailable; reconnect the League client".into(),
-            )
-        })?;
+        let pid = context
+            .client
+            .credentials
+            .pid
+            .ok_or_else(|| CoreError::Remote(NO_RIOT_CLIENT.into()))?;
         let credentials = tokio::task::spawn_blocking(move || lcu::discover_riot_client(pid))
             .await
             .map_err(|e| CoreError::Remote(e.to_string()))?
-            .map_err(|_| {
-                CoreError::Remote(
-                    "Riot Client credentials are unavailable; reconnect the League client".into(),
-                )
-            })?;
+            .map_err(|_| CoreError::Remote(NO_RIOT_CLIENT.into()))?;
         self.same_account(&context.client, &context.viewer)?;
         Lcu::new(&credentials)
             .map_err(|_| CoreError::Remote("could not connect to Riot Client".into()))
@@ -259,7 +398,8 @@ impl Service {
         summoner.game_name = alias.alias.game_name.clone();
         summoner.tag_line = alias.alias.tag_line.clone();
         self.same_account(&context.client, &context.viewer)?;
-        let profile = analysis::profile(&summoner, None);
+        let mut profile = analysis::profile(&summoner, None);
+        profile.region = Some(requested.clone());
         let mut state = lock(&self.inner.regional_history);
         let region = state.region_for(&context.viewer, &requested)?;
         region
@@ -267,6 +407,106 @@ impl Service {
             .put_found(&context.viewer, riot_id, profile.clone(), Instant::now());
         region.remember(summoner);
         Ok(profile)
+    }
+
+    /// A full Riot ID wherever the account plays: the connected shard first ([`Service::find_player`]),
+    /// and only when it has nobody, every other supported shard at once, the one with the highest
+    /// level opening ([`pick_regions`]).
+    pub async fn find_player_anywhere(&self, riot_id: &str) -> Result<PlayerProfile, CoreError> {
+        anywhere(riot_id, self.find_player(riot_id), || {
+            self.find_elsewhere(riot_id)
+        })
+        .await
+    }
+
+    async fn find_elsewhere(&self, riot_id: &str) -> Result<PlayerProfile, CoreError> {
+        let (alias, hits, failed, context) = self.locate(riot_id).await?;
+        let Some(((platform, summoner), others)) = pick_regions(hits.clone()) else {
+            return Err(if failed {
+                CoreError::Remote("some regions did not answer; try again".into())
+            } else {
+                CoreError::PlayerNotFound(riot_id.to_owned())
+            });
+        };
+        self.same_account(&context.client, &context.viewer)?;
+        let mut named = summoner;
+        named.game_name = alias.alias.game_name.clone();
+        named.tag_line = alias.alias.tag_line.clone();
+        let mut profile = analysis::profile(&named, None);
+        profile.region = Some(platform.clone());
+        profile.other_regions = others;
+        let mut state = lock(&self.inner.regional_history);
+        record_hits(&mut state, &context.viewer, &alias, &hits)?;
+        state
+            .region_for(&context.viewer, &platform)?
+            .history
+            .put_found(&context.viewer, riot_id, profile.clone(), Instant::now());
+        Ok(profile)
+    }
+
+    /// The other shards holding a full Riot ID's account, for a player opened on the connected
+    /// shard, as [`pick_regions`] orders them; empty where Riot Client cannot be reached or knows
+    /// no such alias, an error only when no shard answered.
+    pub async fn player_regions(&self, riot_id: &str) -> Result<Vec<String>, CoreError> {
+        let (alias, hits, failed, context) = match self.locate(riot_id).await {
+            Ok(located) => located,
+            Err(CoreError::PlayerNotFound(_)) => return Ok(Vec::new()),
+            Err(CoreError::Remote(message)) if message == NO_RIOT_CLIENT => return Ok(Vec::new()),
+            Err(error) => return Err(error),
+        };
+        if hits.is_empty() && failed {
+            return Err(CoreError::Remote(
+                "some regions did not answer; try again".into(),
+            ));
+        }
+        self.same_account(&context.client, &context.viewer)?;
+        record_hits(
+            &mut lock(&self.inner.regional_history),
+            &context.viewer,
+            &alias,
+            &hits,
+        )?;
+        Ok(pick_regions(hits)
+            .map(|((open, _), others)| std::iter::once(open).chain(others).collect())
+            .unwrap_or_default())
+    }
+
+    /// A full Riot ID's alias (Riot Client) and the shards other than the connected one that hold
+    /// its account ([`probe_regions`]), with the context the requests were made in.
+    async fn locate(
+        &self,
+        riot_id: &str,
+    ) -> Result<(AccountAlias, Vec<(String, Summoner)>, bool, Context), CoreError> {
+        let (name, tag) = full_riot_id(riot_id)
+            .ok_or_else(|| CoreError::Invalid("enter a complete Riot ID as name#tag".into()))?;
+        let platforms = other_platforms(self.current_platform().await.as_deref());
+        let first = platforms
+            .first()
+            .cloned()
+            .ok_or_else(|| CoreError::PlayerNotFound(riot_id.to_owned()))?;
+        // One context's tokens serve every shard's ledger: the shard is in each request's path.
+        let context = self.regional_context(&first).await?;
+        let riot = self.riot_client(&context).await?;
+        let path = format!(
+            "/player-account/aliases/v1/lookup?gameName={}&tagLine={}",
+            query_value(name),
+            query_value(tag)
+        );
+        let aliases: Vec<AccountAlias> = riot.get(&path).await?;
+        let alias = exact_alias(&aliases, name, tag)
+            .cloned()
+            .ok_or_else(|| CoreError::PlayerNotFound(riot_id.to_owned()))?;
+        let (token, agent, puuid) = (
+            context.league_token.as_str(),
+            context.shard.user_agent.as_str(),
+            alias.puuid.as_str(),
+        );
+        let (hits, failed) = probe_regions(platforms, |platform| async move {
+            let base = sgp::base(&platform).ok_or_else(|| "no server for the shard".to_owned())?;
+            sgp::summoner_by_puuid(base, token, agent, &platform, puuid).await
+        })
+        .await;
+        Ok((alias, hits, failed, context))
     }
 
     async fn regional_page(
@@ -390,18 +630,11 @@ impl Service {
             return Ok(record);
         }
         let kinds = catalog_kinds(&context.client);
-        let mut games = Vec::new();
-        let mut begin = 0;
-        let mut complete = false;
-        while begin < 100 {
-            let page = self.regional_page(context, puuid, begin, 20).await?;
-            begin += page.entries.len() as u32;
-            complete = !page.more;
-            games.extend(page.entries.into_iter().flatten().map(|g| (*g).clone()));
-            if complete || analysis::window_filled(&games, &kinds, None) {
-                break;
-            }
-        }
+        let (games, complete) = regional_games(
+            |begin, count| self.regional_page(context, puuid, begin, count),
+            |games| analysis::window_filled(games, &kinds, None),
+        )
+        .await?;
         let cached = lock(&self.inner.regional_history)
             .region_for(&context.viewer, &context.platform)?
             .identities
@@ -494,8 +727,209 @@ impl Service {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{model::Game, service::CoreError};
+    use crate::{model::Game, service::CoreError, view::Ranked};
     use std::{sync::Arc, time::Instant};
+
+    /// `count` games from `begin`, newest first, against players on the Rift.
+    fn regional_page_of(begin: u32, count: u32, more: bool) -> HistoryPage {
+        HistoryPage {
+            entries: (begin..begin + count)
+                .map(|at| {
+                    Some(Arc::new(Game {
+                        game_id: i64::from(at) + 1,
+                        game_creation: 1_000_000 - i64::from(at),
+                        game_mode: "CLASSIC".into(),
+                        ..Game::default()
+                    }))
+                })
+                .collect(),
+            more,
+            source: HistorySource::Server,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_regional_record_reads_fifty_at_a_time_from_where_the_last_page_ended() {
+        let kinds = analysis::QueueKinds::new();
+        let window = |games: &[Game]| analysis::window_filled(games, &kinds, None);
+        let asked = std::sync::Mutex::new(Vec::new());
+        let full = |begin: u32, count: u32| {
+            asked.lock().unwrap().push((begin, count));
+            async move { Ok::<_, CoreError>(regional_page_of(begin, count, true)) }
+        };
+        let (games, complete) = regional_games(full, window).await.unwrap();
+        assert_eq!(
+            (games.len(), complete),
+            (50, false),
+            "a full page holds the window"
+        );
+        assert_eq!(*asked.lock().unwrap(), [(0, 50)]);
+
+        asked.lock().unwrap().clear();
+        let (games, _) = regional_games(full, |_| false).await.unwrap();
+        assert_eq!(games.len(), 100, "never more than a hundred places");
+        assert_eq!(*asked.lock().unwrap(), [(0, 50), (50, 50)]);
+
+        // A busy server gives ten at a time: the next page starts after them, and the places read
+        // still stop at a hundred.
+        asked.lock().unwrap().clear();
+        let busy_first = |begin: u32, count: u32| {
+            asked.lock().unwrap().push((begin, count));
+            let count = if begin == 0 { 10 } else { count };
+            async move { Ok::<_, CoreError>(regional_page_of(begin, count, true)) }
+        };
+        let (games, _) = regional_games(busy_first, |_| false).await.unwrap();
+        assert_eq!(games.len(), 100);
+        assert_eq!(*asked.lock().unwrap(), [(0, 50), (10, 50), (60, 40)]);
+        assert!(
+            games
+                .windows(2)
+                .all(|pair| pair[1].game_id == pair[0].game_id + 1),
+            "no place skipped"
+        );
+
+        // A later page failing keeps what came; the first failing is the record's error.
+        let later = |begin: u32, count: u32| async move {
+            if begin == 0 {
+                Ok(regional_page_of(begin, count, true))
+            } else {
+                Err(CoreError::Remote("timeout".into()))
+            }
+        };
+        let (games, complete) = regional_games(later, |_| false).await.unwrap();
+        assert_eq!((games.len(), complete), (50, false));
+        let first =
+            |_: u32, _: u32| async { Err::<HistoryPage, _>(CoreError::Remote("401".into())) };
+        assert!(regional_games(first, |_| false).await.is_err());
+    }
+
+    fn ledger(puuid: &str, level: i64) -> Summoner {
+        Summoner {
+            puuid: puuid.into(),
+            summoner_level: level,
+            ..Summoner::default()
+        }
+    }
+
+    #[test]
+    fn the_shard_with_the_highest_level_opens_and_the_others_follow() {
+        assert!(pick_regions(Vec::new()).is_none());
+        let (open, others) = pick_regions(vec![("TJ100".into(), ledger("p", 30))]).unwrap();
+        assert_eq!((open.0.as_str(), others.len()), ("TJ100", 0));
+        let (open, others) = pick_regions(vec![
+            ("BGP2".into(), ledger("p", 40)),
+            ("HN1".into(), ledger("p", 300)),
+            ("TJ100".into(), ledger("p", 40)),
+        ])
+        .unwrap();
+        assert_eq!(open.0, "HN1", "the highest level");
+        assert_eq!(
+            others,
+            ["TJ100", "BGP2"],
+            "equal levels in the shards' own order"
+        );
+    }
+
+    #[tokio::test]
+    async fn every_other_shard_is_asked_at_once_and_one_not_answering_is_left_out() {
+        let asked = std::sync::Mutex::new(Vec::new());
+        let probe = |platform: String| {
+            asked.lock().unwrap().push(platform.clone());
+            async move {
+                match platform.as_str() {
+                    "HN1" => Ok(Some(ledger("p", 120))),
+                    "NJ100" => Err("timeout".to_owned()),
+                    _ => Ok(None),
+                }
+            }
+        };
+        let platforms: Vec<String> = ["HN1", "NJ100", "TJ100"].map(String::from).into();
+        let (hits, failed) = probe_regions(platforms, probe).await;
+        assert_eq!(asked.lock().unwrap().len(), 3);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].0, "HN1");
+        assert!(failed, "NJ100 did not answer");
+        assert_eq!(
+            other_platforms(Some("gz100")),
+            ["HN1", "HN10", "TJ100", "TJ101", "NJ100", "CQ100", "BGP2"],
+            "the connected shard is not asked again"
+        );
+        assert_eq!(other_platforms(None).len(), sgp::PLATFORMS.len());
+    }
+
+    #[tokio::test]
+    async fn the_connected_shard_answers_first_and_the_others_only_when_it_has_nobody() {
+        let found = |region: Option<&str>| PlayerProfile {
+            puuid: "p".into(),
+            name: None,
+            level: 1,
+            icon_id: 0,
+            private: false,
+            ranked: Ranked::default(),
+            region: region.map(str::to_owned),
+            other_regions: Vec::new(),
+        };
+        let probes = std::sync::atomic::AtomicUsize::new(0);
+        let elsewhere = || {
+            probes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            async { Ok(found(Some("HN1"))) }
+        };
+        let local = anywhere("a#1", async { Ok(found(None)) }, elsewhere)
+            .await
+            .unwrap();
+        assert_eq!(local.region, None);
+        assert_eq!(
+            probes.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "no other shard asked"
+        );
+        let missing = || async { Err(CoreError::PlayerNotFound("a#1".into())) };
+        let remote = anywhere("a#1", missing(), elsewhere).await.unwrap();
+        assert_eq!(remote.region.as_deref(), Some("HN1"));
+        assert_eq!(probes.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert!(
+            matches!(
+                anywhere("a", missing(), elsewhere).await,
+                Err(CoreError::PlayerNotFound(_))
+            ),
+            "a name without its tag is looked for on the connected shard only"
+        );
+        let busy = async { Err(CoreError::Remote("503".into())) };
+        assert!(matches!(
+            anywhere("a#1", busy, elsewhere).await,
+            Err(CoreError::Remote(_))
+        ));
+        assert_eq!(probes.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn every_shard_found_keeps_the_riot_id_for_a_record_with_no_games() {
+        let mut state = RegionalHistory::default();
+        state.scope("viewer");
+        let alias = AccountAlias {
+            alias: AccountName {
+                game_name: "周周喵".into(),
+                tag_line: "0520".into(),
+            },
+            puuid: "p".into(),
+        };
+        let hits = vec![
+            ("HN1".to_owned(), ledger("p", 120)),
+            ("TJ100".to_owned(), ledger("p", 30)),
+        ];
+        record_hits(&mut state, "viewer", &alias, &hits).unwrap();
+        for platform in ["HN1", "TJ100"] {
+            let kept = &state.region(platform).identities.get("p").unwrap().0;
+            assert_eq!(
+                (kept.game_name.as_str(), kept.tag_line.as_str()),
+                ("周周喵", "0520")
+            );
+            assert!(
+                kept.summoner_level > 0,
+                "a regional record reads it instead of asking"
+            );
+        }
+    }
 
     #[test]
     fn cross_region_target_is_normalized_and_cannot_be_a_url() {

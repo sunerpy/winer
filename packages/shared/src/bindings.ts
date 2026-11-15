@@ -330,7 +330,15 @@ runes: PageOutcome | null,
  */
 spells: boolean, } | { "kind": "itemSetWritten", championId: number, } | { "kind": "itemSetsFull" } | { "kind": "rewardsClaimed", claimed: number, left: number, } | { "kind": "rewardsFailed", failed: number, } | { "kind": "typedInGame", lines: number, } | { "kind": "typingStopped", lines: number, reason: CalloutSkip, } | { "kind": "calloutSkipped", reason: CalloutSkip, } | { "kind": "comebackSent", place: ComebackPlace, messages: number, } | { "kind": "comebackStopped", place: ComebackPlace, sent: number, reason: CalloutSkip, } | { "kind": "comebackSkipped", place: ComebackPlace, reason: CalloutSkip, } | { "kind": "phraseSent", trigger: PhraseTrigger, } | { "kind": "phraseSkipped", reason: PhraseSkip, trigger: PhraseTrigger, };
 
-export type PlayerProfile = { puuid: string, name: RiotId | null, level: number, iconId: number, private: boolean, ranked: Ranked, };
+export type PlayerProfile = { puuid: string, name: RiotId | null, level: number, iconId: number, private: boolean, ranked: Ranked, 
+/**
+ * The other shard the player was found on (`HN1`); `None` for the connected client's own.
+ */
+region: string | null, 
+/**
+ * Other shards that hold the same account too, as a lookup lists them.
+ */
+otherRegions: Array<string>, };
 
 export type Presence = { 
 /**

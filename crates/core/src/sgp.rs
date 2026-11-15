@@ -20,6 +20,11 @@ use crate::{
 /// Fifty games, the most one page asks for, are about 6.5 MB.
 const TIMEOUT: Duration = Duration::from_secs(20);
 
+/// The Tencent shards with a server here ([`base`]), in the order a lookup lists them.
+pub const PLATFORMS: [&str; 8] = [
+    "HN1", "HN10", "TJ100", "TJ101", "NJ100", "GZ100", "CQ100", "BGP2",
+];
+
 /// The match-history server of a Tencent shard. Other platforms have none here.
 pub fn base(platform_id: &str) -> Option<&'static str> {
     Some(match platform_id.to_ascii_uppercase().as_str() {

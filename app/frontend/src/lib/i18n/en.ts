@@ -243,8 +243,7 @@ export const en: Record<MessageKey, string> = {
   "live.phrasesEdit": "Edit the phrases",
 
   "history.title": "History",
-  "history.region": "Search region",
-  "history.region.current": "Current region",
+  "history.alsoIn": "Also on:",
   "history.region.hn1": "Ionia",
   "history.region.hn10": "Black Rose",
   "history.region.tj100": "Alliance 1",
@@ -254,8 +253,8 @@ export const en: Record<MessageKey, string> = {
   "history.region.cq100": "Alliance 5",
   "history.region.bgp2": "Baron",
   "history.crossRegionRanks": "Ranked information is unavailable across regions",
-  "history.notFoundRegion":
-    "No summoner found in the selected region. Check the region, name and # tag.",
+  "history.notFoundAnywhere":
+    "No summoner by that Riot ID on any Tencent region. Check the name and the tag after #.",
   "history.search": "Summoner name, e.g. name#tag",
   "history.find": "Search",
   "history.mine": "My games",

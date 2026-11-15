@@ -48,6 +48,29 @@ const HISTORY_REGIONS = [
   ["BGP2", "history.region.bgp2"],
 ] as const;
 
+/** `name#tag` with both halves, trimmed; `null` for anything less. */
+function fullRiotId(input: string): string | null {
+  const at = input.lastIndexOf("#");
+  if (at < 0) return null;
+  const [name, tag] = [input.slice(0, at).trim(), input.slice(at + 1).trim()];
+  return name && tag ? `${name}#${tag}` : null;
+}
+
+/** A region's name, `HN1` → 艾欧尼亚; the id itself for one winer does not know. */
+function regionName(t: ReturnType<typeof useT>, platformId: string): string {
+  const known = HISTORY_REGIONS.find(([id]) => id === platformId.trim().toUpperCase());
+  return known ? t(known[1]) : platformId;
+}
+
+/** Where a search lands: the player, the region it was found on (none for this one), the regions
+ *  holding the account, and the Riot ID searched for. */
+interface Found {
+  puuid: string;
+  platformId?: string;
+  regions?: string[];
+  riotId?: string;
+}
+
 function regionArgs(platformId?: string): { platformId?: string } {
   return platformId ? { platformId } : {};
 }
@@ -158,21 +181,62 @@ function matches(filter: Filter, game: MatchSummary): boolean {
   return QUEUES[filter].includes(game.queueId);
 }
 
+/** The other regions holding the account shown, one press each to see it there. */
+function AlsoIn({
+  regions,
+  showing,
+  onRegion,
+}: {
+  regions?: string[];
+  /** The region shown now, which is not one to go to. */
+  showing: string;
+  onRegion: (region: string) => void;
+}) {
+  const t = useT();
+  const others = (regions ?? []).filter(
+    (region) => region.toUpperCase() !== showing.trim().toUpperCase(),
+  );
+  if (others.length === 0) return null;
+  return (
+    <span
+      role="group"
+      aria-label={t("history.alsoIn")}
+      className="flex flex-wrap items-center gap-1.5 text-[12px] text-fg-subtle"
+    >
+      <span aria-hidden>{t("history.alsoIn")}</span>
+      {others.map((region) => (
+        <Button key={region} size="sm" variant="outline" onClick={() => onRegion(region)}>
+          {regionName(t, region)}
+        </Button>
+      ))}
+    </span>
+  );
+}
+
 function PlayerHeader({
   puuid,
   viewer,
   connected,
   platformId,
+  current,
+  regions,
   isMe,
   onMine,
+  onRegion,
 }: {
   puuid: string;
   /** The signed-in account, whose cache this is. */
   viewer: string;
   connected: boolean;
   platformId?: string;
+  /** The connected client's own region, empty when it is not known. */
+  current: string;
+  /** The regions holding this account, from the search that found it. */
+  regions?: string[];
   isMe: boolean;
   onMine: () => void;
+  /** Shows the account from `region`: the connected one's own path where it is that one. */
+  onRegion: (region: string) => void;
 }) {
   const t = useT();
   const store = useStore();
@@ -210,6 +274,7 @@ function PlayerHeader({
                 </span>
               </span>
             </span>
+            <AlsoIn regions={regions} showing={platformId ?? current} onRegion={onRegion} />
             {platformId ? (
               <span className="text-[12px] text-fg-subtle">{t("history.crossRegionRanks")}</span>
             ) : (
@@ -283,43 +348,53 @@ function PlayerHeader({
 function SearchBar({
   viewer,
   connected,
-  platformId,
   onFound,
 }: {
   viewer: string;
   connected: boolean;
-  platformId?: string;
-  onFound: (puuid: string, platformId?: string) => void;
+  onFound: (found: Found) => void;
 }) {
   const t = useT();
   const store = useStore();
   const [query, setQuery] = useState("");
-  const [targetRegion, setTargetRegion] = useState(platformId ?? "");
-  useEffect(() => setTargetRegion(platformId ?? ""), [platformId]);
   const [busy, setBusy] = useState(false);
   const [invalid, setInvalid] = useState(false);
+
+  /** A player looked up before, on this region or another. */
+  const cached = (): Found | undefined => {
+    for (const platformId of [undefined, ...HISTORY_REGIONS.map(([id]) => id)]) {
+      const puuid = store.history.find(viewer, query, platformId);
+      if (puuid) return { puuid, platformId };
+    }
+    return undefined;
+  };
 
   const submit = async () => {
     if (!query.trim()) return;
     setBusy(true);
     setInvalid(false);
+    const riotId = fullRiotId(query) ?? undefined;
     try {
       if (!connected) {
-        const cached = store.history.find(viewer, query, targetRegion || undefined);
-        if (!cached) throw new Error(t("history.offlineMissing"));
-        onFound(cached, targetRegion || undefined);
+        const kept = cached();
+        if (!kept) throw new Error(t("history.offlineMissing"));
+        onFound(kept);
         return;
       }
-      const player = await store.backend.call("find_player", {
-        riotId: query,
-        ...regionArgs(targetRegion),
+      // No region asked for: the connected one first, then wherever the account plays.
+      const player = await store.backend.call("find_player", { riotId: query });
+      const platformId = player.region ?? undefined;
+      store.history.remember(viewer, player, platformId);
+      onFound({
+        puuid: player.puuid,
+        platformId,
+        regions: platformId ? [platformId, ...player.otherRegions] : undefined,
+        riotId,
       });
-      store.history.remember(viewer, player, targetRegion || undefined);
-      onFound(player.puuid, targetRegion || undefined);
     } catch (error) {
-      const cached = store.history.find(viewer, query, targetRegion || undefined);
-      if (cached) {
-        onFound(cached, targetRegion || undefined);
+      const kept = cached();
+      if (kept) {
+        onFound(kept);
         return;
       }
       setInvalid(true);
@@ -327,7 +402,7 @@ function SearchBar({
         !connected
           ? t("history.offlineMissing")
           : errorCode(error) === "notFound"
-            ? t("history.notFoundRegion")
+            ? t(riotId ? "history.notFoundAnywhere" : "history.notFound")
             : errorMessage(error),
         "danger",
       );
@@ -345,23 +420,6 @@ function SearchBar({
         void submit();
       }}
     >
-      <select
-        aria-label={t("history.region")}
-        value={targetRegion}
-        disabled={busy}
-        onChange={(event) => {
-          setTargetRegion(event.target.value);
-          setInvalid(false);
-        }}
-        className="h-8 max-w-48 rounded-6 bg-surface px-2.5 text-[13px] text-fg outline-none hairline transition-colors duration-150 hover:border-border-strong focus:border-accent disabled:opacity-50"
-      >
-        <option value="">{t("history.region.current")}</option>
-        {HISTORY_REGIONS.map(([value, label]) => (
-          <option key={value} value={value}>
-            {t(label)}
-          </option>
-        ))}
-      </select>
       <Input
         icon={Search}
         value={query}
@@ -891,15 +949,22 @@ function Detail({
 export function HistoryPage({
   puuid: requested,
   platformId,
+  regions: searched,
+  riotId,
 }: {
   puuid?: string;
   platformId?: string;
+  regions?: string[];
+  riotId?: string;
 }) {
   const t = useT();
   const store = useStore();
   const { navigate } = useShell();
   const me = useLive((snapshot) => snapshot.me?.puuid);
   const connected = useLive((snapshot) => snapshot.connection.status === "connected");
+  const current = useLive((snapshot) =>
+    snapshot.connection.status === "connected" ? snapshot.connection.platformId : "",
+  );
   // History: what is drawn belongs to the signed-in account; another one starts the page over.
   const viewer = me ?? store.history.viewer ?? "";
   const puuid = requested ?? me ?? (viewer || undefined);
@@ -909,14 +974,37 @@ export function HistoryPage({
     (store.history.summary(viewer, puuid, platformId) ||
       store.history.list(viewer, puuid, platformId)),
   );
+  // Found on the connected region: whether the account plays on others too is asked afterwards,
+  // and its answer is taken only while the page still shows the player it was asked for.
+  const [elsewhere, setElsewhere] = useState<{ key: string; regions: string[] } | null>(null);
+  const asking = `${puuid ?? ""}\n${riotId ?? ""}`;
+  useEffect(() => {
+    if (!connected || !puuid || !riotId || platformId || searched || !current) return;
+    let live = true;
+    store.backend.call("get_player_regions", { riotId }).then(
+      (others) => {
+        if (live && others.length > 0) setElsewhere({ key: asking, regions: [current, ...others] });
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [store, connected, puuid, riotId, platformId, searched, current, asking]);
+  const regions = searched ?? (elsewhere?.key === asking ? elsewhere.regions : undefined);
   return (
     <PageBody className="flex flex-col gap-3">
       <SearchBar
         viewer={viewer}
         connected={connected}
-        platformId={platformId}
-        onFound={(found, region) =>
-          navigate({ page: "history", puuid: found, ...regionArgs(region) })
+        onFound={(found) =>
+          navigate({
+            page: "history",
+            puuid: found.puuid,
+            ...regionArgs(found.platformId),
+            ...(found.regions ? { regions: found.regions } : {}),
+            ...(found.riotId ? { riotId: found.riotId } : {}),
+          })
         }
       />
       {!connected && <p className="text-[12px] text-fg-muted">{t("history.offline")}</p>}
@@ -928,8 +1016,19 @@ export function HistoryPage({
             viewer={viewer}
             connected={connected}
             platformId={platformId}
+            current={current}
+            regions={regions}
             isMe={!platformId && (puuid === me || (!connected && puuid === viewer))}
             onMine={() => navigate({ page: "history" })}
+            onRegion={(region) =>
+              navigate({
+                page: "history",
+                puuid,
+                ...(region.toUpperCase() === current.toUpperCase() ? {} : { platformId: region }),
+                ...(regions ? { regions } : {}),
+                ...(riotId ? { riotId } : {}),
+              })
+            }
           />
           <GameList
             key={`list:${viewer}:${platformId ?? ""}:${puuid}`}
