@@ -563,6 +563,11 @@ pub struct PlayerLine {
     pub items: [i64; 7],
     /// Arena and Hextech ARAM augments, in the order picked.
     pub augments: Vec<i64>,
+    pub primary_style: i64,
+    pub primary_runes: Vec<i64>,
+    pub secondary_runes: Vec<i64>,
+    /// Offense, flex and defense shards, in that order. Zero means unavailable.
+    pub stat_shards: [i64; 3],
     pub keystone: i64,
     pub sub_style: i64,
     pub kills: i64,

@@ -119,6 +119,10 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         delete_player_note,
         // History: the games as a file.
         save_export,
+        save_report_archive,
+        get_report_directory,
+        choose_report_directory,
+        save_report_image,
         // A player's record that failed to load, asked for again.
         retry_player,
     ]
@@ -980,4 +984,55 @@ async fn save_export<R: Runtime>(
 #[tauri::command]
 async fn retry_player<R: Runtime>(app: AppHandle<R>, puuid: String) -> Result<()> {
     Ok(service(&app).retry_player(&puuid)?)
+}
+
+/// The destination is chosen natively; the frontend cannot supply an arbitrary file path.
+#[tauri::command]
+async fn save_report_archive(contents: Vec<u8>) -> Result<Option<String>> {
+    let Some(file) = rfd::AsyncFileDialog::new()
+        .set_file_name("Winer_Battle_Reports.zip")
+        .add_filter("ZIP archive", &["zip"])
+        .save_file()
+        .await
+    else {
+        return Ok(None);
+    };
+    file.write(&contents).await.map_err(internal)?;
+    Ok(Some(file.file_name()))
+}
+
+#[tauri::command]
+async fn get_report_directory<R: Runtime>(app: AppHandle<R>) -> Result<Option<String>> {
+    let config = app.path().app_config_dir().map_err(internal)?;
+    let path = crate::report_export::directory(&config).map_err(internal)?;
+    Ok(path.map(|path| path.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+async fn choose_report_directory<R: Runtime>(app: AppHandle<R>) -> Result<Option<String>> {
+    let config = app.path().app_config_dir().map_err(internal)?;
+    let Some(folder) = rfd::AsyncFileDialog::new().pick_folder().await else {
+        return Ok(None);
+    };
+    let path = folder.path().to_path_buf();
+    crate::report_export::remember(&config, &path).map_err(internal)?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+async fn save_report_image<R: Runtime>(
+    app: AppHandle<R>,
+    name: String,
+    contents: Vec<u8>,
+) -> Result<String> {
+    let config = app.path().app_config_dir().map_err(internal)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let dir = crate::report_export::directory(&config)
+            .map_err(internal)?
+            .ok_or_else(|| internal("Choose a report folder first"))?;
+        let path = crate::report_export::write_png(&dir, &name, &contents).map_err(internal)?;
+        Ok(path.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(internal)?
 }

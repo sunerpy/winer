@@ -1,6 +1,14 @@
-import { riotId, type ExportFormat, type HistorySource, type MatchSummary } from "@winer/shared";
+import {
+  riotId,
+  type ExportFormat,
+  type HistorySource,
+  type MatchSummary,
+  type MatchDetail,
+} from "@winer/shared";
 import { Download, Search, UserRound } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+
+import { flushSync } from "react-dom";
 
 import { FormLabel, StandingRule } from "../game/FormRules";
 import { MatchDetailView } from "../game/MatchDetailView";
@@ -31,6 +39,14 @@ import { PageBody } from "./common";
 import { ChampionTable } from "./history/ChampionTable";
 import { historyFailure } from "./history/failure";
 import { type ExportWords, championRows, exportStem, gamesCsv, gamesJson } from "./history/records";
+
+import {
+  captureReport,
+  collectReports,
+  packReports,
+  reportName,
+  withDeadline,
+} from "./history/reports";
 
 const PAGE_SIZES = ["10", "15", "25", "50"] as const;
 type PageSize = (typeof PAGE_SIZES)[number];
@@ -129,10 +145,10 @@ function HistoryPager({
   );
 }
 
-const FILTERS = ["all", "ranked", "normal", "aram", "other"] as const;
+const FILTERS = ["all", "ranked", "normal", "aram", "custom", "other"] as const;
 type Filter = (typeof FILTERS)[number];
 
-const QUEUES: Record<Exclude<Filter, "all" | "other">, number[]> = {
+const QUEUES: Record<Exclude<Filter, "all" | "other" | "custom">, number[]> = {
   ranked: [420, 440],
   normal: [400, 430, 480, 490],
   aram: [450, 100, 2400],
@@ -140,6 +156,7 @@ const QUEUES: Record<Exclude<Filter, "all" | "other">, number[]> = {
 
 function matches(filter: Filter, game: MatchSummary): boolean {
   if (filter === "all") return true;
+  if (filter === "custom") return game.kind === "custom";
   if (filter === "other") return !Object.values(QUEUES).some((ids) => ids.includes(game.queueId));
   return QUEUES[filter].includes(game.queueId);
 }
@@ -374,7 +391,8 @@ function GameList({
   const t = useT();
   const store = useStore();
   const { navigate } = useShell();
-  const hideCustom = useSettings().history.hideCustomGames;
+  const settings = useSettings();
+  const hideCustom = settings.history.hideCustomGames;
   // Where the list was left on the last visit, if it was this account's.
   const [kept] = useState(() => store.history.list(viewer, puuid));
   const [loaded, setLoaded] = useState<Loaded>(() =>
@@ -388,6 +406,46 @@ function GameList({
   const [view, setView] = useState<"games" | "champions">("games");
   const catalog = useCatalog();
   const [selected, setSelected] = useState<number | null>(null);
+  const [checked, setChecked] = useState<Set<number>>(() => new Set());
+  const [exporting, setExporting] = useState(false);
+  const [reportDirectory, setReportDirectory] = useState<string | null>(null);
+  const [choosingDirectory, setChoosingDirectory] = useState(false);
+  useEffect(() => {
+    let active = true;
+    store.backend
+      .call("get_report_directory")
+      .then((value) => {
+        if (active) setReportDirectory(value);
+      })
+      .catch((error) => {
+        if (active) toast(errorMessage(error), "danger");
+      });
+    return () => {
+      active = false;
+    };
+  }, [store]);
+  const chooseDirectory = async () => {
+    setChoosingDirectory(true);
+    try {
+      const folder = await store.backend.call("choose_report_directory");
+      if (folder) setReportDirectory(folder);
+    } catch (error) {
+      toast(errorMessage(error), "danger");
+    } finally {
+      setChoosingDirectory(false);
+    }
+  };
+  const [progress, setProgress] = useState("");
+  const [report, setReport] = useState<MatchDetail | null>(null);
+  const capture = useRef<HTMLDivElement>(null);
+  const exportingRef = useRef(false);
+  const toggleGame = (id: number) =>
+    setChecked((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const top = useRef<HTMLDivElement>(null);
   const inFlight = useRef(false);
   const mounted = useRef(true);
@@ -403,13 +461,15 @@ function GameList({
   const shown = useMemo(
     () =>
       loaded.games.filter(
-        (game) => matches(filter, game) && !(hideCustom && game.kind === "custom"),
+        (game) =>
+          matches(filter, game) && !(hideCustom && filter !== "custom" && game.kind === "custom"),
       ),
     [loaded.games, filter, hideCustom],
   );
-  const hidden = hideCustom
-    ? loaded.games.filter((game) => game.kind === "custom" && matches(filter, game)).length
-    : 0;
+  const hidden =
+    hideCustom && filter !== "custom"
+      ? loaded.games.filter((game) => game.kind === "custom" && matches(filter, game)).length
+      : 0;
   const known = Math.ceil(shown.length / perPage);
   // Past the last page there is nothing to show; the last one stands in.
   const current = loaded.more ? page : Math.min(page, Math.max(1, known));
@@ -447,6 +507,97 @@ function GameList({
       toast(errorMessage(error), "danger");
     }
   };
+
+  const exportReports = async (toFolder = false) => {
+    if (exportingRef.current || checked.size === 0 || (toFolder && !reportDirectory)) return;
+    exportingRef.current = true;
+    setExporting(true);
+    const games = loaded.games.filter((game) => checked.has(game.gameId));
+    try {
+      const result = await collectReports(
+        games,
+        async (game, index) => {
+          if (!mounted.current) throw new Error("History closed");
+          setProgress(t("history.reportsFetching", { n: index + 1, total: games.length }));
+          const detail =
+            store.history.detail(viewer, game.gameId) ??
+            (await withDeadline(store.backend.call("get_match_detail", { gameId: game.gameId })));
+          store.history.putDetail(viewer, detail);
+          if (!mounted.current) throw new Error("History closed");
+          setProgress(t("history.reportsRendering", { n: index + 1, total: games.length }));
+          flushSync(() => setReport(detail));
+          const node = capture.current;
+          if (!node) throw new Error("Report container missing");
+          const png = await withDeadline(captureReport(node));
+          return {
+            png,
+            name: reportName(
+              game,
+              riotId(store.history.summary(viewer, puuid)?.name ?? game.line.name) ||
+                puuid.slice(0, 8),
+              catalog?.champions.get(game.line.championId)?.name ?? String(game.line.championId),
+              t(
+                game.line.remake
+                  ? "history.result.remake"
+                  : game.line.win
+                    ? "history.result.win"
+                    : "history.result.loss",
+              ),
+            ),
+          };
+        },
+        toFolder
+          ? async (name, png) => {
+              if (!mounted.current) throw new Error("History closed");
+              await store.backend.call("save_report_image", { name, contents: Array.from(png) });
+            }
+          : undefined,
+      );
+      if (!mounted.current) return;
+      setReport(null);
+      if (!result.succeeded) {
+        setProgress(t("history.reportsFailed", { n: result.failed }));
+        return;
+      }
+      if (toFolder) {
+        const message = t("history.reportsFolderDone", {
+          ok: result.succeeded,
+          failed: result.failed,
+        });
+        setProgress(message);
+        toast(message, "ok");
+        return;
+      }
+      setProgress(t("history.reportsPacking"));
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      const contents = Array.from(packReports(result.files));
+      const file = await store.backend.call("save_report_archive", { contents });
+      const message =
+        file === null
+          ? t("history.reportsCancelled")
+          : t("history.reportsDone", { ok: result.succeeded, failed: result.failed });
+      setProgress(message);
+      toast(message, file === null ? "info" : "ok");
+    } catch (error) {
+      setProgress(errorMessage(error));
+      toast(errorMessage(error), "danger");
+    } finally {
+      exportingRef.current = false;
+      if (mounted.current) {
+        setExporting(false);
+        setReport(null);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (loaded.more || loaded.stale) return;
+    const ids = new Set(loaded.games.map((game) => game.gameId));
+    setChecked((previous) => {
+      const next = new Set([...previous].filter((id) => ids.has(id)));
+      return next.size === previous.size ? previous : next;
+    });
+  }, [loaded.games, loaded.more, loaded.stale]);
 
   // Kept for the next visit, the page and the filter with it.
   useEffect(() => {
@@ -551,6 +702,7 @@ function GameList({
     { value: "ranked", label: t("history.ranked") },
     { value: "normal", label: t("history.normal") },
     { value: "aram", label: t("history.aram") },
+    { value: "custom", label: t("history.custom") },
     { value: "other", label: t("history.other") },
   ];
   const from = (current - 1) * perPage + 1;
@@ -577,7 +729,12 @@ function GameList({
             size="sm"
           />
           <span className="flex items-center gap-2 text-[12px] text-fg-muted">
-            <Toggle id={toggleId} checked={hideCustom} onChange={setHideCustom} />
+            <Toggle
+              id={toggleId}
+              checked={hideCustom}
+              disabled={filter === "custom"}
+              onChange={setHideCustom}
+            />
             <label htmlFor={toggleId} className="cursor-pointer">
               {t("history.hideCustom")}
             </label>
@@ -627,6 +784,83 @@ function GameList({
         </span>
       </div>
 
+      {view === "games" && (
+        <div className="flex flex-wrap items-center gap-3 text-[12px]">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              disabled={exporting || visible.length === 0}
+              checked={visible.length > 0 && visible.every((game) => checked.has(game.gameId))}
+              onChange={(event) => {
+                const select = event.target.checked;
+                setChecked((previous) => {
+                  const next = new Set(previous);
+                  for (const game of visible) {
+                    if (select) next.add(game.gameId);
+                    else next.delete(game.gameId);
+                  }
+                  return next;
+                });
+              }}
+            />
+            {t("history.selectVisible")}
+          </label>
+          <span>{t("history.selectedCount", { n: checked.size })}</span>
+          <Button
+            size="sm"
+            disabled={exporting || checked.size === 0}
+            onClick={() => setChecked(new Set())}
+          >
+            {t("history.clearSelection")}
+          </Button>
+          <Button
+            size="sm"
+            icon={Download}
+            loading={exporting}
+            disabled={checked.size === 0}
+            onClick={() => void exportReports()}
+          >
+            {t("history.exportReports")}
+          </Button>
+        </div>
+      )}
+      {view === "games" && (
+        <div className="flex flex-wrap items-center gap-2 text-[12px]">
+          <Button
+            size="sm"
+            disabled={exporting}
+            loading={choosingDirectory}
+            onClick={() => void chooseDirectory()}
+          >
+            {t("history.chooseReportFolder")}
+          </Button>
+          <span className="max-w-[420px] truncate text-fg-muted" title={reportDirectory ?? ""}>
+            {reportDirectory ?? t("history.noReportFolder")}
+          </span>
+          <Button
+            size="sm"
+            disabled={exporting || choosingDirectory || checked.size === 0 || !reportDirectory}
+            onClick={() => void exportReports(true)}
+          >
+            {t("history.exportToFolder")}
+          </Button>
+        </div>
+      )}
+      {progress && (
+        <p role="status" className="text-[12px] text-fg-muted">
+          {progress}
+        </p>
+      )}
+      {report && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed top-0 left-[-20000px] w-[1200px]"
+        >
+          <div ref={capture} key={report.gameId} className="bg-surface p-4 text-fg">
+            <MatchDetailView detail={report} highlight={puuid} titles={settings.general.titles} />
+          </div>
+        </div>
+      )}
       {view === "champions" ? (
         <>
           {loaded.more ? (
@@ -697,13 +931,22 @@ function GameList({
             <ul className="flex flex-col gap-1.5">
               {visible.map((game) => (
                 <li key={game.gameId} className="flex flex-col gap-1.5">
-                  <MatchRow
-                    game={game}
-                    selected={selected === game.gameId}
-                    onSelect={() =>
-                      setSelected((open) => (open === game.gameId ? null : game.gameId))
-                    }
-                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      aria-label={t("history.checkGame", { id: game.gameId })}
+                      checked={checked.has(game.gameId)}
+                      disabled={exporting}
+                      onChange={() => toggleGame(game.gameId)}
+                    />
+                    <MatchRow
+                      game={game}
+                      selected={selected === game.gameId}
+                      onSelect={() =>
+                        setSelected((open) => (open === game.gameId ? null : game.gameId))
+                      }
+                    />
+                  </div>
                   {selected === game.gameId && (
                     <Detail
                       gameId={game.gameId}

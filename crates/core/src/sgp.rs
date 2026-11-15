@@ -244,8 +244,9 @@ struct SgpParticipant {
 
 /// Runes nested by tree, where the LCU flattens them.
 #[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[serde(rename_all = "camelCase", default)]
 struct Perks {
+    stat_perks: StatPerks,
     styles: Vec<PerkStyle>,
 }
 
@@ -264,12 +265,24 @@ struct PerkSelection {
     perk: i64,
 }
 
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct StatPerks {
+    offense: i64,
+    flex: i64,
+    defense: i64,
+}
+
 impl Perks {
     fn style(&self, description: &str, position: usize) -> Option<&PerkStyle> {
         self.styles
             .iter()
             .find(|style| style.description == description)
-            .or_else(|| self.styles.get(position))
+            .or_else(|| {
+                self.styles
+                    .get(position)
+                    .filter(|style| style.description.is_empty())
+            })
     }
 }
 
@@ -342,6 +355,12 @@ impl SgpParticipant {
             .and_then(|style| style.selections.first())
             .map_or(0, |selection| selection.perk);
         let primary_style = primary.map_or(0, |style| style.style);
+        let selection = |description: &str, position: usize, index: usize| {
+            self.perks
+                .style(description, position)
+                .and_then(|style| style.selections.get(index))
+                .map_or(0, |selection| selection.perk)
+        };
         let sub_style = self
             .perks
             .style("subStyle", 1)
@@ -391,6 +410,14 @@ impl SgpParticipant {
                 item5: self.item5,
                 item6: self.item6,
                 perk0: keystone,
+                perk1: selection("primaryStyle", 0, 1),
+                perk2: selection("primaryStyle", 0, 2),
+                perk3: selection("primaryStyle", 0, 3),
+                perk4: selection("subStyle", 1, 0),
+                perk5: selection("subStyle", 1, 1),
+                stat_perk0: self.perks.stat_perks.offense,
+                stat_perk1: self.perks.stat_perks.flex,
+                stat_perk2: self.perks.stat_perks.defense,
                 perk_primary_style: primary_style,
                 perk_sub_style: sub_style,
                 largest_multi_kill: self.largest_multi_kill,
@@ -444,6 +471,41 @@ impl SgpTeam {
 mod tests {
     use super::*;
     use crate::{analysis, test_support::fixture};
+
+    #[test]
+    fn full_runes_keep_style_identity_and_shard_order() {
+        let player: SgpParticipant = serde_json::from_value(serde_json::json!({
+            "perks": {
+                "styles": [
+                    {"description":"subStyle","style":8300,"selections":[{"perk":8304},{"perk":8345}]},
+                    {"description":"primaryStyle","style":8000,"selections":[{"perk":8005},{"perk":9111},{"perk":9104},{"perk":8014}]}
+                ],
+                "statPerks":{"defense":5001,"offense":5005,"flex":5008}
+            }
+        })).unwrap();
+        let (player, _) = player.split();
+        let s = player.stats;
+        assert_eq!(
+            [s.perk0, s.perk1, s.perk2, s.perk3, s.perk4, s.perk5],
+            [8005, 9111, 9104, 8014, 8304, 8345]
+        );
+        assert_eq!(
+            [s.stat_perk0, s.stat_perk1, s.stat_perk2],
+            [5005, 5008, 5001]
+        );
+        assert_eq!((s.perk_primary_style, s.perk_sub_style), (8000, 8300));
+        let empty: SgpParticipant = serde_json::from_str("{}").unwrap();
+        assert_eq!(empty.split().0.stats.perk1, 0);
+        let partial: SgpParticipant = serde_json::from_value(serde_json::json!({
+            "perks": {"styles": [
+                {"description":"subStyle","style":8300,"selections":[{"perk":8304}]}
+            ]}
+        }))
+        .unwrap();
+        let stats = partial.split().0.stats;
+        assert_eq!((stats.perk_primary_style, stats.perk0), (0, 0));
+        assert_eq!((stats.perk_sub_style, stats.perk4), (8300, 8304));
+    }
 
     #[test]
     fn tencent_shards_have_a_server_and_their_issuer_names_them() {

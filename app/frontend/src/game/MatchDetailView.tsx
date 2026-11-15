@@ -147,6 +147,41 @@ function HeaderRow() {
   );
 }
 
+function RuneChoices({ player }: { player: PlayerLine }) {
+  const t = useT();
+  const groups = [
+    {
+      label: t("history.primaryRunes"),
+      ids: [player.primaryStyle, ...(player.primaryRunes ?? [player.keystone])],
+    },
+    {
+      label: t("history.secondaryRunes"),
+      ids: [player.subStyle, ...(player.secondaryRunes ?? [])],
+    },
+    { label: t("history.statShards"), ids: player.statShards ?? [] },
+  ]
+    .map((group) => ({ ...group, ids: group.ids.filter((id) => id > 0) }))
+    .filter((group) => group.ids.length);
+  if (!groups.length) return null;
+  return (
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+      {groups.map((group) => (
+        <span
+          key={group.label}
+          role="group"
+          aria-label={group.label}
+          title={group.label}
+          className="inline-flex items-center gap-0.5"
+        >
+          {group.ids.map((id, index) => (
+            <AssetIcon key={index} kind="perks" id={id} size={14} />
+          ))}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function PlayerRow({
   player,
   maxDamage,
@@ -196,6 +231,7 @@ function PlayerRow({
             )}
             {player.award && <AwardBadge award={player.award} />}
           </span>
+          <RuneChoices player={player} />
           {(player.augments.length > 0 || player.feats.length > 0 || title) && (
             <span className="flex min-w-0 items-center gap-1">
               {player.augments.length > 0 && (
