@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.23](https://github.com/sunerpy/winer/compare/v0.0.22...v0.0.23) (2026-11-18)
+
+
+### 问题修复
+
+* winer 刚连上客户端、还没读到游戏模式信息时，只在部分模式开启的自动选择和自动禁用英雄也能按模式生效 ([#54](https://github.com/sunerpy/winer/issues/54)) ([f191373](https://github.com/sunerpy/winer/commit/f191373c9ea8fdf4df6e0cd267d8e6bb14ebe3f7))
+* 修复排位中「自动禁用英雄」不生效：轮到禁用时改按客户端当时允许禁用的英雄来禁，不再沿用规划阶段取到的列表 ([#54](https://github.com/sunerpy/winer/issues/54)) ([f191373](https://github.com/sunerpy/winer/commit/f191373c9ea8fdf4df6e0cd267d8e6bb14ebe3f7))
+
 ## [0.0.22](https://github.com/sunerpy/winer/compare/v0.0.21...v0.0.22) (2026-11-15)
 
 
