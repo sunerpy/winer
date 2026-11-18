@@ -39,7 +39,8 @@ impl Step {
 }
 
 /// What the client allows this account, as far as it has said. `None` means not known yet, in
-/// which case nothing is filtered and the client has the last word.
+/// which case nothing is filtered and the client has the last word. So does an empty ban list: a
+/// ban turn always has champions to ban.
 #[derive(Clone, Debug, Default)]
 pub struct Availability {
     pub pickable: Option<HashSet<i64>>,
@@ -56,8 +57,25 @@ impl Availability {
     fn can_ban(&self, champion: i64) -> bool {
         self.bannable
             .as_ref()
+            .filter(|ids| !ids.is_empty())
             .is_none_or(|ids| ids.contains(&champion))
     }
+}
+
+/// The local player's ban while it is theirs to make: in the ban phase, the id of the action the
+/// client has in progress for them, if that action is a ban.
+pub fn ban_turn(session: &ChampSelectSession) -> Option<i64> {
+    let me = session.local_player()?;
+    if session.timer.phase != "BAN_PICK" {
+        return None;
+    }
+    session
+        .all_actions()
+        .find(|action| {
+            action.actor_cell_id == me.cell_id && !action.completed && action.is_in_progress
+        })
+        .filter(|action| action.kind == "ban")
+        .map(|action| action.id)
 }
 
 /// The ARAM bench champion to take: the one highest on the wishlist, provided it ranks above
@@ -336,6 +354,12 @@ mod tests {
     #[test]
     fn the_ban_turn_bans_the_first_free_candidate() {
         let ban_pick = session("ban-pick");
+        assert_eq!(ban_turn(&ban_pick), Some(0));
+        assert_eq!(
+            ban_turn(&session("planning")),
+            None,
+            "shown in progress, not to be made yet"
+        );
         let action = decide(
             &ban_pick,
             &rules(&[86], &[157, 238]),
@@ -366,6 +390,29 @@ mod tests {
         assert_eq!(
             decide(&ban_pick, &off, &Availability::default(), false),
             None
+        );
+    }
+
+    /// An empty ban list is not taken at its word: a ban turn always has champions to ban, so
+    /// nothing listed means the client has not said yet, and the client has the last word.
+    #[test]
+    fn a_ban_turn_with_nothing_listed_as_bannable_still_bans() {
+        let nothing_listed = Availability {
+            pickable: Some(HashSet::from([86])),
+            bannable: Some(HashSet::new()),
+        };
+        assert_eq!(
+            decide(
+                &session("ban-pick"),
+                &rules(&[86], &[157]),
+                &nothing_listed,
+                false
+            ),
+            Some(ChampAction {
+                action_id: 0,
+                champion_id: 157,
+                step: Step::Ban
+            })
         );
     }
 

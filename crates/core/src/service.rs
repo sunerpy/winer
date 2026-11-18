@@ -12,7 +12,7 @@ pub use comeback::Spaced;
 pub use ux::{Readiness, UiRestart};
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs, io,
     path::{Path, PathBuf},
     sync::{
@@ -275,8 +275,11 @@ struct Live {
     me: String,
     champ_select: Option<ChampSelectSession>,
     gameflow: Option<GameflowSession>,
-    /// The availability lists of one game; `None` inside while they are being fetched.
-    available: Option<(i64, Option<Availability>)>,
+    /// The availability lists of one phase of one champ select; `None` inside while they are
+    /// being fetched.
+    available: Option<(ListsFor, Option<Availability>)>,
+    /// The ban action winer last found nothing to ban for, so the log says so once a turn.
+    idle_ban: Option<i64>,
     attempts: HashMap<(i64, Step), u8>,
     acting: bool,
     accepting: bool,
@@ -317,11 +320,41 @@ impl Live {
     fn reset_champ_select(&mut self) {
         self.attempts.clear();
         self.available = None;
+        self.idle_ban = None;
         self.callout_sent = false;
         self.champ_select_opened = None;
         self.swaps.clear();
         self.recommend = None;
         self.trade_watch = crate::comeback::TradeWatch::default();
+    }
+
+    /// Keeps champion lists that answer the request still awaited; an answer for an earlier
+    /// phase, or another champ select, is dropped.
+    fn keep_lists(&mut self, asked: &ListsFor, lists: Availability) {
+        if let Some((awaited, slot)) = &mut self.available
+            && awaited == asked
+        {
+            *slot = Some(lists);
+        }
+    }
+}
+
+/// The champ select, and the phase of it, that champion lists were asked for in. Each phase asks
+/// again, so the bans and picks go by what the client says while they are on, never by what it
+/// said while planning: asked once a champ select, ranked bans went by planning's lists and were
+/// never made (2026-11-18).
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ListsFor {
+    game_id: i64,
+    phase: String,
+}
+
+impl ListsFor {
+    fn of(session: &ChampSelectSession) -> Self {
+        Self {
+            game_id: session.game_id,
+            phase: session.timer.phase.clone(),
+        }
     }
 }
 
@@ -1722,7 +1755,7 @@ impl Service {
         let (puuid, pickable) = {
             let live = lock(&client.live);
             let pickable = match &live.available {
-                Some((game, Some(available))) if *game == session.game_id => {
+                Some((asked, Some(available))) if asked.game_id == session.game_id => {
                     available.pickable.clone()
                 }
                 _ => None,
@@ -1869,7 +1902,7 @@ impl Service {
             .champ_select
             .as_ref()
             .map(|session| session.queue_id);
-        let mode = queue_id.and_then(|id| queue_mode(client, id));
+        let mode = queue_id.and_then(|id| champ_select_mode(client, id));
         // A rule switched on still acts only in the kinds of game it is scoped to.
         let scopes = &rules.scopes;
         rules.pick.enabled &= scopes.covers(Scoped::Pick, mode);
@@ -1885,14 +1918,15 @@ impl Service {
         let Some(session) = live.champ_select.clone() else {
             return;
         };
+        let asked = ListsFor::of(&session);
         let available = match &live.available {
-            Some((game, Some(available))) if *game == session.game_id => available.clone(),
-            Some((game, None)) if *game == session.game_id => return,
+            Some((lists_for, Some(available))) if *lists_for == asked => available.clone(),
+            Some((lists_for, None)) if *lists_for == asked => return,
             _ => {
                 // Owned and bannable champions first: acting without them risks a refused pick.
-                live.available = Some((session.game_id, None));
+                live.available = Some((asked.clone(), None));
                 drop(live);
-                self.fetch_availability(client, session.game_id);
+                self.fetch_availability(client, asked);
                 return;
             }
         };
@@ -1907,6 +1941,22 @@ impl Service {
             )
         });
         let Some(action) = automation::decide(&session, &rules, &available, filled) else {
+            // Said once a turn: a ban turn that bans nothing is otherwise silent.
+            if rules.ban.enabled
+                && let Some(turn) = automation::ban_turn(&session)
+                && live.idle_ban != Some(turn)
+            {
+                live.idle_ban = Some(turn);
+                let position = session
+                    .local_player()
+                    .and_then(|me| Position::parse(&me.assigned_position));
+                debug!(
+                    action_id = turn,
+                    candidates = ?rules.ban.champions.candidates(position),
+                    bannable = ?available.bannable.as_ref().map(HashSet::len),
+                    "nothing to ban on the ban turn"
+                );
+            }
             return;
         };
         let attempts = live
@@ -2013,7 +2063,7 @@ impl Service {
         });
     }
 
-    fn fetch_availability(&self, client: &Client, game_id: i64) {
+    fn fetch_availability(&self, client: &Client, asked: ListsFor) {
         let (service, client) = (self.clone(), client.clone());
         self.spawn(async move {
             let ids = |path: &'static str| {
@@ -2022,18 +2072,22 @@ impl Service {
                     lcu.get::<Vec<i64>>(path)
                         .await
                         .ok()
-                        .map(|ids| ids.into_iter().collect())
+                        .map(|ids| ids.into_iter().collect::<HashSet<i64>>())
                 }
             };
             let (pickable, bannable) = tokio::join!(
                 ids("/lol-champ-select/v1/pickable-champion-ids"),
                 ids("/lol-champ-select/v1/bannable-champion-ids")
             );
-            if let Some((game, slot)) = &mut lock(&client.live).available
-                && *game == game_id
-            {
-                *slot = Some(Availability { pickable, bannable });
-            }
+            // The lists' sizes, `None` where the client did not answer.
+            debug!(
+                game_id = asked.game_id,
+                phase = %asked.phase,
+                pickable = ?pickable.as_ref().map(HashSet::len),
+                bannable = ?bannable.as_ref().map(HashSet::len),
+                "champion lists"
+            );
+            lock(&client.live).keep_lists(&asked, Availability { pickable, bannable });
             service.automate(&client);
         });
     }
@@ -3080,6 +3134,19 @@ fn queue_mode(client: &Client, queue_id: i64) -> Option<Mode> {
     queue_info(data.as_deref(), queue_id).map(QueueInfo::mode)
 }
 
+/// The kind of game a champ select is for: the catalog's word, else the gameflow session's while it
+/// names the same queue, so that rules scoped by mode act before the catalog has come.
+fn champ_select_mode(client: &Client, queue_id: i64) -> Option<Mode> {
+    queue_mode(client, queue_id).or_else(|| {
+        let live = lock(&client.live);
+        let queue = &live.gameflow.as_ref()?.game_data.queue;
+        if queue.id != queue_id {
+            return None;
+        }
+        gameflow_mode(queue)
+    })
+}
+
 /// The kind of game a gameflow session's queue is; `None` while it names none.
 fn gameflow_mode(queue: &GameQueue) -> Option<Mode> {
     (!queue.game_mode.is_empty()).then(|| Mode::of(&queue.game_mode, queue.is_ranked))
@@ -3922,6 +3989,153 @@ mod tests {
                 ..Live::default()
             })),
         }
+    }
+
+    // Champ select automation.
+
+    /// A service set to ban 804 in ranked games only, as the user who reported the missing ban had.
+    fn ranked_banner(dir: &tempfile::TempDir) -> Service {
+        let service = Service::new(dir.path().join("settings.json"), Handle::current());
+        let mut settings = service.settings();
+        settings.automation.ban.enabled = true;
+        settings.automation.ban.champions.any = vec![804];
+        settings.automation.scopes.ban = vec![Mode::Ranked];
+        service.set_settings(settings).unwrap();
+        service
+    }
+
+    fn ranked_catalog() -> Option<Arc<GameData>> {
+        Some(Arc::new(GameData {
+            queues: vec![QueueInfo {
+                id: 420,
+                name: "单双排".into(),
+                game_mode: "CLASSIC".into(),
+                ranked: true,
+            }],
+            ..GameData::default()
+        }))
+    }
+
+    /// A ranked champ select (queue 420, game 7) in `phase`, the local player's ban in progress.
+    fn ranked_ban_turn(phase: &str) -> ChampSelectSession {
+        serde_json::from_value(json!({
+            "gameId": 7,
+            "queueId": 420,
+            "localPlayerCellId": 0,
+            "timer": {"phase": phase},
+            "myTeam": [{"cellId": 0, "assignedPosition": "bottom"}],
+            "actions": [[{"id": 3, "actorCellId": 0, "type": "ban", "isInProgress": true}]]
+        }))
+        .unwrap()
+    }
+
+    /// The next thing winer tells the user, if it does within ten seconds.
+    async fn next_notice(events: &mut broadcast::Receiver<Event>) -> Option<NoticeKind> {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                match events.recv().await {
+                    Ok(Event::Notice(notice)) => return Some(notice.kind),
+                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(broadcast::error::RecvError::Closed) => return None,
+                }
+            }
+        })
+        .await
+        .ok()
+        .flatten()
+    }
+
+    fn is_ban_attempt(notice: Option<&NoticeKind>) -> bool {
+        matches!(notice, Some(NoticeKind::Failed { action, .. }) if action == "ban")
+    }
+
+    /// The ranked ban that never came (reported 2026-11-18): the champion lists were asked for
+    /// once a champ select, while planning, and the ban phase went by them; with nothing listed as
+    /// bannable then, or a list without the user's champion, every candidate was passed over
+    /// without a word. The client on port 1 never answers, so the ban phase's own lists come back
+    /// unknown and the ban is tried, and refused.
+    #[tokio::test]
+    async fn the_ban_phase_does_not_go_by_the_lists_asked_for_while_planning() {
+        for planning_bannable in [vec![], vec![1]] {
+            let dir = tempfile::tempdir().unwrap();
+            let service = ranked_banner(&dir);
+            let client = quiet_client(Phase::ChampSelect);
+            *lock(&client.data) = ranked_catalog();
+            {
+                let mut live = lock(&client.live);
+                live.champ_select = Some(ranked_ban_turn("BAN_PICK"));
+                live.available = Some((
+                    ListsFor::of(&ranked_ban_turn("PLANNING")),
+                    Some(Availability {
+                        pickable: Some([804].into()),
+                        bannable: Some(planning_bannable.iter().copied().collect()),
+                    }),
+                ));
+            }
+            let mut events = service.subscribe();
+            service.automate(&client);
+            let notice = next_notice(&mut events).await;
+            assert!(
+                is_ban_attempt(notice.as_ref()),
+                "planning listed {planning_bannable:?} as bannable: {notice:?}"
+            );
+        }
+    }
+
+    /// Planning's lists can come back after the ban phase has asked for its own: they are dropped,
+    /// and only the answer awaited is kept.
+    #[test]
+    fn a_late_answer_for_an_earlier_phase_is_dropped() {
+        let planning = ListsFor::of(&ranked_ban_turn("PLANNING"));
+        let ban_pick = ListsFor::of(&ranked_ban_turn("BAN_PICK"));
+        let lists = |bannable: &[i64]| Availability {
+            pickable: None,
+            bannable: Some(bannable.iter().copied().collect()),
+        };
+        let mut live = Live {
+            available: Some((ban_pick.clone(), None)),
+            ..Live::default()
+        };
+        live.keep_lists(&planning, lists(&[]));
+        assert!(
+            matches!(&live.available, Some((asked, None)) if *asked == ban_pick),
+            "still waiting for the ban phase's lists"
+        );
+        live.keep_lists(&ban_pick, lists(&[804]));
+        assert!(matches!(
+            &live.available,
+            Some((asked, Some(lists)))
+                if *asked == ban_pick && lists.bannable == Some([804].into())
+        ));
+    }
+
+    /// Before the catalog has the queue, the gameflow session says what kind of game it is, so a
+    /// ban scoped to ranked games acts in one all the same.
+    #[tokio::test]
+    async fn a_ban_scoped_to_ranked_acts_before_the_catalog_names_the_queue() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = ranked_banner(&dir);
+        let client = quiet_client(Phase::ChampSelect);
+        {
+            let mut live = lock(&client.live);
+            live.gameflow = Some(GameflowSession {
+                phase: "ChampSelect".into(),
+                game_data: crate::model::GameData {
+                    queue: GameQueue {
+                        id: 420,
+                        game_mode: "CLASSIC".into(),
+                        is_ranked: true,
+                        ..GameQueue::default()
+                    },
+                    ..crate::model::GameData::default()
+                },
+            });
+            live.champ_select = Some(ranked_ban_turn("BAN_PICK"));
+        }
+        let mut events = service.subscribe();
+        service.automate(&client);
+        let notice = next_notice(&mut events).await;
+        assert!(is_ban_attempt(notice.as_ref()), "{notice:?}");
     }
 
     fn fetched(focus: Option<analysis::Focus>) -> PlayerEntry {

@@ -130,6 +130,13 @@ for one client build or one privilege level, it says so.
   (`trigger=Asked`) 0.24 s before the recorder's first `SENT` sample, and the thank-you
   (`trigger=Done`) 0.02 s before its first sample with the champions swapped. `RECEIVED`,
   `ACCEPTED`, `DECLINED` and `CANCELLED` are still not captured.
+- **Champ select's champion lists** (`/lol-champ-select/v1/pickable-champion-ids` and
+  `bannable-champion-ids`): what they answer in each phase is not captured. A user's ranked bans
+  never came (reported 2026-11-18: four days of logs without a `Banned` or a failed ban, while the
+  planning intent went out each time), which fits a ban list asked for while planning that was
+  empty or lacked the champion: winer asked once a champ select, at its first event. It now asks
+  again in each phase, takes an empty ban list as no answer, and logs both lists' sizes (debug,
+  `champion lists`). Still to capture: both lists every second through `PLANNING` and `BAN_PICK`.
 
 ## Profile and chat presence
 
