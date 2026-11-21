@@ -131,12 +131,24 @@ for one client build or one privilege level, it says so.
   (`trigger=Done`) 0.02 s before its first sample with the champions swapped. `RECEIVED`,
   `ACCEPTED`, `DECLINED` and `CANCELLED` are still not captured.
 - **Champ select's champion lists** (`/lol-champ-select/v1/pickable-champion-ids` and
-  `bannable-champion-ids`): what they answer in each phase is not captured. A user's ranked bans
-  never came (reported 2026-11-18: four days of logs without a `Banned` or a failed ban, while the
-  planning intent went out each time), which fits a ban list asked for while planning that was
-  empty or lacked the champion: winer asked once a champ select, at its first event. It now asks
-  again in each phase, takes an empty ban list as no answer, and logs both lists' sizes (debug,
-  `champion lists`). Still to capture: both lists every second through `PLANNING` and `BAN_PICK`.
+  `bannable-champion-ids`; the owner's PC, custom draft 3110, 2026-11-19, both read every 0.3 s
+  through four champ selects): the ban list answered `[-1]` while planning and in the ban turn
+  until the ban was hovered, the 174 bannable champions at once after a `PATCH` to the ban, and
+  `[-1]` again after the ban turn. The pick list named the same 159 champions (owned and free)
+  through planning, the ban turn and the pick turn. A user's ranked bans never came (reported
+  2026-11-18, and again on 0.0.23 the next day): winer took `[-1]` for the list and passed over
+  every candidate; 0.0.23 took only an empty list as no answer. A list without one real champion
+  is no answer now, the pick list's too, and `champion lists` (debug) logs how many real
+  champions each names.
+- **Completing a pick or ban** (the same runs): `PATCH /lol-champ-select/v1/session/actions/{id}`
+  with the `championId`, then `POST /lol-champ-select/v1/session/actions/{id}/complete`, answered
+  204 twice, three more `complete`s 1.5 s apart answered 204 as well, and the ban stayed open. One
+  `PATCH` carrying `{"championId": 1, "completed": true}` completed it at once (the session showed
+  it done 0.3 s later). winer locked and banned the first way, and the user reporting the missing
+  bans found picks doing nothing too. It now sends the one `PATCH`, reads the session until the
+  action shows completed, tries `complete` once if it does not, and reports a failure while it
+  stays open. A hovered ban was completed when the ban turn's timer ran out. Locking a pick with
+  the one `PATCH` is not measured: a lone custom player's lock starts the game.
 
 ## Profile and chat presence
 

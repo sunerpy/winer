@@ -70,10 +70,13 @@ scripts/windows/qa.sh log 40
   `cancel-champ-select` answered 204 and did nothing, `DELETE /lol-lobby/v2/lobby` answered 404,
   and the timer running out launched the game (2026-10-05; the game server then refused
   `early-exit`, and killing the game left the client in `Reconnect` for four minutes).
-- There is no scripted champ-select test that is known to end without a game. A draft custom
-  lobby where nobody locks in should end by itself when the pick timer runs out, but that was
-  never run. Whatever the mode: check the phase is `None` first, switch winer's pick and ban
-  automation off, and ask the user before creating a lobby.
+- **A draft custom lobby (3110) where nobody locks in ends by itself** (the owner's PC, four runs
+  on 2026-11-19): the ban turn's timer moved on to the pick turn, and the pick turn's timer ended
+  champ select and went back to the custom lobby, about 97 s after the start. A hovered ban was
+  completed when its timer ran out, so a hovered pick may be locked by its timer, and a lone
+  player's lock starts the game: never leave a pick hovered. Whatever the mode: check the phase
+  is `None` first, stop every winer whose pick automation is on (the owner's locks in custom
+  games), and ask the user before creating a lobby.
 - Custom games give no rerolls. An all-random custom lobby does put the pool's extras on the
   bench, so the in-client bench swap can be exercised there, **but its timer always launches the
   game**: only with the user's consent, close the game (`League of Legends` process) when it
