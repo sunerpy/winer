@@ -3093,26 +3093,42 @@ const COMPLETION_READS: [Duration; 3] = [
     Duration::from_millis(500),
 ];
 
+/// The routes that complete an action a PATCH left open, tried in turn: champ select's own, which
+/// answered 204 and did nothing in a custom draft (2026-11-19), then team builder's, which
+/// matchmade champ selects run on (not measured).
+fn completion_routes(action_id: i64) -> [String; 2] {
+    [
+        format!("/lol-champ-select/v1/session/actions/{action_id}/complete"),
+        format!("/lol-lobby-team-builder/champ-select/v1/session/actions/{action_id}/complete"),
+    ]
+}
+
 /// Carries `action` out with one PATCH ([`ChampAction::request`]). A step that completes is read
 /// back from the session, since the client has answered 204 to a request that completed nothing:
-/// if the PATCH left the action open, the action's own `complete` route is tried once. `Ok(false)`
-/// means the client still shows the action open.
+/// if the PATCH left the action open, each of [`completion_routes`] is tried. `Ok(false)` means
+/// the client still shows the action open.
 async fn execute(lcu: &Lcu, action: ChampAction) -> Result<bool, lcu::Error> {
     let path = format!("/lol-champ-select/v1/session/actions/{}", action.action_id);
     lcu.patch(&path, &action.request()).await?;
     if !action.step.completes() || completed(lcu, &action).await {
         return Ok(true);
     }
-    lcu.post(&format!("{path}/complete"), &json!({})).await?;
-    let done = completed(lcu, &action).await;
-    if done {
-        info!(
-            action_id = action.action_id,
-            step = ?action.step,
-            "completed by the action's complete route"
-        );
+    for route in completion_routes(action.action_id) {
+        match lcu.post(&route, &json!({})).await {
+            Ok(()) if completed(lcu, &action).await => {
+                info!(
+                    action_id = action.action_id,
+                    step = ?action.step,
+                    %route,
+                    "completed by a complete route"
+                );
+                return Ok(true);
+            }
+            Ok(()) => {}
+            Err(error) => debug!(%error, "a complete route failed"),
+        }
     }
-    Ok(done)
+    Ok(false)
 }
 
 /// Whether the session comes to show `action` completed ([`COMPLETION_READS`]). A session that
@@ -3122,7 +3138,19 @@ async fn completed(lcu: &Lcu, action: &ChampAction) -> bool {
     for wait in COMPLETION_READS {
         sleep(wait).await;
         match lcu.get_optional::<ChampSelectSession>(CHAMP_SELECT).await {
-            Ok(Some(session)) if !automation::done(&session, action) => {}
+            Ok(Some(session)) if !automation::done(&session, action) => {
+                // What the client shows instead, for the report of a step that never lands.
+                let shown = session
+                    .all_actions()
+                    .find(|shown| shown.id == action.action_id);
+                debug!(
+                    action_id = action.action_id,
+                    completed = ?shown.map(|shown| shown.completed),
+                    champion_id = ?shown.map(|shown| shown.champion_id),
+                    in_progress = ?shown.map(|shown| shown.is_in_progress),
+                    "the session shows the action open"
+                );
+            }
             _ => return true,
         }
     }

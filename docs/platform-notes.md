@@ -145,9 +145,11 @@ for one client build or one privilege level, it says so.
   204 twice, three more `complete`s 1.5 s apart answered 204 as well, and the ban stayed open. One
   `PATCH` carrying `{"championId": 1, "completed": true}` completed it at once (the session showed
   it done 0.3 s later). winer locked and banned the first way, and the user reporting the missing
-  bans found picks doing nothing too. It now sends the one `PATCH`, reads the session until the
-  action shows completed, tries `complete` once if it does not, and reports a failure while it
-  stays open. A hovered ban was completed when the ban turn's timer ran out. Locking a pick with
+  bans found picks doing nothing too. It now sends the one `PATCH` and reads the session until the
+  action shows completed. If it does not, winer tries champ select's `complete`, then team
+  builder's (`POST /lol-lobby-team-builder/champ-select/v1/session/actions/{id}/complete`, which
+  matchmade champ selects run on, not measured), logs what the session shows (debug,
+  `the session shows the action open`), and reports a failure while the action stays open. A hovered ban was completed when the ban turn's timer ran out. Locking a pick with
   the one `PATCH` is not measured: a lone custom player's lock starts the game.
 
 ## Profile and chat presence
