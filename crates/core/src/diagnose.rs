@@ -102,6 +102,10 @@ pub const LCU_ROUTES: &[(Verb, &str)] = &[
     (Verb::Get, "/lol-inventory/v1/signedInventory"),
     (Verb::Get, "/lol-item-sets/v1/item-sets/{summonerId}/sets"),
     (Verb::Put, "/lol-item-sets/v1/item-sets/{summonerId}/sets"),
+    (
+        Verb::Post,
+        "/lol-lobby-team-builder/champ-select/v1/session/actions/{id}/complete",
+    ),
     (Verb::Get, "/lol-lobby/v2/lobby"),
     (Verb::Post, "/lol-lobby/v2/play-again"),
     (Verb::Get, "/lol-match-history/v1/games/{gameId}"),

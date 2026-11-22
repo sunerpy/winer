@@ -1953,7 +1953,7 @@ impl Service {
                 debug!(
                     action_id = turn,
                     candidates = ?rules.ban.champions.candidates(position),
-                    bannable = ?available.bannable.as_ref().map(HashSet::len),
+                    bannable = ?automation::listed(available.bannable.as_ref()),
                     "nothing to ban on the ban turn"
                 );
             }
@@ -1977,13 +1977,31 @@ impl Service {
                 let mut live = lock(&client.live);
                 live.acting = false;
                 // Done for good: an event sent before the change landed must not repeat it.
-                if result.is_ok() {
+                if matches!(result, Ok(true)) {
                     live.attempts
                         .insert((action.action_id, action.step), u8::MAX);
                 }
             }
+            let failed = |message: String| NoticeKind::Failed {
+                action: if action.step == Step::Ban {
+                    "ban"
+                } else {
+                    "pick"
+                }
+                .into(),
+                message,
+            };
             match result {
-                Ok(()) => service.notice(match action.step {
+                Ok(false) => {
+                    warn!(
+                        ?action,
+                        "the client accepted the request and left the action open"
+                    );
+                    service.notice(failed(
+                        "the client accepted the request and left the action open".into(),
+                    ));
+                }
+                Ok(true) => service.notice(match action.step {
                     Step::Declare => NoticeKind::Declared {
                         champion_id: action.champion_id,
                     },
@@ -1999,17 +2017,7 @@ impl Service {
                         champion_id: action.champion_id,
                     },
                 }),
-                Err(error) => {
-                    let action = if action.step == Step::Ban {
-                        "ban"
-                    } else {
-                        "pick"
-                    };
-                    service.notice(NoticeKind::Failed {
-                        action: action.into(),
-                        message: error.to_string(),
-                    });
-                }
+                Err(error) => service.notice(failed(error.to_string())),
             }
         });
     }
@@ -2079,12 +2087,13 @@ impl Service {
                 ids("/lol-champ-select/v1/pickable-champion-ids"),
                 ids("/lol-champ-select/v1/bannable-champion-ids")
             );
-            // The lists' sizes, `None` where the client did not answer.
+            // The real champions each list names: `None` where the client did not answer, 0 for a
+            // placeholder such as `[-1]`.
             debug!(
                 game_id = asked.game_id,
                 phase = %asked.phase,
-                pickable = ?pickable.as_ref().map(HashSet::len),
-                bannable = ?bannable.as_ref().map(HashSet::len),
+                pickable = ?automation::listed(pickable.as_ref()),
+                bannable = ?automation::listed(bannable.as_ref()),
                 "champion lists"
             );
             lock(&client.live).keep_lists(&asked, Availability { pickable, bannable });
@@ -3076,14 +3085,82 @@ fn callout_messages(
     }
 }
 
-async fn execute(lcu: &Lcu, action: ChampAction) -> Result<(), lcu::Error> {
+/// The waits before each reading of the session after a step that completes: the client showed
+/// the action completed 0.3 s after the request on the owner's PC (2026-11-19).
+const COMPLETION_READS: [Duration; 3] = [
+    Duration::from_millis(150),
+    Duration::from_millis(250),
+    Duration::from_millis(500),
+];
+
+/// The routes that complete an action a PATCH left open, tried in turn: champ select's own, which
+/// answered 204 and did nothing in a custom draft (2026-11-19), then team builder's, which
+/// matchmade champ selects run on (not measured).
+fn completion_routes(action_id: i64) -> [String; 2] {
+    [
+        format!("/lol-champ-select/v1/session/actions/{action_id}/complete"),
+        format!("/lol-lobby-team-builder/champ-select/v1/session/actions/{action_id}/complete"),
+    ]
+}
+
+/// Carries `action` out with one PATCH ([`ChampAction::request`]). A step that completes is read
+/// back from the session, since the client has answered 204 to a request that completed nothing:
+/// if the PATCH left the action open, each of [`completion_routes`] is tried. `Ok(false)` means
+/// the client still shows the action open.
+async fn execute(lcu: &Lcu, action: ChampAction) -> Result<bool, lcu::Error> {
     let path = format!("/lol-champ-select/v1/session/actions/{}", action.action_id);
-    lcu.patch(&path, &json!({ "championId": action.champion_id }))
-        .await?;
-    if action.step.completes() {
-        lcu.post(&format!("{path}/complete"), &json!({})).await?;
+    lcu.patch(&path, &action.request()).await?;
+    if !action.step.completes() || completed(lcu, &action).await? {
+        return Ok(true);
     }
-    Ok(())
+    for route in completion_routes(action.action_id) {
+        match lcu.post(&route, &json!({})).await {
+            Ok(()) if completed(lcu, &action).await? => {
+                info!(
+                    action_id = action.action_id,
+                    step = ?action.step,
+                    %route,
+                    "completed by a complete route"
+                );
+                return Ok(true);
+            }
+            Ok(()) => {}
+            Err(error) => debug!(%error, "a complete route failed"),
+        }
+    }
+    Ok(false)
+}
+
+/// Whether the session comes to show `action` completed ([`COMPLETION_READS`]). A missing session
+/// is expected if champ select ended after the request. Other read errors are retried, and an
+/// error on the final read is returned to the caller.
+async fn completed(lcu: &Lcu, action: &ChampAction) -> Result<bool, lcu::Error> {
+    let mut observed = Ok(false);
+    for wait in COMPLETION_READS {
+        sleep(wait).await;
+        observed = match lcu.get_optional::<ChampSelectSession>(CHAMP_SELECT).await {
+            Ok(Some(session)) if !automation::done(&session, action) => {
+                // What the client shows instead, for the report of a step that never lands.
+                let shown = session
+                    .all_actions()
+                    .find(|shown| shown.id == action.action_id);
+                debug!(
+                    action_id = action.action_id,
+                    completed = ?shown.map(|shown| shown.completed),
+                    champion_id = ?shown.map(|shown| shown.champion_id),
+                    in_progress = ?shown.map(|shown| shown.is_in_progress),
+                    "the session shows the action open"
+                );
+                Ok(false)
+            }
+            Ok(_) => return Ok(true),
+            Err(error) => {
+                debug!(%error, "could not read the session after an action");
+                Err(error)
+            }
+        };
+    }
+    observed
 }
 
 /// The LCU accepts connections before its plugins are up; the summoner answering is the sign
@@ -3992,6 +4069,17 @@ mod tests {
     }
 
     // Champ select automation.
+
+    #[tokio::test(start_paused = true)]
+    async fn failed_session_reads_do_not_confirm_an_action() {
+        let client = quiet_client(Phase::ChampSelect);
+        let action = ChampAction {
+            action_id: 3,
+            champion_id: 86,
+            step: Step::Ban,
+        };
+        assert!(completed(&client.lcu, &action).await.is_err());
+    }
 
     /// A service set to ban 804 in ranked games only, as the user who reported the missing ban had.
     fn ranked_banner(dir: &tempfile::TempDir) -> Service {
