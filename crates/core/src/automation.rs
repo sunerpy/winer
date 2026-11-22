@@ -38,9 +38,30 @@ impl Step {
     }
 }
 
+impl ChampAction {
+    /// The body of the PATCH to the action that carries the step out. A step that completes says
+    /// so in the same request: the client answers `POST …/complete` with 204 and leaves the action
+    /// open, while a PATCH carrying `completed` completes it at once (measured 2026-11-19).
+    pub fn request(&self) -> serde_json::Value {
+        if self.step.completes() {
+            serde_json::json!({ "championId": self.champion_id, "completed": true })
+        } else {
+            serde_json::json!({ "championId": self.champion_id })
+        }
+    }
+}
+
+/// Whether `session` shows `action` carried out: the action completed with its champion.
+pub fn done(session: &ChampSelectSession, action: &ChampAction) -> bool {
+    session.all_actions().any(|shown| {
+        shown.id == action.action_id && shown.completed && shown.champion_id == action.champion_id
+    })
+}
+
 /// What the client allows this account, as far as it has said. `None` means not known yet, in
-/// which case nothing is filtered and the client has the last word. So does an empty ban list: a
-/// ban turn always has champions to ban.
+/// which case nothing is filtered and the client has the last word. So does a list without one
+/// real champion: a turn always has champions to take, and the client answers `[-1]` for bans
+/// while planning and in a ban turn until the ban is hovered (measured 2026-11-19).
 #[derive(Clone, Debug, Default)]
 pub struct Availability {
     pub pickable: Option<HashSet<i64>>,
@@ -49,17 +70,27 @@ pub struct Availability {
 
 impl Availability {
     fn can_pick(&self, champion: i64) -> bool {
-        self.pickable
-            .as_ref()
-            .is_none_or(|ids| ids.contains(&champion))
+        allows(self.pickable.as_ref(), champion)
     }
 
     fn can_ban(&self, champion: i64) -> bool {
-        self.bannable
-            .as_ref()
-            .filter(|ids| !ids.is_empty())
-            .is_none_or(|ids| ids.contains(&champion))
+        allows(self.bannable.as_ref(), champion)
     }
+}
+
+/// Whether a list the client sent lets `champion` be taken; one without a real champion says
+/// nothing.
+fn allows(listed: Option<&HashSet<i64>>, champion: i64) -> bool {
+    match listed {
+        Some(ids) if ids.iter().any(|&id| id > 0) => ids.contains(&champion),
+        _ => true,
+    }
+}
+
+/// How many real champions a list the client sent names: `None` when it did not answer, 0 for a
+/// placeholder such as `[-1]`.
+pub fn listed(ids: Option<&HashSet<i64>>) -> Option<usize> {
+    ids.map(|ids| ids.iter().filter(|&&id| id > 0).count())
 }
 
 /// The local player's ban while it is theirs to make: in the ban phase, the id of the action the
@@ -211,7 +242,15 @@ pub fn decide(
             let action = mine().find(|action| action.is_in_progress)?;
             match action.kind.as_str() {
                 "ban" if rules.ban.enabled => {
-                    let ban = |id: i64| free(id) && available.can_ban(id);
+                    // Never the champion the player means to play: shown while planning, or
+                    // hovered on their pick.
+                    let own: HashSet<i64> = mine()
+                        .filter(|action| action.kind == "pick")
+                        .map(|action| action.champion_id)
+                        .chain([me.champion_pick_intent, me.champion_id])
+                        .filter(|&id| id > 0)
+                        .collect();
+                    let ban = |id: i64| free(id) && !own.contains(&id) && available.can_ban(id);
                     let champion =
                         Some(action.champion_id).filter(|&id| ban(id)).or_else(|| {
                             rules
@@ -393,27 +432,115 @@ mod tests {
         );
     }
 
-    /// An empty ban list is not taken at its word: a ban turn always has champions to ban, so
-    /// nothing listed means the client has not said yet, and the client has the last word.
+    /// A ban list without one real champion is not taken at its word: a ban turn always has
+    /// champions to ban, so the client has not said yet, and it has the last word. `[-1]` is what
+    /// it answered while planning and in a ban turn until the ban was hovered (2026-11-19).
     #[test]
-    fn a_ban_turn_with_nothing_listed_as_bannable_still_bans() {
-        let nothing_listed = Availability {
-            pickable: Some(HashSet::from([86])),
-            bannable: Some(HashSet::new()),
-        };
-        assert_eq!(
-            decide(
-                &session("ban-pick"),
-                &rules(&[86], &[157]),
-                &nothing_listed,
-                false
-            ),
-            Some(ChampAction {
-                action_id: 0,
-                champion_id: 157,
-                step: Step::Ban
-            })
+    fn a_ban_turn_with_no_real_champion_listed_as_bannable_still_bans() {
+        for listed in [vec![], vec![-1]] {
+            let nothing_listed = Availability {
+                pickable: Some(HashSet::from([86])),
+                bannable: Some(listed.iter().copied().collect()),
+            };
+            assert_eq!(
+                decide(
+                    &session("ban-pick"),
+                    &rules(&[86], &[157]),
+                    &nothing_listed,
+                    false
+                ),
+                Some(ChampAction {
+                    action_id: 0,
+                    champion_id: 157,
+                    step: Step::Ban
+                }),
+                "bannable {listed:?}"
+            );
+        }
+    }
+
+    /// The same for the pick list: a pick turn always has champions to pick.
+    #[test]
+    fn a_pick_turn_with_no_real_champion_listed_as_pickable_still_picks() {
+        let session = pick_turn(
+            serde_json::json!([{"cellId": 0, "assignedPosition": "middle"}]),
+            serde_json::json!([[{"id": 6, "actorCellId": 0, "type": "pick", "isInProgress": true}]]),
         );
+        for listed in [vec![], vec![-1]] {
+            let nothing_listed = Availability {
+                pickable: Some(listed.iter().copied().collect()),
+                bannable: None,
+            };
+            assert_eq!(
+                decide(&session, &rules(&[55], &[]), &nothing_listed, false),
+                Some(ChampAction {
+                    action_id: 6,
+                    champion_id: 55,
+                    step: Step::Lock
+                }),
+                "pickable {listed:?}"
+            );
+        }
+    }
+
+    /// A ban never takes the champion the player means to play: the one they showed while
+    /// planning, or hover on their pick. The next candidate is banned instead.
+    #[test]
+    fn the_ban_passes_over_the_champion_the_player_means_to_play() {
+        let mut shown = session("ban-pick");
+        shown.my_team[0].champion_pick_intent = 157;
+        let mut hovered = session("ban-pick");
+        hovered.actions[2][0].champion_id = 157;
+        for session in [shown, hovered] {
+            assert_eq!(
+                decide(
+                    &session,
+                    &rules(&[86], &[157, 238]),
+                    &Availability::default(),
+                    false
+                )
+                .map(|action| action.champion_id),
+                Some(238)
+            );
+        }
+    }
+
+    /// One request carries a step out. A step that completes says so in it: the client answered
+    /// `POST …/complete` with 204 and left the action open, and completed it at once when the
+    /// PATCH carried `completed` (2026-11-19).
+    #[test]
+    fn a_completing_step_is_one_patch_that_says_so() {
+        let request = |step| {
+            ChampAction {
+                action_id: 3,
+                champion_id: 86,
+                step,
+            }
+            .request()
+        };
+        let completing = serde_json::json!({"championId": 86, "completed": true});
+        assert_eq!(request(Step::Lock), completing);
+        assert_eq!(request(Step::Ban), completing);
+        let showing = serde_json::json!({"championId": 86});
+        assert_eq!(request(Step::Declare), showing);
+        assert_eq!(request(Step::Hover), showing);
+    }
+
+    #[test]
+    fn an_action_is_done_once_the_session_shows_it_completed_with_its_champion() {
+        let ban = ChampAction {
+            action_id: 0,
+            champion_id: 157,
+            step: Step::Ban,
+        };
+        let mut session = session("ban-pick");
+        assert!(!done(&session, &ban), "still open");
+        session.actions[0][0].champion_id = 157;
+        assert!(!done(&session, &ban), "hovered, not completed");
+        session.actions[0][0].completed = true;
+        assert!(done(&session, &ban));
+        session.actions[0][0].champion_id = 238;
+        assert!(!done(&session, &ban), "completed with another champion");
     }
 
     fn pick_turn(my_team: serde_json::Value, actions: serde_json::Value) -> ChampSelectSession {
