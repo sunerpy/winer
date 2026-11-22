@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.24](https://github.com/sunerpy/winer/compare/v0.0.23...v0.0.24) (2026-11-22)
+
+
+### 问题修复
+
+* 修复客户端返回占位列表时，自动禁用或选人跳过可用英雄的问题 ([#56](https://github.com/sunerpy/winer/issues/56)) ([20fed9c](https://github.com/sunerpy/winer/commit/20fed9ce8b94178dab5f5b7c97df1cb7d5c24813))
+* 修复自动禁用或锁定后，客户端动作仍未完成却显示成功的问题 ([#56](https://github.com/sunerpy/winer/issues/56)) ([20fed9c](https://github.com/sunerpy/winer/commit/20fed9ce8b94178dab5f5b7c97df1cb7d5c24813))
+
 ## [0.0.23](https://github.com/sunerpy/winer/compare/v0.0.22...v0.0.23) (2026-11-18)
 
 
