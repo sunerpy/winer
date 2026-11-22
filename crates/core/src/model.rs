@@ -172,6 +172,8 @@ pub struct ChampSelectPlayer {
     /// `top`, `jungle`, `middle`, `bottom`, `utility`, or empty outside draft.
     pub assigned_position: String,
     pub puuid: String,
+    /// The real PUUID XORed with a fixed mask while champ select anonymises this player.
+    pub obfuscated_puuid: String,
     pub summoner_id: i64,
     pub game_name: String,
     pub tag_line: String,
