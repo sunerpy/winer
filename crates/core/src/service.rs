@@ -3110,12 +3110,12 @@ fn completion_routes(action_id: i64) -> [String; 2] {
 async fn execute(lcu: &Lcu, action: ChampAction) -> Result<bool, lcu::Error> {
     let path = format!("/lol-champ-select/v1/session/actions/{}", action.action_id);
     lcu.patch(&path, &action.request()).await?;
-    if !action.step.completes() || completed(lcu, &action).await {
+    if !action.step.completes() || completed(lcu, &action).await? {
         return Ok(true);
     }
     for route in completion_routes(action.action_id) {
         match lcu.post(&route, &json!({})).await {
-            Ok(()) if completed(lcu, &action).await => {
+            Ok(()) if completed(lcu, &action).await? => {
                 info!(
                     action_id = action.action_id,
                     step = ?action.step,
@@ -3131,13 +3131,14 @@ async fn execute(lcu: &Lcu, action: ChampAction) -> Result<bool, lcu::Error> {
     Ok(false)
 }
 
-/// Whether the session comes to show `action` completed ([`COMPLETION_READS`]). A session that
-/// cannot be read, champ select over or the client not answering, says nothing against the
-/// request, which succeeded.
-async fn completed(lcu: &Lcu, action: &ChampAction) -> bool {
+/// Whether the session comes to show `action` completed ([`COMPLETION_READS`]). A missing session
+/// is expected if champ select ended after the request. Other read errors are retried, and an
+/// error on the final read is returned to the caller.
+async fn completed(lcu: &Lcu, action: &ChampAction) -> Result<bool, lcu::Error> {
+    let mut observed = Ok(false);
     for wait in COMPLETION_READS {
         sleep(wait).await;
-        match lcu.get_optional::<ChampSelectSession>(CHAMP_SELECT).await {
+        observed = match lcu.get_optional::<ChampSelectSession>(CHAMP_SELECT).await {
             Ok(Some(session)) if !automation::done(&session, action) => {
                 // What the client shows instead, for the report of a step that never lands.
                 let shown = session
@@ -3150,11 +3151,16 @@ async fn completed(lcu: &Lcu, action: &ChampAction) -> bool {
                     in_progress = ?shown.map(|shown| shown.is_in_progress),
                     "the session shows the action open"
                 );
+                Ok(false)
             }
-            _ => return true,
-        }
+            Ok(_) => return Ok(true),
+            Err(error) => {
+                debug!(%error, "could not read the session after an action");
+                Err(error)
+            }
+        };
     }
-    false
+    observed
 }
 
 /// The LCU accepts connections before its plugins are up; the summoner answering is the sign
@@ -4063,6 +4069,17 @@ mod tests {
     }
 
     // Champ select automation.
+
+    #[tokio::test(start_paused = true)]
+    async fn failed_session_reads_do_not_confirm_an_action() {
+        let client = quiet_client(Phase::ChampSelect);
+        let action = ChampAction {
+            action_id: 3,
+            champion_id: 86,
+            step: Step::Ban,
+        };
+        assert!(completed(&client.lcu, &action).await.is_err());
+    }
 
     /// A service set to ban 804 in ranked games only, as the user who reported the missing ban had.
     fn ranked_banner(dir: &tempfile::TempDir) -> Service {
