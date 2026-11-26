@@ -28,10 +28,9 @@ import { ROW_SELECTOR, rankChip, rateClass, standingChip, titleChip } from "./te
 
 /** The panel's kind among the plugin's panels (`data-winer-panel`). */
 export const HISTORY_PANEL = "history";
-const PANEL_SELECTOR = `.winer-panel[data-winer-panel="${HISTORY_PANEL}"]`;
-/** The buttons of winer's panels a click Pengu's root took is handed to: the history panel's and
- *  the runes panel's (`loadout.ts`). */
-const PANEL_BUTTONS = `${PANEL_SELECTOR} button, .winer-panel[data-winer-panel="loadout"] button`;
+/** The buttons of winer's panels a click Pengu's root took is handed to: every panel's (the
+ *  history card, the runes panel, the lobby and team panels), their fold buttons included. */
+const PANEL_BUTTONS = ".winer-panel button";
 /** On a lobby member's card and on a champ-select line: whose it is. */
 const PUUID_ATTRIBUTE = "data-winer-puuid";
 /** winer's own player lines: the lobby's, under a member's tokens, and champ select's. */

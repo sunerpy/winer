@@ -15,7 +15,16 @@ import { innermost } from "./find";
 import { clearFriends, decorateFriends, friendLine } from "./friends";
 import { groupSlot } from "./groups";
 import { Controller } from "./index";
-import { clearLobby, decorateLobby, interceptAvatarClicks, lobbyLine, removePanels } from "./lobby";
+import { interceptPlayerClicks } from "./history";
+import {
+  LOBBY_COLLAPSED_KEY,
+  clearLobby,
+  decorateLobby,
+  floatingPanel,
+  interceptAvatarClicks,
+  lobbyLine,
+  removePanels,
+} from "./lobby";
 import { FRIENDS_LIST, LOBBY } from "./selectors";
 import { lineKey, statsLine } from "./team";
 
@@ -584,5 +593,38 @@ describe("controller", () => {
     const sent = vi.spyOn(other.bridge, "openHistory");
     expect(other.openHistory("p")).toBe(false);
     expect(sent).not.toHaveBeenCalled();
+  });
+});
+
+describe("the lobby panel's fold", () => {
+  it("folds from a click Pengu's root took over its head, and stays folded when built again", () => {
+    const values = new Map<string, unknown>();
+    const store = {
+      get: (key: string, fallback?: unknown) => (values.has(key) ? values.get(key) : fallback),
+      set: (key: string, value: unknown) => {
+        values.set(key, value);
+        return true;
+      },
+    };
+    const panel = floatingPanel(document, "房间成员", "c-1", store);
+    const head = panel.host.querySelector(".winer-head") as Element;
+    const overlay = document.createElement("div");
+    overlay.id = "pengu-root";
+    document.body.append(overlay);
+    Object.defineProperty(document, "elementsFromPoint", {
+      configurable: true,
+      value: () => [overlay, head, panel.host, document.body],
+    });
+    const stop = interceptPlayerClicks(document, () => false);
+    overlay.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 900, clientY: 90 }));
+    stop();
+    Reflect.deleteProperty(document, "elementsFromPoint");
+    expect(panel.host.dataset.collapsed).toBe("true");
+    expect(values.get(LOBBY_COLLAPSED_KEY)).toBe(true);
+    panel.host.remove();
+    overlay.remove();
+    const again = floatingPanel(document, "房间成员", "c-1", store);
+    expect(again.host.dataset.collapsed, "the fold outlives a rebuild").toBe("true");
+    again.host.remove();
   });
 });
