@@ -10,7 +10,6 @@ export const zhCN = {
   "nav.tools": "工具",
   "nav.plugin": "客户端增强",
   "nav.comeback": "快捷喊话",
-  "nav.phrases": "快捷语",
   "nav.settings": "设置",
   "nav.theme": "主题",
   "nav.collapse": "收起侧栏",
@@ -1007,7 +1006,7 @@ export const zhCN = {
   "loadout.what.runes": "符文",
   "loadout.what.spells": "召唤师技能",
 
-  "status.shortcuts": "Ctrl 1–8 切换页面 · Ctrl , 设置 · Ctrl B 侧栏",
+  "status.shortcuts": "Ctrl 1–7 切换页面 · Ctrl , 设置 · Ctrl B 侧栏",
   "error.title": "这一页出错了",
   "error.hint": "其他页面不受影响。可以重试，或打开日志目录把最新的日志发给开发者。",
 
@@ -1124,6 +1123,7 @@ export const zhCN = {
   // The Quick chat page (快捷喊话, once 反击): the quick messages and their shortcuts, the random
   // lines and their two shortcuts, typing into the game and the library downloaded on request.
   "comeback.title": "快捷喊话",
+  "comeback.tabs": "快捷喊话和选人快捷语",
   "comeback.quick": "快捷消息",
   "comeback.quickHint":
     "每条消息有自己的快捷键，按一下发出整句，最多 200 字。英雄选择中发到选人聊天；游戏中打开下面的「在游戏里输入」后，按这一条选的「队伍」或「全体」输入游戏聊天。winer 不自带任何消息。",

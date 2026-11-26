@@ -96,6 +96,20 @@ const STRINGS = {
   loadoutOffline: ["winer 没有连上客户端", "winer is not connected to the client"],
   loadoutTimeout: ["winer 没有及时回应", "winer did not answer in time"],
   loadoutFailedAction: ["没有成功", "It did not work"],
+  // Hextech ARAM: no rune page, its augments and items instead.
+  loadoutSpells: ["召唤师技能", "Summoner spells"],
+  loadoutAugments: ["强化符文评级", "Augment tiers"],
+  loadoutTaken: ["选取", "taken"],
+  loadoutItems: ["推荐出装", "Items"],
+  loadoutWriteItemSet: ["写入装备方案", "Write the item set"],
+  loadoutItemSetWritten: [
+    "已写入装备方案，游戏内商店里能找到",
+    "Item set written: the in-game shop lists it",
+  ],
+  loadoutItemSetsFull: [
+    "装备方案放满了：在客户端里删掉一些后再试",
+    "The item sets are full: delete some in the client and try again",
+  ],
 } as const;
 
 export function text(language: Language, key: keyof typeof STRINGS): string {

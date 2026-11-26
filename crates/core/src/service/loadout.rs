@@ -297,6 +297,18 @@ fn loadout_assets(
     }
     spells.extend(current.spells);
     spells.extend(mine.and_then(|mine| mine.spells).into_iter().flatten());
+    let mut items: Vec<i64> = Vec::new();
+    let mut augments: Vec<i64> = Vec::new();
+    if let Some(recommendation) = recommendation {
+        items.extend(
+            recommendation
+                .core
+                .iter()
+                .chain(&recommendation.boots)
+                .flat_map(|option| option.items.iter().copied()),
+        );
+        augments.extend(recommendation.augments.iter().map(|augment| augment.id));
+    }
     let mut assets: Vec<AssetInfo> = Vec::new();
     let mut add = |catalog: &[AssetInfo], ids: &[i64]| {
         for &id in ids {
@@ -310,6 +322,18 @@ fn loadout_assets(
     };
     add(&data.perks, &perks);
     add(&data.spells, &spells);
+    add(&data.items, &items);
+    for id in augments {
+        if !assets.iter().any(|asset| asset.id == id)
+            && let Some(augment) = data.augments.iter().find(|augment| augment.id == id)
+        {
+            assets.push(AssetInfo {
+                id: augment.id,
+                name: augment.name.clone(),
+                icon: augment.icon.clone(),
+            });
+        }
+    }
     assets
 }
 
@@ -323,7 +347,7 @@ impl Service {
         let Some(mode) = queue_mode(client, session.queue_id) else {
             return;
         };
-        if wants_loadout(&settings, mode, self.plugins()) {
+        if wants_loadout(&settings, mode, self.plugins()) && loadout::takes_runes(mode) {
             self.poll_pages(client, session.game_id);
         }
         let (setup, item_set) = {
@@ -529,6 +553,8 @@ impl Service {
         if fetch {
             self.fetch_loadout_recommendation(client, key, session.clone());
         }
+        // A kind of game without rune pages shows none, whatever page the client keeps current.
+        let page = page.filter(|_| loadout::takes_runes(mode));
         let current = LoadoutCurrent {
             runes: page.as_ref().and_then(PerkPage::runes),
             page: page.map(|page| page.name).unwrap_or_default(),
@@ -548,6 +574,7 @@ impl Service {
             held,
             revision: 0,
             auto: loadout::LoadoutAuto::of(&settings.automation, mode),
+            takes_runes: loadout::takes_runes(mode),
             current,
             mine,
             recommendation,
@@ -625,23 +652,33 @@ impl Service {
         builds: &BuildSettings,
         session: &ChampSelectSession,
     ) -> Result<LoadoutRecommendation, CoreError> {
-        let build = if matches!(mode, Mode::Ranked | Mode::Normal | Mode::Aram) {
+        let build = if matches!(
+            mode,
+            Mode::Ranked | Mode::Normal | Mode::Aram | Mode::Hextech
+        ) {
             match self.build_with(builds, champion, mode, lane).await {
                 Ok(build) => Some(build),
                 Err(error) => {
-                    debug!(%error, champion, ?mode, "no numbers for the runes and spells");
+                    debug!(%error, champion, ?mode, "no numbers for the recommendation");
                     None
                 }
             }
         } else {
             None
         };
-        let built = loadout::recommendation(build.as_deref(), &[]);
-        if built.runes_from.is_some() && built.spells_from.is_some() {
-            return Ok(built);
+        let runes = loadout::takes_runes(mode);
+        let mut recommendation = loadout::recommendation(build.as_deref(), &[]);
+        if (runes && recommendation.runes_from.is_none()) || recommendation.spells_from.is_none() {
+            let pages = client_pages(&client.lcu, champion, mode, session).await?;
+            recommendation = loadout::recommendation(build.as_deref(), &pages);
         }
-        let pages = client_pages(&client.lcu, champion, mode, session).await?;
-        Ok(loadout::recommendation(build.as_deref(), &pages))
+        // Hextech ARAM takes no rune page: its augments and items instead.
+        if !runes {
+            recommendation.runes.clear();
+            recommendation.runes_from = None;
+        }
+        loadout::hextech_advice(&mut recommendation, build.as_deref());
+        Ok(recommendation)
     }
 
     /// The recommendation the view holds for `key`, or a fresh lookup where it holds none.
@@ -722,7 +759,8 @@ impl Service {
                 return;
             }
             // A setup saved or deleted meanwhile counts as it is now.
-            let mut plan = loadout::plan(service.mine(&keys).as_ref(), recommended.as_ref());
+            let mut plan =
+                loadout::plan(service.mine(&keys).as_ref(), recommended.as_ref()).for_mode(mode);
             if plan.is_empty() {
                 return;
             }
@@ -974,9 +1012,21 @@ impl Service {
             }
             _ => None,
         };
+        let build = match action {
+            LoadoutAction::WriteItemSet => Some(
+                self.build_with(
+                    &self.settings().builds,
+                    view.champion_id,
+                    view.mode,
+                    view.lane,
+                )
+                .await?,
+            ),
+            _ => None,
+        };
         let _turn = self.inner.loadout.acting.lock().await;
         let done = self
-            .act_on(&client, &target, &view, action, recommended)
+            .act_on(&client, &target, &view, action, recommended, build)
             .await;
         self.refresh_page(&client, target.game_id).await;
         self.render_current(&client);
@@ -991,9 +1041,20 @@ impl Service {
         asked_on: &LoadoutView,
         action: LoadoutAction,
         recommended: Option<LoadoutRecommendation>,
+        build: Option<Arc<Build>>,
     ) -> Result<LoadoutDone, CoreError> {
         let stale = || CoreError::Stale("that option is not in the view any more".into());
         let (game_id, champion) = (target.game_id, target.champion_id);
+        if let LoadoutAction::WriteItemSet = action {
+            let build = build.ok_or_else(stale)?;
+            self.still_on(client, target, asked_on.mode, asked_on.lane)?;
+            self.put_item_set(client, &build).await?;
+            info!(champion, mode = ?asked_on.mode, "item set written from the runes panel");
+            return Ok(LoadoutDone {
+                item_set: true,
+                ..LoadoutDone::default()
+            });
+        }
         if let LoadoutAction::RestoreRecommended = action {
             let recommendation = recommended.ok_or_else(stale)?;
             let (mode, lane) = (asked_on.mode, asked_on.lane);
@@ -1020,7 +1081,7 @@ impl Service {
                     .await
                     .map_err(|error| CoreError::Io(std::io::Error::other(error)))??;
             }
-            let plan = loadout::plan(None, Some(&recommendation));
+            let plan = loadout::plan(None, Some(&recommendation)).for_mode(mode);
             return if plan.is_empty() {
                 Ok(LoadoutDone::default())
             } else {
@@ -1030,7 +1091,12 @@ impl Service {
         let (view, session) = self.loadout_target(client, target)?;
         match action {
             LoadoutAction::SaveMine => {
-                let page = current_page(&client.lcu).await;
+                // No rune page is kept where the game takes none.
+                let page = if loadout::takes_runes(view.mode) {
+                    current_page(&client.lcu).await
+                } else {
+                    None
+                };
                 let setup = loadout::current_setup(page.as_ref(), spells_of(&session), now_ms())
                     .ok_or_else(|| {
                         CoreError::Invalid("no full rune page nor two spells to keep".into())
@@ -1071,10 +1137,12 @@ impl Service {
             }
             LoadoutAction::ApplyMine => {
                 let mine = view.mine.as_ref().ok_or_else(stale)?;
-                let plan = loadout::plan(Some(mine), None);
+                let plan = loadout::plan(Some(mine), None).for_mode(view.mode);
                 self.carry_out_asked(client, game_id, champion, &plan).await
             }
-            LoadoutAction::RestoreRecommended => unreachable!("handled above"),
+            LoadoutAction::RestoreRecommended | LoadoutAction::WriteItemSet => {
+                unreachable!("handled above")
+            }
         }
     }
 
@@ -1109,6 +1177,7 @@ impl Service {
                 applied.runes.map(|_| PageOutcome::Written)
             },
             spells: applied.spells.is_some(),
+            item_set: false,
         })
     }
 
@@ -2192,6 +2261,7 @@ mod tests {
                 &view,
                 LoadoutAction::RestoreRecommended,
                 Some(LoadoutRecommendation::default()),
+                None,
             )
             .await;
         assert!(matches!(done, Err(CoreError::Stale(_))));
@@ -2252,6 +2322,7 @@ mod tests {
                 &view,
                 LoadoutAction::RestoreRecommended,
                 Some(LoadoutRecommendation::default()),
+                None,
             )
             .await;
         assert!(matches!(done, Err(CoreError::Stale(_))));
@@ -2275,6 +2346,7 @@ mod tests {
                 &view,
                 LoadoutAction::RestoreRecommended,
                 Some(LoadoutRecommendation::default()),
+                None,
             )
             .await;
         assert!(matches!(done, Err(CoreError::Stale(_))));

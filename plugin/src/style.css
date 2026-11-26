@@ -939,6 +939,47 @@ html[data-winer-team-panel="true"] .winer-panel[data-winer-panel="loadout"] {
   outline-offset: 2px;
 }
 
+/* Hextech ARAM: its augments in a grid, each with its tier under it, and its items. */
+.winer-loadout-augments {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  margin: 4px 0 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.winer-loadout-augment {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.winer-loadout-tier {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 12px;
+  color: #a09b8c;
+}
+
+.winer-loadout-tier--s {
+  color: #f0c060;
+}
+
+.winer-loadout-tier--a {
+  color: #c389f5;
+}
+
+.winer-loadout-tier--b {
+  color: #6fb8f0;
+}
+
+.winer-loadout-items {
+  display: inline-flex;
+  gap: 2px;
+}
+
 .winer-loadout-said {
   min-height: 16px;
   margin: 0;

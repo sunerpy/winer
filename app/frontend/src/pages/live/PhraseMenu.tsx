@@ -89,7 +89,7 @@ export function PhraseMenu({
             variant="link"
             onClick={() => {
               setOpen(false);
-              navigate({ page: "phrases" });
+              navigate({ page: "comeback", tab: "phrases" });
             }}
           >
             {t("live.phrasesEdit")}

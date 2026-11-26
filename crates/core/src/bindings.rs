@@ -151,6 +151,7 @@ pub fn typescript() -> String {
         loadout::LoadoutView,
         loadout::LoadoutCurrent,
         loadout::LoadoutAuto,
+        loadout::AugmentPick,
         loadout::Setup,
         loadout::RecommendationState,
         loadout::LoadoutRecommendation,

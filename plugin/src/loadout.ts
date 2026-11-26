@@ -5,6 +5,8 @@
 // nothing and the panel says so.
 import type {
   AssetInfo,
+  AugmentPick,
+  ItemOption,
   Language,
   LoadoutAction,
   LoadoutTarget,
@@ -77,9 +79,16 @@ export function sameSpells(
  *  while the current page is not read yet. */
 export function currentIs(view: LoadoutView): "mine" | "recommended" | "changed" | null {
   const { current, mine } = view;
-  if (!current.runes) return null;
   const recommended =
     view.recommendation.state === "ready" ? view.recommendation.recommendation : null;
+  // Hextech ARAM takes no rune page: the spells alone tell.
+  if (!view.takesRunes) {
+    if (mine?.spells && sameSpells(current.spells, mine.spells)) return "mine";
+    if (recommended && sameSpells(current.spells, recommended.spells[0]?.spells))
+      return "recommended";
+    return current.spells.every((id) => id > 0) ? "changed" : null;
+  }
+  if (!current.runes) return null;
   const runes = (want: RunePage | null | undefined) => samePage(current.runes, want);
   const spells = (want: readonly number[] | null | undefined) => sameSpells(current.spells, want);
   const firstRunes = recommended?.runes[0]?.page;
@@ -111,7 +120,9 @@ export function sourceLine(by: RecommendedBy | null, patch: string, language: La
       ? text(language, "loadoutTencent")
       : by === "opGg"
         ? "OP.GG"
-        : text(language, "loadoutFromClient");
+        : by === "aramGg"
+          ? "ARAM.GG"
+          : text(language, "loadoutFromClient");
   return by !== "client" && patch ? `${name} ${patch}` : name;
 }
 
@@ -154,6 +165,61 @@ function spellIcons(assets: readonly AssetInfo[], spells: readonly number[]): HT
   return h("span", { class: "winer-loadout-spells" }, ...spells.map((id) => icon(assets, id, 18)));
 }
 
+function percentText(share: number | null): string {
+  return share === null ? "" : `${Math.round(share * 1000) / 10}%`;
+}
+
+/** Hextech ARAM's best augments: each one's icon with its tier under it, its name and how often it
+ *  is taken in its title. Never a win rate: Riot's policy keeps those off every product. */
+function augmentGrid(
+  assets: readonly AssetInfo[],
+  augments: readonly AugmentPick[],
+  language: Language,
+): HTMLElement {
+  return h(
+    "ol",
+    { class: "winer-loadout-augments" },
+    ...augments.map((augment) => {
+      const asset = assets.find((candidate) => candidate.id === augment.id);
+      const taken = percentText(augment.pick);
+      const title = [
+        asset?.name ?? `#${augment.id}`,
+        augment.tier ?? "",
+        taken ? `${text(language, "loadoutTaken")} ${taken}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      return h(
+        "li",
+        { class: "winer-loadout-augment", title },
+        icon(assets, augment.id, 28),
+        h(
+          "span",
+          {
+            class: `winer-loadout-tier winer-loadout-tier--${(augment.tier ?? "none").toLowerCase()}`,
+          },
+          augment.tier ?? "–",
+        ),
+      );
+    }),
+  );
+}
+
+/** A build's items in a row, with how often they are taken and how they went. */
+function itemRow(
+  assets: readonly AssetInfo[],
+  option: ItemOption,
+  language: Language,
+): HTMLElement {
+  const rates = ratesLine(option.rates, language);
+  return h(
+    "li",
+    { class: "winer-loadout-option" },
+    h("span", { class: "winer-loadout-items" }, ...option.items.map((id) => icon(assets, id, 20))),
+    rates ? h("span", { class: "winer-loadout-rates" }, rates) : null,
+  );
+}
+
 /** The panel's body for `view`: now, the recommendation, the user's own setup and what was said.
  *  `act` carries a button's request out; every button is off while one is under way. */
 export function loadoutBody(
@@ -184,9 +250,11 @@ export function loadoutBody(
     "div",
     { class: "winer-loadout-now" },
     h("span", { class: "winer-loadout-label" }, text(language, "loadoutNow")),
-    view.current.runes
-      ? pageIcons(assets, view.current.runes)
-      : h("span", { class: "winer-loadout-muted" }, text(language, "loadoutNoPage")),
+    !view.takesRunes
+      ? null
+      : view.current.runes
+        ? pageIcons(assets, view.current.runes)
+        : h("span", { class: "winer-loadout-muted" }, text(language, "loadoutNoPage")),
     spellIcons(
       assets,
       view.current.spells.filter((id) => id > 0),
@@ -210,8 +278,44 @@ export function loadoutBody(
   // The recommendation.
   const recommendation = view.recommendation;
   let options: HTMLElement;
+  let advice: HTMLElement | null = null;
   if (recommendation.state === "ready") {
-    const { runes, spells, runesFrom, patch } = recommendation.recommendation;
+    const { runes, spells, runesFrom, spellsFrom, patch } = recommendation.recommendation;
+    const { augments, core, boots, buildFrom } = recommendation.recommendation;
+    // Hextech ARAM: its augments and items, from the build's source.
+    if (augments.length > 0 || core.length > 0 || boots.length > 0) {
+      const source = sourceLine(buildFrom, patch, language);
+      advice = h(
+        "div",
+        { class: "winer-loadout-section" },
+        augments.length > 0
+          ? h(
+              "div",
+              { class: "winer-loadout-title" },
+              `${text(language, "loadoutAugments")}${source ? ` · ${source}` : ""}`,
+            )
+          : null,
+        augments.length > 0 ? augmentGrid(assets, augments, language) : null,
+        core.length > 0 || boots.length > 0
+          ? h("div", { class: "winer-loadout-title" }, text(language, "loadoutItems"))
+          : null,
+        core.length > 0 || boots.length > 0
+          ? h(
+              "ol",
+              { class: "winer-loadout-options" },
+              ...core.map((option) => itemRow(assets, option, language)),
+              ...boots.map((option) => itemRow(assets, option, language)),
+            )
+          : null,
+        core.length > 0
+          ? h(
+              "div",
+              { class: "winer-loadout-actions" },
+              button(text(language, "loadoutWriteItemSet"), { kind: "writeItemSet" }),
+            )
+          : null,
+      );
+    }
     const rows: HTMLElement[] = [];
     runes.forEach((option, index) => {
       const rates = ratesLine(option.rates, language);
@@ -243,9 +347,11 @@ export function loadoutBody(
       h(
         "div",
         { class: "winer-loadout-title" },
-        `${text(language, "loadoutRecommended")} · ${sourceLine(runesFrom, patch, language)}`,
+        view.takesRunes
+          ? `${text(language, "loadoutRecommended")} · ${sourceLine(runesFrom, patch, language)}`
+          : `${text(language, "loadoutSpells")} · ${sourceLine(spellsFrom, "", language)}`,
       ),
-      h("ol", { class: "winer-loadout-options" }, ...rows),
+      rows.length > 0 ? h("ol", { class: "winer-loadout-options" }, ...rows) : null,
     );
   } else {
     const key =
@@ -318,7 +424,7 @@ export function loadoutBody(
     },
     said?.state === "done" ? said.text : "",
   );
-  return h("div", { class: "winer-loadout" }, now, options, own, status);
+  return h("div", { class: "winer-loadout" }, now, options, advice, own, status);
 }
 
 /** What the panel says of winer's answer to `action`. */
@@ -336,7 +442,9 @@ export function answerText(
         ? "loadoutBusy"
         : error.code === "notConnected"
           ? "loadoutOffline"
-          : null;
+          : error.code === "full"
+            ? "loadoutItemSetsFull"
+            : null;
     return {
       text: key
         ? text(language, key)
@@ -350,7 +458,9 @@ export function answerText(
       ? "loadoutSaved"
       : action === "restoreRecommended"
         ? "loadoutRestored"
-        : "loadoutApplied";
+        : action === "writeItemSet"
+          ? "loadoutItemSetWritten"
+          : "loadoutApplied";
   return { text: text(language, key), ok: true };
 }
 

@@ -281,6 +281,8 @@ pub enum LoadoutOrigin {
 pub enum RecommendedBy {
     Tencent,
     OpGg,
+    /// Hextech ARAM's augments and items when Tencent's do not answer.
+    AramGg,
     /// The client's own recommended pages: no rates.
     Client,
 }
@@ -288,10 +290,31 @@ pub enum RecommendedBy {
 impl RecommendedBy {
     pub fn origin(self) -> LoadoutOrigin {
         match self {
-            Self::Tencent | Self::OpGg => LoadoutOrigin::Recommended,
+            Self::Tencent | Self::OpGg | Self::AramGg => LoadoutOrigin::Recommended,
             Self::Client => LoadoutOrigin::Client,
         }
     }
+}
+
+/// Whether a kind of game takes a rune page: Hextech ARAM has augments instead, and Arena hands
+/// out its own. Neither the panels nor the rule touch runes in the others.
+pub fn takes_runes(mode: Mode) -> bool {
+    !matches!(mode, Mode::Hextech | Mode::Arena)
+}
+
+/// Hextech ARAM augments the panel lists, and core builds.
+pub const ADVICE_AUGMENTS: usize = 6;
+pub const ADVICE_BUILDS: usize = 2;
+
+/// One of a champion's Hextech ARAM augments as the source grades it: its tier (S to C) and how
+/// often it is taken, never its win rate, which Riot's policy keeps off every product.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AugmentPick {
+    pub id: i64,
+    pub tier: Option<crate::builds::AugmentTier>,
+    /// The share of the champion's games that took it, 0–1.
+    pub pick: Option<f64>,
 }
 
 /// The options a recommendation lists for each half: the first is the one set up.
@@ -310,11 +333,57 @@ pub struct LoadoutRecommendation {
     pub spells_from: Option<RecommendedBy>,
     /// The source's patch, `16.19`; empty where it says none or the client's pages are used.
     pub patch: String,
+    /// Hextech ARAM: the champion's augments, best first, at most [`ADVICE_AUGMENTS`].
+    pub augments: Vec<AugmentPick>,
+    /// Hextech ARAM: core builds, most taken first, at most [`ADVICE_BUILDS`], and boots.
+    pub core: Vec<ItemOption>,
+    pub boots: Vec<ItemOption>,
+    /// Where the augments and items come from.
+    pub build_from: Option<RecommendedBy>,
 }
 
 impl LoadoutRecommendation {
     pub fn is_empty(&self) -> bool {
-        self.runes.is_empty() && self.spells.is_empty()
+        self.runes.is_empty()
+            && self.spells.is_empty()
+            && self.augments.is_empty()
+            && self.core.is_empty()
+            && self.boots.is_empty()
+    }
+}
+
+/// Adds Hextech ARAM's advice from `build` (Tencent's numbers, or ARAM.GG's when they did not
+/// answer): the best augments by their tier and how often they are taken, without win rates, and
+/// the core builds and boots. Nothing for another kind of build.
+pub fn hextech_advice(recommendation: &mut LoadoutRecommendation, build: Option<&Build>) {
+    let Some(build) = build else {
+        return;
+    };
+    let by = match build.source {
+        BuildSource::TencentHextech => RecommendedBy::Tencent,
+        BuildSource::AramGg => RecommendedBy::AramGg,
+        BuildSource::Tencent | BuildSource::OpGg => return,
+    };
+    recommendation.augments = build
+        .augments
+        .iter()
+        .take(ADVICE_AUGMENTS)
+        .map(|augment| AugmentPick {
+            id: augment.id,
+            tier: augment.tier,
+            pick: augment.rates.pick,
+        })
+        .collect();
+    recommendation.core = build.core.iter().take(ADVICE_BUILDS).cloned().collect();
+    recommendation.boots = build.boots.iter().take(1).cloned().collect();
+    if !(recommendation.augments.is_empty()
+        && recommendation.core.is_empty()
+        && recommendation.boots.is_empty())
+    {
+        recommendation.build_from = Some(by);
+        if recommendation.patch.is_empty() {
+            recommendation.patch = build.patch.clone();
+        }
     }
 }
 
@@ -433,6 +502,14 @@ impl Plan {
     pub fn is_empty(&self) -> bool {
         self.runes.is_none() && self.spells.is_none()
     }
+
+    /// The plan for a game of `mode`: without runes where it takes none ([`takes_runes`]).
+    pub fn for_mode(mut self, mode: Mode) -> Self {
+        if !takes_runes(mode) {
+            self.runes = None;
+        }
+        self
+    }
 }
 
 /// What to set up: each half from the user's own setup (`mine`) where it has that half, else the
@@ -488,6 +565,9 @@ pub struct LoadoutView {
     pub revision: u32,
     /// What the rule sets up once the champion is the player's, so the panels promise no more.
     pub auto: LoadoutAuto,
+    /// The kind of game takes a rune page ([`takes_runes`]): in Hextech ARAM the panels show the
+    /// spells, augments and items, and nothing sets runes.
+    pub takes_runes: bool,
     pub current: LoadoutCurrent,
     /// The user's own setup for the champion, kind of game and lane (我的方案).
     pub mine: Option<Setup>,
@@ -621,6 +701,8 @@ pub enum LoadoutAction {
     SaveMine,
     /// The user's own setup goes, and the recommendation goes up.
     RestoreRecommended,
+    /// winer's item set for the champion, from the build the recommendation's items come from.
+    WriteItemSet,
 }
 
 /// What came of a request: the rune page, where runes went up, and whether the spells did.
@@ -629,6 +711,8 @@ pub enum LoadoutAction {
 pub struct LoadoutDone {
     pub runes: Option<PageOutcome>,
     pub spells: bool,
+    /// winer's item set was written.
+    pub item_set: bool,
 }
 
 /// The champion the local player has in `session`: the one held, or the one hovered before.
@@ -1067,6 +1151,76 @@ mod tests {
     use super::*;
 
     #[test]
+    fn hextech_aram_gets_augments_and_items_without_win_rates_and_no_runes() {
+        use crate::builds::{AugmentOption, AugmentTier};
+        let mut build = Build::new(BuildSource::AramGg, 103, Mode::Hextech);
+        build.patch = "16.23".into();
+        build.augments = (0..8)
+            .map(|n| AugmentOption {
+                id: 1000 + n,
+                rarity: crate::view::Rarity::Gold,
+                tier: Some(AugmentTier::S),
+                rates: Rates {
+                    pick: Some(0.1),
+                    win: Some(0.6),
+                    ..Rates::default()
+                },
+            })
+            .collect();
+        let items = |ids: &[i64], pick: f64| ItemOption {
+            items: ids.to_vec(),
+            rates: Rates {
+                pick: Some(pick),
+                win: Some(0.5),
+                ..Rates::default()
+            },
+        };
+        build.core = vec![
+            items(&[1, 2, 3], 0.3),
+            items(&[4, 5, 6], 0.2),
+            items(&[7, 8, 9], 0.1),
+        ];
+        build.boots = vec![items(&[3020], 0.5), items(&[3111], 0.3)];
+        let mut recommendation = LoadoutRecommendation::default();
+        hextech_advice(&mut recommendation, Some(&build));
+        assert_eq!(recommendation.augments.len(), ADVICE_AUGMENTS);
+        assert_eq!(
+            recommendation.augments[0],
+            AugmentPick {
+                id: 1000,
+                tier: Some(AugmentTier::S),
+                pick: Some(0.1),
+            },
+            "the tier and how often it is taken, never the win rate"
+        );
+        assert_eq!(recommendation.core.len(), ADVICE_BUILDS);
+        assert_eq!(recommendation.boots.len(), 1);
+        assert_eq!(recommendation.build_from, Some(RecommendedBy::AramGg));
+        assert_eq!(recommendation.patch, "16.23");
+        assert!(!recommendation.is_empty());
+
+        // Another source's build has no advice of this kind.
+        let mut rift = LoadoutRecommendation::default();
+        hextech_advice(
+            &mut rift,
+            Some(&Build::new(BuildSource::Tencent, 103, Mode::Ranked)),
+        );
+        assert_eq!(rift, LoadoutRecommendation::default());
+
+        // Nothing sets runes where the game takes none.
+        assert!(!takes_runes(Mode::Hextech) && takes_runes(Mode::Aram));
+        let setup = Setup {
+            runes: Some(precision()),
+            spells: Some([4, 32]),
+            saved_at: 1,
+        };
+        let plan = plan(Some(&setup), None);
+        assert!(plan.clone().for_mode(Mode::Hextech).runes.is_none());
+        assert_eq!(plan.clone().for_mode(Mode::Hextech).spells, plan.spells);
+        assert!(plan.for_mode(Mode::Aram).runes.is_some());
+    }
+
+    #[test]
     fn the_view_says_what_the_rule_sets_up_and_no_more() {
         let mut rule = Automation::default();
         assert_eq!(
@@ -1291,6 +1445,7 @@ mod tests {
             runes_from: Some(RecommendedBy::Tencent),
             spells_from: Some(RecommendedBy::Client),
             patch: "16.19".into(),
+            ..LoadoutRecommendation::default()
         };
         let none = plan(None, Some(&recommended));
         assert_eq!(none.runes, Some((precision(), LoadoutOrigin::Recommended)));

@@ -1,6 +1,5 @@
 import {
   Bot,
-  Handshake,
   History,
   LayoutDashboard,
   type LucideIcon,
@@ -13,19 +12,16 @@ import { createContext, useContext } from "react";
 
 import type { MessageKey } from "../lib/i18n";
 
-export type Page =
-  | "overview"
-  | "live"
-  | "history"
-  | "automation"
-  | "tools"
-  | "plugin"
-  | "comeback"
-  | "phrases";
+export type Page = "overview" | "live" | "history" | "automation" | "tools" | "plugin" | "comeback";
 
-/** Where the window is. History can be opened on someone else's games. */
+/** The Quick chat page's two tabs: its own shortcuts and lines, and champ select's phrases. */
+export type ComebackTab = "quick" | "phrases";
+
+/** Where the window is. History can be opened on someone else's games; the Quick chat page on
+ *  one of its tabs. */
 export type Route =
-  | { page: Exclude<Page, "history"> }
+  | { page: Exclude<Page, "history" | "comeback"> }
+  | { page: "comeback"; tab?: ComebackTab }
   | {
       page: "history";
       puuid?: string;
@@ -60,14 +56,14 @@ export const NAV_GROUPS: { title: MessageKey; items: NavItem[] }[] = [
       { page: "automation", label: "nav.automation", icon: Bot },
       { page: "tools", label: "nav.tools", icon: Wrench },
       { page: "plugin", label: "nav.plugin", icon: Puzzle },
-      // Added last, so the pages before them keep their Ctrl numbers.
+      // Added last, so the pages before it keep their Ctrl numbers. Champ select's phrases are
+      // its second tab.
       { page: "comeback", label: "nav.comeback", icon: MessageSquareQuote },
-      { page: "phrases", label: "nav.phrases", icon: Handshake },
     ],
   },
 ];
 
-/** Ctrl+1 … Ctrl+8 follow this order. */
+/** Ctrl+1 … Ctrl+7 follow this order. */
 export const PAGE_ORDER: Page[] = NAV_GROUPS.flatMap((group) =>
   group.items.map((item) => item.page),
 );

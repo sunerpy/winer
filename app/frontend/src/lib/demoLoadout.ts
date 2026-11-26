@@ -283,6 +283,10 @@ export function demoLoadout(gameId: number, championId: number, changed: () => v
     runesFrom: "client",
     spellsFrom: "client",
     patch: "",
+    augments: [],
+    core: [],
+    boots: [],
+    buildFrom: null,
   };
   const stale = () => ({ code: "stale", message: "champ select has changed since" });
   const set = (runes: RunePage | null, spells: [number, number] | null) => {
@@ -293,12 +297,14 @@ export function demoLoadout(gameId: number, championId: number, changed: () => v
     view: () => ({
       gameId,
       championId,
-      mode: "hextech",
+      // The demo's champ select is a ranked game (queue 420).
+      mode: "ranked",
       lane: null,
       held: true,
       revision,
       // The demo's rule is on: the setup and the recommendation go up at lock-in.
       auto: "mineOrRecommended",
+      takesRunes: true,
       current,
       mine,
       recommendation: { state: "ready", recommendation },
@@ -312,7 +318,7 @@ export function demoLoadout(gameId: number, championId: number, changed: () => v
         target.revision !== revision
       )
         throw stale();
-      let done: LoadoutDone = { runes: null, spells: false };
+      let done: LoadoutDone = { runes: null, spells: false, itemSet: false };
       switch (action.kind) {
         case "saveMine":
           mine = { runes: current.runes, spells: current.spells, savedAt: Date.now() };
@@ -325,14 +331,18 @@ export function demoLoadout(gameId: number, championId: number, changed: () => v
             spells: mine.spells ? "mine" : applied.spells,
             noPage: false,
           };
-          done = { runes: mine.runes ? "written" : null, spells: mine.spells !== null };
+          done = {
+            runes: mine.runes ? "written" : null,
+            spells: mine.spells !== null,
+            itemSet: false,
+          };
           break;
         case "applyRunes": {
           const option = recommendation.runes[action.index];
           if (!option) throw stale();
           set(option.page, null);
           applied = { ...applied, runes: "client", noPage: false };
-          done = { runes: "written", spells: false };
+          done = { runes: "written", spells: false, itemSet: false };
           break;
         }
         case "applySpells": {
@@ -340,14 +350,14 @@ export function demoLoadout(gameId: number, championId: number, changed: () => v
           if (!option) throw stale();
           set(null, option.spells);
           applied = { ...applied, spells: "client" };
-          done = { runes: null, spells: true };
+          done = { runes: null, spells: true, itemSet: false };
           break;
         }
         case "restoreRecommended":
           mine = null;
           set(DOMINATION, [4, 32]);
           applied = { runes: "client", spells: "client", noPage: false };
-          done = { runes: "written", spells: true };
+          done = { runes: "written", spells: true, itemSet: false };
           break;
       }
       revision += 1;

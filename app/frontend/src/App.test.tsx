@@ -61,7 +61,6 @@ describe("App", () => {
       ["nav.tools", "tools.title"],
       ["nav.plugin", "plugin.title"],
       ["nav.comeback", "comeback.title"],
-      ["nav.phrases", "phrase.title"],
       ["nav.overview", "overview.title"],
     ] as const;
     for (const [entry, title] of pages) {
@@ -2511,12 +2510,11 @@ describe("comebacks", () => {
     return rendered;
   }
 
+  /** The Quick chat page's second tab, champ select's phrases. */
   async function openPhrases(backend: Backend = demoBackend()) {
-    const rendered = await renderApp(backend);
-    await rendered.user.click(
-      within(rendered.nav).getByRole("button", { name: zhCN["nav.phrases"] }),
-    );
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(zhCN["phrase.title"]);
+    const rendered = await openComebacks(backend);
+    const tabs = screen.getByRole("radiogroup", { name: zhCN["comeback.tabs"] });
+    await rendered.user.click(within(tabs).getByRole("radio", { name: zhCN["phrase.title"] }));
     return rendered;
   }
 
@@ -2546,7 +2544,7 @@ describe("comebacks", () => {
     return demoWith({ get_app_info: () => ({ ...info, elevated: false }) });
   }
 
-  it("opens from the sidebar and with Ctrl+7, the Phrases page with Ctrl+8, the pages before them keeping their numbers", async () => {
+  it("opens from the sidebar and with Ctrl+7, champ select's phrases on its second tab, the pages before it keeping their numbers", async () => {
     const { user, nav } = await renderApp();
     const entry = within(nav).getByRole("button", { name: zhCN["nav.comeback"] });
     await user.click(entry);
@@ -2559,14 +2557,13 @@ describe("comebacks", () => {
     expect(title).toHaveTextContent(zhCN["nav.automation"]);
     fireEvent.keyDown(window, { key: "7", ctrlKey: true });
     expect(title).toHaveTextContent(zhCN["comeback.title"]);
-    fireEvent.keyDown(window, { key: "8", ctrlKey: true });
-    expect(title).toHaveTextContent(zhCN["phrase.title"]);
-    expect(within(nav).getByRole("button", { name: zhCN["nav.phrases"] })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    const tabs = screen.getByRole("radiogroup", { name: zhCN["comeback.tabs"] });
+    await user.click(within(tabs).getByRole("radio", { name: zhCN["phrase.title"] }));
+    expect(title, "one page with two tabs").toHaveTextContent(zhCN["comeback.title"]);
+    expect(screen.getByText(zhCN["phrase.spacing"])).toBeInTheDocument();
+    expect(entry).toHaveAttribute("aria-current", "page");
     expect(screen.queryByText(zhCN["error.title"])).toBeNull();
-    expect(screen.getByText(/^Ctrl 1–8 切换页面/)).toBeInTheDocument();
+    expect(screen.getByText(/^Ctrl 1–7 切换页面/)).toBeInTheDocument();
   });
 
   it("adds, edits and removes the user's own lines, saving each change", async () => {
@@ -3261,7 +3258,9 @@ describe("comebacks", () => {
     // The menu's link opens the page the phrases are edited on.
     await user.click(screen.getByRole("button", { name: "给 峡谷清道夫#10004 发快捷语" }));
     await user.click(screen.getByRole("button", { name: zhCN["live.phrasesEdit"] }));
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(zhCN["phrase.title"]);
+    // The Quick chat page, on its phrases tab.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(zhCN["comeback.title"]);
+    expect(screen.getByRole("radio", { name: zhCN["phrase.title"] })).toBeChecked();
     expect(screen.getByRole("textbox", { name: "第 1 句快捷语" })).toHaveValue("{seat}换个英雄吗");
   });
 

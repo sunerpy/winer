@@ -31,16 +31,17 @@ const COMET = {
   perks: [8229, 8226, 8210, 8237, 8139, 8135, 5008, 5008, 5001],
 };
 
-/** Hextech ARAM's view: the client's recommended pages, Flash and Snowball put up by winer. */
+/** An ARAM view: the client's recommended pages, Flash and Snowball put up by winer. */
 function loadout(change: Partial<LoadoutView> = {}): LoadoutView {
   return {
     gameId: 9,
     championId: 103,
-    mode: "hextech",
+    mode: "aram",
     lane: null,
     held: true,
     revision: 4,
     auto: "mineOrRecommended",
+    takesRunes: true,
     current: { runes: ELECTROCUTE, page: "winer · 阿狸", spells: [4, 32] },
     mine: null,
     recommendation: {
@@ -57,6 +58,10 @@ function loadout(change: Partial<LoadoutView> = {}): LoadoutView {
         runesFrom: "client",
         spellsFrom: "client",
         patch: "",
+        augments: [],
+        core: [],
+        boots: [],
+        buildFrom: null,
       },
     },
     applied: { runes: "client", spells: "client", noPage: false },
@@ -192,6 +197,75 @@ describe("what the runes panel shows", () => {
     );
   });
 
+  it("shows Hextech ARAM's spells, augment tiers and items, and no runes", () => {
+    const rates = (pick: number, win: number) => ({ ...NO_RATES, pick, win });
+    const view = loadout({
+      mode: "hextech",
+      takesRunes: false,
+      current: { runes: null, page: "", spells: [4, 32] },
+      recommendation: {
+        state: "ready",
+        recommendation: {
+          runes: [],
+          spells: [{ spells: [4, 32], rates: NO_RATES }],
+          runesFrom: null,
+          spellsFrom: "client",
+          patch: "16.23",
+          augments: [
+            { id: 1201, tier: "S", pick: 0.124 },
+            { id: 1202, tier: "A", pick: 0.08 },
+          ],
+          core: [{ items: [6655, 3157, 4645], rates: rates(0.21, 0.53) }],
+          boots: [{ items: [3020], rates: rates(0.6, 0.51) }],
+          buildFrom: "tencent",
+        },
+      },
+      assets: [{ id: 1201, name: "法术巨像", icon: "/augment.png" }],
+    });
+    const acted: string[] = [];
+    const body = loadoutBody(view, "zh-CN", null, (action) => acted.push(action.kind));
+    expect(currentIs(view), "the spells alone tell").toBe("recommended");
+    expect(body.querySelector(".winer-loadout-now")?.textContent).not.toContain("符文页");
+    expect(body.querySelectorAll('[data-action="applyRunes"]')).toHaveLength(0);
+    expect(body.textContent).toContain("召唤师技能 · 客户端推荐");
+    expect(body.textContent).toContain("强化符文评级 · 腾讯 101 16.23");
+    const augments = [...body.querySelectorAll<HTMLElement>(".winer-loadout-augment")];
+    expect(augments.map((augment) => augment.textContent)).toEqual(["S", "A"]);
+    expect(augments[0]?.title).toBe("法术巨像 · S · 选取 12.4%");
+    expect(
+      augments.every((augment) => !augment.title.includes("胜率")),
+      "no augment win rate, as Riot's policy says",
+    ).toBe(true);
+    expect(body.textContent).toContain("推荐出装");
+    expect(body.textContent).toContain("选用 21% · 胜率 53%");
+    (body.querySelector('[data-action="writeItemSet"]') as HTMLButtonElement).click();
+    expect(acted).toEqual(["writeItemSet"]);
+    expect(
+      answerText(
+        {
+          type: "loadoutResult",
+          requestId: 1,
+          done: { runes: null, spells: false, itemSet: true },
+          error: null,
+        },
+        "writeItemSet",
+        "zh-CN",
+      ).text,
+    ).toBe("已写入装备方案，游戏内商店里能找到");
+    expect(
+      answerText(
+        {
+          type: "loadoutResult",
+          requestId: 1,
+          done: null,
+          error: { code: "full", message: "full" },
+        },
+        "writeItemSet",
+        "zh-CN",
+      ).text,
+    ).toBe("装备方案放满了：在客户端里删掉一些后再试");
+  });
+
   it("says what came of a request, and that one made on an older view did nothing", () => {
     const result = (change: Partial<LoadoutResult>): LoadoutResult => ({
       type: "loadoutResult",
@@ -201,13 +275,21 @@ describe("what the runes panel shows", () => {
       ...change,
     });
     expect(
-      answerText(result({ done: { runes: null, spells: false } }), "saveMine", "zh-CN"),
+      answerText(
+        result({ done: { runes: null, spells: false, itemSet: false } }),
+        "saveMine",
+        "zh-CN",
+      ),
     ).toEqual({
       text: "已保存为我的方案",
       ok: true,
     });
     expect(
-      answerText(result({ done: { runes: "noPage", spells: true } }), "applyMine", "zh-CN").ok,
+      answerText(
+        result({ done: { runes: "noPage", spells: true, itemSet: false } }),
+        "applyMine",
+        "zh-CN",
+      ).ok,
     ).toBe(false);
     expect(
       answerText(result({ error: { code: "stale", message: "old" } }), "applyRunes", "zh-CN"),
@@ -251,7 +333,7 @@ describe("the runes panel on the page", () => {
       panel.answer({
         type: "loadoutResult",
         requestId: 1,
-        done: { runes: null, spells: false },
+        done: { runes: null, spells: false, itemSet: false },
         error: null,
       }),
     ).toBe(true);

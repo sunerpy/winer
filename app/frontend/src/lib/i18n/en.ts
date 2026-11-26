@@ -11,7 +11,6 @@ export const en: Record<MessageKey, string> = {
   "nav.tools": "Tools",
   "nav.plugin": "In-client",
   "nav.comeback": "Quick chat",
-  "nav.phrases": "Phrases",
   "nav.settings": "Settings",
   "nav.theme": "Theme",
   "nav.collapse": "Collapse sidebar",
@@ -1053,7 +1052,7 @@ export const en: Record<MessageKey, string> = {
   "loadout.what.runes": "runes",
   "loadout.what.spells": "summoner spells",
 
-  "status.shortcuts": "Ctrl 1–8 pages · Ctrl , settings · Ctrl B sidebar",
+  "status.shortcuts": "Ctrl 1–7 pages · Ctrl , settings · Ctrl B sidebar",
   "error.title": "This page hit an error",
   "error.hint":
     "Other pages are fine. Retry, or open the log folder and send the newest log to the developers.",
@@ -1180,6 +1179,7 @@ export const en: Record<MessageKey, string> = {
   // The Quick chat page: the quick messages and their shortcuts, the random lines and their two
   // shortcuts, typing into the game and the library downloaded on request.
   "comeback.title": "Quick chat",
+  "comeback.tabs": "Quick chat and champ-select phrases",
   "comeback.quick": "Quick messages",
   "comeback.quickHint":
     "Each message has a shortcut of its own: one press sends the whole message, 200 characters at most. In champ select it goes to the champ-select chat; in a game, with Type in the game on below, it is typed into the team chat or the all chat, as the message says. winer ships none.",

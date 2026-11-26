@@ -1031,7 +1031,12 @@ revision: number,
 /**
  * What the rule sets up once the champion is the player's, so the panels promise no more.
  */
-auto: LoadoutAuto, current: LoadoutCurrent, 
+auto: LoadoutAuto, 
+/**
+ * The kind of game takes a rune page ([`takes_runes`]): in Hextech ARAM the panels show the
+ * spells, augments and items, and nothing sets runes.
+ */
+takesRunes: boolean, current: LoadoutCurrent, 
 /**
  * The user's own setup for the champion, kind of game and lane (我的方案).
  */
@@ -1058,6 +1063,12 @@ page: string, spells: [number, number], };
 
 export type LoadoutAuto = "off" | "mine" | "mineOrRecommended";
 
+export type AugmentPick = { id: number, tier: AugmentTier | null, 
+/**
+ * The share of the champion's games that took it, 0–1.
+ */
+pick: number | null, };
+
 export type Setup = { 
 /**
  * `None` where there was no full page to keep.
@@ -1078,9 +1089,21 @@ runesFrom: RecommendedBy | null, spellsFrom: RecommendedBy | null,
 /**
  * The source's patch, `16.19`; empty where it says none or the client's pages are used.
  */
-patch: string, };
+patch: string, 
+/**
+ * Hextech ARAM: the champion's augments, best first, at most [`ADVICE_AUGMENTS`].
+ */
+augments: Array<AugmentPick>, 
+/**
+ * Hextech ARAM: core builds, most taken first, at most [`ADVICE_BUILDS`], and boots.
+ */
+core: Array<ItemOption>, boots: Array<ItemOption>, 
+/**
+ * Where the augments and items come from.
+ */
+buildFrom: RecommendedBy | null, };
 
-export type RecommendedBy = "tencent" | "opGg" | "client";
+export type RecommendedBy = "tencent" | "opGg" | "aramGg" | "client";
 
 export type LoadoutOrigin = "mine" | "recommended" | "client";
 
@@ -1098,9 +1121,13 @@ export type LoadoutPart = "runes" | "spells";
 
 export type LoadoutTarget = { gameId: number, championId: number, revision: number, };
 
-export type LoadoutAction = { "kind": "applyRunes", index: number, } | { "kind": "applySpells", index: number, } | { "kind": "applyMine" } | { "kind": "saveMine" } | { "kind": "restoreRecommended" };
+export type LoadoutAction = { "kind": "applyRunes", index: number, } | { "kind": "applySpells", index: number, } | { "kind": "applyMine" } | { "kind": "saveMine" } | { "kind": "restoreRecommended" } | { "kind": "writeItemSet" };
 
-export type LoadoutDone = { runes: PageOutcome | null, spells: boolean, };
+export type LoadoutDone = { runes: PageOutcome | null, spells: boolean, 
+/**
+ * winer's item set was written.
+ */
+itemSet: boolean, };
 
 export type BuildSource = "tencent" | "tencentHextech" | "opGg" | "aramGg";
 

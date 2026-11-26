@@ -13,7 +13,7 @@ import {
   Trash2,
   TriangleAlert,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { errorMessage } from "../lib/backend";
 import { LINE_LENGTH, LINE_LIMIT, QUICK_LIMIT } from "../lib/comeback";
@@ -35,8 +35,10 @@ import {
   Toggle,
   toast,
 } from "../ui";
+import type { ComebackTab } from "../shell/navigation";
 import { GameRightsNote, PageBody } from "./common";
 import { LibraryEditor } from "./LibraryEditor";
+import { PhrasesTab } from "./Phrases";
 import { Count, TextList } from "./TextList";
 import { ComebackHotkeyRow, QuickMessageHotkeyRow, stopRecording } from "./settings/HotkeyRow";
 
@@ -451,14 +453,40 @@ function LibraryPanel() {
   );
 }
 
-export function ComebackPage() {
+const TABS: readonly ComebackTab[] = ["quick", "phrases"];
+
+/** 快捷喊话: the user's own quick messages and lines, and on its second tab champ select's phrases
+ *  (`tab`, from a link there). */
+export function ComebackPage({ tab }: { tab?: ComebackTab }) {
+  const t = useT();
+  const [shown, setShown] = useState<ComebackTab>(tab ?? "quick");
+  useEffect(() => {
+    if (tab) setShown(tab);
+  }, [tab]);
   return (
     <PageBody className="grid grid-cols-12 gap-3">
-      <QuickMessagesPanel />
-      <LinesPanel />
-      <ShortcutsPanel />
-      <GamePanel />
-      <LibraryPanel />
+      <div className="col-span-12">
+        <Segmented<ComebackTab>
+          label={t("comeback.tabs")}
+          value={shown}
+          options={TABS.map((value) => ({
+            value,
+            label: t(value === "quick" ? "comeback.title" : "phrase.title"),
+          }))}
+          onChange={setShown}
+        />
+      </div>
+      {shown === "quick" ? (
+        <>
+          <QuickMessagesPanel />
+          <LinesPanel />
+          <ShortcutsPanel />
+          <GamePanel />
+          <LibraryPanel />
+        </>
+      ) : (
+        <PhrasesTab />
+      )}
     </PageBody>
   );
 }
