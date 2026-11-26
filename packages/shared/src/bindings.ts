@@ -566,7 +566,8 @@ playAgain: boolean, callout: CalloutRule, bench: BenchRule,
  */
 scopes: Scopes, 
 /**
- * Runes and summoner spells, remembered per champion and mode and set up again (`loadout`).
+ * Runes and summoner spells set up once a champion is the player's: the user's own setup, else
+ * the recommendation (`loadout`).
  */
 loadout: LoadoutRule, 
 /**
