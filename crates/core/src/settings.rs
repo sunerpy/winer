@@ -258,7 +258,8 @@ pub struct Automation {
     pub bench: BenchRule,
     /// The kinds of game each rule acts in; a switched-on rule does nothing elsewhere.
     pub scopes: Scopes,
-    /// Runes and summoner spells, remembered per champion and mode and set up again (`loadout`).
+    /// Runes and summoner spells set up once a champion is the player's: the user's own setup, else
+    /// the recommendation (`loadout`).
     pub loadout: LoadoutRule,
     /// Experimental: write winer's item set for a champion once it is locked in (`loadout`).
     pub item_sets: bool,
@@ -273,7 +274,7 @@ impl Automation {
         self.play_again && self.scopes.covers(Scoped::PlayAgain, mode)
     }
 
-    /// Whether runes and spells are remembered and set up again in a game of `mode`.
+    /// Whether runes and spells are set up in a game of `mode`.
     pub fn restores_loadout(&self, mode: Option<Mode>) -> bool {
         self.loadout.enabled && self.scopes.covers(Scoped::Loadout, mode)
     }

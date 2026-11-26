@@ -74,7 +74,9 @@ scripts/windows/qa.sh log 40
   on 2026-11-19): the ban turn's timer moved on to the pick turn, and the pick turn's timer ended
   champ select and went back to the custom lobby, about 97 s after the start. A hovered ban was
   completed when its timer ran out, so a hovered pick may be locked by its timer, and a lone
-  player's lock starts the game: never leave a pick hovered. Whatever the mode: check the phase
+  player's lock starts the game: never leave a pick hovered. A hover cannot be cleared:
+  `{"championId": 0}` answers 204 and leaves it (2026-11-26), so hover only what the pick timer
+  may keep; that run's hovered pick was not locked, and champ select went back to the lobby. Whatever the mode: check the phase
   is `None` first, stop every winer whose pick automation is on (the owner's locks in custom
   games), and ask the user before creating a lobby.
 - Custom games give no rerolls. An all-random custom lobby does put the pool's extras on the

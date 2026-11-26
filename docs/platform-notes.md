@@ -77,6 +77,12 @@ for one client build or one privilege level, it says so.
   game server then refused `POST /lol-gameflow/v1/early-exit` (463 `REMOVAL_NOT_ALLOWED`) and
   killing the game left the client in `Reconnect`. Use a mode that ends by itself when nobody
   locks in (draft), keep pick automation off or hover-only, and let the timer run out.
+- **A hover cannot be taken back with `championId: 0`.** In a custom draft (3110, the owner's PC,
+  2026-11-26) a planning intent set with `PATCH /lol-champ-select/v1/session/actions/{id}`
+  `{"championId": 202}` stayed through the planning, the ban turn and the player's own pick turn
+  (the pick read `championId 202`, in progress): `{"championId": 0}` answered 204 each of the
+  ~250 times it was sent and changed nothing. The pick turn's timer still ended champ select back
+  in the custom lobby, 96 s after the start, without locking the hover (one run).
 - Custom games give **no rerolls**. An all-random custom lobby (3220) still puts the pool's extras
   on the bench for a lone player (two champions on NJ100), so bench swaps can be exercised there.
 - The champ-select chat room is the conversation of type `championSelect`; a message posted with
@@ -377,6 +383,21 @@ Linux build host the same day; each answers a plain GET with no key, cookie or u
   (2201 and 2202), and Arena has no rune page, so the rune and spell memory does not act there.
 
 ## Pengu Loader (injected surface)
+
+- **A plugin winer updates waits for the next interface start.** The client loads the plugin as its
+  interface starts, and winer writes its new bundle on connecting (`plugin installed from=0.0.23
+to=0.0.24` at 13:02:12): the plugin that connected two seconds later still said 0.0.23, and 0.0.24
+  came only with the next `kill-and-restart-ux` (the owner's PC, 2026-11-26). So after an update,
+  the first client session runs the plugin before it.
+- **The runes panel's place** (custom draft 3110, the owner's PC, 2026-11-26): the client page is
+  1280 × 720 CSS px (its screenshot 2000 × 1125). The bottom bar starts at y = 588 with the action
+  button (x 552–730); the bug report button sits at x 1245, y 622, the chat input at y 664 and the
+  bottom-right buttons (退出, chat, missions, voice) at y 666. The panel at `right: 12px;
+bottom: 140px` spans x 1002–1268 and y 210–580 with three rune pages and three spell pairs, and
+  no control of the client lies under it, at that height or at its tallest (top at y 76), by
+  `elementsFromPoint` at each control's centre. A full lobby's enemy column was not on screen.
+- `OnJsonApiEvent_lol-perks_v1_currentpage` is pushed on Tencent's shards: in the same champ select
+  winer logged the current page `source="event"` three times within 0.6 s of the first poll.
 
 - Shipped host: Pengu Loader **v1.1.6**, activated by a `version.dll` symlink in the `LeagueClient`
   directory pointing at the loader's `core.dll`; plugins live in `<loader>\plugins\<name>\index.js`.
