@@ -323,8 +323,8 @@ async fn enable_plugin<R: Runtime>(app: AppHandle<R>) -> Result<PluginStatus> {
     if outcome.needs_elevation {
         elevation::ask_once(&app, "only an administrator can link the loader");
     }
-    if outcome.linked {
-        plugin_host::start_loader(&service);
+    if let Some(what) = outcome.reload_for() {
+        plugin_host::start_loader(&service, what);
     }
     Ok(status)
 }

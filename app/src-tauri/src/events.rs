@@ -130,9 +130,10 @@ pub(crate) fn forward<R: Runtime>(app: AppHandle<R>, service: Service, bridge: B
 fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, event: &Event) {
     match event {
         // A client came up: set up the loader and the plugin, and point it at this session's
-        // bridge. A loader linked just now starts with the client's interface, which is restarted
-        // for it once the client has finished starting with the player idle
-        // (`plugin_host::start_loader`); otherwise it starts with the client's next launch.
+        // bridge. A loader linked just now, or a plugin written over the one the interface loaded,
+        // starts with the client's interface, which is restarted for it once the client has
+        // finished starting with the player idle (`plugin_host::start_loader`); otherwise it
+        // starts with the client's next launch.
         // Only an administrator can create the link: without those rights winer restarts
         // elevated, as for an elevated client, and the elevated copy links on its connection.
         // It restarts elevated too when it is to type into the games of a client that outranks it.
@@ -156,8 +157,10 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
                     elevation::ask_once(&app, "only an administrator can link the loader");
                 }
                 elevate_for_the_game(&app, &service, &service.settings());
-                if outcome.linked {
-                    plugin_host::start_loader(&service);
+                // A loader linked just now, or a plugin written over the one the running interface
+                // loaded: the interface starts again for it once the player is idle.
+                if let Some(what) = outcome.reload_for() {
+                    plugin_host::start_loader(&service, what);
                 }
                 if let Some(program) = outcome.foreign
                     && !FOREIGN_TOLD.swap(true, Ordering::Relaxed)

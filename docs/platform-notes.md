@@ -387,8 +387,9 @@ Linux build host the same day; each answers a plain GET with no key, cookie or u
 - **A plugin winer updates waits for the next interface start.** The client loads the plugin as its
   interface starts, and winer writes its new bundle on connecting (`plugin installed from=0.0.23
 to=0.0.24` at 13:02:12): the plugin that connected two seconds later still said 0.0.23, and 0.0.24
-  came only with the next `kill-and-restart-ux` (the owner's PC, 2026-11-26). So after an update,
-  the first client session runs the plugin before it.
+  came only with the next `kill-and-restart-ux` (the owner's PC, 2026-11-26). So winer restarts the
+  interface after writing a new plugin, as after linking a loader: once the client has settled with
+  the player idle (`plugin_host::start_loader`).
 - **The runes panel's place** (custom draft 3110, the owner's PC, 2026-11-26): the client page is
   1280 × 720 CSS px (its screenshot 2000 × 1125). The bottom bar starts at y = 588 with the action
   button (x 552–730); the bug report button sits at x 1245, y 622, the chat input at y 664 and the
