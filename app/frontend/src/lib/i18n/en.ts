@@ -956,17 +956,16 @@ export const en: Record<MessageKey, string> = {
   "loadout.mineSavedOnly":
     "Your setup for this champion in this mode: {what}. It goes up once the champion is locked in.",
   "loadout.mineSavedOff":
-    "Your setup for this champion in this mode: {what}. With Set up runes and summoner spells on in Automation, it goes up first once the champion is locked in.",
+    "Your setup for this champion in this mode: {what}. With Set up runes and summoner spells on for this mode in Automation, it goes up first once the champion is locked in.",
   "loadout.saveMine": "Save as my setup",
   "loadout.saveMineHint":
     "Keep the rune page and spells you have now as this champion's setup in this mode",
   "loadout.applyMine": "Apply my setup",
   "loadout.restore": "Back to recommended",
-  "loadout.restoreHint":
-    "Forget your setup for this champion in this mode and set up the recommended runes and spells",
+  "loadout.restoreHint": "Delete the setup shown here and set up the recommended runes and spells",
   "loadout.savedMine": "Saved as your setup: this champion uses it first in this mode from now on",
   "loadout.savedMineOff":
-    "Saved as your setup; with Set up runes and summoner spells on, it goes up first once the champion is locked in",
+    "Saved as your setup; with Set up runes and summoner spells on for this mode in Automation, it goes up first once the champion is locked in",
   "loadout.appliedMine": "Your setup is applied",
   "loadout.restored": "Back to the recommendation",
   "loadout.stale": "Champ select has changed; click again",

@@ -312,12 +312,16 @@ describe("the runes panel on the page", () => {
     panel.answer({ ...stale, error: { code: "stale", message: "old" } });
     panel.show(loadout({ championId: 22, revision: 5 }), "zh-CN");
     expect(said()).toBe("选人已经变化，请再点一次");
-    // The answer first, then the new view: the prompt stays.
+    // One more change, nothing pressed: it goes.
     panel.show(loadout({ championId: 103, revision: 6 }), "zh-CN");
+    expect(said()).toBe("");
+    // The answer first, then the new view: the prompt stays for that view only.
     (document.querySelector('[data-action="saveMine"]') as HTMLButtonElement).click();
     panel.answer({ ...stale, error: { code: "stale", message: "old" } });
     panel.show(loadout({ championId: 22, revision: 7 }), "zh-CN");
     expect(said()).toBe("选人已经变化，请再点一次");
+    panel.show(loadout({ championId: 103, revision: 8 }), "zh-CN");
+    expect(said()).toBe("");
   });
 
   it("stays folded as the user left it, across a reload of the page", () => {

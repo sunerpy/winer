@@ -912,15 +912,15 @@ export const zhCN = {
   "loadout.mineSaved": "已保存这个英雄在这个模式的方案：{what}。锁定后先用它，没有的部分用推荐。",
   "loadout.mineSavedOnly": "已保存这个英雄在这个模式的方案：{what}。锁定后换上它。",
   "loadout.mineSavedOff":
-    "已保存这个英雄在这个模式的方案：{what}。在自动化里打开「自动配置符文和召唤师技能」后，锁定英雄时会先用它。",
+    "已保存这个英雄在这个模式的方案：{what}。在自动化里打开「自动配置符文和召唤师技能」并选上这个模式后，锁定英雄时会先用它。",
   "loadout.saveMine": "保存为我的方案",
   "loadout.saveMineHint": "把现在的符文页和召唤师技能存成这个英雄在这个模式的方案",
   "loadout.applyMine": "应用我的方案",
   "loadout.restore": "恢复推荐",
-  "loadout.restoreHint": "删掉这个英雄在这个模式的方案，换上推荐的符文和召唤师技能",
+  "loadout.restoreHint": "删掉这里显示的方案，换上推荐的符文和召唤师技能",
   "loadout.savedMine": "已保存为我的方案，以后这个英雄在这个模式会先用它",
   "loadout.savedMineOff":
-    "已保存为我的方案；打开「自动配置符文和召唤师技能」后，锁定英雄时会先用它",
+    "已保存为我的方案；在自动化里为这个模式打开「自动配置符文和召唤师技能」后，锁定英雄时会先用它",
   "loadout.appliedMine": "已应用我的方案",
   "loadout.restored": "已恢复推荐",
   "loadout.stale": "选人已经变化，请再点一次",

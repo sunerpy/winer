@@ -711,6 +711,12 @@ fn send_message<R: Runtime>(app: &AppHandle<R>, index: u8) {
     let (service, sending) = (service.inner().clone(), Sending(app.clone()));
     tauri::async_runtime::spawn_blocking(move || {
         let (number, press) = service.message_press(&shortcut);
+        // The message was removed as the combination was pressed: nothing goes out, and no
+        // other line's skip is told for it.
+        if number.is_none() {
+            info!("a quick message's shortcut pressed as its message was removed");
+            return;
+        }
         match press {
             ComebackPress::ChampSelect { line, game_id } => {
                 tauri::async_runtime::spawn(async move {

@@ -380,6 +380,9 @@ export class LoadoutPanel {
     orphan: boolean;
   } | null = null;
   #said: Said | null = null;
+  /** The stale prompt shown is already on another champion than its request's: the next change
+   *  takes it away. */
+  #carried = false;
   #collapsed: boolean;
 
   constructor(
@@ -442,7 +445,13 @@ export class LoadoutPanel {
       this.#view &&
       (this.#view.gameId !== view.gameId || this.#view.championId !== view.championId)
     ) {
-      if (!(this.#said?.state === "done" && this.#said.stale)) this.#said = null;
+      // Kept through the one change that made it, and no further.
+      const stale = this.#said?.state === "done" && this.#said.stale === true;
+      if (stale && !this.#carried) this.#carried = true;
+      else {
+        this.#said = null;
+        this.#carried = false;
+      }
       if (this.#pending) this.#pending.orphan = true;
     }
     this.#view = view;
@@ -472,11 +481,14 @@ export class LoadoutPanel {
     if (!pending || pending.id !== result.requestId) return false;
     clearTimeout(pending.timer);
     this.#pending = null;
-    if (!pending.orphan)
+    if (!pending.orphan) {
       this.#said = { state: "done", ...answerText(result, pending.action, this.#language) };
-    else if (result.error?.code === "stale")
+      this.#carried = false;
+    } else if (result.error?.code === "stale") {
+      // It arrives on the champion after the one it was asked for.
       this.#said = { state: "done", ...answerText(result, pending.action, this.#language) };
-    else return true;
+      this.#carried = true;
+    } else return true;
     this.changed();
     return true;
   }
@@ -502,6 +514,7 @@ export class LoadoutPanel {
       }, LOADOUT_TIMEOUT_MS);
       this.#pending = { id, action: action.kind, timer, orphan: false };
       this.#said = { state: "busy", action };
+      this.#carried = false;
     }
     this.changed();
   }
@@ -510,5 +523,6 @@ export class LoadoutPanel {
     if (this.#pending) clearTimeout(this.#pending.timer);
     this.#pending = null;
     this.#said = null;
+    this.#carried = false;
   }
 }

@@ -248,7 +248,7 @@ a lookup), the lane the champion is played in most comes first.
 In champ select, a **My setup** bar sits above the panel: **Save as my setup** keeps your current
 rune page and spells as the champion's setup for this mode, which winer sets up first once the
 champion is locked in while [Set up runes and summoner spells](/en/guide/automation#runes-and-summoner-spells)
-is on; once one is saved, **Apply my setup** and **Back to recommended** join it. With **Builds**
+is on for this mode; once one is saved, **Apply my setup** and **Back to recommended** join it. With **Builds**
 off in **Settings › General** the panel is hidden, and the bar stays.
 See [My setup](/en/guide/automation#my-setup).
 

@@ -119,6 +119,40 @@ struct Asked {
     spells: Option<[i64; 2]>,
 }
 
+/// Keeps what the player asked winer to put up for `champion` in champ select `game_id`, from a
+/// panel or the build panel: the rule leaves those halves while the client still has them.
+fn note_asked(
+    client: &Client,
+    game_id: i64,
+    champion: i64,
+    runes: Option<&RunePage>,
+    spells: Option<[i64; 2]>,
+) {
+    if runes.is_none() && spells.is_none() {
+        return;
+    }
+    let mut live = lock(&client.live);
+    let slot = &mut live.loadout.asked;
+    let mut asked = match slot.take() {
+        Some((game, held, asked)) if game == game_id && held == champion => asked,
+        _ => Asked::default(),
+    };
+    if let Some(runes) = runes {
+        asked.runes = Some(runes.clone());
+    }
+    if spells.is_some() {
+        asked.spells = spells;
+    }
+    *slot = Some((game_id, champion, asked));
+}
+
+/// The champ select under way and the champion in hand in it, for a write the build panel asked.
+fn in_hand(client: &Client) -> Option<(i64, i64)> {
+    let live = lock(&client.live);
+    let session = live.champ_select.as_ref()?;
+    Some((session.game_id, loadout::champion_in_hand(session)?))
+}
+
 /// What one client connection's champ selects have left to do, and what their view is drawn from.
 #[derive(Default)]
 pub(super) struct LoadoutLive {
@@ -963,16 +997,24 @@ impl Service {
         if let LoadoutAction::RestoreRecommended = action {
             let recommendation = recommended.ok_or_else(stale)?;
             let (mode, lane) = (asked_on.mode, asked_on.lane);
-            self.still_on(client, target, mode, lane)?;
-            // Only the setup the view showed: a lane's own goes, and the one saved with no lane,
-            // which every lane falls back to, stays for the next press.
+            let session = self.still_on(client, target, mode, lane)?;
+            // What the press was made on must still hold: the setup it showed, and the runes and
+            // spells the player had then. A save or an apply made meanwhile is theirs to keep.
             let shown = self
                 .inner
                 .loadout
                 .presets
-                .find(&loadout::preset_keys(champion, mode, lane))
-                .map(|(key, _)| key);
-            if let Some(key) = shown {
+                .find(&loadout::preset_keys(champion, mode, lane));
+            let page = current_page(&client.lcu).await;
+            if shown.as_ref().map(|(_, setup)| setup) != asked_on.mine.as_ref()
+                || page.as_ref().and_then(PerkPage::runes) != asked_on.current.runes
+                || !loadout::same_spells(spells_of(&session), asked_on.current.spells)
+            {
+                return Err(stale());
+            }
+            // Only the setup the view showed: a lane's own goes, and the one saved with no lane,
+            // which every lane falls back to, stays for the next press.
+            if let Some((key, _)) = shown {
                 let service = self.clone();
                 tokio::task::spawn_blocking(move || service.inner.loadout.presets.remove(&[key]))
                     .await
@@ -1045,26 +1087,18 @@ impl Service {
         plan: &Plan,
     ) -> Result<LoadoutDone, CoreError> {
         let (applied, errors) = self.carry_out(client, game_id, champion, plan).await;
-        // What went up because the player asked is theirs: the rule leaves it while they keep it.
-        {
-            let mut live = lock(&client.live);
-            let slot = &mut live.loadout.asked;
-            let mut asked = match slot.take() {
-                Some((game, held, asked)) if game == game_id && held == champion => asked,
-                _ => Asked::default(),
-            };
-            if applied.runes.is_some()
-                && let Some((runes, _)) = &plan.runes
-            {
-                asked.runes = Some(runes.clone());
-            }
-            if applied.spells.is_some()
-                && let Some((spells, _)) = plan.spells
-            {
-                asked.spells = Some(spells);
-            }
-            *slot = Some((game_id, champion, asked));
-        }
+        note_asked(
+            client,
+            game_id,
+            champion,
+            plan.runes
+                .as_ref()
+                .filter(|_| applied.runes.is_some())
+                .map(|(runes, _)| runes),
+            plan.spells
+                .filter(|_| applied.spells.is_some())
+                .map(|(spells, _)| spells),
+        );
         if let Some(error) = errors.into_iter().next() {
             return Err(CoreError::Invalid(error));
         }
@@ -1406,14 +1440,26 @@ impl Service {
         }
         let client = self.client()?;
         let _turn = self.inner.loadout.acting.lock().await;
-        self.write_page(&client, champion_id, &runes).await
+        let outcome = self.write_page(&client, champion_id, &runes).await?;
+        // The player's own choice for the champion in hand: the rule leaves it at lock-in.
+        if outcome == PageOutcome::Written
+            && let Some((game_id, champion)) = in_hand(&client)
+            && champion == champion_id
+        {
+            note_asked(&client, game_id, champion, Some(&runes), None);
+        }
+        Ok(outcome)
     }
 
     /// Takes `spells` in the champ select under way, on the keys the player already uses for them.
     pub async fn apply_spells(&self, spells: [i64; 2]) -> Result<(), CoreError> {
         let client = self.client()?;
         let _turn = self.inner.loadout.acting.lock().await;
-        self.set_spells(&client, spells).await
+        self.set_spells(&client, spells).await?;
+        if let Some((game_id, champion)) = in_hand(&client) {
+            note_asked(&client, game_id, champion, None, Some(spells));
+        }
+        Ok(())
     }
 
     /// Writes winer's item set for `champion_id` in a game of `mode` from the build panel's numbers.
@@ -2160,6 +2206,65 @@ mod tests {
                 .await,
             Err(CoreError::Stale(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn back_to_recommended_undoes_nothing_done_while_it_looked_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = rift(202, [4, 7]);
+        let (service, client) = in_champ_select(&dir, &session);
+        rule_on(&service, &client, &session);
+        let presets = &service.inner.loadout.presets;
+        let key = loadout::preset_key(202, Mode::Ranked, Some(Position::Bottom));
+        let first = Setup {
+            runes: None,
+            spells: Some([4, 6]),
+            saved_at: 1,
+        };
+        presets.put(key.clone(), first).unwrap();
+        service.render(&client);
+        let view = drawn(&service);
+        // Saved again from the other panel while the recommendation was looked up.
+        let again = Setup {
+            runes: None,
+            spells: Some([4, 7]),
+            saved_at: 2,
+        };
+        presets.put(key, again.clone()).unwrap();
+        let done = service
+            .act_on(
+                &client,
+                &target(&view),
+                &view,
+                LoadoutAction::RestoreRecommended,
+                Some(LoadoutRecommendation::default()),
+            )
+            .await;
+        assert!(matches!(done, Err(CoreError::Stale(_))));
+        assert_eq!(
+            service.mine(&loadout::preset_keys(
+                202,
+                Mode::Ranked,
+                Some(Position::Bottom)
+            )),
+            Some(again),
+            "the save made meanwhile stays"
+        );
+        // Spells changed meanwhile, the setup as shown: nothing is done either.
+        service.render(&client);
+        let view = drawn(&service);
+        lock(&client.live).champ_select = Some(rift(202, [4, 21]));
+        let done = service
+            .act_on(
+                &client,
+                &target(&view),
+                &view,
+                LoadoutAction::RestoreRecommended,
+                Some(LoadoutRecommendation::default()),
+            )
+            .await;
+        assert!(matches!(done, Err(CoreError::Stale(_))));
+        assert_eq!(presets.len(), 1);
     }
 
     #[tokio::test]
