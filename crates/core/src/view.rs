@@ -578,9 +578,11 @@ pub struct PlayerLine {
     pub gold: i64,
     pub damage: i64,
     pub damage_taken: i64,
-    /// Healing and shielding on teammates; absent where the game came from the client's own
-    /// documents, which do not carry it.
-    pub healing: Option<i64>,
+    /// Healing done, the champion's own included, as the client's scoreboard shows it.
+    pub healing: i64,
+    /// Healing and shielding on teammates, which the score's healing bonus reads; absent where the
+    /// game came from the client's own documents, which do not carry it.
+    pub healing_on_teammates: Option<i64>,
     pub vision: i64,
     pub largest_multi_kill: i64,
     pub win: bool,
@@ -618,7 +620,7 @@ pub enum Feat {
     FirstBlood,
     MostTowers,
     MostAssists,
-    /// The most healing and shielding on teammates.
+    /// The most healing, the champion's own included, as the client's scoreboard counts it.
     MostHealing,
     MostGold,
     MostTaken,

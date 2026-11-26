@@ -293,7 +293,9 @@ export const en: Record<MessageKey, string> = {
   "history.taken": "Taken",
   "history.healing": "Healing",
   "history.healingHint":
-    "Healing and shields given to teammates, not counting a champion's own healing. Only the match-history server's data has it; from the client's own records it shows —.",
+    "Healing done, as the client shows it, the champion's own healing included. The small figure under it is the healing and shields given to teammates, which only the match-history server's data has; the score's healing bonus reads only that part, adding for what goes beyond the game's average, more for support champions.",
+  "history.healingOnTeammates":
+    "Healed and shielded teammates for {value}, the only healing the score's bonus reads",
   "history.kp": "KP",
   "history.items": "Items",
   "augment.silver": "Silver",
@@ -341,7 +343,7 @@ export const en: Record<MessageKey, string> = {
   "feat.mostAssists": "Most assists",
   "feat.mostAssistsWhy": "The most assists in the game.",
   "feat.mostHealing": "Most healing",
-  "feat.mostHealingWhy": "Healed and shielded teammates the most in the game.",
+  "feat.mostHealingWhy": "Healed the most in the game, their own healing included.",
   "feat.mostGold": "Most gold",
   "feat.mostGoldWhy": "Earned the most gold in the game.",
   "feat.mostTaken": "Most damage taken",

@@ -330,6 +330,7 @@ struct SgpParticipant {
     #[serde(rename = "timeCCingOthers")]
     time_ccing_others: i64,
     vision_score: i64,
+    total_heal: i64,
     total_heals_on_teammates: Option<i64>,
     total_damage_shielded_on_teammates: Option<i64>,
     item0: i64,
@@ -500,6 +501,7 @@ impl SgpParticipant {
                 damage_dealt_to_objectives: self.damage_dealt_to_objectives,
                 time_ccing_others: self.time_ccing_others,
                 vision_score: self.vision_score,
+                total_heal: self.total_heal,
                 total_heals_on_teammates: self.total_heals_on_teammates,
                 total_damage_shielded_on_teammates: self.total_damage_shielded_on_teammates,
                 item0: self.item0,

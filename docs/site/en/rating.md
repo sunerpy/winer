@@ -347,8 +347,8 @@ no gain that would show, so the Rift weighs no role. Arena, URF and the other mo
 Summoner's Rift column.
 
 **Healing bonus**: healing and shields given to teammates (`totalHealsOnTeammates` plus
-`totalDamageShieldedOnTeammates` as the match-history server records them, the scoreboard's
-Healing column) earn a bonus for what goes beyond the game's average, added to the weighted parts
+`totalDamageShieldedOnTeammates` as the match-history server records them, the small figure under
+the scoreboard's Healing column) earn a bonus for what goes beyond the game's average, added to the weighted parts
 above: `bonus = weight × (min(healing / game average, 3) − 1)`, nothing under the average.
 
 | The champion's first role | Weight | At the most (3 averages or more), mid-scale about |
@@ -398,5 +398,6 @@ The history list and the scoreboard also mark each player's feats in a game:
 
 A remake keeps AFK only. The AFK mark comes from the match-history server and the client's own 20
 games do not carry it. The game's leads need all ten players, so they are marked only where the
-whole game was read; Most healing counts healing and shields given to teammates, which only the
-match-history server's data has.
+whole game was read; Most healing counts healing done (`totalHeal`, the figure the client shows,
+the champion's own healing included), not the healing and shields on teammates the score's bonus
+reads.

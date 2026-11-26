@@ -305,8 +305,11 @@ Measured on NJ100, 16.19, 2026-10-05.
   `totalDamageShieldedOnTeammates`. The client's has `totalHeal` and `totalUnitsHealed`, and
   `totalHeal` counts the champion's own healing too: in that Hextech ARAM game (16.17) Vladimir has
   163,277 `totalHeal` and nothing on teammates, Soraka 60,536 of which 39,348 on teammates, and
-  Morgana shielded 7,941 and healed 658. The scoreboard's healing, its most-healing lead and the
-  score's healing bonus therefore need the server's copy.
+  Morgana shielded 7,941 and healed 658. Both copies carry the same `totalHeal`, the healing the
+  client's own scoreboard shows, so the scoreboard's healing and its most-healing lead read it from
+  either; only the score's healing bonus, which reads healing and shielding on teammates, needs the
+  server's copy. (0.0.25's test build first showed healing on teammates in the column: most players
+  read 0 against the client's figures, and the owner flagged it on 2026-11-26.)
 - Under load (GZ100, 2026-10-11, 12:50–14:15Z) the server answered `503` with
   `X-Riot-Error-Type: UPSTREAM_RESPONSE_TIMEOUT` and `Service Unavailable - Connection retries
 limit exceeded. Response timed out.` after 1–5 s to every page of ten games or more, for the

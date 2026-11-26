@@ -316,8 +316,10 @@ pub struct Stats {
     #[serde(rename = "timeCCingOthers")]
     pub time_ccing_others: i64,
     pub vision_score: i64,
-    /// Healing and shielding on teammates. Only the shard's server sends them; the client's own
-    /// documents have `totalHeal`, which counts the champion's own healing too.
+    /// Healing done, the champion's own included: the healing the client's scoreboard shows. Both
+    /// the client's own documents and the shard's server send it.
+    pub total_heal: i64,
+    /// Healing and shielding on teammates. Only the shard's server sends them.
     pub total_heals_on_teammates: Option<i64>,
     pub total_damage_shielded_on_teammates: Option<i64>,
     pub item0: i64,

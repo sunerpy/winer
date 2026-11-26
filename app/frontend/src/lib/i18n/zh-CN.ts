@@ -282,7 +282,8 @@ export const zhCN = {
   "history.taken": "承伤",
   "history.healing": "治疗",
   "history.healingHint":
-    "为队友治疗和提供护盾的总量，不含自己的回复。只有战绩服务器的数据里有，用客户端自己的记录时显示 —。",
+    "治疗量，和客户端里看到的一致，含英雄自己的回复。下方小字是为队友治疗和提供护盾的量，只有战绩服务器的数据里有；评分的治疗加分只看这部分，超出全场平均才加，辅助英雄加得更多。",
+  "history.healingOnTeammates": "为队友治疗和提供护盾 {value}，评分的治疗加分只看这一项",
   "history.kp": "参团",
   "history.items": "装备",
   "augment.silver": "银色",
@@ -330,7 +331,7 @@ export const zhCN = {
   "feat.mostAssists": "助攻最多",
   "feat.mostAssistsWhy": "全场助攻最多。",
   "feat.mostHealing": "治疗最多",
-  "feat.mostHealingWhy": "全场为队友治疗和提供护盾最多。",
+  "feat.mostHealingWhy": "全场治疗量最多，含自己的回复。",
   "feat.mostGold": "金币最多",
   "feat.mostGoldWhy": "全场经济最高。",
   "feat.mostTaken": "承伤最高",

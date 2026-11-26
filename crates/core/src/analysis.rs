@@ -408,7 +408,8 @@ fn line(game: &Game, participant: &Participant) -> PlayerLine {
         gold: stats.gold_earned,
         damage: stats.total_damage_dealt_to_champions,
         damage_taken: stats.total_damage_taken,
-        healing: stats.healing_on_teammates(),
+        healing: stats.total_heal,
+        healing_on_teammates: stats.healing_on_teammates(),
         vision: stats.vision_score,
         largest_multi_kill: stats.largest_multi_kill,
         win: stats.win,
@@ -456,10 +457,7 @@ const LEADS: [(Feat, LeadValue); 8] = [
     }),
     (Feat::MostTowers, |stats| stats.turret_kills),
     (Feat::MostAssists, |stats| stats.assists),
-    // Nobody leads a game whose data says nothing of it.
-    (Feat::MostHealing, |stats| {
-        stats.healing_on_teammates().unwrap_or(0)
-    }),
+    (Feat::MostHealing, |stats| stats.total_heal),
     (Feat::MostGold, |stats| stats.gold_earned),
     (Feat::MostTaken, |stats| stats.total_damage_taken),
     (Feat::MostCs, |stats| {
@@ -1322,46 +1320,61 @@ mod tests {
     }
 
     #[test]
-    fn the_scoreboard_shows_healing_on_teammates_where_the_server_sends_it() {
+    fn the_scoreboard_shows_the_clients_healing_and_scores_healing_on_teammates() {
         let (game, roles) = healed_game();
         let detail = match_detail(&game, &roles);
-        let healing: Vec<(i64, Option<i64>)> = [16, 25, 98, 119]
-            .map(|champion| (champion, line_of(&detail, champion).healing))
+        let healing: Vec<(i64, i64, Option<i64>)> = [16, 25, 98, 119, 8]
+            .map(|champion| {
+                let line = line_of(&detail, champion);
+                (champion, line.healing, line.healing_on_teammates)
+            })
             .to_vec();
-        // Soraka healed; Morgana shielded 7,941 and healed 658; Shen shielded; Draven did neither.
+        // The healing is the client's own figure, the champion's own healing included: Vladimir
+        // healed himself the most. Soraka healed teammates; Morgana shielded 7,941 and healed 658;
+        // Shen shielded; Draven and Vladimir did neither.
         assert_eq!(
             healing,
             [
-                (16, Some(39_348)),
-                (25, Some(8_599)),
-                (98, Some(808)),
-                (119, Some(0))
+                (16, 60_536, Some(39_348)),
+                (25, 19_956, Some(8_599)),
+                (98, 50_332, Some(808)),
+                (119, 10_350, Some(0)),
+                (8, 163_277, Some(0)),
             ]
         );
-        let leaders: Vec<i64> = detail
-            .teams
-            .iter()
-            .flat_map(|team| &team.players)
-            .filter(|line| line.feats.contains(&Feat::MostHealing))
-            .map(|line| line.champion_id)
-            .collect();
-        assert_eq!(leaders, [16]);
-        // Healing above the game's average lifts the healers' scores, and only theirs.
+        let leaders = |detail: &MatchDetail| -> Vec<i64> {
+            detail
+                .teams
+                .iter()
+                .flat_map(|team| &team.players)
+                .filter(|line| line.feats.contains(&Feat::MostHealing))
+                .map(|line| line.champion_id)
+                .collect()
+        };
+        assert_eq!(leaders(&detail), [8]);
+        // Healing on teammates above the game's average lifts the healers' scores, and only theirs;
+        // Vladimir's own healing adds nothing.
         let plain = match_detail(&without_healing(game.clone()), &roles);
         assert!(
             line_of(&detail, 16).score > line_of(&plain, 16).score
                 && line_of(&detail, 25).score > line_of(&plain, 25).score
         );
-        assert_eq!(line_of(&detail, 98).score, line_of(&plain, 98).score);
-        assert_eq!(line_of(&detail, 119).score, line_of(&plain, 119).score);
-        // The client's own copy carries none: no number, no lead.
+        for champion in [98, 119, 8] {
+            assert_eq!(
+                line_of(&detail, champion).score,
+                line_of(&plain, champion).score
+            );
+        }
+        // The client's own copy has the same healing and the same lead, but nothing on teammates.
         assert!(
             plain
                 .teams
                 .iter()
                 .flat_map(|team| &team.players)
-                .all(|line| line.healing.is_none() && !line.feats.contains(&Feat::MostHealing))
+                .all(|line| line.healing_on_teammates.is_none())
         );
+        assert_eq!(line_of(&plain, 8).healing, 163_277);
+        assert_eq!(leaders(&plain), [8]);
     }
 
     #[test]

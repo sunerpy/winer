@@ -191,11 +191,12 @@ while the client is not connected), `ProfileIcon` (circle), `AssetIcon` (items, 
 
 - **Scoreboard.** One grid row per player: player (champion, spells, name, award) · KDA · score
   (the grade's letter under it, its name as the tooltip) · damage (number, team share, bar against
-  the game's highest) · taken · healing (healing and shields given to teammates; a `fg-subtle`
-  dash where the game came from the client's own documents, which do not carry it) · KP · gold ·
-  CS · items. Taken, healing and gold drop out below 860px of scoreboard width (container query);
-  where they show, 48px each, the other numbers keep their narrow widths, so the player's column
-  has 172px at 860px. A header row names every column; the score header carries the formula as its
+  the game's highest) · taken · healing (healing done as the client counts it, the champion's own
+  included; under it, in 10.5px `fg-subtle` with a 10px Lucide hand-heart, the healing and shields
+  given to teammates, where the server's copy says and it is above zero) · KP · gold · CS · items.
+  Taken, healing and gold drop out below 860px of scoreboard width (container query); where they
+  show, 48px each, the other numbers keep their narrow widths, so the player's column has 172px at
+  860px. A header row names every column; the score header carries the formula as its
   tooltip, the healing header what it counts. `MVP` is a solid accent chip, `SVP` a neutral
   `fg/15` chip; the MVP's score is drawn in `accent-text`, a score under 4.5 in `fg-subtle`. The
   row of the player whose history is open is `accent-soft`. The game's best values (most damage,

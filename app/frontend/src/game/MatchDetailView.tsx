@@ -1,6 +1,6 @@
 // The scoreboard of one game: both teams, every player's line with winer's score, grade, MVP and
-// SVP, damage share, healing on teammates and kill participation, the game's best values picked
-// out and, while titles are on, the roast title each line earned.
+// SVP, damage share, healing (with what went to teammates under it) and kill participation, the
+// game's best values picked out and, while titles are on, the roast title each line earned.
 import {
   GRADE_LETTERS,
   compact,
@@ -12,6 +12,7 @@ import {
   type PlayerLine,
   type TeamDetail,
 } from "@winer/shared";
+import { HandHeart } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cx } from "../lib/cx";
@@ -45,7 +46,7 @@ function AwardBadge({ award }: { award: Award }) {
 export interface Standouts {
   damage?: number;
   taken?: number;
-  /** Healing and shielding on teammates, where the game says. */
+  /** Healing done, as the client counts it. */
   healing?: number;
   gold?: number;
   /** The fewest. */
@@ -67,7 +68,7 @@ export function standouts(detail: MatchDetail): Standouts {
   return {
     damage: best(lines.map((line) => line.damage)),
     taken: best(lines.map((line) => line.damageTaken)),
-    healing: best(lines.flatMap((line) => (line.healing === null ? [] : [line.healing]))),
+    healing: best(lines.map((line) => line.healing)),
     gold: best(lines.map((line) => line.gold)),
     deaths: best(
       lines.map((line) => line.deaths),
@@ -101,6 +102,24 @@ function Grade({ grade }: { grade: number }) {
   return (
     <span title={label} className="relative block text-[10.5px] font-semibold text-fg-subtle">
       <span aria-hidden>{letter}</span>
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+/** What a line healed and shielded on teammates, under its healing: the part the score's healing
+ *  bonus reads. */
+function TeammatesHealed({ value }: { value: number }) {
+  const t = useT();
+  const language = useLanguage();
+  const label = t("history.healingOnTeammates", { value: value.toLocaleString(language) });
+  return (
+    <span
+      title={label}
+      className="relative flex items-center justify-end gap-0.5 text-[10.5px] text-fg-subtle"
+    >
+      <HandHeart size={10} strokeWidth={2} aria-hidden />
+      <span aria-hidden>{compact(value)}</span>
       <span className="sr-only">{label}</span>
     </span>
   );
@@ -253,11 +272,8 @@ function PlayerRow({
         {stat("taken", player.damageTaken)}
       </span>
       <span className={cx("mono text-right text-fg-muted", WIDE_ONLY)}>
-        {player.healing === null ? (
-          <span className="text-fg-subtle">—</span>
-        ) : (
-          stat("healing", player.healing)
-        )}
+        {stat("healing", player.healing)}
+        {!!player.healingOnTeammates && <TeammatesHealed value={player.healingOnTeammates} />}
       </span>
       <span className="mono text-right text-fg-muted">{percent(player.killParticipation)}</span>
       <span className={cx("mono text-right text-fg-muted", WIDE_ONLY)}>

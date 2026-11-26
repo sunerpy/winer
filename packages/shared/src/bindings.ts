@@ -254,10 +254,14 @@ export type PlayerLine = { puuid: string, name: RiotId | null, iconId: number, c
  */
 augments: Array<number>, keystone: number, subStyle: number, kills: number, deaths: number, assists: number, cs: number, gold: number, damage: number, damageTaken: number, 
 /**
- * Healing and shielding on teammates; absent where the game came from the client's own
- * documents, which do not carry it.
+ * Healing done, the champion's own included, as the client's scoreboard shows it.
  */
-healing: number | null, vision: number, largestMultiKill: number, win: boolean, remake: boolean, 
+healing: number, 
+/**
+ * Healing and shielding on teammates, which the score's healing bonus reads; absent where the
+ * game came from the client's own documents, which do not carry it.
+ */
+healingOnTeammates: number | null, vision: number, largestMultiKill: number, win: boolean, remake: boolean, 
 /**
  * Arena placement, 1–8.
  */
