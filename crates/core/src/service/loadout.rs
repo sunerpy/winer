@@ -1849,7 +1849,21 @@ mod tests {
         .unwrap()
     }
 
-    /// A service in champ select `session` on a client that never answers (port 1), the view drawn.
+    /// A port on this machine that takes each connection and closes it at once, so every request
+    /// to it fails at once: a connect to a port nothing listens on keeps Windows waiting about two
+    /// seconds, and a set-up makes a few of them.
+    fn closing_port() -> u16 {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                drop(stream);
+            }
+        });
+        port
+    }
+
+    /// A service in champ select `session` on a client that answers nothing, the view drawn.
     fn in_champ_select(dir: &tempfile::TempDir, session: &ChampSelectSession) -> (Service, Client) {
         let service = service(dir);
         let mut settings = service.settings();
@@ -1858,7 +1872,7 @@ mod tests {
         settings.builds.enabled = false;
         settings.plugin.loadout_panel = false;
         service.set_settings(settings).unwrap();
-        let credentials = Credentials::new(1, "t");
+        let credentials = Credentials::new(closing_port(), "t");
         let data = GameData {
             queues: vec![QueueInfo {
                 id: 420,
@@ -2297,7 +2311,7 @@ mod tests {
         ));
         let mut events = service.subscribe();
         service.set_up(&client, 202, Mode::Ranked, 9);
-        let notice = tokio::time::timeout(Duration::from_secs(5), async {
+        let notice = tokio::time::timeout(Duration::from_secs(20), async {
             loop {
                 if let Ok(Event::Notice(notice)) = events.recv().await
                     && matches!(
