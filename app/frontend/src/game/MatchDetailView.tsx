@@ -1,6 +1,6 @@
 // The scoreboard of one game: both teams, every player's line with winer's score, grade, MVP and
-// SVP, damage share and kill participation, the game's best values picked out and, while titles
-// are on, the roast title each line earned.
+// SVP, damage share, healing on teammates and kill participation, the game's best values picked
+// out and, while titles are on, the roast title each line earned.
 import {
   GRADE_LETTERS,
   compact,
@@ -21,10 +21,11 @@ import { FeatMarks } from "./Feats";
 import { AssetIcon, AugmentIcon, ChampionIcon } from "./icons";
 import { KdaValue, TitleChip } from "./stats";
 
-// Player · KDA · score · damage · taken · KP · gold · CS · items. Taken and gold give way first
-// when the scoreboard is narrow.
+// Player · KDA · score · damage · taken · healing · KP · gold · CS · items. Taken, healing and gold
+// give way first when the scoreboard is narrow; where they show, the other columns keep their
+// narrow widths, which leaves the player's column 172px at 860px of scoreboard.
 const COLUMNS =
-  "grid-cols-[minmax(0,1fr)_76px_44px_116px_40px_36px_148px] @[860px]:grid-cols-[minmax(0,1fr)_80px_48px_128px_52px_44px_52px_40px_148px]";
+  "grid-cols-[minmax(0,1fr)_76px_44px_116px_40px_36px_148px] @[860px]:grid-cols-[minmax(0,1fr)_76px_44px_116px_48px_48px_40px_48px_36px_148px]";
 const WIDE_ONLY = "hidden @[860px]:block";
 
 function AwardBadge({ award }: { award: Award }) {
@@ -44,6 +45,8 @@ function AwardBadge({ award }: { award: Award }) {
 export interface Standouts {
   damage?: number;
   taken?: number;
+  /** Healing and shielding on teammates, where the game says. */
+  healing?: number;
   gold?: number;
   /** The fewest. */
   deaths?: number;
@@ -64,6 +67,7 @@ export function standouts(detail: MatchDetail): Standouts {
   return {
     damage: best(lines.map((line) => line.damage)),
     taken: best(lines.map((line) => line.damageTaken)),
+    healing: best(lines.flatMap((line) => (line.healing === null ? [] : [line.healing]))),
     gold: best(lines.map((line) => line.gold)),
     deaths: best(
       lines.map((line) => line.deaths),
@@ -139,6 +143,9 @@ function HeaderRow() {
       </span>
       <span className={cx(cell, "pl-3")}>{t("history.damage")}</span>
       <span className={cx(cell, WIDE_ONLY, "text-right")}>{t("history.taken")}</span>
+      <span className={cx(cell, WIDE_ONLY, "text-right")} title={t("history.healingHint")}>
+        {t("history.healing")}
+      </span>
       <span className={cx(cell, "text-right")}>{t("history.kp")}</span>
       <span className={cx(cell, WIDE_ONLY, "text-right")}>{t("history.gold")}</span>
       <span className={cx(cell, "text-right")}>{t("history.cs")}</span>
@@ -244,6 +251,13 @@ function PlayerRow({
       </span>
       <span className={cx("mono text-right text-fg-muted", WIDE_ONLY)}>
         {stat("taken", player.damageTaken)}
+      </span>
+      <span className={cx("mono text-right text-fg-muted", WIDE_ONLY)}>
+        {player.healing === null ? (
+          <span className="text-fg-subtle">—</span>
+        ) : (
+          stat("healing", player.healing)
+        )}
       </span>
       <span className="mono text-right text-fg-muted">{percent(player.killParticipation)}</span>
       <span className={cx("mono text-right text-fg-muted", WIDE_ONLY)}>

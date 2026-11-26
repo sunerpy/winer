@@ -35,6 +35,7 @@ function line(
     gold: 12_000,
     damage,
     damageTaken: 20_000,
+    healing: null,
     vision: 0,
     largestMultiKill: 2,
     win: award === "mvp",
@@ -178,6 +179,48 @@ describe("MatchDetailView", () => {
       "KDA 5 以上，伤害占比却不到一成五。",
     );
     expect(within(row("cy")).queryByText(/大师|防御塔/), "a team of one earns nothing").toBeNull();
+  });
+
+  it("shows what each line healed and shielded on teammates, the game's most picked out", () => {
+    const healed: MatchDetail = {
+      ...DETAIL,
+      teams: [
+        {
+          ...DETAIL.teams[0]!,
+          players: [
+            { ...line("ann", 8.6, "mvp", 45_000, 0.31), healing: 0 },
+            { ...line("bo", 6.1, null, 20_000, 0.14), healing: 39_348 },
+          ],
+        },
+        {
+          ...DETAIL.teams[1]!,
+          players: [{ ...line("cy", 7.2, "svp", 30_000, 0.4), healing: 808 }],
+        },
+      ],
+    };
+    expect(standouts(healed).healing).toBe(39_348);
+    const { rerender } = render(
+      <StoreContext value={new AppStore(demoBackend())}>
+        <MatchDetailView detail={healed} />
+      </StoreContext>,
+    );
+    const row = (name: string) => screen.getByText(`${name}#1`).closest("li") as HTMLElement;
+    expect(within(row("bo")).getByTitle("全场治疗最多")).toHaveTextContent("39k");
+    expect(within(row("cy")).getByText("808")).toBeInTheDocument();
+    expect(within(row("ann")).queryByText("—"), "nothing healed is a number too").toBeNull();
+    expect(screen.getAllByText("治疗")[0]).toHaveAttribute(
+      "title",
+      "为队友治疗和提供护盾的总量，不含自己的回复。只有战绩服务器的数据里有，用客户端自己的记录时显示 —。",
+    );
+
+    // The client's own copy of a game says nothing of it: a dash, and no most.
+    rerender(
+      <StoreContext value={new AppStore(demoBackend())}>
+        <MatchDetailView detail={DETAIL} />
+      </StoreContext>,
+    );
+    expect(within(row("ann")).getByText("—")).toBeInTheDocument();
+    expect(standouts(DETAIL).healing).toBeUndefined();
   });
 
   it("counts dragons and barons for both sides once either took one", () => {

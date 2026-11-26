@@ -436,9 +436,9 @@ pub struct RecentMatch {
     pub assists: i64,
     /// Epoch milliseconds.
     pub started_at: i64,
-    /// 0–10, the game's score as the strength reads it: against the game's other players, or
-    /// against the mode's average where only this player's row is known (`RecentForm::source`).
-    /// Absent for a remake and a mode with no average.
+    /// 0–10, the game's score as the strength reads it: against the game's other players, without
+    /// the healing bonus, or against the mode's average where only this player's row is known
+    /// (`RecentForm::source`). Absent for a remake and a mode with no average.
     pub score: Option<f64>,
     /// Someone else in the game left or idled (the shard's server says so).
     pub away: bool,
@@ -578,6 +578,9 @@ pub struct PlayerLine {
     pub gold: i64,
     pub damage: i64,
     pub damage_taken: i64,
+    /// Healing and shielding on teammates; absent where the game came from the client's own
+    /// documents, which do not carry it.
+    pub healing: Option<i64>,
     pub vision: i64,
     pub largest_multi_kill: i64,
     pub win: bool,
@@ -615,6 +618,8 @@ pub enum Feat {
     FirstBlood,
     MostTowers,
     MostAssists,
+    /// The most healing and shielding on teammates.
+    MostHealing,
     MostGold,
     MostTaken,
     MostCs,

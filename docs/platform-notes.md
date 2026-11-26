@@ -296,10 +296,17 @@ Measured on NJ100, 16.19, 2026-10-05.
 - Each participant carries `teamPosition`: `TOP`, `JUNGLE`, `MIDDLE`, `BOTTOM` or `UTILITY` on the
   Rift, empty in ARAM. `lane` and `role` are the older guess and often wrong (ARAM games read `TOP`
   and `SUPPORT`); the client's own documents have only those.
-- Turned into the LCU's shape (`crates/core/src/sgp.rs`), a game reads exactly as
+- Turned into the LCU's shape (`crates/core/src/sgp.rs`), a game reads as
   `/lol-match-history/v1/games/{id}` does for the analysis (the test
-  `a_page_from_the_server_describes_its_game_as_the_client_does`, on both captures of one game).
-  So a scoreboard opened from a server page is drawn from that page's game, with no request.
+  `a_page_from_the_server_describes_its_game_as_the_client_does`, on both captures of one game),
+  but for healing on teammates. So a scoreboard opened from a server page is drawn from that page's
+  game, with no request.
+- Only the server's copy of a game carries `totalHealsOnTeammates` and
+  `totalDamageShieldedOnTeammates`. The client's has `totalHeal` and `totalUnitsHealed`, and
+  `totalHeal` counts the champion's own healing too: in that Hextech ARAM game (16.17) Vladimir has
+  163,277 `totalHeal` and nothing on teammates, Soraka 60,536 of which 39,348 on teammates, and
+  Morgana shielded 7,941 and healed 658. The scoreboard's healing, its most-healing lead and the
+  score's healing bonus therefore need the server's copy.
 - Under load (GZ100, 2026-10-11, 12:50–14:15Z) the server answered `503` with
   `X-Riot-Error-Type: UPSTREAM_RESPONSE_TIMEOUT` and `Service Unavailable - Connection retries
 limit exceeded. Response timed out.` after 1–5 s to every page of ten games or more, for the

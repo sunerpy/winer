@@ -191,15 +191,18 @@ while the client is not connected), `ProfileIcon` (circle), `AssetIcon` (items, 
 
 - **Scoreboard.** One grid row per player: player (champion, spells, name, award) · KDA · score
   (the grade's letter under it, its name as the tooltip) · damage (number, team share, bar against
-  the game's highest) · taken · KP · gold · CS · items.
-  Taken and gold drop out below 860px of scoreboard width (container query). A header row names
-  every column; the score header carries the formula as its tooltip. `MVP` is a solid accent chip,
-  `SVP` a neutral `fg/15` chip; the MVP's score is drawn in `accent-text`, a score under 4.5 in
-  `fg-subtle`. The row of the player whose history is open is `accent-soft`. The game's best
-  values (most damage, most taken, most gold, fewest deaths, best score) sit in an amber
-  `best-soft` pill that says what it is best at as its tooltip; a stat everyone ties on, a remake
-  and a game of one pick out nobody. Dragons and barons are counted only where someone took one.
-  While titles are on, the title a line earned sits under the name as a title chip.
+  the game's highest) · taken · healing (healing and shields given to teammates; a `fg-subtle`
+  dash where the game came from the client's own documents, which do not carry it) · KP · gold ·
+  CS · items. Taken, healing and gold drop out below 860px of scoreboard width (container query);
+  where they show, 48px each, the other numbers keep their narrow widths, so the player's column
+  has 172px at 860px. A header row names every column; the score header carries the formula as its
+  tooltip, the healing header what it counts. `MVP` is a solid accent chip, `SVP` a neutral
+  `fg/15` chip; the MVP's score is drawn in `accent-text`, a score under 4.5 in `fg-subtle`. The
+  row of the player whose history is open is `accent-soft`. The game's best values (most damage,
+  most taken, most healing, most gold, fewest deaths, best score) sit in an amber `best-soft` pill
+  that says what it is best at as its tooltip; a stat everyone ties on, a remake and a game of one
+  pick out nobody. Dragons and barons are counted only where someone took one. While titles are
+  on, the title a line earned sits under the name as a title chip.
 - **History.** A row's champion carries its MVP or SVP in the top-left corner, both solid (accent
   and `raised` with a hairline): a translucent chip on artwork cannot be read. Pages of 10, 15, 25
   or 50 games (remembered); the first page appears at once while every available page is read in the
@@ -265,14 +268,14 @@ while the client is not connected), `ProfileIcon` (circle), `AssetIcon` (items, 
 - **Feats.** What a line did that a badge names, computed by the core from the whole game
   (`view::Feat`): its best multikill (双杀, 三杀, 四杀, 五杀), 超神 (eight kills without dying), 一血,
   逃兵 (the server marked the player away), and the game's leads (杀人最多, 输出最高, 推塔最多, 助攻最多,
-  金币最多, 承伤最高, 补兵最多; a tie leads together, a lead everyone shares names nobody). Tones:
+  治疗最多, 金币最多, 承伤最高, 补兵最多; a tie leads together, a lead everyone shares names nobody). Tones:
   multikills climb `feat-double` blue → `feat-triple` violet → `feat-quadra` orange → `feat-penta`
   gold, 超神 is `feat-legend` crimson, 一血 `feat-blood`, the leads the scoreboard's amber `best`, and
   逃兵 `danger`; 五杀 and 超神 alone carry a ring and a sheen of their colour. A history row shows the
   first three as 18px chips (glyph and name; two in the overview's short list) and `+N` for the
   rest; the scoreboard shows every one as an 18px mark beside the augments, a multikill by its count
-  in mono, the rest by a Lucide glyph (swords, zap, castle, helping hand, coins, shield, wheat,
-  droplet, crown, log-out). The name and what earned it are the tooltip and the screen reader's text.
+  in mono, the rest by a Lucide glyph (swords, zap, castle, helping hand, heart-pulse, coins, shield,
+  wheat, droplet, crown, log-out). The name and what earned it are the tooltip and the screen reader's text.
 - **Titles.** A roast title (版本答案, 院长) is a chip of its own after the tier: a dashed
   `border-strong` outline, `fg-muted` text and a `warning` flame, so it never reads as another
   tier; what earned it is the tooltip where it is known. The plugin draws it as a dashed outline in

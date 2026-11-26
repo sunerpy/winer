@@ -158,6 +158,7 @@ const LEADS: [Feat, (line: PlayerLine) => number][] = [
   ["mostKills", (line) => line.kills],
   ["mostDamage", (line) => line.damage],
   ["mostAssists", (line) => line.assists],
+  ["mostHealing", (line) => line.healing ?? 0],
   ["mostGold", (line) => line.gold],
   ["mostTaken", (line) => line.damageTaken],
   ["mostCs", (line) => line.cs],
@@ -191,6 +192,7 @@ function line(
     gold: 9000 + Math.floor(pick() * 6000),
     damage: 9000 + Math.floor(pick() * 26_000),
     damageTaken: 12_000 + Math.floor(pick() * 15_000),
+    healing: 0,
     vision: 10 + Math.floor(pick() * 30),
     largestMultiKill: pick() > 0.85 ? 3 : 1,
     win,
@@ -239,14 +241,17 @@ function scoreboard(gameId: number): MatchDetail {
     towers: win ? 9 : 3,
     dragons: win ? 3 : 1,
     barons: win ? 1 : 0,
-    players: TEAM.map(([puuid, name]) => {
-      const played = line(
+    players: TEAM.map(([puuid, name, , position]) => {
+      const drawn = line(
         pick,
         teamId === 100 ? puuid : `${puuid}-x`,
         teamId === 100 ? name : `${name}·对手`,
         win,
         champion(pick),
       );
+      // The support heals its team; read from what was drawn, so the rest of the game stays the same.
+      const played =
+        position === "utility" ? { ...drawn, healing: 4_000 + drawn.assists * 650 } : drawn;
       if (played.puuid !== DEMO_PLAYER) return played;
       return { ...played, name: { gameName: name, tagLine: "10003" }, ...standout?.line };
     }),

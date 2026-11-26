@@ -203,9 +203,9 @@ export type RecentMatch = { gameId: number, queueId: number, championId: number,
  */
 startedAt: number, 
 /**
- * 0–10, the game's score as the strength reads it: against the game's other players, or
- * against the mode's average where only this player's row is known (`RecentForm::source`).
- * Absent for a remake and a mode with no average.
+ * 0–10, the game's score as the strength reads it: against the game's other players, without
+ * the healing bonus, or against the mode's average where only this player's row is known
+ * (`RecentForm::source`). Absent for a remake and a mode with no average.
  */
 score: number | null, 
 /**
@@ -252,7 +252,12 @@ export type PlayerLine = { puuid: string, name: RiotId | null, iconId: number, c
 /**
  * Arena and Hextech ARAM augments, in the order picked.
  */
-augments: Array<number>, keystone: number, subStyle: number, kills: number, deaths: number, assists: number, cs: number, gold: number, damage: number, damageTaken: number, vision: number, largestMultiKill: number, win: boolean, remake: boolean, 
+augments: Array<number>, keystone: number, subStyle: number, kills: number, deaths: number, assists: number, cs: number, gold: number, damage: number, damageTaken: number, 
+/**
+ * Healing and shielding on teammates; absent where the game came from the client's own
+ * documents, which do not carry it.
+ */
+healing: number | null, vision: number, largestMultiKill: number, win: boolean, remake: boolean, 
 /**
  * Arena placement, 1–8.
  */
@@ -280,7 +285,7 @@ feats: Array<Feat>, };
 
 export type Award = "mvp" | "svp";
 
-export type Feat = "afk" | "penta" | "quadra" | "legendary" | "triple" | "mostKills" | "mostDamage" | "firstBlood" | "mostTowers" | "mostAssists" | "mostGold" | "mostTaken" | "mostCs" | "double";
+export type Feat = "afk" | "penta" | "quadra" | "legendary" | "triple" | "mostKills" | "mostDamage" | "firstBlood" | "mostTowers" | "mostAssists" | "mostHealing" | "mostGold" | "mostTaken" | "mostCs" | "double";
 
 export type GameData = { champions: Array<ChampionInfo>, items: Array<AssetInfo>, spells: Array<AssetInfo>, 
 /**

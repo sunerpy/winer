@@ -280,6 +280,9 @@ export const zhCN = {
   "history.player": "玩家",
   "history.score": "评分",
   "history.taken": "承伤",
+  "history.healing": "治疗",
+  "history.healingHint":
+    "为队友治疗和提供护盾的总量，不含自己的回复。只有战绩服务器的数据里有，用客户端自己的记录时显示 —。",
   "history.kp": "参团",
   "history.items": "装备",
   "augment.silver": "银色",
@@ -287,7 +290,7 @@ export const zhCN = {
   "augment.prismatic": "棱彩",
   "history.share": "占比 {p}",
   "history.scoreHint":
-    "winer 评分（0–10）：按经济、存活、击杀、助攻、伤害、承伤（峡谷还有补刀和视野）与全场平均比较得出，全场平均为 6.0；权重对照 WeGame 的 MVP、SVP 校准过。",
+    "winer 评分（0–10）：按经济、存活、击杀、助攻、伤害、承伤（峡谷还有补刀和视野）与全场平均比较得出，全场平均为 6.0，权重对照 WeGame 的 MVP、SVP 校准过；为队友治疗和提供护盾超出全场平均的部分另有加分，辅助英雄加得更多。",
   "history.version": "版本",
   "history.awardMvp": "MVP：胜方本局评分最高",
   "history.awardSvp": "SVP：败方本局评分最高",
@@ -297,6 +300,7 @@ export const zhCN = {
   "history.barons": "男爵",
   "history.best.damage": "全场伤害最高",
   "history.best.taken": "全场承伤最高",
+  "history.best.healing": "全场治疗最多",
   "history.best.gold": "全场经济最高",
   "history.best.deaths": "全场死亡最少",
   "history.best.score": "全场评分最高",
@@ -325,6 +329,8 @@ export const zhCN = {
   "feat.mostTowersWhy": "全场推掉的防御塔最多。",
   "feat.mostAssists": "助攻最多",
   "feat.mostAssistsWhy": "全场助攻最多。",
+  "feat.mostHealing": "治疗最多",
+  "feat.mostHealingWhy": "全场为队友治疗和提供护盾最多。",
   "feat.mostGold": "金币最多",
   "feat.mostGoldWhy": "全场经济最高。",
   "feat.mostTaken": "承伤最高",
@@ -608,11 +614,11 @@ export const zhCN = {
     "按数据特征给出称号，和档位同一个方向：中游以上的只有夸的，比如三连胜叫“版本答案”，中游以下的才会被叫“黑白电视机资深会员”；击杀、死亡和助攻都和同一模式的平均水平比，8 场以上还看发挥稳不稳（“定海神针”“峡谷老虎机”）。",
   "rating.basis": "评价依据",
   "rating.basis.form":
-    "近期战力（0–10）：最近 50 场（不含自定义、人机和重开局；选人时只取当前模式）每一局的单局评分，按分路或英雄定位拉齐后加权平均，越近的局权重越高；场次少时向平均水平收拢，胜率只占 5%；最后换算成在玩家中的位置，5.0 是平均水平。",
+    "近期战力（0–10）：最近 50 场（不含自定义、人机和重开局；选人时只取当前模式）每一局的单局评分（不计治疗加分），按分路或英雄定位拉齐后加权平均，越近的局权重越高；场次少时向平均水平收拢，胜率只占 5%；最后换算成在玩家中的位置，5.0 是平均水平。",
   "rating.basis.tiers":
     "峡谷五档、马系、峡谷食物链和自定义在本队里按近期战力排名后均分到各档，五人五档正好一人一档；峡谷八档按固定分段定级，不和队友比：S+ 9.5 起，S 8.5，A 7.0，B 5.0，C 3.0，D 1.5，E 0.5，再低是 F。",
   "rating.basis.game":
-    "单局评分（记分板）：经济、存活、击杀、助攻、伤害、承伤，峡谷还有补刀和视野，各项和本局平均水平比，平均水平是 6.0，峡谷和大乱斗各用一套对照 WeGame 校准的权重；单局评级 S+ 9.0 起，S 8.0，A 7.0，B 6.0，C 5.0，D 4.0，E 3.0。",
+    "单局评分（记分板）：经济、存活、击杀、助攻、伤害、承伤，峡谷还有补刀和视野，各项和本局平均水平比，平均水平是 6.0，峡谷和大乱斗各用一套对照 WeGame 校准的权重；为队友治疗和提供护盾超出本局平均的部分另有加分，辅助英雄加得更多；单局评级 S+ 9.0 起，S 8.0，A 7.0，B 6.0，C 5.0，D 4.0，E 3.0。",
   "rating.basis.titles":
     "称号：近期看连胜连败、场均击杀、死亡和助攻，以及单局评分的起伏；单局看伤害占比、参团率、承伤和经济占比。",
   "rating.docs": "完整说明",

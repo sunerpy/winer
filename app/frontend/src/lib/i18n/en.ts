@@ -291,6 +291,9 @@ export const en: Record<MessageKey, string> = {
   "history.player": "Player",
   "history.score": "Score",
   "history.taken": "Taken",
+  "history.healing": "Healing",
+  "history.healingHint":
+    "Healing and shields given to teammates, not counting a champion's own healing. Only the match-history server's data has it; from the client's own records it shows —.",
   "history.kp": "KP",
   "history.items": "Items",
   "augment.silver": "Silver",
@@ -298,7 +301,7 @@ export const en: Record<MessageKey, string> = {
   "augment.prismatic": "Prismatic",
   "history.share": "{p} of team",
   "history.scoreHint":
-    "winer score (0–10): gold, survival, kills, assists, damage and damage taken (on the Rift also farming and vision) against the game's average player, who scores 6.0; the weights are calibrated on WeGame's MVP and SVP.",
+    "winer score (0–10): gold, survival, kills, assists, damage and damage taken (on the Rift also farming and vision) against the game's average player, who scores 6.0, with weights calibrated on WeGame's MVP and SVP; healing and shielding teammates beyond the game's average adds to it, more for support champions.",
   "history.version": "Patch",
   "history.awardMvp": "MVP: the best score on the winning side",
   "history.awardSvp": "SVP: the best score on the losing side",
@@ -308,6 +311,7 @@ export const en: Record<MessageKey, string> = {
   "history.barons": "Barons",
   "history.best.damage": "Most damage in the game",
   "history.best.taken": "Most damage taken in the game",
+  "history.best.healing": "Most healing in the game",
   "history.best.gold": "Most gold in the game",
   "history.best.deaths": "Fewest deaths in the game",
   "history.best.score": "Best score in the game",
@@ -336,6 +340,8 @@ export const en: Record<MessageKey, string> = {
   "feat.mostTowersWhy": "Destroyed the most towers in the game.",
   "feat.mostAssists": "Most assists",
   "feat.mostAssistsWhy": "The most assists in the game.",
+  "feat.mostHealing": "Most healing",
+  "feat.mostHealingWhy": "Healed and shielded teammates the most in the game.",
   "feat.mostGold": "Most gold",
   "feat.mostGoldWhy": "Earned the most gold in the game.",
   "feat.mostTaken": "Most damage taken",
@@ -638,11 +644,11 @@ export const en: Record<MessageKey, string> = {
     "Titles from the numbers, leaning the way the tier does: above the middle only praise, such as “Patch Champion” for three wins in a row; only below it a “Grey-screen Regular”. Kills, deaths and assists are set against the same mode's average player; from 8 games, how steady the games were too (“Rock Solid”, “Slot Machine”).",
   "rating.basis": "How it is rated",
   "rating.basis.form":
-    "Recent form (0–10): the score of each of the last 50 games (custom games, games against the computer and remakes left out; in champ select the mode being played only), set against its position or champion role and averaged, the newest weighed most; few games pull it toward the average and the win rate counts a twentieth; then it is read as a share of players, 5.0 the average.",
+    "Recent form (0–10): the score of each of the last 50 games (custom games, games against the computer and remakes left out; in champ select the mode being played only), before its healing bonus, set against its position or champion role and averaged, the newest weighed most; few games pull it toward the average and the win rate counts a twentieth; then it is read as a share of players, 5.0 the average.",
   "rating.basis.tiers":
     "Rift five, the horses, the food chain and custom names rank the team by recent form and split it evenly over the tiers, so five players in five tiers get one each; Rift grades use fixed bands and no comparison: S+ from 9.5, S 8.5, A 7.0, B 5.0, C 3.0, D 1.5, E 0.5, lower is F.",
   "rating.basis.game":
-    "One game's score (scoreboard): gold, survival, kills, assists, damage and damage taken, on the Rift also farming and vision, each against the game's average, which scores 6.0, with one set of weights for the Rift and one for ARAM, both calibrated on WeGame; its grade is S+ from 9.0, S 8.0, A 7.0, B 6.0, C 5.0, D 4.0, E 3.0.",
+    "One game's score (scoreboard): gold, survival, kills, assists, damage and damage taken, on the Rift also farming and vision, each against the game's average, which scores 6.0, with one set of weights for the Rift and one for ARAM, both calibrated on WeGame, and a bonus for healing and shielding teammates beyond the game's average, larger for support champions; its grade is S+ from 9.0, S 8.0, A 7.0, B 6.0, C 5.0, D 4.0, E 3.0.",
   "rating.basis.titles":
     "Titles: recent streaks, kills, deaths and assists per game and how much the game scores swing; on the scoreboard the game's damage share, kill participation, damage taken and gold share.",
   "rating.docs": "Full explanation",

@@ -344,6 +344,7 @@ describe("tiers", () => {
     gold: 10_000,
     damage: 20_000,
     damageTaken: 20_000,
+    healing: null,
     vision: 10,
     largestMultiKill: 1,
     win: true,
