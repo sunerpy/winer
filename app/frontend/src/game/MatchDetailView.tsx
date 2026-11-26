@@ -114,13 +114,12 @@ function TeammatesHealed({ value }: { value: number }) {
   const language = useLanguage();
   const label = t("history.healingOnTeammates", { value: value.toLocaleString(language) });
   return (
-    <span
-      title={label}
-      className="relative flex items-center justify-end gap-0.5 text-[10.5px] text-fg-subtle"
-    >
-      <HandHeart size={10} strokeWidth={2} aria-hidden />
-      <span aria-hidden>{compact(value)}</span>
+    // Inline, the hidden label first: it then sits inside the cell, where a flex row's end would
+    // push it a pixel past it.
+    <span title={label} className="relative block text-[10.5px] text-fg-subtle">
       <span className="sr-only">{label}</span>
+      <HandHeart size={10} strokeWidth={2} aria-hidden className="mr-0.5 inline-block" />
+      <span aria-hidden>{compact(value)}</span>
     </span>
   );
 }
