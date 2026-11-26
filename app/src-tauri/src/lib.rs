@@ -122,13 +122,17 @@ fn setup(app: &mut App, start_hidden: bool) -> Result<(), Box<dyn Error>> {
     hotkey::apply(app.handle(), service.settings().general.hotkey);
     // Callout: the shortcut that sends it, none by default.
     hotkey::apply_callout(app.handle(), service.settings().automation.callout.hotkey);
-    // Comebacks: the two shortcuts that send one and the quick phrase's, none by default.
-    let comeback = service.settings().comeback;
+    // Quick chat: the two shortcuts that send a random line, the quick phrase's and each quick
+    // message's, none by default.
+    let settings = service.settings();
+    let messages = hotkey::message_hotkeys(&settings);
+    let comeback = settings.comeback;
     hotkey::apply_comebacks(
         app.handle(),
         comeback.hotkey,
         comeback.all_hotkey,
         comeback.phrase_hotkey,
+        messages,
     );
 
     // Subscribed before the service starts: the core's events are not replayed, and the first

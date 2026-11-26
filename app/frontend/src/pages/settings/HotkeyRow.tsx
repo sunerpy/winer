@@ -1,5 +1,6 @@
 // The global shortcuts as settings rows: Settings › 通用's, which brings winer up from anywhere,
-// 自动化 › 战力喊话's, which sends the callout, the Comebacks page's two and the Phrases page's one.
+// 自动化 › 战力喊话's, which sends the callout, the Quick chat page's (its two random-line shortcuts
+// and one for each quick message) and the Phrases page's one.
 // The recorder takes the window's next keydown before anything else does (capture phase: the
 // shell's own shortcuts and the dialog's Escape never see it), and the shell lets every shortcut go
 // while it listens, or pressing one would act instead of being recorded. No shortcut takes another's
@@ -36,8 +37,8 @@ interface Taken {
   message: string;
 }
 
-/** The recorder listening now: starting another ends it, so a page with two rows (the Comebacks
- *  page) records each combination once. */
+/** The recorder listening now: starting another ends it, so a page with several rows (the Quick
+ *  chat page) records each combination once. */
 let recording: (() => void) | null = null;
 /** Recorders holding the shortcuts let go; the shell takes them back when the last one ends. */
 let suspending = 0;
@@ -216,7 +217,7 @@ export function HotkeyRow() {
       held={settled}
       taken={[
         { combo: settings.automation.callout.hotkey, message: t("callout.hotkeyTakenByCallout") },
-        ...comebackTaken(settings, t),
+        ...chatTaken(settings, t),
       ]}
       onSave={(combo) =>
         store.updateSettings((value) => ({
@@ -247,7 +248,7 @@ export function CalloutHotkeyRow() {
       held={settled}
       taken={[
         { combo: settings.general.hotkey, message: t("callout.hotkeyTakenByWindow") },
-        ...comebackTaken(settings, t),
+        ...chatTaken(settings, t),
       ]}
       onSave={(hotkey) =>
         store.updateSettings((value) => ({
@@ -262,21 +263,40 @@ export function CalloutHotkeyRow() {
   );
 }
 
-// The Comebacks page's two shortcuts and the Phrases page's one, beside the window's and the
-// callout's.
+// The Quick chat page's shortcuts and the Phrases page's one, beside the window's and the callout's.
 
-/** The Comebacks and Phrases pages' combinations, which neither the window's nor the callout's
- *  shortcut takes. */
-function comebackTaken(settings: Settings, t: Translate): Taken[] {
+/** Which of the Quick chat and Phrases pages' shortcuts a row records: a random line's, the quick
+ *  phrase's or quick message `message`'s (counted from 0). */
+type ChatShortcut = "team" | "all" | "phrase" | { message: number };
+
+/** The Quick chat and Phrases pages' combinations, which no other shortcut takes: the random
+ *  lines' two, the quick phrase's and each quick message's, the row's own (`own`) left out. */
+function chatTaken(settings: Settings, t: Translate, own?: ChatShortcut): Taken[] {
+  const rule = settings.comeback;
+  const taken: Taken[] = [];
+  if (own !== "team") taken.push({ combo: rule.hotkey, message: t("comeback.hotkeyTakenByTeam") });
+  if (own !== "all") taken.push({ combo: rule.allHotkey, message: t("comeback.hotkeyTakenByAll") });
+  if (own !== "phrase") taken.push({ combo: rule.phraseHotkey, message: t("phrase.hotkeyTaken") });
+  rule.messages.forEach((message, index) => {
+    if (typeof own === "object" && own.message === index) return;
+    taken.push({
+      combo: message.hotkey,
+      message: t("comeback.hotkeyTakenByMessage", { n: index + 1 }),
+    });
+  });
+  return taken;
+}
+
+/** The window's and the callout's combinations, which no chat shortcut takes. */
+function windowAndCallout(settings: Settings, t: Translate): Taken[] {
   return [
-    { combo: settings.comeback.hotkey, message: t("comeback.hotkeyTakenByTeam") },
-    { combo: settings.comeback.allHotkey, message: t("comeback.hotkeyTakenByAll") },
-    { combo: settings.comeback.phraseHotkey, message: t("phrase.hotkeyTaken") },
+    { combo: settings.general.hotkey, message: t("callout.hotkeyTakenByWindow") },
+    { combo: settings.automation.callout.hotkey, message: t("callout.hotkeyTakenByCallout") },
   ];
 }
 
-/** The Comebacks page: the shortcut that sends a line to the team, or with `all` to everyone in
- *  the game; off until a combination is set. */
+/** The Quick chat page: the shortcut that sends a random line to the team, or with `all` to
+ *  everyone in the game; off until a combination is set. */
 export function ComebackHotkeyRow({ all }: { all: boolean }) {
   const t = useT();
   const store = useStore();
@@ -291,14 +311,7 @@ export function ComebackHotkeyRow({ all }: { all: boolean }) {
       hint={t(all ? "comeback.allHotkeyHint" : "comeback.hotkeyHint")}
       combo={combo}
       held={settled}
-      taken={[
-        { combo: settings.general.hotkey, message: t("callout.hotkeyTakenByWindow") },
-        { combo: settings.automation.callout.hotkey, message: t("callout.hotkeyTakenByCallout") },
-        all
-          ? { combo: settings.comeback.hotkey, message: t("comeback.hotkeyTakenByTeam") }
-          : { combo: settings.comeback.allHotkey, message: t("comeback.hotkeyTakenByAll") },
-        { combo: settings.comeback.phraseHotkey, message: t("phrase.hotkeyTaken") },
-      ]}
+      taken={[...windowAndCallout(settings, t), ...chatTaken(settings, t, all ? "all" : "team")]}
       onSave={(next) =>
         store.updateSettings((value) => ({
           ...value,
@@ -327,16 +340,43 @@ export function PhraseHotkeyRow() {
       hint={t("phrase.hotkeyHint")}
       combo={combo}
       held={settled}
-      taken={[
-        { combo: settings.general.hotkey, message: t("callout.hotkeyTakenByWindow") },
-        { combo: settings.automation.callout.hotkey, message: t("callout.hotkeyTakenByCallout") },
-        { combo: settings.comeback.hotkey, message: t("comeback.hotkeyTakenByTeam") },
-        { combo: settings.comeback.allHotkey, message: t("comeback.hotkeyTakenByAll") },
-      ]}
+      taken={[...windowAndCallout(settings, t), ...chatTaken(settings, t, "phrase")]}
       onSave={(next) =>
         store.updateSettings((value) => ({
           ...value,
           comeback: { ...value.comeback, phraseHotkey: next },
+        }))
+      }
+    />
+  );
+}
+
+/** The Quick chat page: the shortcut that sends quick message `index` (counted from 0); off until
+ *  a combination is set. */
+export function QuickMessageHotkeyRow({ index }: { index: number }) {
+  const t = useT();
+  const store = useStore();
+  const settings = useSettings();
+  const combo = settings.comeback.messages[index]?.hotkey ?? null;
+  const status = useHotkeyStatus();
+  const slot = status?.messages[index];
+  const settled = status && !status.suspended && slot && slot.shortcut === combo ? slot : null;
+  return (
+    <ShortcutRow
+      label={t("comeback.quickHotkey")}
+      hint={t("comeback.quickHotkeyHint")}
+      combo={combo}
+      held={settled}
+      taken={[...windowAndCallout(settings, t), ...chatTaken(settings, t, { message: index })]}
+      onSave={(next) =>
+        store.updateSettings((value) => ({
+          ...value,
+          comeback: {
+            ...value.comeback,
+            messages: value.comeback.messages.map((message, at) =>
+              at === index ? { ...message, hotkey: next } : message,
+            ),
+          },
         }))
       }
     />

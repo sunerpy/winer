@@ -605,9 +605,11 @@ pub enum GameTeams {
     Both,
 }
 
-/// The Comebacks page (`comeback`): a press of either shortcut sends one line at random, in champ
-/// select to its chat, while the game runs typed into the game's chat (with [`Self::in_game`]).
-/// The Phrases page edits [`Self::phrases`], [`Self::phrase_hotkey`] and [`Self::trade`].
+/// The Quick chat page (快捷喊话, `comeback`, the Comebacks page up to 0.0.24): a press of either
+/// random-line shortcut sends one line at random, and a quick message's own shortcut that message;
+/// in champ select to its chat, while the game runs typed into the game's chat (with
+/// [`Self::in_game`]). The Phrases page edits [`Self::phrases`], [`Self::phrase_hotkey`] and
+/// [`Self::trade`].
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ComebackSettings {
@@ -638,6 +640,24 @@ pub struct ComebackSettings {
     /// What champ select's trades (交换) send by themselves, off by default: the first quick phrase
     /// when the user asks a teammate, a thank-you once the champions are swapped.
     pub trade: TradeRule,
+    /// The Quick chat page's own messages (快捷消息), each sent whole by its own shortcut: at most
+    /// [`Self::QUICK_LIMIT`], none blank, of [`Self::LINE_LENGTH`] characters. winer ships none.
+    pub messages: Vec<QuickMessage>,
+}
+
+/// One of the Quick chat page's messages (快捷消息): in champ select its shortcut posts it in its
+/// chat; while the game runs, with [`ComebackSettings::in_game`], it is typed into the game's team
+/// chat, or with [`Self::all`] everyone's.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct QuickMessage {
+    /// One line: control characters out, trimmed.
+    pub text: String,
+    /// In [`normalize_hotkey`]'s form; never one the window, the callout, the comebacks, the quick
+    /// phrase or an earlier message holds.
+    pub hotkey: Option<String>,
+    /// In the game, to everyone (`/all ` before it) rather than the team.
+    pub all: bool,
 }
 
 /// The two messages a trade the user asks for (交换) may send without a key press, once each per
@@ -659,6 +679,8 @@ impl ComebackSettings {
     pub const LINE_LIMIT: usize = 100;
     pub const LINE_LENGTH: usize = 200;
     pub const PHRASE_LIMIT: usize = 20;
+    /// The quick messages there can be, each with a shortcut of its own (the shell holds that many).
+    pub const QUICK_LIMIT: usize = 10;
 }
 
 /// Whether a comeback may come from the downloaded library (`comeback::Library`), and from which
@@ -1129,16 +1151,37 @@ impl Settings {
         callout.watch_template = clip(&callout.watch_template, 200);
         callout.target_template = clip(&callout.target_template, 200);
         callout.ally_template = clip(&callout.ally_template, 200);
-        // The Comebacks page's two shortcuts and the Phrases page's one are spelled the same way and
-        // take no combination held before them: the window's, the callout's, then each earlier one
-        // of theirs.
-        let mut held = vec![self.general.hotkey.clone(), callout.hotkey.clone()];
+        // The Quick chat page's two shortcuts, the Phrases page's one and each quick message's are
+        // spelled the same way and take no combination held before them: the window's, the
+        // callout's, then each earlier one of theirs. A blank message goes, and its shortcut with
+        // it, before the combinations are handed out.
         let comeback = &mut self.comeback;
+        comeback.messages = std::mem::take(&mut comeback.messages)
+            .into_iter()
+            .filter_map(|message| {
+                let text = comeback::clean_lines(
+                    std::slice::from_ref(&message.text),
+                    1,
+                    ComebackSettings::LINE_LENGTH,
+                )
+                .pop()?;
+                Some(QuickMessage { text, ..message })
+            })
+            .take(ComebackSettings::QUICK_LIMIT)
+            .collect();
+        let mut held = vec![self.general.hotkey.clone(), callout.hotkey.clone()];
         for shortcut in [
             &mut comeback.hotkey,
             &mut comeback.all_hotkey,
             &mut comeback.phrase_hotkey,
-        ] {
+        ]
+        .into_iter()
+        .chain(
+            comeback
+                .messages
+                .iter_mut()
+                .map(|message| &mut message.hotkey),
+        ) {
             *shortcut = shortcut
                 .as_deref()
                 .and_then(normalize_hotkey)
@@ -2113,6 +2156,73 @@ mod tests {
             "nor the all-chat one's"
         );
         assert_eq!(with("Alt+5", "Alt+6", "7").2, None, "a key alone is typed");
+    }
+
+    #[test]
+    fn quick_messages_are_cleaned_capped_and_their_shortcuts_never_take_one_held_before() {
+        let message = |text: &str, hotkey: Option<&str>, all: bool| QuickMessage {
+            text: text.into(),
+            hotkey: hotkey.map(str::to_owned),
+            all,
+        };
+        let mut settings = Settings::default();
+        settings.general.hotkey = Some("Alt+Backquote".into());
+        settings.automation.callout.hotkey = Some("Alt+3".into());
+        settings.comeback.hotkey = Some("Alt+5".into());
+        settings.comeback.messages = vec![
+            message("  集合\n打龙  ", Some(" alt + 1 "), false),
+            message("   ", Some("Alt+2"), true),
+            message(&"长".repeat(250), Some("Alt+5"), true),
+            message("撤退", Some("alt+1"), false),
+            message("推塔", Some("Alt+3"), false),
+            message("等我", Some("7"), true),
+        ];
+        let messages = settings.normalized().comeback.messages;
+        assert_eq!(
+            messages,
+            vec![
+                message("集合 打龙", Some("Alt+1"), false),
+                message(&"长".repeat(ComebackSettings::LINE_LENGTH), None, true),
+                message("撤退", None, false),
+                message("推塔", None, false),
+                message("等我", None, true),
+            ],
+            "a blank message goes with its shortcut; a combination held before, by another \
+             shortcut or an earlier message, and a key alone are dropped"
+        );
+
+        let mut settings = Settings::default();
+        settings.comeback.messages = (0..15)
+            .map(|n| {
+                message(
+                    &format!("第 {n} 条"),
+                    Some(&format!("Ctrl+Alt+F{}", n + 1)),
+                    false,
+                )
+            })
+            .collect();
+        let messages = settings.normalized().comeback.messages;
+        assert_eq!(messages.len(), ComebackSettings::QUICK_LIMIT);
+        assert_eq!(messages[9].hotkey.as_deref(), Some("Ctrl+Alt+F10"));
+
+        // The others never take a message's combination either: they were there first.
+        let mut settings = Settings::default();
+        settings.comeback.messages = vec![message("集合", Some("Alt+6"), false)];
+        settings.comeback.phrase_hotkey = Some("Alt+6".into());
+        let comeback = settings.normalized().comeback;
+        assert_eq!(comeback.phrase_hotkey.as_deref(), Some("Alt+6"));
+        assert_eq!(comeback.messages[0].hotkey, None);
+
+        // A file from before quick messages reads as none.
+        let old: Settings = serde_json::from_str(r#"{"comeback":{"lines":["hi"]}}"#).unwrap();
+        assert!(old.comeback.messages.is_empty());
+        let partial: Settings =
+            serde_json::from_str(r#"{"comeback":{"messages":[{"text":"集合"}]}}"#).unwrap();
+        assert_eq!(
+            partial.comeback.messages,
+            vec![message("集合", None, false)],
+            "a message without a shortcut or a target goes to the team"
+        );
     }
 
     #[test]

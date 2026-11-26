@@ -120,6 +120,7 @@ describe("store", () => {
       comeback: { shortcut: null, active: false, error: null },
       comebackAll: { shortcut: null, active: false, error: null },
       phrase: { shortcut: null, active: false, error: null },
+      messages: [],
     });
     expect(store.hotkey.get()?.error).toBe("taken");
   });

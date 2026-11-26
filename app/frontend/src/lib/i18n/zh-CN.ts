@@ -9,7 +9,7 @@ export const zhCN = {
   "nav.automation": "自动化",
   "nav.tools": "工具",
   "nav.plugin": "客户端增强",
-  "nav.comeback": "反击",
+  "nav.comeback": "快捷喊话",
   "nav.phrases": "快捷语",
   "nav.settings": "设置",
   "nav.theme": "主题",
@@ -1074,7 +1074,7 @@ export const zhCN = {
   "callout.skip.unsupported": "游戏内发送只支持 Windows",
   "callout.skip.needsAdmin":
     "游戏以管理员身份运行而 winer 不是，模拟的按键会被系统丢弃；以管理员身份重启 winer 后再试",
-  "callout.skip.noLines": "还没有可以发的反击语句，请在「反击」页添加，或下载并打开在线语录",
+  "callout.skip.noLines": "没有可以发的语句：在「快捷喊话」页添加，或下载并打开在线语录",
   "callout.skip.tooSoon": "离上一句还不到 3 秒",
   // Typing into the game: a game started from WeGame runs as administrator, and Windows drops the
   // keys of a program that does not.
@@ -1086,35 +1086,51 @@ export const zhCN = {
   "list.add": "添加",
   "list.full": "最多 {n} 句。",
 
-  // The Comebacks page (反击): the user's own lines, their two shortcuts, typing into the game and
-  // the library downloaded on request.
-  "comeback.title": "反击",
-  "comeback.lines": "反击语句",
+  // The Quick chat page (快捷喊话, once 反击): the quick messages and their shortcuts, the random
+  // lines and their two shortcuts, typing into the game and the library downloaded on request.
+  "comeback.title": "快捷喊话",
+  "comeback.quick": "快捷消息",
+  "comeback.quickHint":
+    "每条消息有自己的快捷键，按一下发出整句，最多 200 字。英雄选择中发到选人聊天；游戏中打开下面的「在游戏里输入」后，按这一条选的「队伍」或「全体」输入游戏聊天。winer 不自带任何消息。",
+  "comeback.quickEmpty": "还没有快捷消息",
+  "comeback.quickEmptyHint": "在下面写一句常用的话，添加后再给它设一个快捷键。",
+  "comeback.quickText": "第 {n} 条快捷消息",
+  "comeback.quickTarget": "第 {n} 条发到哪里",
+  "comeback.quickRemove": "删除第 {n} 条快捷消息",
+  "comeback.quickNew": "新的快捷消息",
+  "comeback.quickNewPlaceholder": "写一条消息，按 Enter 添加",
+  "comeback.quickFull": "最多 {n} 条。",
+  "comeback.quickHotkey": "快捷键",
+  "comeback.quickHotkeyHint": "按下就发这一条。默认不设置。",
+  "comeback.target.team": "队伍",
+  "comeback.target.all": "全体",
+  "comeback.lines": "随机语句",
   "comeback.linesHint":
-    "按一次发一句，随机，不会连着两次同一句。一句发成一条消息，最多 200 字；winer 不自带任何语句，这里只有你自己写的。",
-  "comeback.linesEmpty": "还没有反击语句",
+    "按「随机发一句」的快捷键时，从这里随机挑一句，不会连着两次同一句。一句发成一条消息，最多 200 字；winer 不自带任何语句，这里只有你自己写的。",
+  "comeback.linesEmpty": "还没有随机语句",
   "comeback.linesEmptyHint": "在下面写一句，按 Enter 或点“添加”。",
   "comeback.line": "第 {n} 句",
   "comeback.removeLine": "删除第 {n} 句",
-  "comeback.newLine": "新的反击语句",
-  "comeback.newLinePlaceholder": "写一句反击，按 Enter 添加",
-  "comeback.shortcuts": "快捷键",
-  "comeback.hotkey": "反击发到队伍",
+  "comeback.newLine": "新的随机语句",
+  "comeback.newLinePlaceholder": "写一句，按 Enter 添加",
+  "comeback.shortcuts": "随机语句的快捷键",
+  "comeback.hotkey": "随机发一句到队伍",
   "comeback.hotkeyHint":
     "英雄选择中按下，随机发一句到选人聊天；游戏中打开下面的「在游戏里输入」后，输入游戏的队伍聊天。默认不设置。",
-  "comeback.allHotkey": "反击发到全体",
+  "comeback.allHotkey": "随机发一句到全体",
   "comeback.allHotkeyHint":
-    "游戏中打开「在游戏里输入」后，在这一句前加上 /all 输入全体聊天，对面也看得到；英雄选择中和「反击发到队伍」一样，发到只有本队看得到的选人聊天。默认不设置。",
-  "comeback.hotkeyTakenByTeam": "这个组合键已用于把反击发到队伍，请换一个。",
-  "comeback.hotkeyTakenByAll": "这个组合键已用于把反击发到全体，请换一个。",
+    "游戏中打开「在游戏里输入」后，在这一句前加上 /all 输入全体聊天，对面也看得到；英雄选择中和「随机发一句到队伍」一样，发到只有本队看得到的选人聊天。默认不设置。",
+  "comeback.hotkeyTakenByTeam": "这个组合键已用于随机发一句到队伍，请换一个。",
+  "comeback.hotkeyTakenByAll": "这个组合键已用于随机发一句到全体，请换一个。",
+  "comeback.hotkeyTakenByMessage": "这个组合键已用于发送第 {n} 条快捷消息，请换一个。",
   "comeback.spacing":
-    "两次发送至少隔 3 秒，和选人快捷语一起算：上一句发出后 3 秒内再按，这一下不发，以免刷屏被举报。",
+    "两次发送至少隔 3 秒，快捷消息、随机语句和选人快捷语一起算：上一句发出后 3 秒内再按，这一下不发，以免刷屏被举报。",
   "comeback.noLinesYet":
-    "还没有可以发的语句，现在按这两个快捷键什么也不会发：在上面的「反击语句」里添加，或下载下面的在线语录并打开「使用在线语录」。",
+    "还没有可以随机发的语句，现在按这两个快捷键什么也不会发：在上面的「随机语句」里添加，或下载下面的在线语录并打开「使用在线语录」。",
   "comeback.gameSection": "游戏内发送",
   "comeback.inGame": "在游戏里输入",
   "comeback.inGameHint":
-    "游戏的聊天没有接口，winer 用模拟按键代你输入：按 Enter 打开聊天，输入这一句，再按 Enter 发送，太长的一句分成几条。只在游戏窗口已经在前台时输入，窗口一被切走就停下；按快捷键前先关上聊天框。",
+    "游戏的聊天没有接口，winer 用模拟按键代你输入：按 Enter 打开聊天，输入这一句，再按 Enter 发送，太长的一句分成几条。快捷消息和随机语句都是这样。只在游戏窗口已经在前台时输入，窗口一被切走就停下；按快捷键前先关上聊天框。",
   "comeback.inGameRisk":
     "向游戏模拟按键属于第三方输入，可能违反游戏的服务条款；辱骂性的聊天会被举报。两者都可能让账号被禁言或封禁，使用风险由你自行承担。默认关闭。",
   "comeback.library": "在线语录",
@@ -1164,10 +1180,15 @@ export const zhCN = {
   "comeback.level.strong": "火力全开",
   "comeback.level.both": "两者",
   // The Comebacks page's shortcuts, which act while the window may be hidden.
-  "comeback.notice.sent": "已把反击发到{place}",
-  "comeback.notice.sentParts": "已把反击发到{place}，分成 {n} 条消息",
-  "comeback.notice.stopped": "反击输入到一半停下了：{reason}（已发到{place} {n} 条）",
-  "comeback.notice.skipped": "反击没有发到{place}：{reason}",
+  "comeback.notice.sent": "已把随机语句发到{place}",
+  "comeback.notice.sentParts": "已把随机语句发到{place}，分成 {n} 条消息",
+  "comeback.notice.stopped": "随机语句输入到一半停下了：{reason}（已发到{place} {n} 条）",
+  "comeback.notice.skipped": "随机语句没有发到{place}：{reason}",
+  "comeback.notice.messageSent": "已把第 {m} 条快捷消息发到{place}",
+  "comeback.notice.messageSentParts": "已把第 {m} 条快捷消息发到{place}，分成 {n} 条消息",
+  "comeback.notice.messageStopped":
+    "第 {m} 条快捷消息输入到一半停下了：{reason}（已发到{place} {n} 条）",
+  "comeback.notice.messageSkipped": "第 {m} 条快捷消息没有发到{place}：{reason}",
   "comeback.place.champSelect": "选人聊天",
   "comeback.place.team": "队伍",
   "comeback.place.all": "全体",
@@ -1199,7 +1220,7 @@ export const zhCN = {
   "phrase.thanksReset": "恢复默认感谢语",
   "phrase.thanksPreview": "交换成功后会发：{text}",
   "phrase.spacing":
-    "选人聊天里两句至少隔 3 秒，反击和快捷语一起算：3 秒内按下的这一下不发，自动发的等满 3 秒再发。",
+    "选人聊天里两句至少隔 3 秒，快捷喊话和快捷语一起算：3 秒内按下的这一下不发，自动发的等满 3 秒再发。",
   // The quick phrase's shortcut and the trade's messages, which act while the window may be hidden.
   "phrase.notice.sent": "已把快捷语发到选人聊天",
   "phrase.notice.asked": "已把快捷语发给交换的队友",

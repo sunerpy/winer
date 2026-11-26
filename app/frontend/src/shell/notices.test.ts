@@ -46,37 +46,71 @@ describe("notices", () => {
     );
   });
 
-  it("says where a comeback went, where it stopped with how much was sent, and why not", () => {
-    expect(zh({ kind: "comebackSent", place: "champSelect", messages: 1 })).toBe(
-      "已把反击发到选人聊天",
+  it("says which line went where, where it stopped with how much was sent, and why not", () => {
+    // A random line (message: null).
+    expect(zh({ kind: "comebackSent", place: "champSelect", messages: 1, message: null })).toBe(
+      "已把随机语句发到选人聊天",
     );
-    expect(zh({ kind: "comebackSent", place: "team", messages: 1 })).toBe("已把反击发到队伍");
-    expect(zh({ kind: "comebackSent", place: "all", messages: 2 })).toBe(
-      "已把反击发到全体，分成 2 条消息",
+    expect(zh({ kind: "comebackSent", place: "team", messages: 1, message: null })).toBe(
+      "已把随机语句发到队伍",
     );
-    expect(en({ kind: "comebackSent", place: "all", messages: 1 })).toBe(
-      "Sent a comeback to everyone",
+    expect(zh({ kind: "comebackSent", place: "all", messages: 2, message: null })).toBe(
+      "已把随机语句发到全体，分成 2 条消息",
     );
-    expect(zh({ kind: "comebackStopped", place: "team", sent: 1, reason: "notInFront" })).toBe(
-      "反击输入到一半停下了：游戏窗口不在前台（已发到队伍 1 条）",
+    expect(en({ kind: "comebackSent", place: "all", messages: 1, message: null })).toBe(
+      "Sent a random line to everyone",
     );
-    expect(en({ kind: "comebackStopped", place: "all", sent: 2, reason: "keysHeld" })).toBe(
-      "The comeback stopped part of the way: a key stayed held down (2 sent to everyone)",
+    expect(
+      zh({ kind: "comebackStopped", place: "team", sent: 1, reason: "notInFront", message: null }),
+    ).toBe("随机语句输入到一半停下了：游戏窗口不在前台（已发到队伍 1 条）");
+    expect(
+      en({ kind: "comebackStopped", place: "all", sent: 2, reason: "keysHeld", message: null }),
+    ).toBe("The random line stopped part of the way: a key stayed held down (2 sent to everyone)");
+    expect(zh({ kind: "comebackSkipped", place: "all", reason: "tooSoon", message: null })).toBe(
+      "随机语句没有发到全体：离上一句还不到 3 秒",
     );
-    expect(zh({ kind: "comebackSkipped", place: "all", reason: "tooSoon" })).toBe(
-      "反击没有发到全体：离上一句还不到 3 秒",
+    expect(
+      zh({ kind: "comebackSkipped", place: "champSelect", reason: "noLines", message: null }),
+    ).toBe(
+      "随机语句没有发到选人聊天：没有可以发的语句：在「快捷喊话」页添加，或下载并打开在线语录",
     );
-    expect(zh({ kind: "comebackSkipped", place: "champSelect", reason: "noLines" })).toBe(
-      "反击没有发到选人聊天：还没有可以发的反击语句，请在「反击」页添加，或下载并打开在线语录",
+    expect(
+      en({ kind: "comebackSkipped", place: "team", reason: "needsAdmin", message: null }),
+    ).toBe(
+      "Random line not sent to the team: the game runs as administrator and winer does not, so the system would drop its keys; restart winer as administrator and try again",
     );
-    expect(en({ kind: "comebackSkipped", place: "team", reason: "needsAdmin" })).toBe(
-      "Comeback not sent to the team: the game runs as administrator and winer does not, so the system would drop its keys; restart winer as administrator and try again",
+    // A quick message names its number.
+    expect(zh({ kind: "comebackSent", place: "champSelect", messages: 1, message: 3 })).toBe(
+      "已把第 3 条快捷消息发到选人聊天",
     );
-    expect(isFailure({ kind: "comebackSent", place: "team", messages: 1 })).toBe(false);
-    expect(isFailure({ kind: "comebackStopped", place: "team", sent: 1, reason: "blocked" })).toBe(
-      true,
+    expect(zh({ kind: "comebackSent", place: "all", messages: 2, message: 1 })).toBe(
+      "已把第 1 条快捷消息发到全体，分成 2 条消息",
     );
-    expect(isFailure({ kind: "comebackSkipped", place: "all", reason: "inGameOff" })).toBe(true);
+    expect(en({ kind: "comebackSent", place: "team", messages: 1, message: 10 })).toBe(
+      "Sent quick message 10 to the team",
+    );
+    expect(
+      zh({ kind: "comebackStopped", place: "all", sent: 1, reason: "blocked", message: 2 }),
+    ).toBe(
+      "第 2 条快捷消息输入到一半停下了：系统拒绝了模拟按键，winer 的运行权限可能低于游戏（已发到全体 1 条）",
+    );
+    expect(zh({ kind: "comebackSkipped", place: "team", reason: "inGameOff", message: 4 })).toBe(
+      "第 4 条快捷消息没有发到队伍：游戏内发送未开启",
+    );
+    expect(
+      en({ kind: "comebackSkipped", place: "champSelect", reason: "tooSoon", message: 4 }),
+    ).toBe(
+      "Quick message 4 not sent to the champ-select chat: less than 3 seconds since the last line",
+    );
+    expect(isFailure({ kind: "comebackSent", place: "team", messages: 1, message: null })).toBe(
+      false,
+    );
+    expect(
+      isFailure({ kind: "comebackStopped", place: "team", sent: 1, reason: "blocked", message: 1 }),
+    ).toBe(true);
+    expect(
+      isFailure({ kind: "comebackSkipped", place: "all", reason: "inGameOff", message: null }),
+    ).toBe(true);
   });
 
   it("says when the quick phrase went to the teammate asked to trade, and why not", () => {

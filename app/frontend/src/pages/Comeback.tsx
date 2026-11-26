@@ -1,21 +1,33 @@
-// The Comebacks page (反击): the user's own lines, which the page's two shortcuts send one at a time
-// at random; typing them into the game; and the library a user may download (在线语录), opted into
-// twice: a confirmation before the download and a switch after it. Champ select's quick phrases
-// have their own page (Phrases.tsx).
+// The Quick chat page (快捷喊话, the Comebacks page up to 0.0.24): the user's quick messages, each
+// sent whole by a shortcut of its own (快捷消息); the user's random lines, which the page's two
+// shortcuts send one at a time at random; typing them into the game; and the library a user may
+// download (在线语录), opted into twice: a confirmation before the download and a switch after it.
+// Champ select's quick phrases have their own page (Phrases.tsx).
 import type { ComebackLibrary, ComebackSettings, LibraryLevel } from "@winer/shared";
-import { Download, MessageSquareQuote, PencilLine, Trash2, TriangleAlert } from "lucide-react";
+import {
+  Download,
+  MessageSquareQuote,
+  MessagesSquare,
+  PencilLine,
+  Plus,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react";
 import { useState } from "react";
 
 import { errorMessage } from "../lib/backend";
-import { LINE_LIMIT } from "../lib/comeback";
+import { LINE_LENGTH, LINE_LIMIT, QUICK_LIMIT } from "../lib/comeback";
 import { useT } from "../lib/i18n";
 import { useSettings, useStore } from "../lib/store";
 import { useAsync } from "../lib/useAsync";
 import {
   Button,
+  CommitInput,
   Dialog,
   EmptyState,
   ErrorNote,
+  IconButton,
+  Input,
   Panel,
   Row,
   Segmented,
@@ -26,7 +38,7 @@ import {
 import { GameRightsNote, PageBody } from "./common";
 import { LibraryEditor } from "./LibraryEditor";
 import { Count, TextList } from "./TextList";
-import { ComebackHotkeyRow } from "./settings/HotkeyRow";
+import { ComebackHotkeyRow, QuickMessageHotkeyRow } from "./settings/HotkeyRow";
 
 const LEVELS: readonly LibraryLevel[] = ["mild", "strong", "both"];
 
@@ -39,7 +51,122 @@ function useSave() {
       .catch((error: unknown) => toast(errorMessage(error), "danger"));
 }
 
-/** 反击语句: the user's own lines; winer ships none. */
+/** Where a quick message goes in the game: the team's chat or everyone's. */
+type Target = "team" | "all";
+const TARGETS: readonly Target[] = ["team", "all"];
+
+/** 快捷消息: the user's own messages, each with its target and its own shortcut; winer ships none. A
+ *  message is edited in place (saved when the field is left) or removed with its shortcut; the core
+ *  drops one left blank, shortcut and all. */
+function QuickMessagesPanel() {
+  const t = useT();
+  const save = useSave();
+  const messages = useSettings().comeback.messages;
+  const [draft, setDraft] = useState("");
+  const full = messages.length >= QUICK_LIMIT;
+  const change = (index: number, patch: Partial<ComebackSettings["messages"][number]>) =>
+    save((rule) => ({
+      ...rule,
+      messages: rule.messages.map((message, at) =>
+        at === index ? { ...message, ...patch } : message,
+      ),
+    }));
+  const add = () => {
+    const text = draft.trim();
+    if (!text || full) return;
+    save((rule) => ({ ...rule, messages: [...rule.messages, { text, hotkey: null, all: false }] }));
+    setDraft("");
+  };
+  return (
+    <Panel
+      eyebrow={t("comeback.quick")}
+      className="col-span-12"
+      right={<Count n={messages.length} max={QUICK_LIMIT} />}
+    >
+      <p className="pb-2 text-[12px] leading-4 text-fg-muted">{t("comeback.quickHint")}</p>
+      {messages.length > 0 ? (
+        <ol aria-label={t("comeback.quick")} className="flex flex-col">
+          {messages.map((message, index) => (
+            <li key={index} className="border-b border-border py-1.5">
+              <div className="flex items-center gap-2">
+                <span
+                  aria-hidden
+                  className="mono w-6 shrink-0 text-right text-[11px] text-fg-subtle"
+                >
+                  {index + 1}
+                </span>
+                <CommitInput
+                  aria-label={t("comeback.quickText", { n: index + 1 })}
+                  value={message.text}
+                  maxLength={LINE_LENGTH}
+                  onCommit={(text) => change(index, { text })}
+                  className="min-w-0 flex-1"
+                />
+                <Segmented<Target>
+                  size="sm"
+                  label={t("comeback.quickTarget", { n: index + 1 })}
+                  value={message.all ? "all" : "team"}
+                  options={TARGETS.map((target) => ({
+                    value: target,
+                    label: t(`comeback.target.${target}`),
+                  }))}
+                  onChange={(target) => change(index, { all: target === "all" })}
+                />
+                <IconButton
+                  icon={Trash2}
+                  tone="danger"
+                  label={t("comeback.quickRemove", { n: index + 1 })}
+                  onClick={() =>
+                    save((rule) => ({
+                      ...rule,
+                      messages: rule.messages.filter((_, at) => at !== index),
+                    }))
+                  }
+                />
+              </div>
+              <div className="pl-8">
+                <QuickMessageHotkeyRow index={index} />
+              </div>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <EmptyState compact icon={MessagesSquare} title={t("comeback.quickEmpty")}>
+          {t("comeback.quickEmptyHint")}
+        </EmptyState>
+      )}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          add();
+        }}
+        className="mt-3 flex items-center gap-2"
+      >
+        <Input
+          aria-label={t("comeback.quickNew")}
+          value={draft}
+          maxLength={LINE_LENGTH}
+          placeholder={t("comeback.quickNewPlaceholder")}
+          disabled={full}
+          onChange={(event) => setDraft(event.target.value)}
+          className="min-w-0 flex-1"
+        />
+        <Button type="submit" icon={Plus} disabled={full || draft.trim() === ""}>
+          {t("list.add")}
+        </Button>
+      </form>
+      {full && (
+        <p className="pt-1.5 text-[11.5px] text-fg-subtle">
+          {t("comeback.quickFull", { n: QUICK_LIMIT })}
+        </p>
+      )}
+      <p className="pt-2 text-[11.5px] leading-4 text-fg-subtle">{t("comeback.spacing")}</p>
+    </Panel>
+  );
+}
+
+/** 随机语句 (反击语句 up to 0.0.24): the user's own lines, which the two shortcuts below send at
+ *  random; winer ships none. */
 function LinesPanel() {
   const t = useT();
   const save = useSave();
@@ -70,8 +197,8 @@ function LinesPanel() {
   );
 }
 
-/** 快捷键: the team's shortcut and the all chat's, each with what the system made of it; and a
- *  warning while there is nothing for them to send. */
+/** 随机语句的快捷键: the team's shortcut and the all chat's, each with what the system made of it;
+ *  and a warning while there is nothing for them to send. */
 function ShortcutsPanel() {
   const t = useT();
   const { lines, library } = useSettings().comeback;
@@ -85,7 +212,6 @@ function ShortcutsPanel() {
       )}
       <ComebackHotkeyRow all={false} />
       <ComebackHotkeyRow all />
-      <p className="pt-2 text-[11.5px] leading-4 text-fg-subtle">{t("comeback.spacing")}</p>
     </Panel>
   );
 }
@@ -325,6 +451,7 @@ function LibraryPanel() {
 export function ComebackPage() {
   return (
     <PageBody className="grid grid-cols-12 gap-3">
+      <QuickMessagesPanel />
       <LinesPanel />
       <ShortcutsPanel />
       <GamePanel />

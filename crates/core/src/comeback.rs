@@ -1,7 +1,9 @@
-//! The Comebacks page (反击): which line a press of its two shortcuts sends and where, and the
-//! library a user may download (在线语录); and the Phrases page (快捷语): the quick phrases a teammate
-//! is sent from champ select's board, by their own shortcut or by a trade the user asks for (交换). Pure: the service keeps what
-//! went out last and the downloaded file (`service/comeback.rs`); the shell types into the game.
+//! The Quick chat page (快捷喊话, once 反击): which line a press of its two random-line shortcuts
+//! sends and where, what each quick message's own shortcut sends (快捷消息), and the library a user
+//! may download (在线语录); and the Phrases page (快捷语): the quick phrases a teammate is sent from
+//! champ select's board, by their own shortcut or by a trade the user asks for (交换). Pure: the
+//! service keeps what went out last and the downloaded file (`service/comeback.rs`); the shell
+//! types into the game.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -14,7 +16,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{
     callout,
     model::{ChampSelectSession, TRADE_SENT},
-    settings::{ComebackSettings, Language, LibraryLevel},
+    settings::{ComebackSettings, Language, LibraryLevel, QuickMessage},
     sqlite::{self, Value},
     view::{CalloutSkip, ComebackLibrary, ComebackLibraryLines, ComebackPlace, Phase, PhraseSkip},
 };
@@ -92,6 +94,48 @@ pub fn press(
         return skip(CalloutSkip::TooSoon);
     }
     let line = pool[index].to_owned();
+    match champ_select.filter(|_| phase == Phase::ChampSelect) {
+        Some(game_id) => ComebackPress::ChampSelect { line, game_id },
+        None => ComebackPress::Game { line, all },
+    }
+}
+
+/// What a press of quick message `index`'s shortcut does in `phase` under `rule`, as [`press`]
+/// decides for a comeback: in champ select (`champ_select`, its game id) the message goes to its
+/// chat, whatever its target; while the game runs it is typed into the team's chat or, for a
+/// message to everyone, the all chat, if in-game sending is on. Nothing goes out within [`SPACING`]
+/// of the last line that did (`memory`, at `now`).
+pub fn message_press(
+    phase: Phase,
+    champ_select: Option<i64>,
+    rule: &ComebackSettings,
+    index: usize,
+    memory: &Memory,
+    now: Instant,
+) -> ComebackPress {
+    let message = rule.messages.get(index);
+    let all = message.is_some_and(|message| message.all);
+    let skip = |reason| ComebackPress::Skip {
+        place: place(phase, all),
+        reason,
+    };
+    match (phase, champ_select) {
+        (Phase::ChampSelect, Some(_)) => {}
+        (Phase::InProgress, _) if !rule.in_game => return skip(CalloutSkip::InGameOff),
+        (Phase::InProgress, _) => {}
+        _ => return skip(CalloutSkip::NotNow),
+    }
+    // The settings drop a blank message; one removed while its shortcut was held is gone.
+    let Some(QuickMessage { text, .. }) = message.filter(|message| !message.text.is_empty()) else {
+        return skip(CalloutSkip::NoLines);
+    };
+    if memory
+        .sent_at
+        .is_some_and(|at| now.saturating_duration_since(at) < SPACING)
+    {
+        return skip(CalloutSkip::TooSoon);
+    }
+    let line = text.clone();
     match champ_select.filter(|_| phase == Phase::ChampSelect) {
         Some(game_id) => ComebackPress::ChampSelect { line, game_id },
         None => ComebackPress::Game { line, all },
@@ -1058,6 +1102,106 @@ mod tests {
                 game_id: 7
             },
             "three seconds after the last one finished, the one line again"
+        );
+    }
+
+    #[test]
+    fn a_quick_message_goes_where_its_own_target_says_or_says_why_not() {
+        let now = Instant::now();
+        let memory = Memory::default();
+        let mut on = rule(&[], true);
+        on.messages = vec![
+            QuickMessage {
+                text: "集合打龙".into(),
+                hotkey: Some("Alt+1".into()),
+                all: false,
+            },
+            QuickMessage {
+                text: "GG".into(),
+                hotkey: Some("Alt+2".into()),
+                all: true,
+            },
+        ];
+        assert_eq!(
+            message_press(Phase::ChampSelect, Some(7), &on, 1, &memory, now),
+            ComebackPress::ChampSelect {
+                line: "GG".into(),
+                game_id: 7
+            },
+            "champ select has one chat, whatever the target"
+        );
+        assert_eq!(
+            message_press(Phase::InProgress, None, &on, 0, &memory, now),
+            ComebackPress::Game {
+                line: "集合打龙".into(),
+                all: false
+            }
+        );
+        assert_eq!(
+            message_press(Phase::InProgress, None, &on, 1, &memory, now),
+            ComebackPress::Game {
+                line: "GG".into(),
+                all: true
+            }
+        );
+        assert_eq!(
+            message_press(Phase::ChampSelect, None, &on, 0, &memory, now),
+            ComebackPress::Skip {
+                place: ComebackPlace::ChampSelect,
+                reason: CalloutSkip::NotNow
+            },
+            "champ select's view is not in yet"
+        );
+        assert_eq!(
+            message_press(Phase::GameStart, None, &on, 1, &memory, now),
+            ComebackPress::Skip {
+                place: ComebackPlace::All,
+                reason: CalloutSkip::NotNow
+            },
+            "the loading screen has no chat"
+        );
+        let mut off = on.clone();
+        off.in_game = false;
+        assert_eq!(
+            message_press(Phase::InProgress, None, &off, 0, &memory, now),
+            ComebackPress::Skip {
+                place: ComebackPlace::Team,
+                reason: CalloutSkip::InGameOff
+            }
+        );
+        assert_eq!(
+            message_press(Phase::ChampSelect, Some(7), &on, 5, &memory, now),
+            ComebackPress::Skip {
+                place: ComebackPlace::ChampSelect,
+                reason: CalloutSkip::NoLines
+            },
+            "a message removed while its shortcut was still held"
+        );
+        let recent = Memory {
+            last: None,
+            sent_at: Some(now),
+        };
+        assert_eq!(
+            message_press(
+                Phase::ChampSelect,
+                Some(7),
+                &on,
+                0,
+                &recent,
+                now + Duration::from_secs(2)
+            ),
+            ComebackPress::Skip {
+                place: ComebackPlace::ChampSelect,
+                reason: CalloutSkip::TooSoon
+            },
+            "the spacing counts every line that went out"
+        );
+        assert_eq!(
+            message_press(Phase::ChampSelect, Some(7), &on, 0, &recent, now + SPACING),
+            ComebackPress::ChampSelect {
+                line: "集合打龙".into(),
+                game_id: 7
+            }
         );
     }
 

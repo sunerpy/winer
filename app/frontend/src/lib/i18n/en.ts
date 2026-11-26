@@ -10,7 +10,7 @@ export const en: Record<MessageKey, string> = {
   "nav.automation": "Automation",
   "nav.tools": "Tools",
   "nav.plugin": "In-client",
-  "nav.comeback": "Comebacks",
+  "nav.comeback": "Quick chat",
   "nav.phrases": "Phrases",
   "nav.settings": "Settings",
   "nav.theme": "Theme",
@@ -1125,7 +1125,7 @@ export const en: Record<MessageKey, string> = {
   "callout.skip.needsAdmin":
     "the game runs as administrator and winer does not, so the system would drop its keys; restart winer as administrator and try again",
   "callout.skip.noLines":
-    "there is no comeback line yet: add some on the Comebacks page, or download the online library and turn it on",
+    "there is nothing to send: add some on the Quick chat page, or download the online library and turn it on",
   "callout.skip.tooSoon": "less than 3 seconds since the last line",
   // Typing into the game: a game started from WeGame runs as administrator, and Windows drops the
   // keys of a program that does not.
@@ -1137,35 +1137,51 @@ export const en: Record<MessageKey, string> = {
   "list.add": "Add",
   "list.full": "{n} at most.",
 
-  // The Comebacks page: the user's own lines, their two shortcuts, typing into the game and the
-  // library downloaded on request.
-  "comeback.title": "Comebacks",
-  "comeback.lines": "Comeback lines",
+  // The Quick chat page: the quick messages and their shortcuts, the random lines and their two
+  // shortcuts, typing into the game and the library downloaded on request.
+  "comeback.title": "Quick chat",
+  "comeback.quick": "Quick messages",
+  "comeback.quickHint":
+    "Each message has a shortcut of its own: one press sends the whole message, 200 characters at most. In champ select it goes to the champ-select chat; in a game, with Type in the game on below, it is typed into the team chat or the all chat, as the message says. winer ships none.",
+  "comeback.quickEmpty": "No quick messages yet",
+  "comeback.quickEmptyHint": "Write a message you often send below, then give it a shortcut.",
+  "comeback.quickText": "Quick message {n}",
+  "comeback.quickTarget": "Where message {n} goes",
+  "comeback.quickRemove": "Remove quick message {n}",
+  "comeback.quickNew": "New quick message",
+  "comeback.quickNewPlaceholder": "Write a message and press Enter",
+  "comeback.quickFull": "{n} at most.",
+  "comeback.quickHotkey": "Shortcut",
+  "comeback.quickHotkeyHint": "Press it to send this message. None by default.",
+  "comeback.target.team": "Team",
+  "comeback.target.all": "Everyone",
+  "comeback.lines": "Random lines",
   "comeback.linesHint":
-    "One press sends one line, at random, never the same line twice in a row. A line goes out as one message of 200 characters at most. winer ships none: these are your own.",
+    "A press of a Send a random line shortcut picks one of these at random, never the same line twice in a row. A line goes out as one message of 200 characters at most. winer ships none: these are your own.",
   "comeback.linesEmpty": "No lines yet",
   "comeback.linesEmptyHint": "Write one below, then press Enter or Add.",
   "comeback.line": "Line {n}",
   "comeback.removeLine": "Remove line {n}",
-  "comeback.newLine": "New comeback line",
+  "comeback.newLine": "New random line",
   "comeback.newLinePlaceholder": "Write a line and press Enter",
-  "comeback.shortcuts": "Shortcuts",
-  "comeback.hotkey": "Send a comeback to the team",
+  "comeback.shortcuts": "Random line shortcuts",
+  "comeback.hotkey": "Send a random line to the team",
   "comeback.hotkeyHint":
     "In champ select it posts a random line to the champ-select chat; in a game, with Type in the game on below, it types the line into the game's team chat. None by default.",
-  "comeback.allHotkey": "Send a comeback to everyone",
+  "comeback.allHotkey": "Send a random line to everyone",
   "comeback.allHotkeyHint":
-    "In a game, with Type in the game on, it types the line into the all chat with /all before it, where the enemy reads it too; in champ select it posts to the champ-select chat, which only your team reads, as Send a comeback to the team does. None by default.",
-  "comeback.hotkeyTakenByTeam": "This combination sends a comeback to the team. Choose another.",
-  "comeback.hotkeyTakenByAll": "This combination sends a comeback to everyone. Choose another.",
+    "In a game, with Type in the game on, it types the line into the all chat with /all before it, where the enemy reads it too; in champ select it posts to the champ-select chat, which only your team reads, as Send a random line to the team does. None by default.",
+  "comeback.hotkeyTakenByTeam": "This combination sends a random line to the team. Choose another.",
+  "comeback.hotkeyTakenByAll": "This combination sends a random line to everyone. Choose another.",
+  "comeback.hotkeyTakenByMessage": "This combination sends quick message {n}. Choose another.",
   "comeback.spacing":
-    "Two lines go out at least 3 seconds apart, champ-select phrases included: a press within 3 seconds of the last line sends nothing, so the chat is never flooded.",
+    "Two lines go out at least 3 seconds apart, quick messages, random lines and champ-select phrases alike: a press within 3 seconds of the last line sends nothing, so the chat is never flooded.",
   "comeback.noLinesYet":
-    "There is no line to send yet, so these shortcuts send nothing: add lines under Comeback lines above, or download the online library below and turn on Use the online library.",
+    "There is no random line to send yet, so these shortcuts send nothing: add lines under Random lines above, or download the online library below and turn on Use the online library.",
   "comeback.gameSection": "In-game sending",
   "comeback.inGame": "Type in the game",
   "comeback.inGameHint":
-    "The game's chat has no API, so winer types for you with synthesized key presses: Enter opens the chat, the line goes in, Enter sends it, a long line in several messages. It types only while the game's window is already in front and stops the moment it is not; close the chat box before pressing a shortcut.",
+    "The game's chat has no API, so winer types for you with synthesized key presses: Enter opens the chat, the line goes in, Enter sends it, a long line in several messages. Quick messages and random lines alike. It types only while the game's window is already in front and stops the moment it is not; close the chat box before pressing a shortcut.",
   "comeback.inGameRisk":
     "Key presses another program sends to the game are third-party input and may break the game's terms of service, and abusive chat gets reported. Either can get the account muted or banned; you use it at your own risk. Off by default.",
   "comeback.library": "Online library",
@@ -1215,10 +1231,16 @@ export const en: Record<MessageKey, string> = {
   "comeback.level.strong": "Strong",
   "comeback.level.both": "Both",
   // The Comebacks page's shortcuts, which act while the window may be hidden.
-  "comeback.notice.sent": "Sent a comeback to {place}",
-  "comeback.notice.sentParts": "Sent a comeback to {place} in {n} messages",
-  "comeback.notice.stopped": "The comeback stopped part of the way: {reason} ({n} sent to {place})",
-  "comeback.notice.skipped": "Comeback not sent to {place}: {reason}",
+  "comeback.notice.sent": "Sent a random line to {place}",
+  "comeback.notice.sentParts": "Sent a random line to {place} in {n} messages",
+  "comeback.notice.stopped":
+    "The random line stopped part of the way: {reason} ({n} sent to {place})",
+  "comeback.notice.skipped": "Random line not sent to {place}: {reason}",
+  "comeback.notice.messageSent": "Sent quick message {m} to {place}",
+  "comeback.notice.messageSentParts": "Sent quick message {m} to {place} in {n} messages",
+  "comeback.notice.messageStopped":
+    "Quick message {m} stopped part of the way: {reason} ({n} sent to {place})",
+  "comeback.notice.messageSkipped": "Quick message {m} not sent to {place}: {reason}",
   "comeback.place.champSelect": "the champ-select chat",
   "comeback.place.team": "the team",
   "comeback.place.all": "everyone",
@@ -1252,7 +1274,7 @@ export const en: Record<MessageKey, string> = {
   "phrase.thanksReset": "Reset the thank-you",
   "phrase.thanksPreview": "Once the trade goes through: {text}",
   "phrase.spacing":
-    "Lines in the champ-select chat go out at least 3 seconds apart, comebacks and phrases alike: a press within 3 seconds sends nothing, an automatic message waits out the rest.",
+    "Lines in the champ-select chat go out at least 3 seconds apart, quick chat and phrases alike: a press within 3 seconds sends nothing, an automatic message waits out the rest.",
   // The quick phrase's shortcut and the trade's messages, which act while the window may be hidden.
   "phrase.notice.sent": "Sent the phrase to the champ-select chat",
   "phrase.notice.asked": "Sent the phrase to the teammate you asked to trade",

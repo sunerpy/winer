@@ -1,12 +1,14 @@
-// The Comebacks (反击) and Phrases (快捷语) pages as the core keeps them (crates/core/src/comeback.rs
-// and settings.rs): their limits, champ select's default quick phrases and how a phrase reads for one
-// teammate.
+// The Quick chat (快捷喊话, once 反击) and Phrases (快捷语) pages as the core keeps them
+// (crates/core/src/comeback.rs and settings.rs): their limits, champ select's default quick phrases
+// and how a phrase reads for one teammate.
 import type { ComebackSettings, Language } from "@winer/shared";
 
-/** At most this many lines, and quick phrases, of this many characters each
- *  (`ComebackSettings::LINE_LIMIT`, `PHRASE_LIMIT`, `LINE_LENGTH`); the core clips on save. */
+/** At most this many random lines, quick phrases and quick messages, of this many characters
+ *  each (`ComebackSettings::LINE_LIMIT`, `PHRASE_LIMIT`, `QUICK_LIMIT`, `LINE_LENGTH`); the core
+ *  clips on save. */
 export const LINE_LIMIT = 100;
 export const PHRASE_LIMIT = 20;
+export const QUICK_LIMIT = 10;
 export const LINE_LENGTH = 200;
 
 /** The language's quick phrases while the user has none (`comeback::default_phrases`): the

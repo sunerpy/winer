@@ -66,13 +66,18 @@ async fn self_check_after_update<R: Runtime>(
     }
 }
 
-/// Whether `settings` have winer type into the game: the callout's shortcut or a comeback's, with
-/// typing into the game switched on beside it. Without a shortcut, or with the switch off, nothing
-/// is typed, and champ select's chat needs no rights.
+/// Whether `settings` have winer type into the game: the callout's shortcut, a random line's or a
+/// quick message's, with typing into the game switched on beside it. Without a shortcut, or with
+/// the switch off, nothing is typed, and champ select's chat needs no rights.
 fn types_in_game(settings: &Settings) -> bool {
     let (callout, comeback) = (&settings.automation.callout, &settings.comeback);
+    let quick = comeback
+        .messages
+        .iter()
+        .any(|message| message.hotkey.is_some());
     (callout.in_game && callout.hotkey.is_some())
-        || (comeback.in_game && (comeback.hotkey.is_some() || comeback.all_hotkey.is_some()))
+        || (comeback.in_game
+            && (comeback.hotkey.is_some() || comeback.all_hotkey.is_some() || quick))
 }
 
 /// A game the client starts runs with the client's rights, and the system drops every key a
@@ -171,12 +176,13 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
             hotkey::apply(app, settings.general.hotkey.clone());
             // Callout: its own shortcut.
             hotkey::apply_callout(app, settings.automation.callout.hotkey.clone());
-            // Comebacks: their two shortcuts, and the quick phrase's.
+            // Quick chat: its two random-line shortcuts, the quick phrase's and the messages'.
             hotkey::apply_comebacks(
                 app,
                 settings.comeback.hotkey.clone(),
                 settings.comeback.all_hotkey.clone(),
                 settings.comeback.phrase_hotkey.clone(),
+                hotkey::message_hotkeys(settings),
             );
             // Typing into the game, set up just now while connected to a client that outranks
             // winer: its games will too.
@@ -219,5 +225,15 @@ mod tests {
         assert!(types_in_game(&settings), "the team's alone");
         settings.comeback.hotkey = None;
         assert!(!types_in_game(&settings), "the switch without a shortcut");
+        settings.comeback.messages = vec![winer_core::settings::QuickMessage {
+            text: "集合".into(),
+            hotkey: None,
+            all: false,
+        }];
+        assert!(!types_in_game(&settings), "a message without a shortcut");
+        settings.comeback.messages[0].hotkey = Some("Alt+1".into());
+        assert!(types_in_game(&settings), "a quick message's shortcut alone");
+        settings.comeback.in_game = false;
+        assert!(!types_in_game(&settings), "and only with the switch on");
     }
 }

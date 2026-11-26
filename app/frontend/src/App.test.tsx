@@ -1809,6 +1809,7 @@ describe("callout", () => {
         comeback: { shortcut: null, active: false, error: null },
         comebackAll: { shortcut: null, active: false, error: null },
         phrase: { shortcut: null, active: false, error: null },
+        messages: [],
       }),
     );
     expect(panel().getByText(zhCN["callout.liveHotkeyFailed"])).toBeInTheDocument();
@@ -2397,7 +2398,7 @@ describe("history", () => {
   });
 });
 
-// The Comebacks page (反击), the Phrases page (快捷语) and its phrases on the Live page, and the QQ
+// The Quick chat page (快捷喊话, once 反击), the Phrases page (快捷语) and its phrases on the Live page, and the QQ
 // group in About.
 describe("comebacks", () => {
   async function openComebacks(backend: Backend = demoBackend()) {
@@ -2472,7 +2473,7 @@ describe("comebacks", () => {
     const call = vi.spyOn(backend, "call");
     const { user } = await openComebacks(backend);
     expect(screen.getByText(zhCN["comeback.linesEmpty"])).toBeInTheDocument();
-    expect(screen.getByText(/^按一次发一句，随机，不会连着两次同一句。/)).toBeInTheDocument();
+    expect(screen.getByText(/^按「随机发一句」的快捷键时，从这里随机挑一句/)).toBeInTheDocument();
     expect(screen.getByText("0 / 100")).toBeInTheDocument();
 
     const field = screen.getByRole("textbox", { name: zhCN["comeback.newLine"] });
@@ -2544,6 +2545,91 @@ describe("comebacks", () => {
     fireEvent.keyDown(window, { code: "KeyG", key: "G", ctrlKey: true, shiftKey: true });
     await saved(call, { hotkey: "Ctrl+Shift+F", allHotkey: "Ctrl+Shift+G" });
     await waitFor(() => expect(resumed()).toBe(before + 1));
+  });
+
+  it("adds quick messages, each with its target and a shortcut no other shortcut holds, and removes one with its shortcut", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openComebacks(backend);
+    expect(screen.getByText(zhCN["comeback.quickEmpty"])).toBeInTheDocument();
+    expect(screen.getByText("0 / 10")).toBeInTheDocument();
+    expect(screen.getByText(zhCN["comeback.spacing"])).toBeInTheDocument();
+
+    const field = screen.getByRole("textbox", { name: zhCN["comeback.quickNew"] });
+    await user.type(field, "  集合打龙  {Enter}");
+    await saved(call, { messages: [{ text: "集合打龙", hotkey: null, all: false }] });
+    expect(field).toHaveValue("");
+    const list = () => within(screen.getByRole("list", { name: zhCN["comeback.quick"] }));
+    expect(list().getByRole("textbox", { name: "第 1 条快捷消息" })).toHaveValue("集合打龙");
+
+    // Its target: the team's chat until everyone is chosen.
+    const target = list().getByRole("radiogroup", { name: "第 1 条发到哪里" });
+    expect(within(target).getByRole("radio", { name: zhCN["comeback.target.team"] })).toBeChecked();
+    await user.click(within(target).getByRole("radio", { name: zhCN["comeback.target.all"] }));
+    await saved(call, { messages: [{ text: "集合打龙", hotkey: null, all: true }] });
+
+    // Its shortcut, which takes neither the window's nor another's.
+    await user.click(list().getByRole("button", { name: zhCN["social.hotkeyRecord"] }));
+    fireEvent.keyDown(window, { code: "Backquote", key: "`", altKey: true });
+    expect(screen.getByText(zhCN["callout.hotkeyTakenByWindow"])).toBeInTheDocument();
+    fireEvent.keyDown(window, { code: "Digit1", key: "1", altKey: true });
+    await saved(call, { messages: [{ text: "集合打龙", hotkey: "Alt+1", all: true }] });
+    expect(await list().findByText(zhCN["social.hotkeyActive"])).toBeInTheDocument();
+
+    await user.type(field, "撤退{Enter}");
+    await saved(call, {
+      messages: [
+        { text: "集合打龙", hotkey: "Alt+1", all: true },
+        { text: "撤退", hotkey: null, all: false },
+      ],
+    });
+    const second = list().getAllByRole("listitem")[1] as HTMLElement;
+    await user.click(within(second).getByRole("button", { name: zhCN["social.hotkeyRecord"] }));
+    fireEvent.keyDown(window, { code: "Digit1", key: "1", altKey: true });
+    expect(screen.getByText("这个组合键已用于发送第 1 条快捷消息，请换一个。")).toBeInTheDocument();
+    fireEvent.keyDown(window, { code: "Digit2", key: "2", altKey: true });
+    await saved(call, {
+      messages: [
+        { text: "集合打龙", hotkey: "Alt+1", all: true },
+        { text: "撤退", hotkey: "Alt+2", all: false },
+      ],
+    });
+
+    // The random line's shortcuts take no message's combination either.
+    // The row is the one around its label.
+    const random = screen.getByText(zhCN["comeback.hotkey"]).closest("div.flex") as HTMLElement;
+    await user.click(within(random).getByRole("button", { name: zhCN["social.hotkeyRecord"] }));
+    fireEvent.keyDown(window, { code: "Digit2", key: "2", altKey: true });
+    expect(screen.getByText("这个组合键已用于发送第 2 条快捷消息，请换一个。")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    // Removed, a message takes its shortcut with it; the next one moves up with its own.
+    await user.click(list().getByRole("button", { name: "删除第 1 条快捷消息" }));
+    await saved(call, { messages: [{ text: "撤退", hotkey: "Alt+2", all: false }] });
+    expect(list().getByRole("textbox", { name: "第 1 条快捷消息" })).toHaveValue("撤退");
+    expect(screen.getByText("1 / 10")).toBeInTheDocument();
+  });
+
+  it("takes ten quick messages at most", async () => {
+    const backend = demoBackend();
+    const settings = await backend.call("get_settings");
+    await backend.call("set_settings", {
+      settings: {
+        ...settings,
+        comeback: {
+          ...settings.comeback,
+          messages: Array.from({ length: 10 }, (_, n) => ({
+            text: `第 ${n + 1} 句`,
+            hotkey: null,
+            all: false,
+          })),
+        },
+      },
+    });
+    await openComebacks(backend);
+    expect(screen.getByText("10 / 10")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: zhCN["comeback.quickNew"] })).toBeDisabled();
+    expect(screen.getByText("最多 10 条。")).toBeInTheDocument();
   });
 
   it("records the quick phrase's shortcut on its own page, apart from the comebacks', and says when to press it", async () => {

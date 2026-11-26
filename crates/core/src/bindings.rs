@@ -186,9 +186,10 @@ pub fn typescript() -> String {
         view::PlayerStanding,
         settings::HistorySettings,
     );
-    // The Comebacks and Phrases pages (`comeback`).
+    // The Quick chat and Phrases pages (`comeback`).
     declare!(
         settings::ComebackSettings,
+        settings::QuickMessage,
         settings::LibraryRule,
         settings::LibraryLevel,
         view::ComebackPlace,

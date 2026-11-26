@@ -328,7 +328,7 @@ runes: PageOutcome | null,
 /**
  * The two summoner spells are the ones set up.
  */
-spells: boolean, } | { "kind": "itemSetWritten", championId: number, } | { "kind": "itemSetsFull" } | { "kind": "rewardsClaimed", claimed: number, left: number, } | { "kind": "rewardsFailed", failed: number, } | { "kind": "typedInGame", lines: number, } | { "kind": "typingStopped", lines: number, reason: CalloutSkip, } | { "kind": "calloutSkipped", reason: CalloutSkip, } | { "kind": "comebackSent", place: ComebackPlace, messages: number, } | { "kind": "comebackStopped", place: ComebackPlace, sent: number, reason: CalloutSkip, } | { "kind": "comebackSkipped", place: ComebackPlace, reason: CalloutSkip, } | { "kind": "phraseSent", trigger: PhraseTrigger, } | { "kind": "phraseSkipped", reason: PhraseSkip, trigger: PhraseTrigger, };
+spells: boolean, } | { "kind": "itemSetWritten", championId: number, } | { "kind": "itemSetsFull" } | { "kind": "rewardsClaimed", claimed: number, left: number, } | { "kind": "rewardsFailed", failed: number, } | { "kind": "typedInGame", lines: number, } | { "kind": "typingStopped", lines: number, reason: CalloutSkip, } | { "kind": "calloutSkipped", reason: CalloutSkip, } | { "kind": "comebackSent", place: ComebackPlace, messages: number, message: number | null, } | { "kind": "comebackStopped", place: ComebackPlace, sent: number, reason: CalloutSkip, message: number | null, } | { "kind": "comebackSkipped", place: ComebackPlace, reason: CalloutSkip, message: number | null, } | { "kind": "phraseSent", trigger: PhraseTrigger, } | { "kind": "phraseSkipped", reason: PhraseSkip, trigger: PhraseTrigger, };
 
 export type PlayerProfile = { puuid: string, name: RiotId | null, level: number, iconId: number, private: boolean, ranked: Ranked, 
 /**
@@ -498,7 +498,12 @@ comebackAll: CalloutHotkeyStatus,
  * The one that sends the first quick phrase to the teammate asked to trade
  * (`comeback.phrase_hotkey`).
  */
-phrase: CalloutHotkeyStatus, };
+phrase: CalloutHotkeyStatus, 
+/**
+ * Each quick message's (`comeback.messages[i].hotkey`), in their order: always
+ * `ComebackSettings::QUICK_LIMIT` of them, a slot without a message holding none.
+ */
+messages: Array<CalloutHotkeyStatus>, };
 
 export type Settings = { appearance: Appearance, general: General, automation: Automation, plugin: PluginSettings, profile: ProfileSettings, 
 /**
@@ -1273,7 +1278,27 @@ library: LibraryRule,
  * What champ select's trades (交换) send by themselves, off by default: the first quick phrase
  * when the user asks a teammate, a thank-you once the champions are swapped.
  */
-trade: TradeRule, };
+trade: TradeRule, 
+/**
+ * The Quick chat page's own messages (快捷消息), each sent whole by its own shortcut: at most
+ * [`Self::QUICK_LIMIT`], none blank, of [`Self::LINE_LENGTH`] characters. winer ships none.
+ */
+messages: Array<QuickMessage>, };
+
+export type QuickMessage = { 
+/**
+ * One line: control characters out, trimmed.
+ */
+text: string, 
+/**
+ * In [`normalize_hotkey`]'s form; never one the window, the callout, the comebacks, the quick
+ * phrase or an earlier message holds.
+ */
+hotkey: string | null, 
+/**
+ * In the game, to everyone (`/all ` before it) rather than the team.
+ */
+all: boolean, };
 
 export type LibraryRule = { 
 /**

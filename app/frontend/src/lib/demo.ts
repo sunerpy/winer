@@ -43,7 +43,7 @@ import type {
 
 import type { ArgsOf, Backend, CommandName, Commands } from "./backend";
 import { typedLines } from "./callout";
-import { fillPhrase, phrasesOf, seatLabel } from "./comeback";
+import { QUICK_LIMIT, fillPhrase, phrasesOf, seatLabel } from "./comeback";
 import {
   DEMO_AUGMENTS,
   DEMO_ITEMS,
@@ -997,7 +997,7 @@ const DEFAULT_SETTINGS: Settings = {
     recommend: true,
   },
   history: { hideCustomGames: true },
-  // The Comebacks page: none of the user's lines, no shortcut, no library in use.
+  // The Quick chat page: none of the user's lines or messages, no shortcut, no library in use.
   comeback: {
     lines: [],
     hotkey: null,
@@ -1007,6 +1007,7 @@ const DEFAULT_SETTINGS: Settings = {
     phraseHotkey: null,
     library: { enabled: false, level: "mild" },
     trade: { onAsk: false, onDone: false, thanks: "" },
+    messages: [],
   },
 };
 
@@ -1068,6 +1069,9 @@ export function demoBackend(): Backend {
     comeback: held(settings.comeback.hotkey, suspended),
     comebackAll: held(settings.comeback.allHotkey, suspended),
     phrase: held(settings.comeback.phraseHotkey, suspended),
+    messages: Array.from({ length: QUICK_LIMIT }, (_, n) =>
+      held(settings.comeback.messages[n]?.hotkey ?? null, suspended),
+    ),
   });
   let hotkey = hotkeyOf(false);
   const setHotkey = (suspended: boolean) => {
@@ -1183,13 +1187,21 @@ export function demoBackend(): Backend {
     get_snapshot: () => ({ ...snapshot, champSelect: champSelect(), friends: friends() }),
     get_settings: () => settings,
     set_settings: ({ settings: next }) => {
-      settings = next;
+      // As the core keeps quick messages: a blank one goes, with its shortcut; ten at most.
+      const messages = next.comeback.messages
+        .map((message) => ({ ...message, text: message.text.replace(/\s+/gu, " ").trim() }))
+        .filter((message) => message.text !== "")
+        .slice(0, QUICK_LIMIT);
+      settings = { ...next, comeback: { ...next.comeback, messages } };
       if (
         settings.general.hotkey !== hotkey.shortcut ||
         settings.automation.callout.hotkey !== hotkey.callout.shortcut ||
         settings.comeback.hotkey !== hotkey.comeback.shortcut ||
         settings.comeback.allHotkey !== hotkey.comebackAll.shortcut ||
-        settings.comeback.phraseHotkey !== hotkey.phrase.shortcut
+        settings.comeback.phraseHotkey !== hotkey.phrase.shortcut ||
+        hotkey.messages.some(
+          (slot, n) => (settings.comeback.messages[n]?.hotkey ?? null) !== slot.shortcut,
+        )
       )
         setHotkey(hotkey.suspended);
       return settings;

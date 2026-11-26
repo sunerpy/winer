@@ -88,24 +88,38 @@ export function noticeText(kind: NoticeKind, t: Translate, catalog: Catalog | nu
       });
     case "calloutSkipped":
       return t("callout.notice.skipped", { reason: t(`callout.skip.${kind.reason}`) });
-    // The Comebacks page's shortcuts: each says where the line went, or would have gone.
+    // The Quick chat page's shortcuts: each says which line, a quick message or a random one, and
+    // where it went, or would have gone.
     case "comebackSent": {
       const place = t(`comeback.place.${kind.place}`);
+      const m = kind.message;
+      if (m === null)
+        return kind.messages > 1
+          ? t("comeback.notice.sentParts", { place, n: kind.messages })
+          : t("comeback.notice.sent", { place });
       return kind.messages > 1
-        ? t("comeback.notice.sentParts", { place, n: kind.messages })
-        : t("comeback.notice.sent", { place });
+        ? t("comeback.notice.messageSentParts", { m, place, n: kind.messages })
+        : t("comeback.notice.messageSent", { m, place });
     }
-    case "comebackStopped":
-      return t("comeback.notice.stopped", {
+    case "comebackStopped": {
+      const values = {
         place: t(`comeback.place.${kind.place}`),
         n: kind.sent,
         reason: t(`callout.skip.${kind.reason}`),
-      });
-    case "comebackSkipped":
-      return t("comeback.notice.skipped", {
+      };
+      return kind.message === null
+        ? t("comeback.notice.stopped", values)
+        : t("comeback.notice.messageStopped", { ...values, m: kind.message });
+    }
+    case "comebackSkipped": {
+      const values = {
         place: t(`comeback.place.${kind.place}`),
         reason: t(`callout.skip.${kind.reason}`),
-      });
+      };
+      return kind.message === null
+        ? t("comeback.notice.skipped", values)
+        : t("comeback.notice.messageSkipped", { ...values, m: kind.message });
+    }
     // Champ select's quick phrases, sent by their shortcut or by a trade's switches.
     case "phraseSent":
       return t(PHRASE_SENT[kind.trigger]);
@@ -127,7 +141,7 @@ export function isFailure(kind: NoticeKind): boolean {
     // The callout's shortcut.
     kind.kind === "typingStopped" ||
     kind.kind === "calloutSkipped" ||
-    // The Comebacks and Phrases pages' shortcuts.
+    // The Quick chat and Phrases pages' shortcuts.
     kind.kind === "comebackStopped" ||
     kind.kind === "comebackSkipped" ||
     kind.kind === "phraseSkipped"
