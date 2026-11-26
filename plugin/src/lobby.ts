@@ -1,7 +1,8 @@
 // The party in the client's lobby: above each member's banner, one compact line of their recent
 // form (win rate, KDA, form score) that opens their history when clicked, as a click on the
 // member's avatar does: in the history panel over the client (`history.ts`) or in winer's window.
-// Where the members cannot be found, a compact panel lists the same.
+// A compact panel lists the same on every screen while the client is in the lobby, the lobby's own
+// too.
 import {
   formatKda,
   kda,
@@ -154,7 +155,7 @@ export interface FloatingPanel {
   body: HTMLElement;
 }
 
-/** The fallback panel's frame, as champ select's: a header that folds it, a body for the rows. */
+/** The lobby panel's frame, as champ select's: a header that folds it, a body for the rows. */
 export function floatingPanel(doc: Document, title: string, context: string): FloatingPanel {
   const head = h(
     "button",
@@ -181,7 +182,7 @@ export function floatingPanel(doc: Document, title: string, context: string): Fl
   return { host, body };
 }
 
-/** The fallback panel's rows: each member's name and line, a button that opens their history. */
+/** The lobby panel's rows: each member's name and line, a button that opens their history. */
 export function lobbyRows(
   view: LobbyView,
   language: Language,

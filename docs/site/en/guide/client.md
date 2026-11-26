@@ -59,8 +59,10 @@ has already asked for those rights to connect to it, so the activation asks noth
   second; friends in one game or one party carry a stripe of the same colour on the left.
 - **Lobby members' form**: in a lobby, recent win rate, KDA and form score above each member's
   banner. A click on that line or on the member's picture shows their history: see **Recent games
-  inside the client** below. Where the client's member cards cannot be found, a compact panel shows
-  the same, and its members open their history too.
+  inside the client** below. A compact **Lobby** panel at the client's top right lists the same for
+  each member: on the lobby screen, and on the client's other screens such as the store and the home
+  page. Its members open their history too, and a click on its title folds it; it is hidden while
+  the match-found prompt shows.
 - **Recent games inside the client**: a click on a player in the lobby or in champ select opens a
   card beside them in the client, with no need to switch to winer's window. At the top are their
   rank, recent win rate, KDA, form score and streak (in champ select also their tier and title);

@@ -125,7 +125,7 @@ function box(rect: DOMRect): Box | null {
 }
 
 /** What the panel goes beside: champ select's whole row, a lobby member's card, else what was
- *  clicked (a fallback panel's row). */
+ *  clicked (a row of the lobby panel or of champ select's fallback panel). */
 export function anchorOf(element: Element | null | undefined): Element | null {
   if (!element) return null;
   return (

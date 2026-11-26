@@ -209,7 +209,8 @@ export class Controller {
         "friends",
       );
 
-    // The core sends the lobby only while the client shows it.
+    // The core sends the lobby while the client is in one (in it, searching, the match-found
+    // dialog), whichever of its screens is up.
     const lobby = settings?.plugin.lobbyPanel ? (snapshot?.lobby ?? null) : null;
     if (!lobby) {
       clearLobby(this.doc);
@@ -218,13 +219,13 @@ export class Controller {
     }
     const open = (puuid: string, anchor: Element) => void this.pick(puuid, anchor);
     const cards = decorateLobby(this.doc, lobby, language, open);
-    // The match-found dialog has the screen to itself: the panel would only sit in its way.
-    if (cards > 0 || snapshot?.phase === "ReadyCheck") this.#hideLobbyPanel();
+    // The panel lists the party on every screen, the lobby's own too, beside the lines on the
+    // member cards. The match-found dialog has the screen to itself: the panel would only sit in
+    // its way.
+    if (snapshot?.phase === "ReadyCheck") this.#hideLobbyPanel();
     else this.#showLobbyPanel(lobby, language, open);
     this.#log(
-      cards > 0
-        ? `lobby: ${cards} member cards decorated`
-        : "lobby: member cards not found, showing the panel",
+      cards > 0 ? `lobby: ${cards} member cards decorated` : "lobby: member cards not found",
       "lobby",
     );
   }

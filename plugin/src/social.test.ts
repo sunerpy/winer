@@ -496,6 +496,87 @@ describe("controller", () => {
     expect(document.querySelector("[data-winer-panel='lobby']")).not.toBeNull();
   });
 
+  it("shows the lobby panel on the lobby screen too, beside the lines on the member cards", () => {
+    document.body.append(lobbyCards(["Me", "Mate"]));
+    const controller = new Controller(document);
+    const open = vi.spyOn(controller.bridge, "openHistory").mockReturnValue(true);
+    controller.state.hello(snapshot({ lobby: lobbyView() }), settings);
+    controller.render();
+    expect(document.querySelectorAll(".winer-lobby"), "each card has its line").toHaveLength(2);
+    const panel = document.querySelector<HTMLElement>("[data-winer-panel='lobby']");
+    expect(panel?.textContent).toContain("Mate");
+    panel?.querySelectorAll<HTMLElement>(".winer-row--button")[1]?.click();
+    expect(open).toHaveBeenCalledWith("mate");
+
+    // Every write wakes the observer that drives rendering: a frame with nothing new writes nothing.
+    const rows = panel?.querySelector(".winer-rows");
+    const observer = new MutationObserver(() => undefined);
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    controller.render();
+    expect(observer.takeRecords(), "an unchanged lobby is left as it is").toHaveLength(0);
+    observer.disconnect();
+    expect(panel?.querySelector(".winer-rows")).toBe(rows);
+  });
+
+  it("hides the lobby panel for the match-found dialog where the cards have their lines", () => {
+    document.body.append(lobbyCards(["Me", "Mate"]));
+    const controller = new Controller(document);
+    controller.state.hello(snapshot({ lobby: lobbyView() }), settings);
+    controller.render();
+    expect(document.querySelector("[data-winer-panel='lobby']")).not.toBeNull();
+    controller.state.event({
+      type: "update",
+      data: { rev: 2, patch: { key: "phase", value: "ReadyCheck" } },
+    });
+    controller.render();
+    expect(document.querySelectorAll(".winer-lobby")).toHaveLength(2);
+    expect(
+      document.querySelector("[data-winer-panel='lobby']"),
+      "the dialog has the screen",
+    ).toBeNull();
+    // Someone declined: back in the lobby, the panel is back.
+    controller.state.event({
+      type: "update",
+      data: { rev: 3, patch: { key: "phase", value: "Lobby" } },
+    });
+    controller.render();
+    expect(document.querySelector("[data-winer-panel='lobby']")).not.toBeNull();
+  });
+
+  it("takes the lobby panel and the cards' lines off with the option", () => {
+    document.body.append(lobbyCards(["Me", "Mate"]));
+    const controller = new Controller(document);
+    controller.state.hello(snapshot({ lobby: lobbyView() }), settings);
+    controller.render();
+    expect(document.querySelector("[data-winer-panel='lobby']")).not.toBeNull();
+    controller.state.event({
+      type: "settings",
+      data: { ...settings, plugin: { ...settings.plugin, lobbyPanel: false } },
+    });
+    controller.render();
+    expect(document.querySelector("[data-winer-panel='lobby']")).toBeNull();
+    expect(document.querySelectorAll(".winer-lobby, [data-winer-puuid]")).toHaveLength(0);
+  });
+
+  it("draws the lobby panel from the context that draws, and takes over the other's", () => {
+    document.body.append(lobbyCards(["Me", "Mate"]));
+    const first = new Controller(document);
+    const second = new Controller(document);
+    for (const controller of [first, second])
+      controller.state.hello(snapshot({ lobby: lobbyView() }), settings);
+    const panels = () =>
+      [...document.querySelectorAll<HTMLElement>("[data-winer-panel='lobby']")].map(
+        (panel) => panel.dataset.winerContext,
+      );
+    first.render();
+    second.render();
+    expect(panels(), "the other context draws nothing").toEqual([first.context]);
+    // The first context went quiet: the second takes the role and clears the first's panel.
+    document.documentElement.dataset.winerBeat = "0";
+    second.render();
+    expect(panels()).toEqual([second.context]);
+  });
+
   it("asks for a history only from the context that draws", () => {
     const drawing = new Controller(document);
     const other = new Controller(document);
