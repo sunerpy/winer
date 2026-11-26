@@ -169,37 +169,54 @@ function percentText(share: number | null): string {
   return share === null ? "" : `${Math.round(share * 1000) / 10}%`;
 }
 
-/** Hextech ARAM's best augments: each one's icon with its tier under it, its name and how often it
- *  is taken in its title. Never a win rate: Riot's policy keeps those off every product. */
-function augmentGrid(
-  assets: readonly AssetInfo[],
-  augments: readonly AugmentPick[],
+/** The hover card's lines for an augment: its name, its rarity, tier and how often it is taken,
+ *  and what it does where ARAM.GG's descriptions are on. Never a win rate: Riot's policy keeps
+ *  those off every product. */
+export function augmentCard(
+  augment: AugmentPick,
+  name: string,
   language: Language,
-): HTMLElement {
+): { name: string; facts: string; description: string } {
+  const taken = percentText(augment.pick);
+  const facts = [
+    text(language, `rarity_${augment.rarity}`),
+    augment.tier ? `${augment.tier} ${text(language, "loadoutTier")}` : "",
+    taken ? `${text(language, "loadoutTaken")} ${taken}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return { name, facts, description: augment.description ?? "" };
+}
+
+/** Hextech ARAM's best augments, as the History page draws them: each one's icon in a ring of its
+ *  rarity, its tier on it and its name under it; the hover card says the rest. */
+function augmentGrid(assets: readonly AssetInfo[], augments: readonly AugmentPick[]): HTMLElement {
   return h(
     "ol",
     { class: "winer-loadout-augments" },
     ...augments.map((augment) => {
-      const asset = assets.find((candidate) => candidate.id === augment.id);
-      const taken = percentText(augment.pick);
-      const title = [
-        asset?.name ?? `#${augment.id}`,
-        augment.tier ?? "",
-        taken ? `${text(language, "loadoutTaken")} ${taken}` : "",
-      ]
-        .filter(Boolean)
-        .join(" · ");
+      const name =
+        assets.find((candidate) => candidate.id === augment.id)?.name ?? `#${augment.id}`;
       return h(
         "li",
-        { class: "winer-loadout-augment", title },
-        icon(assets, augment.id, 28),
+        {
+          class: `winer-loadout-augment winer-loadout-augment--${augment.rarity}`,
+          "data-winer-augment": String(augment.id),
+          "aria-label": name,
+        },
         h(
           "span",
-          {
-            class: `winer-loadout-tier winer-loadout-tier--${(augment.tier ?? "none").toLowerCase()}`,
-          },
-          augment.tier ?? "–",
+          { class: "winer-loadout-augment-icon" },
+          icon(assets, augment.id, 30),
+          augment.tier
+            ? h(
+                "span",
+                { class: `winer-loadout-tier winer-loadout-tier--${augment.tier.toLowerCase()}` },
+                augment.tier,
+              )
+            : null,
         ),
+        h("span", { class: "winer-loadout-augment-name" }, name),
       );
     }),
   );
@@ -295,7 +312,7 @@ export function loadoutBody(
               `${text(language, "loadoutAugments")}${source ? ` · ${source}` : ""}`,
             )
           : null,
-        augments.length > 0 ? augmentGrid(assets, augments, language) : null,
+        augments.length > 0 ? augmentGrid(assets, augments) : null,
         core.length > 0 || boots.length > 0
           ? h("div", { class: "winer-loadout-title" }, text(language, "loadoutItems"))
           : null,
@@ -494,6 +511,9 @@ export class LoadoutPanel {
    *  takes it away. */
   #carried = false;
   #collapsed: boolean;
+  /** The augment hover card, and the pointer listener that places it. */
+  #tip: HTMLElement | null = null;
+  #stopTip: (() => void) | null = null;
 
   constructor(
     private readonly doc: Document,
@@ -548,6 +568,7 @@ export class LoadoutPanel {
       this.#host = host;
       this.#body = body;
       this.#key = "";
+      this.#followPointer();
     }
     // A request made on another champ select or champion is not this view's to report, unless it
     // did nothing: then the player is asked to click again.
@@ -583,6 +604,66 @@ export class LoadoutPanel {
     this.#body = null;
     this.#view = null;
     this.#forget();
+    this.#stopTip?.();
+    this.#stopTip = null;
+    this.#tip?.remove();
+    this.#tip = null;
+  }
+
+  /** Shows the hover card of the augment under the pointer. Read from the pointer's place, not the
+   *  event's target: Pengu's root can lie over the panel and take the events. */
+  #followPointer(): void {
+    this.#stopTip?.();
+    let frame = 0;
+    let shown = "";
+    const onMove = (event: MouseEvent) => {
+      if (frame) return;
+      const { clientX, clientY } = event;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const cell = (this.doc.elementsFromPoint?.(clientX, clientY) ?? [])
+          .map((element) => element.closest?.("[data-winer-augment]"))
+          .find((element) => element && this.#host?.contains(element)) as HTMLElement | undefined;
+        const id = cell?.dataset.winerAugment ?? "";
+        if (id === shown) return;
+        shown = id;
+        this.showTip(cell ?? null);
+      });
+    };
+    this.doc.addEventListener("mousemove", onMove, true);
+    this.#stopTip = () => {
+      this.doc.removeEventListener("mousemove", onMove, true);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }
+
+  /** The hover card for the augment `cell` shows, beside the panel; none for `null`. */
+  showTip(cell: HTMLElement | null): void {
+    const view = this.#view;
+    const recommendation =
+      view?.recommendation.state === "ready" ? view.recommendation.recommendation : null;
+    const augment = recommendation?.augments.find(
+      (candidate) => String(candidate.id) === cell?.dataset.winerAugment,
+    );
+    this.#tip?.remove();
+    this.#tip = null;
+    if (!cell || !augment || !view) return;
+    const name = view.assets.find((asset) => asset.id === augment.id)?.name ?? `#${augment.id}`;
+    const card = augmentCard(augment, name, this.#language);
+    const tip = h(
+      "div",
+      { class: `winer-tip winer-tip--${augment.rarity}`, role: "tooltip" },
+      h("div", { class: "winer-tip-name" }, card.name),
+      card.facts ? h("div", { class: "winer-tip-facts" }, card.facts) : null,
+      card.description ? h("div", { class: "winer-tip-text" }, card.description) : null,
+    );
+    this.doc.body.append(tip);
+    this.#tip = tip;
+    // On the panel's left: the panel sits at the right edge of the client.
+    const width = this.doc.defaultView?.innerWidth ?? 1280;
+    const left = this.#host?.getBoundingClientRect().left ?? cell.getBoundingClientRect().left;
+    tip.style.right = `${Math.max(8, width - left + 8)}px`;
+    tip.style.top = `${Math.max(8, cell.getBoundingClientRect().top - 8)}px`;
   }
 
   /** winer's answer; whether it was the one awaited. */

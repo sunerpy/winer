@@ -100,6 +100,10 @@ const STRINGS = {
   loadoutSpells: ["召唤师技能", "Summoner spells"],
   loadoutAugments: ["强化符文评级", "Augment tiers"],
   loadoutTaken: ["选取", "taken"],
+  loadoutTier: ["级", "tier"],
+  rarity_silver: ["白银", "Silver"],
+  rarity_gold: ["黄金", "Gold"],
+  rarity_prismatic: ["棱彩", "Prismatic"],
   loadoutItems: ["推荐出装", "Items"],
   loadoutWriteItemSet: ["写入装备方案", "Write the item set"],
   loadoutItemSetWritten: [

@@ -678,6 +678,20 @@ impl Service {
             recommendation.runes_from = None;
         }
         loadout::hextech_advice(&mut recommendation, build.as_deref());
+        // What each augment does, for the panel's hover card, where those descriptions are on.
+        if !recommendation.augments.is_empty() {
+            match self.augment_details().await {
+                Ok(details) => {
+                    for augment in &mut recommendation.augments {
+                        augment.description = details
+                            .iter()
+                            .find(|detail| detail.id == augment.id)
+                            .map(|detail| detail.description.clone());
+                    }
+                }
+                Err(error) => debug!(%error, "no augment descriptions for the runes panel"),
+            }
+        }
         Ok(recommendation)
     }
 

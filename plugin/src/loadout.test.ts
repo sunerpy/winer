@@ -6,6 +6,7 @@ import { interceptPlayerClicks } from "./history";
 import { Controller } from "./index";
 import {
   COLLAPSED_KEY,
+  augmentCard,
   LOADOUT_PANEL,
   LOADOUT_TIMEOUT_MS,
   LoadoutPanel,
@@ -212,8 +213,14 @@ describe("what the runes panel shows", () => {
           spellsFrom: "client",
           patch: "16.23",
           augments: [
-            { id: 1201, tier: "S", pick: 0.124 },
-            { id: 1202, tier: "A", pick: 0.08 },
+            {
+              id: 1201,
+              rarity: "prismatic",
+              tier: "S",
+              pick: 0.124,
+              description: "技能造成额外伤害",
+            },
+            { id: 1202, rarity: "gold", tier: "A", pick: 0.08, description: null },
           ],
           core: [{ items: [6655, 3157, 4645], rates: rates(0.21, 0.53) }],
           boots: [{ items: [3020], rates: rates(0.6, 0.51) }],
@@ -230,12 +237,47 @@ describe("what the runes panel shows", () => {
     expect(body.textContent).toContain("召唤师技能 · 客户端推荐");
     expect(body.textContent).toContain("强化符文评级 · 腾讯 101 16.23");
     const augments = [...body.querySelectorAll<HTMLElement>(".winer-loadout-augment")];
-    expect(augments.map((augment) => augment.textContent)).toEqual(["S", "A"]);
-    expect(augments[0]?.title).toBe("法术巨像 · S · 选取 12.4%");
     expect(
-      augments.every((augment) => !augment.title.includes("胜率")),
+      augments.map((augment) => augment.className.split(" ")[1]),
+      "each in a ring of its rarity, as the History page draws them",
+    ).toEqual(["winer-loadout-augment--prismatic", "winer-loadout-augment--gold"]);
+    expect(
+      augments.map((augment) => augment.querySelector(".winer-loadout-tier")?.textContent),
+    ).toEqual(["S", "A"]);
+    expect(
+      augments.map((augment) => augment.querySelector(".winer-loadout-augment-name")?.textContent),
+      "the name under each icon",
+    ).toEqual(["法术巨像", "#1202"]);
+    const recommended =
+      view.recommendation.state === "ready" ? view.recommendation.recommendation : null;
+    const first = recommended?.augments[0];
+    expect(first && augmentCard(first, "法术巨像", "zh-CN")).toEqual({
+      name: "法术巨像",
+      facts: "棱彩 · S 级 · 选取 12.4%",
+      description: "技能造成额外伤害",
+    });
+    expect(
+      JSON.stringify(first && augmentCard(first, "法术巨像", "zh-CN")),
       "no augment win rate, as Riot's policy says",
-    ).toBe(true);
+    ).not.toContain("胜率");
+
+    // The hover card, beside the panel, from the pointer's place.
+    const panel = new LoadoutPanel(
+      document,
+      "c-1",
+      () => null,
+      () => undefined,
+      memoryStore(),
+    );
+    panel.show(view, "zh-CN");
+    const cell = document.querySelector<HTMLElement>('[data-winer-augment="1201"]');
+    panel.showTip(cell);
+    const tip = document.querySelector<HTMLElement>(".winer-tip");
+    expect(tip?.textContent).toBe("法术巨像棱彩 · S 级 · 选取 12.4%技能造成额外伤害");
+    expect(tip?.className).toContain("winer-tip--prismatic");
+    panel.showTip(null);
+    expect(document.querySelector(".winer-tip")).toBeNull();
+    panel.hide();
     expect(body.textContent).toContain("推荐出装");
     expect(body.textContent).toContain("选用 21% · 胜率 53%");
     (body.querySelector('[data-action="writeItemSet"]') as HTMLButtonElement).click();

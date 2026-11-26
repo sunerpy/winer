@@ -953,14 +953,105 @@ html[data-winer-team-panel="true"] .winer-panel[data-winer-panel="loadout"] {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* The client's dark plate in a ring of the augment's rarity, as the History page draws them. */
+.winer-loadout-augment-icon {
+  position: relative;
+  display: inline-grid;
+  border-radius: 4px;
+  background: #0a1016;
+}
+
+.winer-loadout-augment--silver .winer-loadout-augment-icon {
+  box-shadow: 0 0 0 1.5px #a6b2bf;
+}
+
+.winer-loadout-augment--gold .winer-loadout-augment-icon {
+  box-shadow: 0 0 0 1.5px #d9ab52;
+}
+
+.winer-loadout-augment--prismatic .winer-loadout-augment-icon {
+  box-shadow: 0 0 0 1.5px #b77cf2;
+}
+
+.winer-loadout-augment-icon .winer-loadout-icon {
+  border-radius: 4px;
+}
+
+.winer-loadout-augment-name {
+  width: 100%;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 12px;
+  color: #c8c3b4;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .winer-loadout-tier {
-  font-size: 10px;
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  min-width: 12px;
+  padding: 0 2px;
+  border-radius: 3px;
+  background: #101923;
+  font-size: 9px;
   font-weight: 700;
   line-height: 12px;
   color: #a09b8c;
+  text-align: center;
+}
+
+/* An augment's hover card, beside the panel: its name in its rarity's colour, then the facts, then
+ * what it does. */
+.winer-tip {
+  position: fixed;
+  z-index: 9001;
+  max-width: 240px;
+  padding: 8px 10px;
+  border: 1px solid #785a28;
+  border-radius: 4px;
+  background: #010a13;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  color: #a09b8c;
+  font:
+    12px/16px "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    sans-serif;
+  pointer-events: none;
+}
+
+.winer-tip-name {
+  font-weight: 700;
+  color: #f0e6d2;
+}
+
+.winer-tip--silver .winer-tip-name {
+  color: #c8d2dc;
+}
+
+.winer-tip--gold .winer-tip-name {
+  color: #f0c060;
+}
+
+.winer-tip--prismatic .winer-tip-name {
+  color: #d3a8ff;
+}
+
+.winer-tip-facts {
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+.winer-tip-text {
+  margin-top: 6px;
+  color: #cdbe91;
+  white-space: pre-line;
 }
 
 .winer-loadout-tier--s {

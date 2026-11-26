@@ -312,9 +312,13 @@ pub const ADVICE_BUILDS: usize = 2;
 #[serde(rename_all = "camelCase")]
 pub struct AugmentPick {
     pub id: i64,
+    /// Silver, gold or prismatic, as the client's catalog has it: the panel draws its ring so.
+    pub rarity: crate::view::Rarity,
     pub tier: Option<crate::builds::AugmentTier>,
     /// The share of the champion's games that took it, 0–1.
     pub pick: Option<f64>,
+    /// What it does, in words, where ARAM.GG's descriptions are on (`Service::augment_details`).
+    pub description: Option<String>,
 }
 
 /// The options a recommendation lists for each half: the first is the one set up.
@@ -370,8 +374,10 @@ pub fn hextech_advice(recommendation: &mut LoadoutRecommendation, build: Option<
         .take(ADVICE_AUGMENTS)
         .map(|augment| AugmentPick {
             id: augment.id,
+            rarity: augment.rarity,
             tier: augment.tier,
             pick: augment.rates.pick,
+            description: None,
         })
         .collect();
     recommendation.core = build.core.iter().take(ADVICE_BUILDS).cloned().collect();
@@ -1188,8 +1194,10 @@ mod tests {
             recommendation.augments[0],
             AugmentPick {
                 id: 1000,
+                rarity: crate::view::Rarity::Gold,
                 tier: Some(AugmentTier::S),
                 pick: Some(0.1),
+                description: None,
             },
             "the tier and how often it is taken, never the win rate"
         );

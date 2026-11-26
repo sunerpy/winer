@@ -1063,11 +1063,19 @@ page: string, spells: [number, number], };
 
 export type LoadoutAuto = "off" | "mine" | "mineOrRecommended";
 
-export type AugmentPick = { id: number, tier: AugmentTier | null, 
+export type AugmentPick = { id: number, 
+/**
+ * Silver, gold or prismatic, as the client's catalog has it: the panel draws its ring so.
+ */
+rarity: Rarity, tier: AugmentTier | null, 
 /**
  * The share of the champion's games that took it, 0–1.
  */
-pick: number | null, };
+pick: number | null, 
+/**
+ * What it does, in words, where ARAM.GG's descriptions are on (`Service::augment_details`).
+ */
+description: string | null, };
 
 export type Setup = { 
 /**
