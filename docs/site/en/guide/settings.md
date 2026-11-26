@@ -157,7 +157,7 @@ connects after an update, winer runs them by itself and sends a notice when one 
 
 | Keys             | Does                             |
 | ---------------- | -------------------------------- |
-| `Ctrl` + `1`…`8` | switches pages                   |
+| `Ctrl` + `1`…`7` | switches pages                   |
 | `Ctrl` + `,`     | opens settings                   |
 | `Ctrl` + `B`     | collapses or expands the sidebar |
 
@@ -167,5 +167,6 @@ has no combination by default; it is set in **Automation › Callout**, works ev
 is described in [Automation](/en/guide/automation#callout). So do each quick message's shortcut,
 **Send a random line to the team** and **Send a random line to everyone**, set on the **Quick chat**
 page (see [Quick chat](/en/guide/live#quick-chat)),
-and the phrases' **Send to the teammate you asked to trade**, set on the **Phrases** page (see
+and the phrases' **Send to the teammate you asked to trade**, set on the same page's
+**Champ-select phrases** tab (see
 [Champ-select phrases](/en/guide/live#champ-select-phrases)).

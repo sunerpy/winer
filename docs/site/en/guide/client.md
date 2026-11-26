@@ -76,7 +76,10 @@ has already asked for those rights to connect to it, so the activation asks noth
   recommended runes and spells (each with **Apply**), and **Save as my setup**, **Apply my setup**
   and **Back to recommended**, explained in [My setup](/en/guide/automation#my-setup). It sits above
   the client's bottom bar, clear of the lock-in, rune and spell buttons; a click on its title folds
-  it, and it stays folded when the client restarts. Arena has no rune page and shows no panel.
+  it, and it stays folded when the client restarts. Hextech ARAM has no rune page: there the panel
+  shows the spells, the champion's augment tiers (S to C and how often each is taken, its name on
+  hover; Riot's developer policy does not allow showing augment win rates), the core items and boots
+  (pick and win rates), and **Write the item set**. Arena has no rune page and shows no panel.
 - **Hide home-page promotions**: hides the esports pop-up and puts a short note in place of the
   news and events on the client's home page. **Show for now** on the note brings them back until the
   client restarts; with the option off, the home page shows as usual.

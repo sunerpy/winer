@@ -101,9 +101,10 @@ from WeGame runs as administrator, and winer has to as well to type into it; see
 
 ## Quick chat
 
-The **Quick chat** page in the sidebar (`Ctrl` + `7`; **Comebacks** up to 0.0.24) keeps what its
-shortcuts send. You write it yourself; winer ships none. An open library can also be downloaded, as
-described below.
+The **Quick chat** page in the sidebar (`Ctrl` + `7`; **Comebacks** up to 0.0.24) has two tabs:
+**Quick chat** keeps what its shortcuts send, and **Champ-select phrases** is described in the
+[next section](#champ-select-phrases). You write it all yourself; winer ships none. An open library
+can also be downloaded, as described below.
 
 - **Quick messages**: 10 at most, each up to 200 characters, each with a shortcut of its own, none
   by default. A press sends the whole message: in champ select to its chat, which only your team
@@ -154,8 +155,9 @@ and sending them can get you reported, muted or banned; winer neither writes nor
 
 ## Champ-select phrases
 
-The **Phrases** page in the sidebar (`Ctrl` + `8`) keeps the phrases champ select sends one
-teammate and what goes out around a trade, set apart from quick chat.
+The **Champ-select phrases** tab of the **Quick chat** page (a **Phrases** page of its own up to
+0.0.24) keeps the phrases champ select sends one teammate and what goes out around a trade, set
+apart from the quick messages and random lines.
 
 In champ select every teammate other than you has a menu of quick phrases beside them on the Live
 game page. Choosing one posts it to champ select's chat with that teammate's seat and champion
@@ -165,7 +167,7 @@ filled in, for instance to ask the player in seat 5 for their champion:
 P5, may I play Aurelion Sol? Thank you!
 ```
 
-The phrases are edited on the **Phrases** page: 20 at most, each up to 200 characters, with
+The phrases are edited on the **Champ-select phrases** tab: 20 at most, each up to 200 characters, with
 `{seat}` (P1 to P5), `{champion}` (that teammate's champion) and `{name}` (their name; empty where
 it is hidden, and the brackets around it go with it). Removing all of them brings the default back.
 Before sending, winer checks that it is still the same champ select and that the player is your
@@ -240,9 +242,9 @@ mode at the bottom of the page. The panel has sections:
   ARAM.GG (it can be turned off in **Settings › General**). Augments are picked in the game, so this
   section opens first while the game runs.
 
-A section without numbers is left out; Hextech ARAM, for one, has no rune or spell statistics, so
-setting up runes and spells and the client's runes panel use the client's own recommended pages
-there. On Summoner's Rift a switch on the right changes the lane; with no lane assigned (blind pick,
+A section without numbers is left out; Hextech ARAM, for one, has no rune page and no spell
+statistics, so setting up runes and spells and the client's runes panel handle the spells alone
+there, from the client's own recommended pages. On Summoner's Rift a switch on the right changes the lane; with no lane assigned (blind pick,
 a lookup), the lane the champion is played in most comes first.
 
 In champ select, a **My setup** bar sits above the panel: **Save as my setup** keeps your current

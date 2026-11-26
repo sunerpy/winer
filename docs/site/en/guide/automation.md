@@ -38,7 +38,9 @@ there. The automation switches on the overview list their modes too.
   Each champion is set up once per champ select, so a change you make afterwards stands; a champion
   swapped away and back is set up again. If you change the runes or the spells yourself in the few
   seconds winer spends reading the recommendation, what you changed stays as you left it, and the
-  activity feed says so. Arena has no rune page and gives everyone the same spells, so it is not one
+  activity feed says so; runes and spells you put up with **Apply** in the panel or on the Live game
+  page stay too once the champion is locked in. Hextech ARAM has no rune page, so only the spells
+  are set up there. Arena has no rune page and gives everyone the same spells, so it is not one
   of the modes.
 - **Where the recommendation comes from**:
 
@@ -46,7 +48,7 @@ there. The automation switches on the overview list their modes too.
   | -------------- | ----------------------------------------------------------------------------------------------- |
   | Ranked, Normal | Tencent 101, for your assigned position; OP.GG instead in **Settings › General › Data sources** |
   | ARAM           | OP.GG; the client's own recommended pages with that source off                                  |
-  | Hextech ARAM   | the client's own recommended pages: no source has rune or spell numbers for Hextech ARAM        |
+  | Hextech ARAM   | spells only, from the client's own recommended pages: the mode has no rune page                 |
   | Other modes    | no recommendation: only your own setup goes up                                                  |
 
   When the numbers cannot be read, or with **Builds** off in **Settings › General**, the client's own
@@ -77,8 +79,9 @@ button in the [runes panel](/en/guide/client#what-you-see-in-the-client) at the 
 right. A setup is kept per champion and mode, and on the Rift per lane as well; one saved with no
 lane assigned serves every lane. It stays on this computer. Say Hextech ARAM recommends Flash and
 Mark (the snowball), and you take Flash and Ghost instead and save: from then on that champion gets
-Flash and Ghost in Hextech ARAM. Saved while the rune page is not a full one, a setup keeps the
-spells only, and the runes still follow the recommendation.
+Flash and Ghost in Hextech ARAM. In Hextech ARAM a setup keeps the spells only; elsewhere, saved
+while the rune page is not a full one, it keeps the spells only too, and the runes still follow the
+recommendation.
 
 - **Apply my setup**: sets up the saved setup at once.
 - **Back to recommended**: deletes the setup the panel shows and sets up the recommendation at
@@ -133,7 +136,8 @@ spells only, and the runes still follow the recommendation.
   works while winer's window is hidden, and what it did is noted in **Activity** on the overview. It
   is set the way the shortcut that brings up winer is (see [Settings](/en/guide/settings)); it cannot
   share a combination with that one, nor can the [Quick chat](/en/guide/live#quick-chat) page's
-  shortcuts or the [Phrases](/en/guide/live#champ-select-phrases) page's one share one with either.
+  shortcuts ([champ-select phrases](/en/guide/live#champ-select-phrases)' one included) share one
+  with either.
 
 ### Lines in game
 
