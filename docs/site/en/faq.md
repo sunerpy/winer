@@ -25,7 +25,7 @@ running as administrator it asks to restart that way by itself; once the link ex
 using it without administrator rights. See
 [In-client](/en/guide/client#the-first-activation-needs-administrator-rights).
 
-Typing a callout or a comeback into a game needs them too: a game started from WeGame runs as
+Typing a callout or a quick chat line into a game needs them too: a game started from WeGame runs as
 administrator, and Windows does not let a program without those rights send it key presses. With
 **In-game sending** on and a shortcut set, winer asks to restart as administrator when it connects
 to such a client; see [Lines in game](/en/guide/automation#lines-in-game).
@@ -36,10 +36,10 @@ winer uses only the API the client opens on your computer (the LCU), the same on
 interface uses. It does not read the game's memory, change game files or act in a running game.
 Even so, no third-party tool can promise zero risk; judge for yourself.
 
-The one exception is **In-game sending**, off by default, which the callout and the comebacks each
+The one exception is **In-game sending**, off by default, which the callout and quick chat each
 have: with it on, pressing their shortcut in a game makes winer send key presses to the game's window
 to type into its chat. That is third-party input and may break the game's terms of service; leave it
-off if you would rather not take that risk. Comeback lines, the downloaded online library above all,
+off if you would rather not take that risk. Quick chat lines, the downloaded online library above all,
 may break the game's chat rules, and a report can get the account muted or banned.
 
 ## The history stops at 20 games

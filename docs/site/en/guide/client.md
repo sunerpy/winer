@@ -69,6 +69,12 @@ has already asked for those rights to connect to it, so the activation asks noth
   closes the card; it also closes when the client leaves the lobby or champ select, or shows the
   match-found prompt. With this option off, a click on a player opens their history in winer's
   window instead.
+- **Runes panel in champ select**: in champ select, a panel at the client's bottom right shows the
+  runes and spells you have now (marked as your setup, the recommendation, or changed by you), the
+  recommended runes and spells (each with **Apply**), and **Save as my setup**, **Apply my setup**
+  and **Back to recommended**, explained in [My setup](/en/guide/automation#my-setup). It sits above
+  the client's bottom bar, clear of the lock-in, rune and spell buttons; a click on its title folds
+  it, and it stays folded when the client restarts. Arena has no rune page and shows no panel.
 - **Hide home-page promotions**: hides the esports pop-up and puts a short note in place of the
   news and events on the client's home page. **Show for now** on the note brings them back until the
   client restarts; with the option off, the home page shows as usual.

@@ -692,11 +692,13 @@ describe("the bridge", () => {
     );
     const onEvent = vi.fn();
     const onHistory = vi.fn();
+    const onLoadout = vi.fn();
     const handlers: BridgeHandlers = {
       onHello: vi.fn(),
       onEvent,
       onConnection: vi.fn(),
       onHistory,
+      onLoadout,
     };
     const bridge = new Bridge(
       handlers,
@@ -720,6 +722,27 @@ describe("the bridge", () => {
     expect(onHistory).toHaveBeenCalledWith(result);
     expect(onEvent).toHaveBeenCalledTimes(1);
     expect(onEvent).toHaveBeenCalledWith({ type: "gameData" });
+
+    // The runes panel's requests share the ids, and their answers go to their own handler.
+    const target = { gameId: 9, championId: 202, revision: 4 };
+    expect(bridge.loadout(target, { kind: "saveMine" })).toBe(3);
+    expect(JSON.parse(socket.sent.at(-1) as string)).toEqual({
+      type: "loadout",
+      requestId: 3,
+      target,
+      action: { kind: "saveMine" },
+    });
+    const saved = {
+      type: "loadoutResult",
+      requestId: 3,
+      done: { runes: null, spells: false },
+      error: null,
+    };
+    socket.receive(saved);
+    expect(onLoadout).toHaveBeenCalledWith(saved);
+    // A newer winer's message this plugin does not know reaches no handler.
+    socket.receive({ type: "somethingNew", detail: 1 });
+    expect(onEvent).toHaveBeenCalledTimes(1);
     bridge.stop();
   });
 });

@@ -53,19 +53,40 @@ export function noticeText(kind: NoticeKind, t: Translate, catalog: Catalog | nu
     // Runes, spells and item sets.
     case "loadoutApplied": {
       const name = champion(kind.championId);
-      const runes = kind.runes === "written";
-      const what = runes && kind.spells ? "both" : runes ? "runes" : "spells";
-      const applied =
-        runes || kind.spells
-          ? t(kind.recommended ? "loadout.notice.recommended" : "loadout.notice.remembered", {
+      // Each half set up, with where it came from: 我的方案, the recommendation, the client's own.
+      const parts = (
+        [
+          ["runes", kind.runes],
+          ["spells", kind.spells],
+        ] as const
+      )
+        .filter(([, origin]) => origin !== null)
+        .map(([what, origin]) =>
+          t("loadout.notice.part", {
+            what: t(`loadout.what.${what}`),
+            origin: t(`loadout.origin.${origin ?? "mine"}`),
+          }),
+        );
+      let line =
+        parts.length > 0
+          ? t("loadout.notice.applied", {
               champion: name,
-              what: t(`loadout.what.${what}`),
+              parts: parts.join(t("loadout.notice.and")),
             })
           : null;
-      if (kind.runes !== "noPage") return applied ?? "";
-      return applied
-        ? t("loadout.notice.noPageToo", { applied })
-        : t("loadout.notice.noPage", { champion: name });
+      if (kind.noPage)
+        line = line
+          ? t("loadout.notice.noPageToo", { applied: line })
+          : t("loadout.notice.noPage", { champion: name });
+      if (kind.kept.length > 0) {
+        const what = t(
+          `loadout.what.${kind.kept.length > 1 ? "both" : kind.kept[0] === "runes" ? "runes" : "spells"}`,
+        );
+        line = line
+          ? `${line}；${t("loadout.notice.kept", { what })}`
+          : t("loadout.notice.keptOnly", { champion: name, what });
+      }
+      return line ?? "";
     }
     case "itemSetWritten":
       return t("loadout.notice.itemSet", { champion: champion(kind.championId) });

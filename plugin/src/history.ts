@@ -29,6 +29,9 @@ import { ROW_SELECTOR, rankChip, rateClass, standingChip, titleChip } from "./te
 /** The panel's kind among the plugin's panels (`data-winer-panel`). */
 export const HISTORY_PANEL = "history";
 const PANEL_SELECTOR = `.winer-panel[data-winer-panel="${HISTORY_PANEL}"]`;
+/** The buttons of winer's panels a click Pengu's root took is handed to: the history panel's and
+ *  the runes panel's (`loadout.ts`). */
+const PANEL_BUTTONS = `${PANEL_SELECTOR} button, .winer-panel[data-winer-panel="loadout"] button`;
 /** On a lobby member's card and on a champ-select line: whose it is. */
 const PUUID_ATTRIBUTE = "data-winer-puuid";
 /** winer's own player lines: the lobby's, under a member's tokens, and champ select's. */
@@ -150,7 +153,8 @@ function clicked(doc: Document, event: MouseEvent, selector: string): Element | 
 /** Hands clicks on winer's player lines to `pick` in the capture phase, with the player's puuid and
  *  the line; when `pick` takes one, nothing else sees it. Each context registers its own and only
  *  the drawing context's `pick` takes a click, so a line the page's other context drew still
- *  answers. A click Pengu's root took over a button of the history panel goes to that button. */
+ *  answers. A click Pengu's root took over a button of the history panel or the runes panel goes
+ *  to that button. */
 export function interceptPlayerClicks(
   doc: Document,
   pick: (puuid: string, line: Element) => boolean,
@@ -165,7 +169,7 @@ export function interceptPlayerClicks(
       return;
     }
     if (!(event.target instanceof Element) || !event.target.closest(OVERLAY)) return;
-    const button = clicked(doc, event, `${PANEL_SELECTOR} button`);
+    const button = clicked(doc, event, PANEL_BUTTONS);
     if (!(button instanceof HTMLElement)) return;
     event.preventDefault();
     event.stopImmediatePropagation();

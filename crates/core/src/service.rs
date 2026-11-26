@@ -84,6 +84,8 @@ const SUBSCRIPTIONS: &[&str] = &[
     SUMMONER,
     RANKED,
     CHAT_ME,
+    // The current rune page, for champ select's runes and spells (also read every few seconds).
+    loadout::CURRENT_PAGE,
     // Social.
     FRIENDS,
     LOBBY,
@@ -152,6 +154,10 @@ pub enum CoreError {
     /// The client has no room for what winer would write (its list of item sets is full).
     #[error("{0}")]
     Full(String),
+    /// The request was made against a view that has changed since (champ select's runes and
+    /// spells): nothing was done, and the newer view may be asked again.
+    #[error("{0}")]
+    Stale(String),
 }
 
 impl From<CoreError> for IpcError {
@@ -166,6 +172,7 @@ impl From<CoreError> for IpcError {
             CoreError::Lcu(_) | CoreError::Remote(_) => ErrorCode::Client,
             CoreError::Unavailable(_) => ErrorCode::Unavailable,
             CoreError::Full(_) => ErrorCode::Full,
+            CoreError::Stale(_) => ErrorCode::Stale,
             CoreError::Io(_) => ErrorCode::Internal,
         };
         Self {
@@ -326,6 +333,7 @@ impl Live {
         self.swaps.clear();
         self.recommend = None;
         self.trade_watch = crate::comeback::TradeWatch::default();
+        self.loadout.reset_champ_select();
     }
 
     /// Keeps champion lists that answer the request still awaited; an answer for an earlier
@@ -484,8 +492,9 @@ impl Service {
     pub fn new(settings_path: impl Into<PathBuf>, runtime: Handle) -> Self {
         let (events, _) = broadcast::channel(256);
         let settings_path = settings_path.into();
-        // Remembered setups live in a file of their own beside the settings, as does the client
-        // version last seen.
+        // The user's own setups live in a file of their own beside the settings, as does the client
+        // version last seen; the setups winer up to 0.0.24 remembered by itself are only counted.
+        let presets = settings_path.with_file_name("loadout-presets.json");
         let loadouts = settings_path.with_file_name("loadouts.json");
         let versions =
             diagnose::VersionStore::new(settings_path.with_file_name("diagnostics.json"));
@@ -505,7 +514,7 @@ impl Service {
                 assets: Mutex::new(Lru::new(caches::ASSETS)),
                 augment_details: tokio::sync::Mutex::new(HashMap::new()),
                 backups: OnceLock::new(),
-                loadout: loadout::LoadoutState::new(loadouts),
+                loadout: loadout::LoadoutState::new(presets, loadouts),
                 history: Mutex::new(HistoryCache::default()),
                 regional_history: Mutex::new(cross_region::RegionalHistory::default()),
                 history_server: HistoryServer::new(),
@@ -1265,6 +1274,7 @@ impl Service {
                     }
                 }
                 CHAT_ME => self.on_chat_me(&client, decode(data)),
+                loadout::CURRENT_PAGE => self.on_current_page(&client, decode(data)),
                 _ => {}
             }
         }
@@ -1593,6 +1603,9 @@ impl Service {
                 seat.autofilled = filled;
             }
             view.recommendations = self.recommendations(client, &session, mode, &settings);
+            view.loadout = self
+                .loadout_view(client, &session, mode, &settings)
+                .map(Box::new);
             let champion = |id: i64| {
                 data.as_ref()?
                     .champions

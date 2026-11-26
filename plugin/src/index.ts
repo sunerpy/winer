@@ -17,6 +17,7 @@ import {
 } from "./history";
 import { type HomeState, PROMOTIONS, decorateHome, forgetHub } from "./home";
 import { text } from "./i18n";
+import { LoadoutPanel } from "./loadout";
 import {
   type FloatingPanel,
   clearLobby,
@@ -62,6 +63,8 @@ export class Controller {
   #lobbyKey = "";
   // The history panel.
   readonly history: HistoryPanel;
+  // The runes panel in champ select.
+  readonly loadout: LoadoutPanel;
 
   constructor(private readonly doc: Document = document) {
     this.bridge = new Bridge(
@@ -70,6 +73,13 @@ export class Controller {
         onEvent: (event) => this.state.event(event),
         onConnection: (connected) => this.state.connection(connected),
         onHistory: (result) => this.#answered(result),
+        onLoadout: (result) => {
+          if (this.loadout.answer(result) && this.state.connected)
+            this.bridge.log(
+              "info",
+              `runes panel: ${result.error ? `not done (${result.error.code})` : "done"}`,
+            );
+        },
       },
       { version: WINER_PLUGIN_VERSION, context: this.context },
     );
@@ -77,6 +87,16 @@ export class Controller {
       request: (puuid) => this.bridge.history(puuid),
       openInWiner: (puuid) => void this.openHistory(puuid),
     });
+    this.loadout = new LoadoutPanel(
+      this.doc,
+      this.context,
+      // Only the drawing context asks, so one click is one request.
+      (target, action) =>
+        this.doc.documentElement.dataset.winerOwner === this.context
+          ? this.bridge.loadout(target, action)
+          : null,
+      () => this.schedule(),
+    );
   }
 
   start(): void {
@@ -132,6 +152,7 @@ export class Controller {
     this.#bench(Boolean(settings?.plugin.benchNoCooldown) && snapshot?.phase === "ChampSelect");
     this.#social(snapshot, settings);
     this.#historyPanel();
+    this.#loadoutPanel(snapshot, settings);
 
     const view =
       settings?.plugin.teamPanel && snapshot?.phase === "ChampSelect" ? snapshot.champSelect : null;
@@ -406,6 +427,22 @@ export class Controller {
       rating: seat.rating,
       score: seat.rating?.score ?? null,
     };
+  }
+
+  /** 选人时显示符文面板: champ select's runes and spells at the bottom right while the option is on
+   *  and the view has them; the page's other context's panel goes. */
+  #loadoutPanel(snapshot: Snapshot | null, settings: Settings | null): void {
+    const view =
+      settings?.plugin.loadoutPanel && snapshot?.phase === "ChampSelect"
+        ? (snapshot.champSelect?.loadout ?? null)
+        : null;
+    if (!view || !settings) {
+      if (this.loadout.isShown) this.loadout.hide();
+      else this.#reports.delete("loadout");
+      return;
+    }
+    this.loadout.show(view, settings.general.language);
+    this.#log(`runes panel: shown (${view.mode}, ${view.recommendation.state})`, "loadout");
   }
 
   /** Keeps the panel to the screen it was opened on: it closes when the client leaves that screen,

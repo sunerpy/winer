@@ -52,10 +52,10 @@ home:
             body: 按档位排好的聊天内容，一键发到队伍或只给自己看，也可以每局自动发送；第一行带上红蓝方和 winer 署名。
             status: available
             link: /guide/live#战力喊话
-          - title: 反击
-            body: 按快捷键随机发一句自己写的反击语句，选人时发到选人聊天，游戏中可以输入聊天；在线语录要你自己下载并打开。
+          - title: 快捷喊话
+            body: 最多 10 条自己写的快捷消息，各按一个快捷键发出；也能随机发一句自己写的语句。选人时发到选人聊天，游戏中可以输入聊天。
             status: experimental
-            link: /guide/live#反击
+            link: /guide/live#快捷喊话
           - title: 选人快捷语
             body: 点一下快捷语发给某位队友，楼层和英雄自动填好；可选在点「交换」时自动发出、交换成功后道谢。
             status: experimental
@@ -97,7 +97,7 @@ home:
             status: available
             link: /guide/automation#对局结束
           - title: 符文与召唤师技能
-            body: 锁定英雄后换上这个英雄在这个模式里上一局的符文和召唤师技能，没有记录时用客户端推荐的。
+            body: 锁定英雄后换上推荐的符文和召唤师技能，保存过「我的方案」时用你的方案；选人时客户端右下角有面板，可以一键切换。
             status: available
             link: /guide/automation#符文与召唤师技能
           - title: 装备方案
@@ -163,7 +163,7 @@ home:
         detail: 获取海克斯符文的效果说明（可以关闭），检查和下载更新。
       - name: jsDelivr 与 GitHub
         sends: 普通的网页请求
-        detail: 只在你点了下载时，下载反击用的在线语录。
+        detail: 只在你点了下载时，下载快捷喊话用的在线语录。
 ---
 
 <HomeIndex />

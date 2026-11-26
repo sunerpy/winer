@@ -11,7 +11,7 @@ use winer_core::{
     bridge::Bridge,
     builds::{Build, RunePage},
     export::{self, ExportFormat},
-    loadout::{LoadoutSummary, PageOutcome},
+    loadout::{LoadoutAction, LoadoutDone, LoadoutSummary, LoadoutTarget, PageOutcome},
     notes::{NoteEntry, NoteTag, PlayerNote},
     plugin::PluginStatus,
     profile::{ChallengeProfile, Crest, CrestChange, IconChange, SkinChoice},
@@ -102,6 +102,8 @@ pub(crate) fn handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool + Send + Sync 
         clear_item_sets,
         get_loadout_summary,
         clear_loadouts,
+        clear_loadout_presets,
+        loadout_action,
         // The callout typed into the game's chat.
         preview_game_callout,
         // The Phrases page's quick phrases (快捷语) and the Comebacks page's downloaded library.
@@ -663,16 +665,36 @@ async fn clear_item_sets<R: Runtime>(app: AppHandle<R>) -> Result<u32> {
     Ok(service(&app).clear_item_sets().await?)
 }
 
+/// The user's own setups, and the setups winer up to 0.0.24 remembered by itself.
 #[tauri::command]
 async fn get_loadout_summary<R: Runtime>(app: AppHandle<R>) -> Result<LoadoutSummary> {
-    Ok(service(&app).loadout_summary())
+    let service = service(&app);
+    blocking(move || Ok(service.loadout_summary())).await
 }
 
-/// Forgets every remembered rune and spell setup.
+/// Deletes the setups winer up to 0.0.24 remembered by itself (`loadouts.json`).
 #[tauri::command]
 async fn clear_loadouts<R: Runtime>(app: AppHandle<R>) -> Result<LoadoutSummary> {
     let service = service(&app);
     blocking(move || service.clear_loadouts()).await
+}
+
+/// Forgets every setup of the user's own (我的方案).
+#[tauri::command]
+async fn clear_loadout_presets<R: Runtime>(app: AppHandle<R>) -> Result<LoadoutSummary> {
+    let service = service(&app);
+    blocking(move || service.clear_loadout_presets()).await
+}
+
+/// A request of the build panel's on champ select's runes and spells, on the view `target` names:
+/// refused as `stale` once that view has changed.
+#[tauri::command]
+async fn loadout_action<R: Runtime>(
+    app: AppHandle<R>,
+    target: LoadoutTarget,
+    action: LoadoutAction,
+) -> Result<LoadoutDone> {
+    Ok(service(&app).loadout_action(target, action).await?)
 }
 
 // The callout typed into the game's chat.
@@ -930,8 +952,27 @@ mod tests {
                 ErrorCode::Invalid,
                 "an id that would leave its slot"
             );
-            assert_eq!(clear_loadouts(handle.clone()).await.unwrap().remembered, 0);
-            assert_eq!(get_loadout_summary(handle).await.unwrap().remembered, 0);
+            assert_eq!(clear_loadouts(handle.clone()).await.unwrap().legacy, None);
+            assert_eq!(
+                clear_loadout_presets(handle.clone()).await.unwrap().presets,
+                0
+            );
+            assert_eq!(
+                get_loadout_summary(handle.clone()).await.unwrap().presets,
+                0
+            );
+            let target = LoadoutTarget {
+                game_id: 1,
+                champion_id: 202,
+                revision: 1,
+            };
+            assert_eq!(
+                loadout_action(handle, target, LoadoutAction::SaveMine)
+                    .await
+                    .unwrap_err()
+                    .code,
+                ErrorCode::NotConnected
+            );
         });
     }
 

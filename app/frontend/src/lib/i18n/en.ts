@@ -834,7 +834,7 @@ export const en: Record<MessageKey, string> = {
   // Storage: what winer keeps on disk and in memory, and the cleanup (Settings › About).
   "storage.title": "Storage",
   "storage.hint":
-    "What winer keeps on this PC, and the limit of each. Clear cache removes caches, old logs and spent update installers only, never the game settings backups, the settings or the remembered setups.",
+    "What winer keeps on this PC, and the limit of each. Clear cache removes caches, old logs and spent update installers only, never the game settings backups, the settings or your own setups.",
   "storage.clear": "Clear cache",
   "storage.loadFailed": "Could not read what winer keeps",
   "storage.files": "{n} files",
@@ -850,7 +850,7 @@ export const en: Record<MessageKey, string> = {
   "storage.backupsNote": "{n} at most; Clear cache leaves them",
   "storage.pengu": "In-client components",
   "storage.penguNote": "Pengu Loader and winer's client plugin",
-  "storage.settings": "Settings and remembered setups",
+  "storage.settings": "Settings and my setups",
   "storage.settingsNote": "Clear cache leaves them",
   "storage.updates": "Update installers",
   "storage.updatesNote":
@@ -945,6 +945,22 @@ export const en: Record<MessageKey, string> = {
     "Not written: there is no room for winer's rune page and the current page is one of yours. Delete a page, or select the client's temporary page, and try again.",
   "loadout.spellsApplied": "These two summoner spells are taken.",
   "loadout.itemSetWritten": "Item set written; find it among the in-game shop's item sets.",
+  "loadout.mine": "My setup",
+  "loadout.mineNone":
+    "No setup of yours for this champion in this mode: the recommendation goes up once it is locked in.",
+  "loadout.mineSaved":
+    "Your setup for this champion in this mode: {what}. It goes up first once the champion is locked in, the recommendation for what it lacks.",
+  "loadout.saveMine": "Save as my setup",
+  "loadout.saveMineHint":
+    "Keep the rune page and spells you have now as this champion's setup in this mode",
+  "loadout.applyMine": "Apply my setup",
+  "loadout.restore": "Back to recommended",
+  "loadout.restoreHint":
+    "Forget your setup for this champion in this mode and set up the recommended runes and spells",
+  "loadout.savedMine": "Saved as your setup: this champion uses it first in this mode from now on",
+  "loadout.appliedMine": "Your setup is applied",
+  "loadout.restored": "Back to the recommendation",
+  "loadout.stale": "Champ select has changed; click again",
   "loadout.priority": "Max order",
   "loadout.sequence": "Points for the first {n} levels",
   "loadout.good": "Good matchups",
@@ -969,15 +985,22 @@ export const en: Record<MessageKey, string> = {
   "loadout.section": "Runes and summoner spells",
   "loadout.rule": "Set up runes and summoner spells",
   "loadout.ruleHint":
-    "Once your champion is locked in (in the ARAMs, each time it changes), sets up the runes and summoner spells you last played it with in this mode. Once per champion, so a change you make afterwards stands.",
-  "loadout.recommended": "Use the client's recommendation",
+    "Once a champion is locked in (in ARAM, each time it changes), winer sets up its runes and summoner spells: your own setup where you saved one, else the recommendation. On ranked and normal games it comes from Tencent 101 (or OP.GG, as chosen in Settings), in ARAM from OP.GG, and in Hextech ARAM and other modes from the client's own recommended pages. Once per champion, so a change you make afterwards stands.",
+  "loadout.recommended": "Use the recommendation without a setup of mine",
   "loadout.recommendedHint":
-    "With nothing remembered for the champion in this mode, uses the client's own recommended page and spells.",
-  "loadout.remembered": "{n} remembered",
-  "loadout.rememberedHint":
-    "When a game starts, the runes and spells you go in with are remembered, per champion and mode, on this computer only.",
-  "loadout.forget": "Forget them",
-  "loadout.forgotten": "Remembered runes and spells forgotten",
+    "Where you saved no setup for the champion in this mode, winer sets up the recommended runes and spells; off, it sets up only your own setups.",
+  "loadout.presets": "My setups: {n}",
+  "loadout.presetsHint":
+    "Save as my setup, on the Live page or in the runes panel at the bottom right of the client, keeps one per champion and mode (on ranked and normal games, per lane too), on this computer only.",
+  "loadout.legacy": "Last-game setups of older versions (no longer used)",
+  "loadout.legacyCount":
+    "{n} in all: what winer up to 0.0.24 noted at the start of each game. Nothing uses them any more; you can delete them.",
+  "loadout.legacyUnreadable":
+    "The file cannot be read. Nothing uses it any more; you can delete it.",
+  "loadout.legacyDelete": "Delete",
+  "loadout.legacyDeleted": "The old last-game setups are deleted",
+  "loadout.forget": "Clear my setups",
+  "loadout.forgotten": "Your setups are cleared",
   "loadout.pageNote":
     'winer uses one rune page, named "winer · <champion>". Without it and with no room for it, only the client\'s temporary page is written; your own pages never are.',
   "loadout.itemSetsSection": "Item sets",
@@ -1005,10 +1028,16 @@ export const en: Record<MessageKey, string> = {
     "Falls back to ARAM.GG (third-party; it asks programs not to read its data files) when the Tencent League app has nothing. Off, only Tencent's numbers are used.",
   "loadout.source.off": "Off",
   "loadout.sourceOff": "This mode's data source is switched off in Settings.",
-  "loadout.notice.remembered": "Set up the remembered {what} for {champion}",
-  "loadout.notice.recommended": "Set up the client's recommended {what} for {champion}",
   "loadout.notice.noPage": "{champion}'s runes unchanged: no room for winer's rune page",
   "loadout.notice.noPageToo": "{applied}; runes unchanged: no room for winer's rune page",
+  "loadout.notice.applied": "Set up {parts} for {champion}",
+  "loadout.notice.part": "{what} ({origin})",
+  "loadout.notice.and": " and ",
+  "loadout.notice.kept": "you had just changed the {what}, so they stay",
+  "loadout.notice.keptOnly": "You had just changed {champion}'s {what}, so they stay",
+  "loadout.origin.mine": "my setup",
+  "loadout.origin.recommended": "recommended",
+  "loadout.origin.client": "the client's recommendation",
   "loadout.notice.itemSet": "Wrote the item set for {champion}",
   "loadout.itemSetsFull":
     "The item set was not written: your own item sets fill the client's list (about 64 KB at most). Delete some in the client, then try again.",
@@ -1064,6 +1093,9 @@ export const en: Record<MessageKey, string> = {
   "overlay.historyInClient": "Recent games inside the client",
   "overlay.historyInClientHint":
     "A click on a player in the lobby or in champ select shows their latest games in a panel inside the client; off, it opens their history in winer's window.",
+  "overlay.loadoutPanel": "Runes panel in champ select",
+  "overlay.loadoutPanelHint":
+    "In champ select, the client shows your runes and summoner spells and the recommended ones at the bottom right, with buttons that apply the recommendation, save your setup or go back to the recommendation. On, winer reads the recommendation for the champion you choose.",
   // Callout: the shortcut that sends it, and the enemy lines it types into the game's chat.
   "callout.hotkey": "Shortcut to send the callout",
   "callout.hotkeyHint":

@@ -1,34 +1,47 @@
 //! Runes, summoner spells, builds and item sets, carried out against the client: the champ-select
-//! hooks of the rune and spell memory and of the item sets, and the build panel's commands. What to
-//! do is decided in `crate::loadout`; the numbers come from `crate::builds`.
+//! hooks that set up the champion in hand (the user's own setup, else winer's recommendation) and
+//! write its item set; the view of it the window's and the client's panels draw, the current rune
+//! page read for it, and what those panels ask for; and the build panel's commands. What to do is
+//! decided in `crate::loadout`; the numbers come from `crate::builds`.
 
 use std::{
     collections::HashMap,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU32, Ordering},
+    },
     time::{Duration, Instant},
 };
 
 use lcu::{Lcu, Method};
 use serde_json::{Value, json};
-use tracing::{debug, info, warn};
+use tokio::time::sleep;
+use tracing::{debug, info};
 
 use super::{Client, CoreError, SUMMONER, Service, lock, now_ms, queue_mode};
 use crate::{
     builds::{self, Build, BuildSource, Known, Query, RunePage, StyleBook},
     loadout::{
-        self, ItemSets, LoadoutStore, LoadoutSummary, PageOutcome, PageTarget, PerkInventory,
-        PerkPage, RecommendedPage, Setup, Watch,
+        self, AppliedLoadout, ItemSets, LoadoutAction, LoadoutCurrent, LoadoutDone, LoadoutPart,
+        LoadoutRecommendation, LoadoutStore, LoadoutSummary, LoadoutTarget, LoadoutView,
+        PageOutcome, PageTarget, PerkInventory, PerkPage, Plan, RecommendationState,
+        RecommendedPage, Setup, Watch,
     },
     model::{ChampSelectSession, PerkStyles, Summoner},
-    settings::{BuildSettings, Mode},
-    view::{GameData, NoticeKind, Phase, Position},
+    settings::{BuildSettings, Mode, Settings},
+    view::{AssetInfo, GameData, NoticeKind, Phase, Position},
 };
 
 const PAGES: &str = "/lol-perks/v1/pages";
-const CURRENT_PAGE: &str = "/lol-perks/v1/currentpage";
+/// Also an event the service subscribes to.
+pub(super) const CURRENT_PAGE: &str = "/lol-perks/v1/currentpage";
 const INVENTORY: &str = "/lol-perks/v1/inventory";
 const MY_SELECTION: &str = "/lol-champ-select/v1/session/my-selection";
+
+/// How often the current rune page is read while champ select lasts: the panels show it, and the
+/// client's own event for it is not measured on Tencent's shards.
+const PAGE_POLL: Duration = Duration::from_secs(2);
 
 /// How long one source's numbers for one champion are reused. The sources recount once a day.
 const BUILD_TTL: Duration = Duration::from_secs(6 * 60 * 60);
@@ -44,7 +57,13 @@ type BuildSlot = Arc<tokio::sync::Mutex<Option<(Instant, Arc<Build>)>>>;
 
 /// What the service keeps for the whole run.
 pub(super) struct LoadoutState {
-    store: LoadoutStore,
+    /// The user's own setups (我的方案), `loadout-presets.json`.
+    presets: LoadoutStore,
+    /// `loadouts.json`, where winer up to 0.0.24 remembered each game's setup by itself: counted for
+    /// the automation page and deleted when the user asks, never read to set anything up.
+    legacy: PathBuf,
+    /// Every loadout view's revision comes from here, so no two views with other contents share one.
+    revisions: AtomicU32,
     builds: Mutex<HashMap<BuildKey, BuildSlot>>,
     patches: tokio::sync::Mutex<Option<(Instant, Arc<Vec<String>>)>>,
     /// What the client's catalog knows, with the catalog it was read from.
@@ -55,9 +74,11 @@ pub(super) struct LoadoutState {
 }
 
 impl LoadoutState {
-    pub(super) fn new(path: PathBuf) -> Self {
+    pub(super) fn new(presets: PathBuf, legacy: PathBuf) -> Self {
         Self {
-            store: LoadoutStore::open(path),
+            presets: LoadoutStore::open(presets),
+            legacy,
+            revisions: AtomicU32::new(0),
             builds: Mutex::new(HashMap::new()),
             patches: tokio::sync::Mutex::new(None),
             known: Mutex::new(None),
@@ -66,13 +87,52 @@ impl LoadoutState {
     }
 }
 
-/// What one client connection's champ selects have left to do.
+/// What a recommendation was asked for: a champion in a champ select, kind of game and lane, under
+/// the build panel's sources then.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct RecommendationKey {
+    game_id: i64,
+    champion: i64,
+    mode: Mode,
+    lane: Option<Position>,
+    builds: BuildSettings,
+}
+
+/// What winer put on the client in a champ select, so a change of the player's is told from its own.
+#[derive(Clone, Debug, Default)]
+struct Written {
+    game_id: i64,
+    /// The page written and the runes on it.
+    page: Option<(i64, RunePage)>,
+    spells: Option<[i64; 2]>,
+}
+
+/// What one client connection's champ selects have left to do, and what their view is drawn from.
 #[derive(Default)]
 pub(super) struct LoadoutLive {
     watch: Watch,
-    /// The last champ select, until the game it led to starts: what the player goes in with is
-    /// remembered then.
-    last: Option<ChampSelectSession>,
+    /// The current rune page as last read, in champ select `.0`; `None` inside where there is none.
+    page: Option<(i64, Option<PerkPage>)>,
+    /// A task reads the current page for this champ select (`Service::poll_pages`).
+    polling: Option<i64>,
+    /// winer's recommendation for the champion in hand: what it is for, and what came of it.
+    recommendation: Option<(RecommendationKey, RecommendationState)>,
+    /// What winer set up in champ select `.0` for champion `.1`.
+    applied: Option<(i64, i64, AppliedLoadout)>,
+    written: Written,
+    /// The view drawn last, with revision 0, and the revision it was given.
+    last_view: Option<(LoadoutView, u32)>,
+}
+
+impl LoadoutLive {
+    /// Forgets what was read and done for one champ select; the watch follows game ids itself.
+    pub(super) fn reset_champ_select(&mut self) {
+        self.page = None;
+        self.recommendation = None;
+        self.applied = None;
+        self.written = Written::default();
+        self.last_view = None;
+    }
 }
 
 /// The champ select under way, while it is still `game_id` and the local player still holds
@@ -83,18 +143,134 @@ fn holding(client: &Client, game_id: i64, champion: i64) -> Option<ChampSelectSe
     })
 }
 
+/// The lane a champion is set up for: the one assigned, on the Rift.
+fn lane_of(session: &ChampSelectSession, mode: Mode) -> Option<Position> {
+    session
+        .local_player()
+        .and_then(|me| Position::parse(&me.assigned_position))
+        .filter(|_| matches!(mode, Mode::Ranked | Mode::Normal))
+}
+
+fn spells_of(session: &ChampSelectSession) -> [i64; 2] {
+    session
+        .local_player()
+        .map_or([0, 0], |me| [me.spell1_id, me.spell2_id])
+}
+
+/// Whether winer's recommendation and the current page are wanted for a game of `mode`: the rule
+/// sets them up, or the client's panel shows them.
+fn wants_loadout(settings: &Settings, mode: Mode) -> bool {
+    loadout::shows(mode)
+        && (settings.automation.restores_loadout(Some(mode)) || settings.plugin.loadout_panel)
+}
+
+/// The client's current rune page; `None` where there is none or it could not be read.
+async fn current_page(lcu: &Lcu) -> Option<PerkPage> {
+    lcu.get_optional::<PerkPage>(CURRENT_PAGE)
+        .await
+        .unwrap_or_else(|error| {
+            debug!(%error, "current rune page unavailable");
+            None
+        })
+}
+
+/// Whether the player made another page current, or changed the runes on it, between two reads:
+/// a change that is the page winer wrote itself is not theirs.
+fn changed_page(
+    before: Option<&PerkPage>,
+    now: Option<&PerkPage>,
+    written: &Written,
+    game_id: i64,
+) -> bool {
+    if loadout::same_page(before, now) {
+        return false;
+    }
+    let winers = written.game_id == game_id
+        && written.page.as_ref().is_some_and(|(id, runes)| {
+            now.is_some_and(|now| now.id == *id && now.runes().as_ref() == Some(runes))
+        });
+    !winers
+}
+
+/// Whether the player changed their spells between two reads; winer's own change is not theirs.
+fn changed_spells(before: [i64; 2], now: [i64; 2], written: &Written, game_id: i64) -> bool {
+    if loadout::same_spells(before, now) {
+        return false;
+    }
+    let winers = written.game_id == game_id
+        && written
+            .spells
+            .is_some_and(|spells| loadout::same_spells(spells, now));
+    !winers
+}
+
+/// The runes, styles and spells `current`, `mine` and `recommendation` name, as the catalog names
+/// and draws them; ids the catalog does not know are left out.
+fn loadout_assets(
+    data: Option<&GameData>,
+    current: &LoadoutCurrent,
+    mine: Option<&Setup>,
+    recommendation: Option<&LoadoutRecommendation>,
+) -> Vec<AssetInfo> {
+    let Some(data) = data else {
+        return Vec::new();
+    };
+    let mut perks: Vec<i64> = Vec::new();
+    let mut spells: Vec<i64> = Vec::new();
+    let mut page = |runes: &RunePage| {
+        perks.extend([runes.primary_style, runes.sub_style]);
+        perks.extend(&runes.perks);
+    };
+    current.runes.iter().for_each(&mut page);
+    mine.and_then(|mine| mine.runes.as_ref())
+        .into_iter()
+        .for_each(&mut page);
+    if let Some(recommendation) = recommendation {
+        recommendation
+            .runes
+            .iter()
+            .for_each(|option| page(&option.page));
+        spells.extend(
+            recommendation
+                .spells
+                .iter()
+                .flat_map(|option| option.spells),
+        );
+    }
+    spells.extend(current.spells);
+    spells.extend(mine.and_then(|mine| mine.spells).into_iter().flatten());
+    let mut assets: Vec<AssetInfo> = Vec::new();
+    let mut add = |catalog: &[AssetInfo], ids: &[i64]| {
+        for &id in ids {
+            if id > 0
+                && !assets.iter().any(|asset| asset.id == id)
+                && let Some(asset) = catalog.iter().find(|asset| asset.id == id)
+            {
+                assets.push(asset.clone());
+            }
+        }
+    };
+    add(&data.perks, &perks);
+    add(&data.spells, &spells);
+    assets
+}
+
 impl Service {
     /// Called with every champ-select session: sets up the runes and spells, and writes the item
-    /// set, of a champion that has just become the player's, where those rules are on.
+    /// set, of a champion that has just become the player's, where those rules are on; and keeps
+    /// the current rune page read for the panels.
     pub(super) fn loadout_champ_select(&self, client: &Client, session: &ChampSelectSession) {
         let settings = self.settings();
-        let mode = queue_mode(client, session.queue_id);
+        // Without the catalog the kind of game is not known yet; the next event asks again.
+        let Some(mode) = queue_mode(client, session.queue_id) else {
+            return;
+        };
+        if wants_loadout(&settings, mode) {
+            self.poll_pages(client, session.game_id);
+        }
         let (setup, item_set) = {
             let mut live = lock(&client.live);
             let state = &mut live.loadout;
-            state.last = Some(session.clone());
-            // Without the catalog the kind of game is not known yet; the next event asks again.
-            let Some(mode) = mode else { return };
             let setup = if settings.automation.restores_loadout(Some(mode)) {
                 state.watch.loadout_due(session)
             } else {
@@ -106,15 +282,12 @@ impl Service {
                 } else {
                     None
                 };
-            (
-                setup.map(|champion| (champion, mode)),
-                item_set.map(|champion| (champion, mode)),
-            )
+            (setup, item_set)
         };
-        if let Some((champion, mode)) = setup {
+        if let Some(champion) = setup {
             self.set_up(client, champion, mode, session.game_id);
         }
-        if let Some((champion, mode)) = item_set {
+        if let Some(champion) = item_set {
             let lane = session
                 .local_player()
                 .and_then(|me| Position::parse(&me.assigned_position));
@@ -122,129 +295,605 @@ impl Service {
         }
     }
 
-    /// Called with every gameflow phase: once the game starts, what the player took into it is
-    /// remembered. Outside champ select the watch starts over, so the next champ select sets its
-    /// champion up even where the client numbers both games alike.
+    /// Called with every gameflow phase: outside champ select the watch starts over, so the next
+    /// champ select sets its champion up even where the client numbers both games alike.
     pub(super) fn loadout_phase(&self, client: &Client, phase: Phase) {
-        if phase == Phase::ChampSelect {
-            return;
-        }
-        let last = {
-            let mut live = lock(&client.live);
-            live.loadout.watch = Watch::default();
-            live.loadout.last.take()
-        };
-        // Champ select ended without a game (a dodge) when the phase is anything else.
-        if let (Phase::GameStart | Phase::InProgress, Some(session)) = (phase, last) {
-            self.remember(client, session);
+        if phase != Phase::ChampSelect {
+            lock(&client.live).loadout.watch = Watch::default();
         }
     }
 
-    /// Stores the final runes and spells for the champion and kind of game, whoever chose them.
-    fn remember(&self, client: &Client, session: ChampSelectSession) {
-        let Some(mode) = queue_mode(client, session.queue_id) else {
-            return;
-        };
-        if !self.settings().automation.restores_loadout(Some(mode)) {
-            return;
+    /// Reads the current rune page every [`PAGE_POLL`] while champ select `game_id` lasts and the
+    /// panels want it, one task a champ select; each change draws the views again.
+    fn poll_pages(&self, client: &Client, game_id: i64) {
+        {
+            let mut live = lock(&client.live);
+            if live.loadout.polling == Some(game_id) {
+                return;
+            }
+            live.loadout.polling = Some(game_id);
         }
         let (service, client) = (self.clone(), client.clone());
         self.spawn(async move {
-            let page = client
-                .lcu
-                .get_optional::<PerkPage>(CURRENT_PAGE)
-                .await
-                .unwrap_or_else(|error| {
-                    debug!(%error, "current rune page unavailable");
-                    None
-                });
-            let Some((champion, setup)) =
-                loadout::setup_at_start(&session, page.as_ref(), now_ms())
-            else {
-                return;
-            };
-            let store = service.clone();
-            match tokio::task::spawn_blocking(move || {
-                store.inner.loadout.store.put(champion, mode, setup)
-            })
-            .await
-            {
-                Ok(Ok(())) => debug!(champion, ?mode, "loadout remembered"),
-                Ok(Err(error)) => warn!(%error, "loadout not remembered"),
-                Err(error) => warn!(%error, "loadout not remembered"),
+            loop {
+                let mode = {
+                    let live = lock(&client.live);
+                    let on = live.phase == Phase::ChampSelect
+                        && live
+                            .champ_select
+                            .as_ref()
+                            .is_some_and(|session| session.game_id == game_id);
+                    on.then(|| {
+                        live.champ_select
+                            .as_ref()
+                            .map_or(0, |session| session.queue_id)
+                    })
+                };
+                let Some(queue_id) = mode else { break };
+                let wanted = queue_mode(&client, queue_id)
+                    .is_some_and(|mode| wants_loadout(&service.settings(), mode));
+                if !wanted {
+                    break;
+                }
+                let page = current_page(&client.lcu).await;
+                if service.note_page(&client, game_id, page, "poll") {
+                    service.render(&client);
+                }
+                sleep(PAGE_POLL).await;
+            }
+            let mut live = lock(&client.live);
+            if live.loadout.polling == Some(game_id) {
+                live.loadout.polling = None;
             }
         });
     }
 
-    /// Sets up the remembered runes and spells, or the client's own recommendation where there are
-    /// none, for `champion`, now that it is the player's.
+    /// The client said its current rune page changed (`CURRENT_PAGE`'s event).
+    pub(super) fn on_current_page(&self, client: &Client, page: Option<PerkPage>) {
+        let game_id = {
+            let live = lock(&client.live);
+            live.champ_select
+                .as_ref()
+                .filter(|_| live.phase == Phase::ChampSelect)
+                .map(|session| session.game_id)
+        };
+        if let Some(game_id) = game_id
+            && self.note_page(client, game_id, page, "event")
+        {
+            self.render(client);
+        }
+    }
+
+    /// Keeps `page`, read from `source`, as champ select `game_id`'s current page; whether it is
+    /// another than the one kept.
+    fn note_page(
+        &self,
+        client: &Client,
+        game_id: i64,
+        page: Option<PerkPage>,
+        source: &str,
+    ) -> bool {
+        let mut live = lock(&client.live);
+        let open = live
+            .champ_select
+            .as_ref()
+            .is_some_and(|session| session.game_id == game_id);
+        if !open {
+            return false;
+        }
+        let changed = match &live.loadout.page {
+            Some((game, kept)) if *game == game_id => {
+                kept.as_ref()
+                    .map(|page| (page.id, &page.name, page.runes()))
+                    != page
+                        .as_ref()
+                        .map(|page| (page.id, &page.name, page.runes()))
+            }
+            _ => true,
+        };
+        if changed {
+            debug!(
+                source,
+                page = page.as_ref().map(|page| page.id),
+                "the current rune page"
+            );
+            live.loadout.page = Some((game_id, page));
+        }
+        changed
+    }
+
+    /// Reads the current page again now, after a write.
+    async fn refresh_page(&self, client: &Client, game_id: i64) {
+        let page = current_page(&client.lcu).await;
+        self.note_page(client, game_id, page, "write");
+    }
+
+    /// The view of the local player's champion in champ select (`LoadoutView`), from what is known
+    /// now; the recommendation not asked for yet is looked up in the background, its answer drawing
+    /// the views again. `None` where the kind of game has no runes to choose, or before a champion
+    /// is in hand.
+    pub(super) fn loadout_view(
+        &self,
+        client: &Client,
+        session: &ChampSelectSession,
+        mode: Option<Mode>,
+        settings: &Settings,
+    ) -> Option<LoadoutView> {
+        let mode = mode.filter(|&mode| loadout::shows(mode))?;
+        let champion = loadout::champion_in_hand(session)?;
+        let lane = lane_of(session, mode);
+        let held = loadout::held_champion(session) == Some(champion);
+        let mine = self
+            .inner
+            .loadout
+            .presets
+            .find(&loadout::preset_keys(champion, mode, lane))
+            .map(|(_, setup)| setup);
+        let key = RecommendationKey {
+            game_id: session.game_id,
+            champion,
+            mode,
+            lane,
+            builds: settings.builds.clone(),
+        };
+        let wanted = wants_loadout(settings, mode);
+        let (recommendation, fetch, page, applied) = {
+            let mut live = lock(&client.live);
+            let state = &mut live.loadout;
+            let (recommendation, fetch) = if !wanted {
+                (RecommendationState::Off, false)
+            } else {
+                match &state.recommendation {
+                    Some((asked, answer)) if *asked == key => (answer.clone(), false),
+                    _ => {
+                        state.recommendation = Some((key.clone(), RecommendationState::Loading));
+                        (RecommendationState::Loading, true)
+                    }
+                }
+            };
+            let page = state
+                .page
+                .as_ref()
+                .filter(|(game, _)| *game == session.game_id)
+                .and_then(|(_, page)| page.clone());
+            let applied = state
+                .applied
+                .as_ref()
+                .filter(|(game, held, _)| *game == session.game_id && *held == champion)
+                .map(|(_, _, applied)| applied.clone());
+            (recommendation, fetch, page, applied)
+        };
+        if fetch {
+            self.fetch_loadout_recommendation(client, key, session.clone());
+        }
+        let current = LoadoutCurrent {
+            runes: page.as_ref().and_then(PerkPage::runes),
+            page: page.map(|page| page.name).unwrap_or_default(),
+            spells: spells_of(session),
+        };
+        let assets = loadout_assets(
+            lock(&client.data).as_deref(),
+            &current,
+            mine.as_ref(),
+            recommendation.ready(),
+        );
+        let mut view = LoadoutView {
+            game_id: session.game_id,
+            champion_id: champion,
+            mode,
+            lane,
+            held,
+            revision: 0,
+            current,
+            mine,
+            recommendation,
+            applied,
+            assets,
+        };
+        // A view with other contents takes the next revision; the same one keeps its own.
+        let mut live = lock(&client.live);
+        let last = &mut live.loadout.last_view;
+        match last {
+            Some((drawn, revision)) if *drawn == view => view.revision = *revision,
+            _ => {
+                let revision = self.inner.loadout.revisions.fetch_add(1, Ordering::Relaxed) + 1;
+                *last = Some((view.clone(), revision));
+                view.revision = revision;
+            }
+        }
+        Some(view)
+    }
+
+    /// Looks up the recommendation `key` names and keeps it while it is still the one asked for.
+    fn fetch_loadout_recommendation(
+        &self,
+        client: &Client,
+        key: RecommendationKey,
+        session: ChampSelectSession,
+    ) {
+        let (service, client) = (self.clone(), client.clone());
+        self.spawn(async move {
+            let answer = match service
+                .recommend(
+                    &client,
+                    key.champion,
+                    key.mode,
+                    key.lane,
+                    &key.builds,
+                    &session,
+                )
+                .await
+            {
+                Ok(recommendation) if recommendation.is_empty() => RecommendationState::Nothing,
+                Ok(recommendation) => RecommendationState::Ready { recommendation },
+                Err(error) => {
+                    debug!(%error, champion = key.champion, "no runes or spells to recommend");
+                    RecommendationState::Failed {
+                        message: error.to_string(),
+                    }
+                }
+            };
+            let kept = {
+                let mut live = lock(&client.live);
+                match &mut live.loadout.recommendation {
+                    Some((asked, slot)) if *asked == key => {
+                        *slot = answer;
+                        true
+                    }
+                    _ => false,
+                }
+            };
+            if kept {
+                service.render(&client);
+            }
+        });
+    }
+
+    /// What winer recommends for `champion`: its numbers where the build panel has a source for the
+    /// mode with runes and spells (the Rift's and ARAM's), else, or for a half they lack, the
+    /// client's own recommended pages.
+    async fn recommend(
+        &self,
+        client: &Client,
+        champion: i64,
+        mode: Mode,
+        lane: Option<Position>,
+        builds: &BuildSettings,
+        session: &ChampSelectSession,
+    ) -> Result<LoadoutRecommendation, CoreError> {
+        let build = if matches!(mode, Mode::Ranked | Mode::Normal | Mode::Aram) {
+            match self.build_with(builds, champion, mode, lane).await {
+                Ok(build) => Some(build),
+                Err(error) => {
+                    debug!(%error, champion, ?mode, "no numbers for the runes and spells");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let built = loadout::recommendation(build.as_deref(), &[]);
+        if built.runes_from.is_some() && built.spells_from.is_some() {
+            return Ok(built);
+        }
+        let pages = client_pages(&client.lcu, champion, mode, session).await?;
+        Ok(loadout::recommendation(build.as_deref(), &pages))
+    }
+
+    /// The recommendation the view holds for `key`, or a fresh lookup where it holds none.
+    async fn recommendation_for(
+        &self,
+        client: &Client,
+        key: RecommendationKey,
+        session: &ChampSelectSession,
+    ) -> Result<LoadoutRecommendation, CoreError> {
+        let held = lock(&client.live)
+            .loadout
+            .recommendation
+            .as_ref()
+            .filter(|(asked, _)| *asked == key)
+            .and_then(|(_, answer)| answer.ready().cloned());
+        match held {
+            Some(recommendation) => Ok(recommendation),
+            None => {
+                self.recommend(
+                    client,
+                    key.champion,
+                    key.mode,
+                    key.lane,
+                    &key.builds,
+                    session,
+                )
+                .await
+            }
+        }
+    }
+
+    /// Sets up `champion`, now that it is the player's: each half from the user's own setup where it
+    /// has that half, else the recommendation (`loadout::plan`). A half the player changes while
+    /// winer looks the recommendation up stays as they leave it.
     fn set_up(&self, client: &Client, champion: i64, mode: Mode, game_id: i64) {
         let (service, client) = (self.clone(), client.clone());
         self.spawn(async move {
-            let _turn = service.inner.loadout.acting.lock().await;
-            // Asked again: meanwhile the champion may have changed, or the rule been turned off.
             let Some(session) = holding(&client, game_id, champion) else {
                 return;
             };
-            let rule = service.settings().automation;
-            if !rule.restores_loadout(Some(mode)) {
+            let settings = service.settings();
+            if !settings.automation.restores_loadout(Some(mode)) {
                 return;
             }
-            let (setup, recommended) = match service.inner.loadout.store.get(champion, mode) {
-                Some(setup) => (setup, false),
-                None if rule.loadout.recommended => {
-                    match client_recommendation(&client.lcu, champion, mode, &session).await {
-                        Ok(Some(setup)) => (setup, true),
-                        Ok(None) => return,
+            let lane = lane_of(&session, mode);
+            let spells_before = spells_of(&session);
+            let page_before = current_page(&client.lcu).await;
+            let mine = service
+                .inner
+                .loadout
+                .presets
+                .find(&loadout::preset_keys(champion, mode, lane))
+                .map(|(_, setup)| setup);
+            let recommended =
+                if loadout::whole(mine.as_ref()) || !settings.automation.loadout.recommended {
+                    None
+                } else {
+                    let key = RecommendationKey {
+                        game_id,
+                        champion,
+                        mode,
+                        lane,
+                        builds: settings.builds.clone(),
+                    };
+                    match service.recommendation_for(&client, key, &session).await {
+                        Ok(recommendation) => Some(recommendation),
                         Err(error) => {
                             service.notice(NoticeKind::Failed {
                                 action: "loadout".into(),
                                 message: error.to_string(),
                             });
-                            return;
+                            None
                         }
                     }
-                }
-                None => return,
+                };
+            let mut plan = loadout::plan(mine.as_ref(), recommended.as_ref());
+            if plan.is_empty() {
+                return;
+            }
+            let _turn = service.inner.loadout.acting.lock().await;
+            // Asked again: meanwhile the champion may have changed, or the rule been turned off.
+            let Some(session) = holding(&client, game_id, champion) else {
+                return;
             };
-            // The rune page first, then the spells; a failure of one does not keep the other back.
-            let mut errors = Vec::new();
-            let runes = match &setup.runes {
-                Some(runes) => match service.write_page(&client, champion, runes).await {
-                    Ok(outcome) => Some(outcome),
-                    Err(error) => {
-                        errors.push(error.to_string());
-                        None
-                    }
-                },
-                None => None,
-            };
-            let spells = match setup.spells {
-                Some(spells) => match service.set_spells(&client, spells).await {
-                    Ok(()) => true,
-                    Err(error) => {
-                        errors.push(error.to_string());
-                        false
-                    }
-                },
-                None => false,
-            };
+            if !service.settings().automation.restores_loadout(Some(mode)) {
+                return;
+            }
+            let page_now = current_page(&client.lcu).await;
+            let written = lock(&client.live).loadout.written.clone();
+            let mut kept = Vec::new();
+            if plan.runes.is_some()
+                && changed_page(page_before.as_ref(), page_now.as_ref(), &written, game_id)
+            {
+                plan.runes = None;
+                kept.push(LoadoutPart::Runes);
+            }
+            if plan.spells.is_some()
+                && changed_spells(spells_before, spells_of(&session), &written, game_id)
+            {
+                plan.spells = None;
+                kept.push(LoadoutPart::Spells);
+            }
+            let (applied, errors) = service.carry_out(&client, game_id, champion, &plan).await;
             if !errors.is_empty() {
                 service.notice(NoticeKind::Failed {
                     action: "loadout".into(),
                     message: errors.join("; "),
                 });
             }
-            if runes.is_some() || spells {
-                info!(champion, ?mode, recommended, "loadout set up");
+            service.refresh_page(&client, game_id).await;
+            service.render(&client);
+            if applied.runes.is_some()
+                || applied.spells.is_some()
+                || applied.no_page
+                || !kept.is_empty()
+            {
+                info!(champion, ?mode, ?applied, ?kept, "loadout set up");
                 service.notice(NoticeKind::LoadoutApplied {
                     champion_id: champion,
-                    recommended,
-                    runes,
-                    spells,
+                    runes: applied.runes,
+                    spells: applied.spells,
+                    no_page: applied.no_page,
+                    kept,
                 });
             }
         });
+    }
+
+    /// Puts `plan` on the client for `champion` in champ select `game_id`: the rune page first, then
+    /// the spells; a failure of one does not keep the other back. What went up is kept for the
+    /// view; returns it, and the failures.
+    async fn carry_out(
+        &self,
+        client: &Client,
+        game_id: i64,
+        champion: i64,
+        plan: &Plan,
+    ) -> (AppliedLoadout, Vec<String>) {
+        let mut errors = Vec::new();
+        let mut applied = AppliedLoadout::default();
+        if let Some((runes, origin)) = &plan.runes {
+            match self.write_page(client, champion, runes).await {
+                Ok(PageOutcome::Written) => applied.runes = Some(*origin),
+                Ok(PageOutcome::NoPage) => applied.no_page = true,
+                Err(error) => errors.push(error.to_string()),
+            }
+        }
+        if let Some((spells, origin)) = plan.spells {
+            match self.set_spells(client, spells).await {
+                Ok(()) => applied.spells = Some(origin),
+                Err(error) => errors.push(error.to_string()),
+            }
+        }
+        self.note_applied(client, game_id, champion, &applied);
+        (applied, errors)
+    }
+
+    /// What went up for `champion` in champ select `game_id`, beside what went up before: a request
+    /// for one half leaves the other's origin as it was.
+    fn note_applied(&self, client: &Client, game_id: i64, champion: i64, now: &AppliedLoadout) {
+        let mut live = lock(&client.live);
+        let slot = &mut live.loadout.applied;
+        let mut applied = match slot.take() {
+            Some((game, held, applied)) if game == game_id && held == champion => applied,
+            _ => AppliedLoadout::default(),
+        };
+        if now.runes.is_some() || now.no_page {
+            applied.runes = now.runes;
+            applied.no_page = now.no_page;
+        }
+        if now.spells.is_some() {
+            applied.spells = now.spells;
+        }
+        *slot = Some((game_id, champion, applied));
+    }
+
+    /// The view `target` names, while it is still the view drawn last and the champ select it was
+    /// drawn for: else the request is stale, and nothing is done.
+    fn loadout_target(
+        &self,
+        client: &Client,
+        target: &LoadoutTarget,
+    ) -> Result<(LoadoutView, ChampSelectSession), CoreError> {
+        let (phase, view) = {
+            let state = lock(&self.inner.state);
+            (
+                state.phase,
+                state
+                    .champ_select
+                    .as_ref()
+                    .and_then(|view| view.loadout.as_deref().cloned()),
+            )
+        };
+        if phase != Phase::ChampSelect {
+            return Err(CoreError::Busy("not in champ select".into()));
+        }
+        let stale = || CoreError::Stale("champ select has changed since".into());
+        let view = view.ok_or_else(stale)?;
+        let session = lock(&client.live).champ_select.clone().ok_or_else(stale)?;
+        if !loadout::names(target, &view, &session) {
+            return Err(stale());
+        }
+        Ok((view, session))
+    }
+
+    /// What the window's or the client's panel asks for, on the view `target` names: checked before
+    /// winer's turn and again in it, so a request made against an older view does nothing. The
+    /// runes and spells come from the view, never from the request.
+    pub async fn loadout_action(
+        &self,
+        target: LoadoutTarget,
+        action: LoadoutAction,
+    ) -> Result<LoadoutDone, CoreError> {
+        let client = self.client()?;
+        self.loadout_target(&client, &target)?;
+        let _turn = self.inner.loadout.acting.lock().await;
+        let (view, session) = self.loadout_target(&client, &target)?;
+        let stale = || CoreError::Stale("that option is not in the view any more".into());
+        let (game_id, champion) = (view.game_id, view.champion_id);
+        let lanes = loadout::preset_keys(champion, view.mode, view.lane);
+        let done = match action {
+            LoadoutAction::SaveMine => {
+                let page = current_page(&client.lcu).await;
+                let setup = loadout::current_setup(page.as_ref(), spells_of(&session), now_ms())
+                    .ok_or_else(|| {
+                        CoreError::Invalid("no full rune page nor two spells to keep".into())
+                    })?;
+                let key = loadout::preset_key(champion, view.mode, view.lane);
+                let service = self.clone();
+                tokio::task::spawn_blocking(move || service.inner.loadout.presets.put(key, setup))
+                    .await
+                    .map_err(|error| CoreError::Io(std::io::Error::other(error)))??;
+                info!(champion, mode = ?view.mode, "the player's setup kept");
+                LoadoutDone::default()
+            }
+            LoadoutAction::ApplyRunes { index } => {
+                let recommendation = view.recommendation.ready().ok_or_else(stale)?;
+                let option = recommendation
+                    .runes
+                    .get(usize::from(index))
+                    .ok_or_else(stale)?;
+                let origin = recommendation.runes_from.ok_or_else(stale)?.origin();
+                let plan = Plan {
+                    runes: Some((option.page.clone(), origin)),
+                    spells: None,
+                };
+                self.carry_out_asked(&client, game_id, champion, &plan)
+                    .await?
+            }
+            LoadoutAction::ApplySpells { index } => {
+                let recommendation = view.recommendation.ready().ok_or_else(stale)?;
+                let option = recommendation
+                    .spells
+                    .get(usize::from(index))
+                    .ok_or_else(stale)?;
+                let origin = recommendation.spells_from.ok_or_else(stale)?.origin();
+                let plan = Plan {
+                    runes: None,
+                    spells: Some((option.spells, origin)),
+                };
+                self.carry_out_asked(&client, game_id, champion, &plan)
+                    .await?
+            }
+            LoadoutAction::ApplyMine => {
+                let mine = view.mine.as_ref().ok_or_else(stale)?;
+                let plan = loadout::plan(Some(mine), None);
+                self.carry_out_asked(&client, game_id, champion, &plan)
+                    .await?
+            }
+            LoadoutAction::RestoreRecommended => {
+                let service = self.clone();
+                tokio::task::spawn_blocking(move || service.inner.loadout.presets.remove(&lanes))
+                    .await
+                    .map_err(|error| CoreError::Io(std::io::Error::other(error)))??;
+                let key = RecommendationKey {
+                    game_id,
+                    champion,
+                    mode: view.mode,
+                    lane: view.lane,
+                    builds: self.settings().builds,
+                };
+                let recommendation = self.recommendation_for(&client, key, &session).await?;
+                let plan = loadout::plan(None, Some(&recommendation));
+                if plan.is_empty() {
+                    LoadoutDone::default()
+                } else {
+                    self.carry_out_asked(&client, game_id, champion, &plan)
+                        .await?
+                }
+            }
+        };
+        self.refresh_page(&client, game_id).await;
+        self.render(&client);
+        Ok(done)
+    }
+
+    /// [`Self::carry_out`] for a request, whose failure is the answer.
+    async fn carry_out_asked(
+        &self,
+        client: &Client,
+        game_id: i64,
+        champion: i64,
+        plan: &Plan,
+    ) -> Result<LoadoutDone, CoreError> {
+        let (applied, errors) = self.carry_out(client, game_id, champion, plan).await;
+        if let Some(error) = errors.into_iter().next() {
+            return Err(CoreError::Invalid(error));
+        }
+        Ok(LoadoutDone {
+            runes: if applied.no_page {
+                Some(PageOutcome::NoPage)
+            } else {
+                applied.runes.map(|_| PageOutcome::Written)
+            },
+            spells: applied.spells.is_some(),
+        })
     }
 
     /// Writes `runes` to winer's own page (`loadout::page_target`) and makes it the current one.
@@ -303,6 +952,17 @@ impl Service {
         if current.is_none_or(|page| page.id != id) {
             lcu.put(CURRENT_PAGE, &id).await?;
         }
+        let mut live = lock(&client.live);
+        if let Some(game_id) = live.champ_select.as_ref().map(|session| session.game_id) {
+            let written = &mut live.loadout.written;
+            if written.game_id != game_id {
+                *written = Written {
+                    game_id,
+                    ..Written::default()
+                };
+            }
+            written.page = Some((id, runes.clone()));
+        }
         Ok(PageOutcome::Written)
     }
 
@@ -328,6 +988,17 @@ impl Service {
                     &json!({ "spell1Id": spells[0], "spell2Id": spells[1] }),
                 )
                 .await?;
+        }
+        let mut live = lock(&client.live);
+        if let Some(game_id) = live.champ_select.as_ref().map(|session| session.game_id) {
+            let written = &mut live.loadout.written;
+            if written.game_id != game_id {
+                *written = Written {
+                    game_id,
+                    ..Written::default()
+                };
+            }
+            written.spells = Some(spells);
         }
         Ok(())
     }
@@ -588,34 +1259,51 @@ impl Service {
         Ok(removed)
     }
 
+    /// The user's own setups and the old file's, for the automation page. Reads the old file:
+    /// call it off the async runtime.
     pub fn loadout_summary(&self) -> LoadoutSummary {
-        self.inner.loadout.store.summary()
+        LoadoutSummary {
+            presets: u32::try_from(self.inner.loadout.presets.len()).unwrap_or(u32::MAX),
+            legacy: loadout::legacy_count(&self.inner.loadout.legacy),
+        }
     }
 
-    /// Forgets every remembered setup. Blocking: the file is written before it returns.
-    pub fn clear_loadouts(&self) -> Result<LoadoutSummary, CoreError> {
-        self.inner.loadout.store.clear()?;
+    /// Forgets every setup of the user's own. Blocking: the file is written before it returns.
+    pub fn clear_loadout_presets(&self) -> Result<LoadoutSummary, CoreError> {
+        self.inner.loadout.presets.clear()?;
         Ok(self.loadout_summary())
+    }
+
+    /// Deletes `loadouts.json`, the setups winer up to 0.0.24 remembered by itself. Blocking.
+    pub fn clear_loadouts(&self) -> Result<LoadoutSummary, CoreError> {
+        loadout::remove_legacy(&self.inner.loadout.legacy)?;
+        Ok(self.loadout_summary())
+    }
+
+    /// Where the user's own setups are kept, for the storage report.
+    pub fn loadout_presets_path(&self) -> PathBuf {
+        self.inner.loadout.presets.path().to_path_buf()
     }
 }
 
-/// The client's recommended page for the champion, position and map, as a setup.
-async fn client_recommendation(
+/// The client's recommended pages for the champion, position and map; none for a map it has none
+/// for, or a kind of game whose map is not known.
+async fn client_pages(
     lcu: &Lcu,
     champion: i64,
     mode: Mode,
     session: &ChampSelectSession,
-) -> Result<Option<Setup>, CoreError> {
+) -> Result<Vec<RecommendedPage>, CoreError> {
     let Some(map) = loadout::recommendation_map(mode) else {
-        return Ok(None);
+        return Ok(Vec::new());
     };
     let position = loadout::recommendation_position(session);
-    let pages: Vec<RecommendedPage> = lcu
-        .get(&format!(
+    let pages: Option<Vec<RecommendedPage>> = lcu
+        .get_optional(&format!(
             "/lol-perks/v1/recommended-pages/champion/{champion}/position/{position}/map/{map}"
         ))
         .await?;
-    Ok(loadout::recommended_setup(&pages))
+    Ok(pages.unwrap_or_default())
 }
 
 /// The local player's item sets as the client keeps them, and where they are written back.
@@ -779,25 +1467,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_last_champ_select_is_kept_until_its_game_starts_and_dropped_on_a_dodge() {
+    async fn nothing_is_remembered_when_a_game_starts_and_the_old_file_is_never_opened() {
         let dir = tempfile::tempdir().unwrap();
+        let old = dir.path().join("loadouts.json");
+        std::fs::write(&old, b"{ not json").unwrap();
         let (service, client) = (service(&dir), client(&[3120]));
-        service.loadout_champ_select(&client, &locked());
-        assert!(lock(&client.live).loadout.last.is_some());
-        service.loadout_phase(&client, Phase::ChampSelect);
-        assert!(lock(&client.live).loadout.last.is_some(), "still choosing");
-        service.loadout_phase(&client, Phase::Lobby);
-        assert!(
-            lock(&client.live).loadout.last.is_none(),
-            "a dodge leaves nothing to remember"
-        );
-
+        let mut settings = service.settings();
+        settings.automation.loadout.enabled = true;
+        service.set_settings(settings).unwrap();
         service.loadout_champ_select(&client, &locked());
         service.loadout_phase(&client, Phase::GameStart);
-        assert!(
-            lock(&client.live).loadout.last.is_none(),
-            "taken once the game starts"
+        assert_eq!(
+            service.loadout_summary(),
+            LoadoutSummary {
+                presets: 0,
+                legacy: Some(0)
+            },
+            "an unreadable old file counts none"
         );
+        assert!(old.exists(), "not moved aside");
+        assert!(!old.with_extension("json.invalid").exists());
+        assert!(!dir.path().join("loadout-presets.json").exists());
     }
 
     #[tokio::test]
@@ -884,12 +1574,345 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn remembered_setups_live_beside_the_settings() {
+    async fn the_users_setups_live_beside_the_settings_and_the_old_file_goes_when_asked() {
         let dir = tempfile::tempdir().unwrap();
+        let old = dir.path().join("loadouts.json");
+        std::fs::write(
+            &old,
+            br#"{"202:ranked":{"runes":null,"spells":[4,7]},"22:aram":{"runes":null,"spells":[4,32]}}"#,
+        )
+        .unwrap();
         let service = service(&dir);
-        assert_eq!(service.loadout_summary().remembered, 0);
-        assert_eq!(service.clear_loadouts().unwrap().remembered, 0);
-        assert!(dir.path().join("loadouts.json").exists());
+        assert_eq!(
+            service.loadout_summary(),
+            LoadoutSummary {
+                presets: 0,
+                legacy: Some(2)
+            }
+        );
+        assert_eq!(service.clear_loadouts().unwrap().legacy, None);
+        assert!(!old.exists());
+        assert_eq!(service.clear_loadout_presets().unwrap().presets, 0);
+        assert_eq!(
+            service.loadout_presets_path(),
+            dir.path().join("loadout-presets.json")
+        );
+    }
+
+    /// Champ select 9 on the Rift, the player in cell 0 holding `champion`, with `spells`.
+    fn rift(champion: i64, spells: [i64; 2]) -> ChampSelectSession {
+        serde_json::from_value(serde_json::json!({
+            "gameId": 9,
+            "queueId": 420,
+            "localPlayerCellId": 0,
+            "myTeam": [{
+                "cellId": 0,
+                "championId": champion,
+                "assignedPosition": "bottom",
+                "spell1Id": spells[0],
+                "spell2Id": spells[1]
+            }],
+            "actions": [[{"id": 1, "actorCellId": 0, "type": "pick", "completed": true, "championId": champion}]]
+        }))
+        .unwrap()
+    }
+
+    /// A service in champ select `session` on a client that never answers (port 1), the view drawn.
+    fn in_champ_select(dir: &tempfile::TempDir, session: &ChampSelectSession) -> (Service, Client) {
+        let service = service(dir);
+        let mut settings = service.settings();
+        // Nothing to look up in a test, on the internet or in the client: no recommendation is
+        // asked for, and no page read in the background.
+        settings.builds.enabled = false;
+        settings.plugin.loadout_panel = false;
+        service.set_settings(settings).unwrap();
+        let credentials = Credentials::new(1, "t");
+        let data = GameData {
+            queues: vec![QueueInfo {
+                id: 420,
+                name: "单双排".into(),
+                game_mode: "CLASSIC".into(),
+                ranked: true,
+            }],
+            ..GameData::default()
+        };
+        let client = Client {
+            lcu: Lcu::new(&credentials).unwrap(),
+            credentials,
+            platform_id: String::new(),
+            data: Arc::new(Mutex::new(Some(Arc::new(data)))),
+            live: Arc::default(),
+        };
+        {
+            let mut live = lock(&client.live);
+            live.phase = Phase::ChampSelect;
+            live.champ_select = Some(session.clone());
+        }
+        *service
+            .inner
+            .client
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(client.clone());
+        lock(&service.inner.state).phase = Phase::ChampSelect;
+        let view = service.loadout_view(&client, session, Some(Mode::Ranked), &service.settings());
+        show(&service, session, view);
+        (service, client)
+    }
+
+    /// Puts `view` in the snapshot as champ select's, as `render` does.
+    fn show(service: &Service, session: &ChampSelectSession, view: Option<LoadoutView>) {
+        let mut state = lock(&service.inner.state);
+        state.champ_select = Some(crate::view::ChampSelectView {
+            game_id: session.game_id,
+            queue_id: session.queue_id,
+            timer: crate::view::TimerView::default(),
+            my_team: Vec::new(),
+            their_team: Vec::new(),
+            my_bans: Vec::new(),
+            their_bans: Vec::new(),
+            bench_enabled: false,
+            bench: Vec::new(),
+            rerolls_remaining: 0,
+            callout: Vec::new(),
+            side: None,
+            recommendations: Vec::new(),
+            loadout: view.map(Box::new),
+        });
+    }
+
+    fn target(view: &LoadoutView) -> LoadoutTarget {
+        LoadoutTarget {
+            game_id: view.game_id,
+            champion_id: view.champion_id,
+            revision: view.revision,
+        }
+    }
+
+    fn drawn(service: &Service) -> LoadoutView {
+        lock(&service.inner.state)
+            .champ_select
+            .as_ref()
+            .and_then(|view| view.loadout.as_deref().cloned())
+            .expect("a loadout view")
+    }
+
+    #[tokio::test]
+    async fn the_view_names_the_champion_its_lane_and_a_revision_that_follows_its_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = rift(202, [4, 7]);
+        let (service, client) = in_champ_select(&dir, &session);
+        let view = drawn(&service);
+        assert_eq!(
+            (
+                view.game_id,
+                view.champion_id,
+                view.mode,
+                view.lane,
+                view.held
+            ),
+            (9, 202, Mode::Ranked, Some(Position::Bottom), true)
+        );
+        assert_eq!(view.current.spells, [4, 7]);
+        assert!(view.revision > 0);
+        // Drawn again unchanged, it keeps its revision; another lane takes a new one.
+        let settings = service.settings();
+        let again = service.loadout_view(&client, &session, Some(Mode::Ranked), &settings);
+        assert_eq!(
+            again.as_ref().map(|view| view.revision),
+            Some(view.revision)
+        );
+        let mut top = session.clone();
+        top.my_team[0].assigned_position = "top".into();
+        lock(&client.live).champ_select = Some(top.clone());
+        let moved = service
+            .loadout_view(&client, &top, Some(Mode::Ranked), &settings)
+            .unwrap();
+        assert_eq!(moved.lane, Some(Position::Top));
+        assert_ne!(moved.revision, view.revision, "only the lane changed");
+        // Arena has no runes to choose; nobody holds a champion before one is hovered.
+        assert!(
+            service
+                .loadout_view(&client, &top, Some(Mode::Arena), &settings)
+                .is_none()
+        );
+        let empty = rift(0, [4, 7]);
+        assert!(
+            service
+                .loadout_view(&client, &empty, Some(Mode::Ranked), &settings)
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_request_made_against_an_older_view_does_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = rift(202, [4, 7]);
+        let (service, client) = in_champ_select(&dir, &session);
+        let stale =
+            |result: Result<LoadoutDone, CoreError>| matches!(result, Err(CoreError::Stale(_)));
+        let kept = || service.loadout_summary().presets;
+
+        // The view as drawn: carried out. The page could not be read from this client, so the
+        // spells alone are kept as the player's own setup, and the view is drawn again with it.
+        let view = drawn(&service);
+        let saved = service
+            .loadout_action(target(&view), LoadoutAction::SaveMine)
+            .await;
+        assert_eq!(saved.unwrap(), LoadoutDone::default());
+        assert_eq!(kept(), 1);
+        let view = drawn(&service);
+        assert_eq!(
+            view.mine.as_ref().and_then(|mine| mine.spells),
+            Some([4, 7])
+        );
+        assert!(
+            stale(
+                service
+                    .loadout_action(target(&view), LoadoutAction::ApplyRunes { index: 0 })
+                    .await
+            ),
+            "no recommendation in the view to apply"
+        );
+
+        // Another champ select, another champion, an older revision.
+        for wrong in [
+            LoadoutTarget {
+                game_id: 8,
+                ..target(&view)
+            },
+            LoadoutTarget {
+                champion_id: 22,
+                ..target(&view)
+            },
+            LoadoutTarget {
+                revision: view.revision.wrapping_sub(1),
+                ..target(&view)
+            },
+        ] {
+            assert!(stale(
+                service
+                    .loadout_action(wrong, LoadoutAction::RestoreRecommended)
+                    .await
+            ));
+        }
+        assert_eq!(kept(), 1, "nothing was taken out");
+
+        // The lane changed after the panel was drawn: its revision names the view before.
+        let mut top = session.clone();
+        top.my_team[0].assigned_position = "top".into();
+        lock(&client.live).champ_select = Some(top.clone());
+        let redrawn = service.loadout_view(&client, &top, Some(Mode::Ranked), &service.settings());
+        show(&service, &top, redrawn);
+        assert!(stale(
+            service
+                .loadout_action(target(&view), LoadoutAction::SaveMine)
+                .await
+        ));
+        assert_eq!(kept(), 1, "nothing kept for the other lane");
+
+        // The champion swapped in the client before the view was drawn again.
+        let now = drawn(&service);
+        lock(&client.live).champ_select = Some(rift(22, [4, 7]));
+        assert!(stale(
+            service
+                .loadout_action(target(&now), LoadoutAction::SaveMine)
+                .await
+        ));
+        assert_eq!(kept(), 1);
+
+        // Outside champ select nothing is asked of the client at all.
+        lock(&client.live).champ_select = Some(top);
+        lock(&service.inner.state).phase = Phase::InProgress;
+        assert!(matches!(
+            service
+                .loadout_action(target(&now), LoadoutAction::SaveMine)
+                .await,
+            Err(CoreError::Busy(_))
+        ));
+        assert_eq!(kept(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_setup_of_the_users_own_shows_in_the_view_for_its_lane_then_without_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = rift(202, [4, 7]);
+        let (service, client) = in_champ_select(&dir, &session);
+        assert_eq!(drawn(&service).mine, None);
+        let setup = Setup {
+            runes: None,
+            spells: Some([4, 6]),
+            saved_at: 1,
+        };
+        service
+            .inner
+            .loadout
+            .presets
+            .put(loadout::preset_key(202, Mode::Ranked, None), setup.clone())
+            .unwrap();
+        let settings = service.settings();
+        let view = service
+            .loadout_view(&client, &session, Some(Mode::Ranked), &settings)
+            .unwrap();
+        assert_eq!(
+            view.mine.as_ref(),
+            Some(&setup),
+            "the one without a lane, for bottom too"
+        );
+        let lane = Setup {
+            spells: Some([4, 21]),
+            ..setup
+        };
+        service
+            .inner
+            .loadout
+            .presets
+            .put(
+                loadout::preset_key(202, Mode::Ranked, Some(Position::Bottom)),
+                lane.clone(),
+            )
+            .unwrap();
+        let view = service
+            .loadout_view(&client, &session, Some(Mode::Ranked), &settings)
+            .unwrap();
+        assert_eq!(view.mine, Some(lane), "the lane's own first");
+        assert_eq!(
+            service
+                .loadout_view(&client, &session, Some(Mode::Normal), &settings)
+                .unwrap()
+                .mine,
+            None,
+            "ranked and normal games are kept apart"
+        );
+    }
+
+    #[test]
+    fn a_change_the_player_made_is_told_from_winers_own() {
+        let page: PerkPage = fixture("loadout/perks-currentpage.json");
+        let mut theirs = page.clone();
+        theirs.selected_perk_ids[0] = 8010;
+        let none = Written::default();
+        assert!(!changed_page(Some(&page), Some(&page), &none, 9));
+        assert!(changed_page(Some(&page), Some(&theirs), &none, 9));
+        assert!(
+            !changed_page(None, Some(&theirs), &none, 9),
+            "not read before"
+        );
+        let ours = Written {
+            game_id: 9,
+            page: Some((theirs.id, theirs.runes().unwrap())),
+            spells: Some([4, 6]),
+        };
+        assert!(
+            !changed_page(Some(&page), Some(&theirs), &ours, 9),
+            "winer wrote it"
+        );
+        assert!(
+            changed_page(Some(&page), Some(&theirs), &ours, 10),
+            "in another champ select"
+        );
+        assert!(!changed_spells([4, 7], [7, 4], &none, 9), "the same two");
+        assert!(changed_spells([4, 7], [4, 21], &none, 9));
+        assert!(!changed_spells([4, 7], [6, 4], &ours, 9), "winer set them");
     }
 
     // Storage.
@@ -948,7 +1971,10 @@ mod tests {
     #[test]
     fn a_cleanup_lets_go_of_every_answer_but_one_being_fetched() {
         let dir = tempfile::tempdir().unwrap();
-        let state = LoadoutState::new(dir.path().join("loadouts.json"));
+        let state = LoadoutState::new(
+            dir.path().join("loadout-presets.json"),
+            dir.path().join("loadouts.json"),
+        );
         let now = Instant::now();
         let fetching = slot(None);
         let _held = fetching.try_lock().unwrap();

@@ -52,10 +52,10 @@ home:
             body: A chat message ranked by tier, sent to the team or to you alone in one click or every game by itself, its first line naming your side and winer.
             status: available
             link: /en/guide/live#callout
-          - title: Comebacks
-            body: A shortcut sends one of your own lines at random, to champ select's chat or typed into a game's; an online library only once you download it and turn it on.
+          - title: Quick chat
+            body: Up to 10 messages of your own, each sent by a shortcut of its own, and a shortcut for a random line of yours; to champ select's chat or typed into a game's.
             status: experimental
-            link: /en/guide/live#comebacks
+            link: /en/guide/live#quick-chat
           - title: Champ-select phrases
             body: One click sends a teammate a quick phrase with their seat and champion filled in; optionally sent by itself when you ask to trade, with a thank-you once it goes through.
             status: experimental
@@ -97,7 +97,7 @@ home:
             status: available
             link: /en/guide/automation#after-the-game
           - title: Runes and summoner spells
-            body: Once your champion is locked in, sets up the runes and spells you last played it with in the mode, or the client's recommendation.
+            body: Once your champion is locked in, sets up the recommended runes and spells, or your own setup where you saved one; in champ select a panel at the client's bottom right switches them in one click.
             status: available
             link: /en/guide/automation#runes-and-summoner-spells
           - title: Item sets
@@ -163,7 +163,7 @@ home:
         detail: What Hextech ARAM's augments do (can be turned off), and checking for and downloading updates.
       - name: jsDelivr and GitHub
         sends: a plain web request
-        detail: Only when you press download, the online library the comebacks can use.
+        detail: Only when you press download, the online library quick chat can use.
 ---
 
 <HomeIndex />

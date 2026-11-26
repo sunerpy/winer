@@ -810,6 +810,7 @@ mod tests {
             callout: Vec::new(),
             side: None,
             recommendations: Vec::new(),
+            loadout: None,
         });
     }
 

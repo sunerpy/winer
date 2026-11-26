@@ -868,6 +868,10 @@ pub struct PluginSettings {
     /// A click on a player in the client's lobby or champ select shows their latest games in a
     /// panel over the client page; off, the click opens their history in winer's window.
     pub history_in_client: bool,
+    // Runes and spells (`loadout`).
+    /// In the client's champ select, a panel at the bottom right with the runes and spells the
+    /// player has, winer's recommendation and their own setup, and buttons that set them up.
+    pub loadout_panel: bool,
 }
 
 impl Default for PluginSettings {
@@ -883,6 +887,7 @@ impl Default for PluginSettings {
             lobby_panel: true,
             // The history panel in the client.
             history_in_client: true,
+            loadout_panel: true,
         }
     }
 }
@@ -1987,6 +1992,15 @@ mod tests {
     }
 
     // The history panel in the client.
+    #[test]
+    fn the_runes_panel_in_the_client_starts_on_and_a_file_from_before_it_gets_it() {
+        assert!(PluginSettings::default().loadout_panel);
+        let old: Settings = serde_json::from_str(r#"{"plugin":{"teamPanel":false}}"#).unwrap();
+        assert!(old.plugin.loadout_panel && !old.plugin.team_panel);
+        let off: Settings = serde_json::from_str(r#"{"plugin":{"loadoutPanel":false}}"#).unwrap();
+        assert!(!off.normalized().plugin.loadout_panel);
+    }
+
     #[test]
     fn the_history_panel_in_the_client_starts_on_and_can_be_switched_off() {
         assert!(PluginSettings::default().history_in_client);

@@ -6,7 +6,7 @@ use ts_rs::TS;
 
 use crate::notes::PlayerNote;
 
-use crate::{loadout::PageOutcome, settings::Settings};
+use crate::settings::Settings;
 
 /// Everything live, in one document. Changes after it arrive as [`Update`]s.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
@@ -239,6 +239,12 @@ pub struct ChampSelectView {
     /// Champions worth considering for the local player's pick, best first (`recommend`); empty
     /// where suggestions do not apply or are switched off.
     pub recommendations: Vec<Recommendation>,
+    /// The local player's champion's runes and spells (`loadout::LoadoutView`); absent where the
+    /// kind of game has none to choose, or before a champion is in hand. Boxed: it is the largest
+    /// part of the view, and the view travels inside every update.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub loadout: Option<Box<crate::loadout::LoadoutView>>,
 }
 
 /// A champion worth considering, and why (`recommend::suggest`).
@@ -778,15 +784,16 @@ pub enum NoticeKind {
         message: String,
     },
     // Runes, spells and item sets (`loadout`).
-    /// Set up the runes and summoner spells for the champion just taken.
+    /// Set up the runes and summoner spells for the champion just taken: each half from the user's
+    /// own setup, winer's numbers or the client's pages (`None`: that half was not set up).
     LoadoutApplied {
         champion_id: i64,
-        /// The client's own recommendation: nothing was remembered for the champion.
-        recommended: bool,
-        /// What became of the rune page; absent where there were no runes to set up.
-        runes: Option<PageOutcome>,
-        /// The two summoner spells are the ones set up.
-        spells: bool,
+        runes: Option<crate::loadout::LoadoutOrigin>,
+        spells: Option<crate::loadout::LoadoutOrigin>,
+        /// Runes were to go up, but no page could take them.
+        no_page: bool,
+        /// Halves the player changed while winer looked up the recommendation: left as they are.
+        kept: Vec<crate::loadout::LoadoutPart>,
     },
     /// Wrote winer's item set for the champion just taken.
     ItemSetWritten {
@@ -1053,6 +1060,8 @@ pub enum ErrorCode {
     Unavailable,
     /// The client has no room for what winer would write (its list of item sets is full).
     Full,
+    /// The request named a view that has changed since: nothing was done.
+    Stale,
     Internal,
 }
 

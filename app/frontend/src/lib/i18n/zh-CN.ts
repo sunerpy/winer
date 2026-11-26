@@ -799,7 +799,7 @@ export const zhCN = {
   // Storage: what winer keeps on disk and in memory, and the cleanup (Settings › About).
   "storage.title": "存储空间",
   "storage.hint":
-    "winer 在本机保存的内容和各自的上限。清理缓存只删除缓存、旧日志和用过的更新安装包，不会删除游戏设置备份、设置和记住的配置。",
+    "winer 在本机保存的内容和各自的上限。清理缓存只删除缓存、旧日志和用过的更新安装包，不会删除游戏设置备份、设置和我的方案。",
   "storage.clear": "清理缓存",
   "storage.loadFailed": "读取存储空间失败",
   "storage.files": "{n} 个文件",
@@ -815,7 +815,7 @@ export const zhCN = {
   "storage.backupsNote": "最多保留 {n} 份，清理缓存不会删除",
   "storage.pengu": "客户端增强组件",
   "storage.penguNote": "Pengu Loader 与 winer 的客户端插件",
-  "storage.settings": "设置与记住的配置",
+  "storage.settings": "设置与我的方案",
   "storage.settingsNote": "清理缓存不会删除",
   "storage.updates": "更新安装包",
   "storage.updatesNote": "更新完成后留在系统临时文件夹里，winer 下次启动时删除",
@@ -905,6 +905,18 @@ export const zhCN = {
     "没有写入：没有空位放 winer 的符文页，当前页又是你自己的。删掉一页符文页，或者选中客户端的临时页后再试。",
   "loadout.spellsApplied": "已换上这两个召唤师技能。",
   "loadout.itemSetWritten": "已写入装备方案，游戏内商店的装备方案里能找到它。",
+  "loadout.mine": "我的方案",
+  "loadout.mineNone": "还没有保存这个英雄在这个模式的方案，锁定后用推荐。",
+  "loadout.mineSaved": "已保存这个英雄在这个模式的方案：{what}。锁定后先用它，没有的部分用推荐。",
+  "loadout.saveMine": "保存为我的方案",
+  "loadout.saveMineHint": "把现在的符文页和召唤师技能存成这个英雄在这个模式的方案",
+  "loadout.applyMine": "应用我的方案",
+  "loadout.restore": "恢复推荐",
+  "loadout.restoreHint": "删掉这个英雄在这个模式的方案，换上推荐的符文和召唤师技能",
+  "loadout.savedMine": "已保存为我的方案，以后这个英雄在这个模式会先用它",
+  "loadout.appliedMine": "已应用我的方案",
+  "loadout.restored": "已恢复推荐",
+  "loadout.stale": "选人已经变化，请再点一次",
   "loadout.priority": "主升",
   "loadout.sequence": "前 {n} 级的加点",
   "loadout.good": "优势对位",
@@ -928,15 +940,21 @@ export const zhCN = {
   "loadout.section": "符文与召唤师技能",
   "loadout.rule": "自动配置符文和召唤师技能",
   "loadout.ruleHint":
-    "锁定英雄后（大乱斗里每换一次英雄），换上这个英雄在这个模式里上一局用的符文和召唤师技能。每个英雄只换一次，之后你自己的改动不会被覆盖。",
-  "loadout.recommended": "没有记录时用客户端推荐",
+    "锁定英雄后（大乱斗里每换一次英雄），换上这个英雄的符文和召唤师技能：有「我的方案」就用你的方案，没有就用推荐。排位和匹配的推荐来自腾讯 101（或设置里选的 OP.GG），极地大乱斗来自 OP.GG，海克斯大乱斗和其他模式用客户端自己的推荐页。每个英雄只换一次，之后你自己的改动不会被覆盖。",
+  "loadout.recommended": "没有我的方案时用推荐",
   "loadout.recommendedHint":
-    "这个英雄在这个模式里还没有记录时，用客户端自己推荐的符文页和召唤师技能。",
-  "loadout.remembered": "已记住 {n} 套",
-  "loadout.rememberedHint":
-    "每局开始时记下你最终用的符文和召唤师技能，按英雄和模式分开，只保存在这台电脑上。",
-  "loadout.forget": "清除记忆",
-  "loadout.forgotten": "已清除记住的符文和召唤师技能",
+    "这个英雄在这个模式里没有你保存的方案时，换上推荐的符文和召唤师技能；关闭后只换你自己的方案。",
+  "loadout.presets": "我的方案 {n} 套",
+  "loadout.presetsHint":
+    "在对局页或客户端右下角的符文面板里点「保存为我的方案」，按英雄和模式分开保存（排位和匹配再按分路），只保存在这台电脑上。",
+  "loadout.legacy": "旧版本记下的上一局配置（已停用）",
+  "loadout.legacyCount":
+    "共 {n} 条。0.0.24 及以前每局开局自动记下的符文和召唤师技能，现在不再使用，可以删除。",
+  "loadout.legacyUnreadable": "文件读不出来，现在不再使用，可以删除。",
+  "loadout.legacyDelete": "删除",
+  "loadout.legacyDeleted": "已删除旧的上一局配置",
+  "loadout.forget": "清除我的方案",
+  "loadout.forgotten": "已清除我的方案",
   "loadout.pageNote":
     "winer 只用一页符文页，名为「winer · 英雄名」；没有这一页又没有空位时，只会写进客户端的临时页，不会改你自己的页。",
   "loadout.itemSetsSection": "装备方案",
@@ -964,10 +982,16 @@ export const zhCN = {
     "腾讯掌上英雄联盟没有数据时改用 ARAM.GG（第三方数据，它不允许程序批量读取数据文件）；关闭后只用腾讯的数据。",
   "loadout.source.off": "关闭",
   "loadout.sourceOff": "已在设置中关闭这个模式的数据源。",
-  "loadout.notice.remembered": "为 {champion} 应用了记住的{what}",
-  "loadout.notice.recommended": "为 {champion} 应用了客户端推荐的{what}",
   "loadout.notice.noPage": "{champion} 的符文没有改动：没有空位放 winer 的符文页",
   "loadout.notice.noPageToo": "{applied}；符文没有改动：没有空位放 winer 的符文页",
+  "loadout.notice.applied": "已为 {champion} 应用{parts}",
+  "loadout.notice.part": "{what}（{origin}）",
+  "loadout.notice.and": "和",
+  "loadout.notice.kept": "{what}你刚改过，没有覆盖",
+  "loadout.notice.keptOnly": "{champion} 的{what}你刚改过，没有覆盖",
+  "loadout.origin.mine": "我的方案",
+  "loadout.origin.recommended": "推荐",
+  "loadout.origin.client": "客户端推荐",
   "loadout.notice.itemSet": "已为 {champion} 写入装备方案",
   "loadout.itemSetsFull":
     "装备方案没有写入：客户端的装备方案列表放满了你自己的方案（上限约 64 KB）。在客户端里删掉一些装备方案后再试。",
@@ -1020,6 +1044,9 @@ export const zhCN = {
   "overlay.historyInClient": "在客户端里查看战绩",
   "overlay.historyInClientHint":
     "在组队房间或英雄选择界面点一名玩家时，直接在客户端里弹出他最近的对局；关闭后改为在 winer 的窗口里打开他的战绩。",
+  "overlay.loadoutPanel": "选人时显示符文面板",
+  "overlay.loadoutPanelHint":
+    "英雄选择中，在客户端右下角显示现在的和推荐的符文、召唤师技能，可以一键应用推荐、保存为我的方案或恢复推荐。打开后 winer 会为你选的英雄读取推荐数据。",
   // Callout: the shortcut that sends it, and the enemy lines it types into the game's chat.
   "callout.hotkey": "发送喊话的快捷键",
   "callout.hotkeyHint":

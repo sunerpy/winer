@@ -1,7 +1,8 @@
-//! Runes, summoner spells and item sets for the champion in hand: the setup last played on it in a
-//! kind of game, kept in `loadouts.json`; when to set it up again and where a rune page can go; and
-//! winer's item sets inside the client's own list. Carrying them out is the service's job
-//! (`service::loadout`); nothing here touches the client.
+//! Runes, summoner spells and item sets for the champion in hand: what winer recommends (its
+//! numbers, else the client's own recommended pages), the user's own setup for the champion and
+//! kind of game (我的方案, kept in `loadout-presets.json`), which of them to set up and when, where a
+//! rune page can go; and winer's item sets inside the client's own list. Carrying them out is the
+//! service's job (`service::loadout`); nothing here touches the client.
 
 use std::{
     collections::BTreeMap,
@@ -15,7 +16,7 @@ use serde_json::{Value, json, value::RawValue};
 use ts_rs::TS;
 
 use crate::{
-    builds::{Build, BuildSource, ItemOption, RunePage},
+    builds::{Build, BuildSource, ItemOption, Rates, RuneOption, RunePage, SpellOption},
     model::ChampSelectSession,
     settings::{Language, Mode, write_atomic},
     view::Position,
@@ -76,28 +77,34 @@ pub struct RecommendedPerk {
     pub id: i64,
 }
 
-// What is remembered.
+// The user's own setups (我的方案).
 
-/// A champion's setup for one kind of game.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// A champion's runes and spells for one kind of game: the user's own (我的方案), or what winer set
+/// up. Either half may be missing.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct Setup {
-    /// `None` where the game started without a full page.
+    /// `None` where there was no full page to keep.
     pub runes: Option<RunePage>,
     pub spells: Option<[i64; 2]>,
-    /// Epoch milliseconds; zero for one that was never played (the client's recommendation).
+    /// Epoch milliseconds the user saved it at.
     #[serde(default)]
     pub saved_at: i64,
 }
 
-/// How many setups are remembered, for the automation page.
+/// The user's own setups and the file an older winer remembered games in, for the automation page.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct LoadoutSummary {
-    pub remembered: u32,
+    /// Setups of the user's own (我的方案), one a champion, kind of game and lane.
+    pub presets: u32,
+    /// `loadouts.json`, where winer up to 0.0.24 remembered each game's setup by itself: `None`
+    /// where there is no such file, else how many setups it holds (0 for one that does not read).
+    /// Nothing reads it to set anything up any more.
+    pub legacy: Option<u32>,
 }
 
-/// Where a remembered setup lives in the file: `"202:ranked"`.
+/// Where a setup lives in a file: `"202:ranked"`.
 fn key(champion_id: i64, mode: Mode) -> String {
     let mode = serde_json::to_value(mode)
         .ok()
@@ -106,7 +113,39 @@ fn key(champion_id: i64, mode: Mode) -> String {
     format!("{champion_id}:{mode}")
 }
 
-/// `loadouts.json`, beside the settings. Writes are atomic, as the settings' are.
+fn lane_name(lane: Position) -> &'static str {
+    match lane {
+        Position::Top => "top",
+        Position::Jungle => "jungle",
+        Position::Middle => "middle",
+        Position::Bottom => "bottom",
+        Position::Utility => "utility",
+    }
+}
+
+/// Where the user's own setup for a champion lives: `"202:hextech"`; on the Rift with a lane,
+/// `"202:ranked:bottom"`, since a champion is set up apart for each lane it is played in.
+pub fn preset_key(champion_id: i64, mode: Mode, lane: Option<Position>) -> String {
+    match lane.filter(|_| matches!(mode, Mode::Ranked | Mode::Normal)) {
+        Some(lane) => format!("{}:{}", key(champion_id, mode), lane_name(lane)),
+        None => key(champion_id, mode),
+    }
+}
+
+/// The keys the user's setup for `champion_id` may be under, in the order they are looked up:
+/// the lane's own, then the one without a lane (saved in a game that assigned none).
+pub fn preset_keys(champion_id: i64, mode: Mode, lane: Option<Position>) -> Vec<String> {
+    let own = preset_key(champion_id, mode, lane);
+    let bare = key(champion_id, mode);
+    if own == bare {
+        vec![own]
+    } else {
+        vec![own, bare]
+    }
+}
+
+/// A file of setups by key, beside the settings (`loadout-presets.json`). Writes are atomic, as the
+/// settings' are.
 pub struct LoadoutStore {
     path: PathBuf,
     setups: Mutex<BTreeMap<String, Setup>>,
@@ -120,13 +159,13 @@ impl LoadoutStore {
         let setups = match fs::read(&path) {
             Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|error| {
                 let aside = path.with_extension("json.invalid");
-                tracing::warn!(%error, aside = %aside.display(), "loadouts file is invalid, starting empty");
+                tracing::warn!(%error, aside = %aside.display(), "setups file is invalid, starting empty");
                 let _ = fs::rename(&path, aside);
                 BTreeMap::new()
             }),
             Err(error) if error.kind() == io::ErrorKind::NotFound => BTreeMap::new(),
             Err(error) => {
-                tracing::warn!(%error, "loadouts file is unreadable, starting empty");
+                tracing::warn!(%error, "setups file is unreadable, starting empty");
                 BTreeMap::new()
             }
         };
@@ -142,17 +181,36 @@ impl LoadoutStore {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    pub fn get(&self, champion_id: i64, mode: Mode) -> Option<Setup> {
-        self.lock().get(&key(champion_id, mode)).cloned()
+    /// The first setup under one of `keys` (`preset_keys`), with the key it was under.
+    pub fn find(&self, keys: &[String]) -> Option<(String, Setup)> {
+        let setups = self.lock();
+        keys.iter()
+            .find_map(|key| setups.get(key).map(|setup| (key.clone(), setup.clone())))
     }
 
-    pub fn put(&self, champion_id: i64, mode: Mode, setup: Setup) -> io::Result<()> {
+    pub fn put(&self, key: String, setup: Setup) -> io::Result<()> {
         let mut setups = self.lock();
         let mut next = setups.clone();
-        next.insert(key(champion_id, mode), setup);
+        next.insert(key, setup);
         self.write(&next)?;
         *setups = next;
         Ok(())
+    }
+
+    /// Takes out every setup under `keys`; whether there was one. The file is written only then.
+    pub fn remove(&self, keys: &[String]) -> io::Result<bool> {
+        let mut setups = self.lock();
+        let mut next = setups.clone();
+        let removed = keys
+            .iter()
+            .filter(|key| next.remove(*key).is_some())
+            .count();
+        if removed == 0 {
+            return Ok(false);
+        }
+        self.write(&next)?;
+        *setups = next;
+        Ok(true)
     }
 
     pub fn clear(&self) -> io::Result<()> {
@@ -162,10 +220,12 @@ impl LoadoutStore {
         Ok(())
     }
 
-    pub fn summary(&self) -> LoadoutSummary {
-        LoadoutSummary {
-            remembered: self.lock().len() as u32,
-        }
+    pub fn len(&self) -> usize {
+        self.lock().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lock().is_empty()
     }
 
     pub fn path(&self) -> &Path {
@@ -178,6 +238,380 @@ impl LoadoutStore {
             &serde_json::to_vec_pretty(setups).expect("setups serialize"),
         )
     }
+}
+
+/// What `loadouts.json`, the file winer up to 0.0.24 remembered each game's setup in, holds now:
+/// `None` without the file, else how many setups (0 for a file that does not read). Only read, never
+/// moved or written: deleting it is the user's call (`remove_legacy`).
+pub fn legacy_count(path: &Path) -> Option<u32> {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return None,
+        Err(_) => return Some(0),
+    };
+    let setups: BTreeMap<String, Value> = serde_json::from_slice(&bytes).unwrap_or_default();
+    Some(u32::try_from(setups.len()).unwrap_or(u32::MAX))
+}
+
+/// Deletes `loadouts.json`; a file that is gone already is fine.
+pub fn remove_legacy(path: &Path) -> io::Result<()> {
+    match fs::remove_file(path) {
+        Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+        _ => Ok(()),
+    }
+}
+
+// What winer recommends, and what it sets up.
+
+/// Where a half of what winer sets up came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum LoadoutOrigin {
+    /// The user's own setup for the champion and kind of game (我的方案).
+    Mine,
+    /// winer's numbers (腾讯 101, OP.GG).
+    Recommended,
+    /// The client's own recommended pages.
+    Client,
+}
+
+/// Where a recommendation's options come from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum RecommendedBy {
+    Tencent,
+    OpGg,
+    /// The client's own recommended pages: no rates.
+    Client,
+}
+
+impl RecommendedBy {
+    pub fn origin(self) -> LoadoutOrigin {
+        match self {
+            Self::Tencent | Self::OpGg => LoadoutOrigin::Recommended,
+            Self::Client => LoadoutOrigin::Client,
+        }
+    }
+}
+
+/// The options a recommendation lists for each half: the first is the one set up.
+pub const RECOMMENDED_OPTIONS: usize = 3;
+
+/// What winer recommends for a champion in a kind of game: rune pages and spell pairs, most taken
+/// first, each half from winer's numbers where the source has it, else from the client's own
+/// recommended pages.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadoutRecommendation {
+    pub runes: Vec<RuneOption>,
+    pub spells: Vec<SpellOption>,
+    /// Where the rune pages come from; `None` while there are none.
+    pub runes_from: Option<RecommendedBy>,
+    pub spells_from: Option<RecommendedBy>,
+    /// The source's patch, `16.19`; empty where it says none or the client's pages are used.
+    pub patch: String,
+}
+
+impl LoadoutRecommendation {
+    pub fn is_empty(&self) -> bool {
+        self.runes.is_empty() && self.spells.is_empty()
+    }
+}
+
+/// Two different spells, both set.
+fn spells(spells: [i64; 2]) -> Option<[i64; 2]> {
+    (spells[0] > 0 && spells[1] > 0 && spells[0] != spells[1]).then_some(spells)
+}
+
+/// The same two spells, on whichever keys.
+pub fn same_spells(a: [i64; 2], b: [i64; 2]) -> bool {
+    a == b || a == [b[1], b[0]]
+}
+
+/// What winer recommends from `build` (its numbers, when there are some for the mode) and the
+/// client's own recommended `pages`: each half from the build where it has one, else the pages',
+/// the page for the position first (`isDefaultPosition`), at most [`RECOMMENDED_OPTIONS`] each.
+pub fn recommendation(build: Option<&Build>, pages: &[RecommendedPage]) -> LoadoutRecommendation {
+    let by = build.and_then(|build| match build.source {
+        BuildSource::Tencent => Some(RecommendedBy::Tencent),
+        BuildSource::OpGg => Some(RecommendedBy::OpGg),
+        // Their numbers have no runes nor spells.
+        BuildSource::TencentHextech | BuildSource::AramGg => None,
+    });
+    let mut ordered: Vec<&RecommendedPage> = pages.iter().collect();
+    ordered.sort_by_key(|page| !page.is_default_position);
+    let mut recommendation = LoadoutRecommendation::default();
+
+    let built_runes: Vec<RuneOption> = build
+        .filter(|_| by.is_some())
+        .map(|build| {
+            build
+                .runes
+                .iter()
+                .filter(|option| option.page.is_complete())
+                .take(RECOMMENDED_OPTIONS)
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    if built_runes.is_empty() {
+        let mut runes: Vec<RuneOption> = Vec::new();
+        for page in &ordered {
+            let page = RunePage {
+                primary_style: page.primary_perk_style_id,
+                sub_style: page.secondary_perk_style_id,
+                perks: page.perks.iter().map(|perk| perk.id).collect(),
+            };
+            if page.is_complete() && !runes.iter().any(|option| option.page == page) {
+                runes.push(RuneOption {
+                    page,
+                    rates: Rates::default(),
+                });
+            }
+        }
+        runes.truncate(RECOMMENDED_OPTIONS);
+        recommendation.runes_from = (!runes.is_empty()).then_some(RecommendedBy::Client);
+        recommendation.runes = runes;
+    } else {
+        recommendation.runes = built_runes;
+        recommendation.runes_from = by;
+    }
+
+    let built_spells: Vec<SpellOption> = build
+        .filter(|_| by.is_some())
+        .map(|build| {
+            build
+                .spells
+                .iter()
+                .filter(|option| spells(option.spells).is_some())
+                .take(RECOMMENDED_OPTIONS)
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    if built_spells.is_empty() {
+        let mut pairs: Vec<SpellOption> = Vec::new();
+        for page in &ordered {
+            let Some(pair) = (match page.summoner_spell_ids[..] {
+                [first, second] => spells([first, second]),
+                _ => None,
+            }) else {
+                continue;
+            };
+            if !pairs.iter().any(|option| same_spells(option.spells, pair)) {
+                pairs.push(SpellOption {
+                    spells: pair,
+                    rates: Rates::default(),
+                });
+            }
+        }
+        pairs.truncate(RECOMMENDED_OPTIONS);
+        recommendation.spells_from = (!pairs.is_empty()).then_some(RecommendedBy::Client);
+        recommendation.spells = pairs;
+    } else {
+        recommendation.spells = built_spells;
+        recommendation.spells_from = by;
+    }
+
+    if [recommendation.runes_from, recommendation.spells_from]
+        .iter()
+        .any(|from| matches!(from, Some(RecommendedBy::Tencent | RecommendedBy::OpGg)))
+    {
+        recommendation.patch = build.map(|build| build.patch.clone()).unwrap_or_default();
+    }
+    recommendation
+}
+
+/// What winer sets up for a champion: each half and where it came from.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Plan {
+    pub runes: Option<(RunePage, LoadoutOrigin)>,
+    pub spells: Option<([i64; 2], LoadoutOrigin)>,
+}
+
+impl Plan {
+    pub fn is_empty(&self) -> bool {
+        self.runes.is_none() && self.spells.is_none()
+    }
+}
+
+/// What to set up: each half from the user's own setup (`mine`) where it has that half, else the
+/// recommendation's first option, where there is one (`recommended`).
+pub fn plan(mine: Option<&Setup>, recommended: Option<&LoadoutRecommendation>) -> Plan {
+    let runes = mine
+        .and_then(|mine| mine.runes.clone())
+        .map(|runes| (runes, LoadoutOrigin::Mine))
+        .or_else(|| {
+            let recommended = recommended?;
+            let option = recommended.runes.first()?;
+            Some((option.page.clone(), recommended.runes_from?.origin()))
+        });
+    let spells = mine
+        .and_then(|mine| mine.spells)
+        .map(|spells| (spells, LoadoutOrigin::Mine))
+        .or_else(|| {
+            let recommended = recommended?;
+            let option = recommended.spells.first()?;
+            Some((option.spells, recommended.spells_from?.origin()))
+        });
+    Plan { runes, spells }
+}
+
+/// Whether `mine` has both halves, so nothing needs recommending.
+pub fn whole(mine: Option<&Setup>) -> bool {
+    mine.is_some_and(|mine| mine.runes.is_some() && mine.spells.is_some())
+}
+
+/// Whether a kind of game has runes and spells to choose: Arena hands out both.
+pub fn shows(mode: Mode) -> bool {
+    mode != Mode::Arena
+}
+
+// What the window's and the client's panels show of the champion in hand, and what they ask.
+
+/// The runes and spells of the local player's champion in this champ select: what they have, their
+/// own setup, winer's recommendation and what winer set up. A request to act on it names its
+/// `revision` ([`LoadoutTarget`]).
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadoutView {
+    pub game_id: i64,
+    /// The champion held, or hovered before it is.
+    pub champion_id: i64,
+    pub mode: Mode,
+    /// The lane assigned on the Rift.
+    pub lane: Option<Position>,
+    /// The champion is the player's for the game (locked in, or handed out), not only hovered.
+    pub held: bool,
+    /// Taken from one counter for the whole run, the next one whenever anything else here
+    /// changes: no two views with other contents share one.
+    pub revision: u32,
+    pub current: LoadoutCurrent,
+    /// The user's own setup for the champion, kind of game and lane (我的方案).
+    pub mine: Option<Setup>,
+    pub recommendation: RecommendationState,
+    /// What winer set up for this champion in this champ select, by itself or when asked.
+    pub applied: Option<AppliedLoadout>,
+    /// The runes, styles and spells the view names, with their names and icons: the client's
+    /// panel has no catalog of its own.
+    pub assets: Vec<crate::view::AssetInfo>,
+}
+
+/// What the player has now.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadoutCurrent {
+    /// The client's current rune page, where it is a full one; `None` until it has been read.
+    pub runes: Option<RunePage>,
+    /// Its name: `winer · 烬`, or one of the player's.
+    pub page: String,
+    pub spells: [i64; 2],
+}
+
+/// winer's recommendation for the champion in hand, as far as it has come.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(
+    tag = "state",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum RecommendationState {
+    /// Being looked up.
+    Loading,
+    Ready {
+        recommendation: LoadoutRecommendation,
+    },
+    /// Not looked up: neither the rule nor the client's panel asks for it.
+    Off,
+    /// Nothing to recommend: no source for the mode, and no page of the client's.
+    Nothing,
+    /// The lookup failed.
+    Failed { message: String },
+}
+
+impl RecommendationState {
+    pub fn ready(&self) -> Option<&LoadoutRecommendation> {
+        match self {
+            Self::Ready { recommendation } => Some(recommendation),
+            _ => None,
+        }
+    }
+}
+
+/// What winer set up, and where each half came from.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AppliedLoadout {
+    /// `None` where winer set no runes.
+    pub runes: Option<LoadoutOrigin>,
+    pub spells: Option<LoadoutOrigin>,
+    /// Runes were to go up, but no page could take them (`PageOutcome::NoPage`).
+    pub no_page: bool,
+}
+
+/// One half of a setup.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum LoadoutPart {
+    Runes,
+    Spells,
+}
+
+/// The view a request acts on, as the window or the client's panel drew it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadoutTarget {
+    pub game_id: i64,
+    pub champion_id: i64,
+    pub revision: u32,
+}
+
+/// What the window's or the client's panel asks for. The runes and spells are worked out by the
+/// service from the view, never taken from the request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, TS)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum LoadoutAction {
+    /// The recommendation's rune page `index`, counted from 0.
+    ApplyRunes { index: u8 },
+    /// The recommendation's spell pair `index`.
+    ApplySpells { index: u8 },
+    /// The user's own setup, each half it has.
+    ApplyMine,
+    /// What the player has now becomes their own setup for the champion, kind of game and lane.
+    SaveMine,
+    /// The user's own setup goes, and the recommendation goes up.
+    RestoreRecommended,
+}
+
+/// What came of a request: the rune page, where runes went up, and whether the spells did.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadoutDone {
+    pub runes: Option<PageOutcome>,
+    pub spells: bool,
+}
+
+/// The champion the local player has in `session`: the one held, or the one hovered before.
+pub fn champion_in_hand(session: &ChampSelectSession) -> Option<i64> {
+    let me = session.local_player()?;
+    [me.champion_id, me.champion_pick_intent]
+        .into_iter()
+        .find(|&champion| champion > 0)
+}
+
+/// Whether `target` names `view`, the view drawn last, and `session`, the client's now, is still
+/// the champ select and champion it was drawn for. Anything else is a request made against an
+/// older view, which acts on nothing.
+pub fn names(target: &LoadoutTarget, view: &LoadoutView, session: &ChampSelectSession) -> bool {
+    target.game_id == view.game_id
+        && target.champion_id == view.champion_id
+        && target.revision == view.revision
+        && session.game_id == target.game_id
+        && champion_in_hand(session) == Some(target.champion_id)
 }
 
 // When to set a champion up.
@@ -264,50 +698,29 @@ pub fn recommendation_position(session: &ChampSelectSession) -> &'static str {
     }
 }
 
-/// Two different spells, both set.
-fn spells(spells: [i64; 2]) -> Option<[i64; 2]> {
-    (spells[0] > 0 && spells[1] > 0 && spells[0] != spells[1]).then_some(spells)
-}
-
-/// The client's recommendation as a setup: its default page for the position, or its first.
-pub fn recommended_setup(pages: &[RecommendedPage]) -> Option<Setup> {
-    let page = pages
-        .iter()
-        .find(|page| page.is_default_position)
-        .or_else(|| pages.first())?;
-    let runes = RunePage {
-        primary_style: page.primary_perk_style_id,
-        sub_style: page.secondary_perk_style_id,
-        perks: page.perks.iter().map(|perk| perk.id).collect(),
-    };
+/// What the player has now, to keep as their own setup: the current page where it is a full one,
+/// and the two spells. `None` when neither is set.
+pub fn current_setup(page: Option<&PerkPage>, spells_now: [i64; 2], now: i64) -> Option<Setup> {
     let setup = Setup {
-        runes: runes.is_complete().then_some(runes),
-        spells: match page.summoner_spell_ids[..] {
-            [first, second] => spells([first, second]),
-            _ => None,
-        },
-        saved_at: 0,
+        runes: page.and_then(PerkPage::runes),
+        spells: spells(spells_now),
+        saved_at: now,
     };
     (setup.runes.is_some() || setup.spells.is_some()).then_some(setup)
 }
 
-/// What the local player goes into the game with, to remember: the current page where it is a full
-/// one, and the two spells. `None` when neither was chosen.
-pub fn setup_at_start(
-    session: &ChampSelectSession,
-    page: Option<&PerkPage>,
-    now: i64,
-) -> Option<(i64, Setup)> {
-    let me = session.local_player()?;
-    if me.champion_id <= 0 {
-        return None;
+/// Whether two reads of the current page show the same page with the same runes; a read that is
+/// missing (`None`) says nothing against it.
+pub fn same_page(a: Option<&PerkPage>, b: Option<&PerkPage>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => {
+            a.id == b.id
+                && a.primary_style_id == b.primary_style_id
+                && a.sub_style_id == b.sub_style_id
+                && a.selected_perk_ids == b.selected_perk_ids
+        }
+        _ => true,
     }
-    let setup = Setup {
-        runes: page.and_then(PerkPage::runes),
-        spells: spells([me.spell1_id, me.spell2_id]),
-        saved_at: now,
-    };
-    (setup.runes.is_some() || setup.spells.is_some()).then_some((me.champion_id, setup))
 }
 
 /// `wanted` on the keys the player already uses for them: a spell held now keeps its slot (Flash
@@ -616,7 +1029,7 @@ pub fn item_set(build: &Build, champion: &str, language: Language) -> Box<RawVal
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{builds::Rates, test_support::fixture};
+    use crate::test_support::fixture;
 
     fn session(name: &str) -> ChampSelectSession {
         fixture(&format!(
@@ -701,56 +1114,194 @@ mod tests {
         assert_eq!(recommendation_position(&session("ban-pick")), "top");
         assert_eq!(recommendation_position(&aram(22)), "none");
 
+        // The client's own pages: the one for the position first, its spells with it.
         let pages: Vec<RecommendedPage> = fixture("loadout/perks-recommended-202-bottom-11.json");
-        let setup = recommended_setup(&pages).unwrap();
+        let client = recommendation(None, &pages);
+        assert_eq!(client.runes_from, Some(RecommendedBy::Client));
         assert_eq!(
-            setup.runes,
-            Some(RunePage {
+            client.runes[0].page,
+            RunePage {
                 primary_style: 8100,
                 sub_style: 8000,
                 perks: vec![8128, 8139, 8140, 8135, 8014, 8009, 5008, 5008, 5001],
-            })
+            }
         );
-        assert_eq!(setup.spells, Some([21, 4]));
+        assert_eq!(
+            client.runes[0].rates,
+            Rates::default(),
+            "the client gives no rates"
+        );
+        assert_eq!(client.spells[0].spells, [21, 4]);
+        assert_eq!(client.spells_from, Some(RecommendedBy::Client));
+        assert!(client.runes.len() <= RECOMMENDED_OPTIONS && client.patch.is_empty());
         let abyss: Vec<RecommendedPage> = fixture("loadout/perks-recommended-202-none-12.json");
-        assert_eq!(recommended_setup(&abyss).unwrap().spells, Some([4, 6]));
-        assert_eq!(recommended_setup(&[]), None);
+        assert_eq!(recommendation(None, &abyss).spells[0].spells, [4, 6]);
+        assert!(recommendation(None, &[]).is_empty());
+        assert_eq!(recommendation(None, &[]).runes_from, None);
         // The default position's page wins over the first.
         let mut mixed = pages.clone();
         mixed[0].is_default_position = false;
+        mixed[1].is_default_position = true;
         mixed[1].primary_perk_style_id = 8000;
-        assert_eq!(
-            recommended_setup(&mixed).unwrap().runes.unwrap().perks[0],
-            8021
-        );
+        assert_eq!(recommendation(None, &mixed).runes[0].page.perks[0], 8021);
+    }
+
+    fn rune_option(page: RunePage, pick: f64) -> RuneOption {
+        RuneOption {
+            page,
+            rates: Rates {
+                pick: Some(pick),
+                ..Rates::default()
+            },
+        }
+    }
+
+    fn precision() -> RunePage {
+        RunePage {
+            primary_style: 8000,
+            sub_style: 8100,
+            perks: vec![8005, 8009, 9103, 8014, 8139, 8135, 5005, 5008, 5001],
+        }
     }
 
     #[test]
-    fn the_setup_a_game_starts_with_is_remembered_spells_alone_without_a_page() {
-        let locked = session("finalization");
+    fn winers_numbers_come_first_and_the_clients_pages_fill_in_what_they_lack() {
+        let abyss: Vec<RecommendedPage> = fixture("loadout/perks-recommended-202-none-12.json");
+        let mut build = Build::new(BuildSource::OpGg, 202, Mode::Aram);
+        build.patch = "16.19".into();
+        build.runes = (0..5)
+            .map(|n| rune_option(precision(), 0.5 - f64::from(n) / 10.0))
+            .collect();
+        build.runes[1].page.perks.pop();
+        build.spells = vec![
+            SpellOption {
+                spells: [4, 32],
+                rates: Rates::default(),
+            },
+            SpellOption {
+                spells: [4, 4],
+                rates: Rates::default(),
+            },
+        ];
+        let both = recommendation(Some(&build), &abyss);
+        assert_eq!(both.runes_from, Some(RecommendedBy::OpGg));
+        assert_eq!(
+            both.runes.len(),
+            RECOMMENDED_OPTIONS,
+            "the source's best three full pages"
+        );
+        assert!(both.runes.iter().all(|option| option.page.is_complete()));
+        assert_eq!(both.spells.len(), 1, "not two of one spell");
+        assert_eq!(
+            (both.spells[0].spells, both.spells_from),
+            ([4, 32], Some(RecommendedBy::OpGg))
+        );
+        assert_eq!(both.patch, "16.19");
+
+        // The source without spells: the client's pages give them, and none of their runes.
+        build.spells.clear();
+        let mixed = recommendation(Some(&build), &abyss);
+        assert_eq!(mixed.runes_from, Some(RecommendedBy::OpGg));
+        assert_eq!(
+            (mixed.spells[0].spells, mixed.spells_from),
+            ([4, 6], Some(RecommendedBy::Client))
+        );
+
+        // Hextech ARAM's numbers have neither half: the client's pages give both.
+        let mut hextech = Build::new(BuildSource::TencentHextech, 202, Mode::Hextech);
+        hextech.runes = vec![rune_option(precision(), 0.9)];
+        let client = recommendation(Some(&hextech), &abyss);
+        assert_eq!(client.runes_from, Some(RecommendedBy::Client));
+        assert_eq!(client.spells_from, Some(RecommendedBy::Client));
+        assert!(client.patch.is_empty());
+    }
+
+    #[test]
+    fn a_setup_of_the_users_own_wins_half_by_half() {
+        let recommended = LoadoutRecommendation {
+            runes: vec![rune_option(precision(), 0.4)],
+            spells: vec![SpellOption {
+                spells: [4, 32],
+                rates: Rates::default(),
+            }],
+            runes_from: Some(RecommendedBy::Tencent),
+            spells_from: Some(RecommendedBy::Client),
+            patch: "16.19".into(),
+        };
+        let none = plan(None, Some(&recommended));
+        assert_eq!(none.runes, Some((precision(), LoadoutOrigin::Recommended)));
+        assert_eq!(none.spells, Some(([4, 32], LoadoutOrigin::Client)));
+
+        let ghost = Setup {
+            runes: None,
+            spells: Some([6, 4]),
+            saved_at: 1,
+        };
+        let half = plan(Some(&ghost), Some(&recommended));
+        assert_eq!(
+            half.spells,
+            Some(([6, 4], LoadoutOrigin::Mine)),
+            "Snowball swapped for Ghost"
+        );
+        assert_eq!(half.runes, Some((precision(), LoadoutOrigin::Recommended)));
+        assert!(!whole(Some(&ghost)));
+
+        let mut mine = ghost.clone();
+        mine.runes = Some(RunePage {
+            primary_style: 8100,
+            ..precision()
+        });
+        assert!(whole(Some(&mine)));
+        let all = plan(Some(&mine), None);
+        assert_eq!(
+            all.runes.map(|(_, origin)| origin),
+            Some(LoadoutOrigin::Mine)
+        );
+        assert_eq!(
+            all.spells.map(|(_, origin)| origin),
+            Some(LoadoutOrigin::Mine)
+        );
+        assert!(plan(None, None).is_empty());
+        assert!(plan(None, Some(&LoadoutRecommendation::default())).is_empty());
+    }
+
+    #[test]
+    fn what_the_player_has_now_is_kept_spells_alone_without_a_full_page() {
         let page: PerkPage = fixture("loadout/perks-currentpage.json");
-        let (champion, setup) = setup_at_start(&locked, Some(&page), 5).unwrap();
-        assert_eq!(champion, 236);
+        let setup = current_setup(Some(&page), [6, 7], 5).unwrap();
         assert_eq!(setup.spells, Some([6, 7]));
         assert_eq!(
             setup.runes.unwrap().perks,
             [8005, 8009, 9103, 8014, 8139, 8135, 5005, 5008, 5001]
         );
-        let (_, spells_only) = setup_at_start(&locked, None, 5).unwrap();
-        assert_eq!(
-            (spells_only.runes, spells_only.spells),
-            (None, Some([6, 7]))
-        );
+        assert_eq!(setup.saved_at, 5);
+        assert_eq!(current_setup(None, [6, 7], 5).unwrap().runes, None);
         let mut broken = page.clone();
         broken.is_valid = false;
-        assert_eq!(
-            setup_at_start(&locked, Some(&broken), 5).unwrap().1.runes,
-            None
+        assert_eq!(current_setup(Some(&broken), [6, 7], 5).unwrap().runes, None);
+        assert_eq!(current_setup(None, [0, 7], 5), None, "neither half");
+        assert_eq!(current_setup(Some(&broken), [4, 4], 5), None);
+    }
+
+    #[test]
+    fn a_page_or_spells_changed_by_the_player_are_told_from_the_same_ones() {
+        let page: PerkPage = fixture("loadout/perks-currentpage.json");
+        assert!(same_page(Some(&page), Some(&page.clone())));
+        let mut other = page.clone();
+        other.selected_perk_ids[0] = 8010;
+        assert!(!same_page(Some(&page), Some(&other)));
+        let mut moved = page.clone();
+        moved.id += 1;
+        assert!(
+            !same_page(Some(&page), Some(&moved)),
+            "another page made current"
         );
-        let mut nothing = locked.clone();
-        nothing.my_team[0].spell1_id = 0;
-        assert_eq!(setup_at_start(&nothing, None, 5), None);
-        assert_eq!(setup_at_start(&session("ban-pick"), Some(&page), 5), None);
+        assert!(
+            same_page(None, Some(&page)),
+            "a read that failed says nothing"
+        );
+        assert!(same_spells([4, 14], [14, 4]));
+        assert!(!same_spells([4, 14], [4, 12]));
     }
 
     #[test]
@@ -837,30 +1388,87 @@ mod tests {
     }
 
     #[test]
-    fn remembered_setups_round_trip_and_clear() {
+    fn setups_of_the_users_own_round_trip_by_champion_kind_of_game_and_lane() {
+        assert_eq!(
+            preset_key(202, Mode::Ranked, Some(Position::Bottom)),
+            "202:ranked:bottom"
+        );
+        assert_eq!(
+            preset_key(202, Mode::Hextech, Some(Position::Bottom)),
+            "202:hextech"
+        );
+        assert_eq!(preset_key(202, Mode::Normal, None), "202:normal");
+        assert_eq!(
+            preset_keys(202, Mode::Ranked, Some(Position::Top)),
+            ["202:ranked:top", "202:ranked"]
+        );
+        assert_eq!(preset_keys(202, Mode::Aram, None), ["202:aram"]);
+
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("loadouts.json");
+        let path = dir.path().join("loadout-presets.json");
         let store = LoadoutStore::open(&path);
-        assert_eq!(store.summary().remembered, 0);
+        assert!(store.is_empty());
         let setup = Setup {
             runes: None,
             spells: Some([4, 7]),
             saved_at: 9,
         };
-        store.put(202, Mode::Ranked, setup.clone()).unwrap();
-        store.put(202, Mode::Aram, setup.clone()).unwrap();
+        store
+            .put(preset_key(202, Mode::Hextech, None), setup.clone())
+            .unwrap();
+        store
+            .put(preset_key(202, Mode::Ranked, None), setup.clone())
+            .unwrap();
         let again = LoadoutStore::open(&path);
-        assert_eq!(again.get(202, Mode::Ranked), Some(setup));
-        assert_eq!(again.get(202, Mode::Normal), None, "modes are kept apart");
-        assert_eq!(again.summary().remembered, 2);
+        assert_eq!(again.len(), 2);
+        assert_eq!(
+            again.find(&preset_keys(202, Mode::Ranked, Some(Position::Top))),
+            Some(("202:ranked".into(), setup.clone())),
+            "a lane without its own falls back to the one saved without a lane"
+        );
+        assert_eq!(
+            again.find(&preset_keys(202, Mode::Aram, None)),
+            None,
+            "modes are kept apart"
+        );
         let text = fs::read_to_string(&path).unwrap();
-        assert!(text.contains("\"202:aram\""), "{text}");
+        assert!(text.contains("\"202:hextech\""), "{text}");
+        assert!(
+            !again.remove(&["202:normal".into()]).unwrap(),
+            "nothing there"
+        );
+        assert!(
+            again
+                .remove(&preset_keys(202, Mode::Ranked, Some(Position::Top)))
+                .unwrap()
+        );
+        assert_eq!(LoadoutStore::open(&path).len(), 1);
         again.clear().unwrap();
-        assert_eq!(LoadoutStore::open(&path).summary().remembered, 0);
+        assert!(LoadoutStore::open(&path).is_empty());
 
         fs::write(&path, b"{ not json").unwrap();
-        assert_eq!(LoadoutStore::open(&path).summary().remembered, 0);
+        assert!(LoadoutStore::open(&path).is_empty());
         assert!(path.with_extension("json.invalid").exists());
+    }
+
+    #[test]
+    fn the_old_files_setups_are_counted_never_moved_and_go_only_when_asked() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("loadouts.json");
+        assert_eq!(legacy_count(&path), None);
+        fs::write(
+            &path,
+            br#"{"202:ranked":{"runes":null,"spells":[4,7],"savedAt":1}}"#,
+        )
+        .unwrap();
+        assert_eq!(legacy_count(&path), Some(1));
+        fs::write(&path, b"{ not json").unwrap();
+        assert_eq!(legacy_count(&path), Some(0));
+        assert!(path.exists(), "read only: left where it is");
+        assert!(!path.with_extension("json.invalid").exists());
+        remove_legacy(&path).unwrap();
+        assert_eq!(legacy_count(&path), None);
+        remove_legacy(&path).unwrap();
     }
 
     fn sets(json: &str) -> ItemSets {

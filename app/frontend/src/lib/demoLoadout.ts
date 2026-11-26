@@ -1,15 +1,25 @@
 // The demo client's builds, runes, spells and item sets (`demo.ts`): believable numbers for any
 // champion, from the source the core would ask, and the commands that write them answered.
 import type {
+  AppliedLoadout,
   AssetInfo,
   AugmentInfo,
   Build,
   BuildSource,
   ItemOption,
+  LoadoutAction,
+  LoadoutCurrent,
+  LoadoutDone,
+  LoadoutRecommendation,
+  LoadoutSummary,
+  LoadoutTarget,
+  LoadoutView,
   Mode,
   Position,
   Rates,
+  RunePage,
   Settings,
+  Setup,
 } from "@winer/shared";
 
 import type { Commands } from "./backend";
@@ -232,6 +242,125 @@ export function demoBuild(
   return build;
 }
 
+// Champ select's runes and spells (`LoadoutView`): the demo's Hextech ARAM, set up from the
+// client's own recommended page, Flash and Snowball.
+
+const NO_RATES: Rates = { pick: null, win: null, games: null, placement: null, first: null };
+const DOMINATION: RunePage = {
+  primaryStyle: 8100,
+  subStyle: 8000,
+  perks: [8112, 8139, 8138, 8135, 8009, 9103, 5008, 5008, 5001],
+};
+const SORCERY: RunePage = {
+  primaryStyle: 8200,
+  subStyle: 8100,
+  perks: [8229, 8226, 8210, 8237, 8139, 8135, 5008, 5008, 5001],
+};
+
+/** The demo's champ select runes and spells, and what the panels ask of them, as the core answers:
+ *  a request made against an older view is refused as stale. */
+export interface DemoLoadout {
+  view(): LoadoutView;
+  act(target: LoadoutTarget, action: LoadoutAction): LoadoutDone;
+  presets(): number;
+  clearPresets(): void;
+}
+
+export function demoLoadout(gameId: number, championId: number, changed: () => void): DemoLoadout {
+  let revision = 1;
+  let mine: Setup | null = null;
+  let current: LoadoutCurrent = { runes: DOMINATION, page: "winer · 阿狸", spells: [4, 32] };
+  let applied: AppliedLoadout = { runes: "client", spells: "client", noPage: false };
+  const recommendation: LoadoutRecommendation = {
+    runes: [
+      { page: DOMINATION, rates: NO_RATES },
+      { page: SORCERY, rates: NO_RATES },
+    ],
+    spells: [
+      { spells: [4, 32], rates: NO_RATES },
+      { spells: [4, 6], rates: NO_RATES },
+    ],
+    runesFrom: "client",
+    spellsFrom: "client",
+    patch: "",
+  };
+  const stale = () => ({ code: "stale", message: "champ select has changed since" });
+  const set = (runes: RunePage | null, spells: [number, number] | null) => {
+    if (runes) current = { ...current, runes };
+    if (spells) current = { ...current, spells };
+  };
+  return {
+    view: () => ({
+      gameId,
+      championId,
+      mode: "hextech",
+      lane: null,
+      held: true,
+      revision,
+      current,
+      mine,
+      recommendation: { state: "ready", recommendation },
+      applied,
+      assets: [],
+    }),
+    act: (target, action) => {
+      if (
+        target.gameId !== gameId ||
+        target.championId !== championId ||
+        target.revision !== revision
+      )
+        throw stale();
+      let done: LoadoutDone = { runes: null, spells: false };
+      switch (action.kind) {
+        case "saveMine":
+          mine = { runes: current.runes, spells: current.spells, savedAt: Date.now() };
+          break;
+        case "applyMine":
+          if (!mine) throw stale();
+          set(mine.runes, mine.spells);
+          applied = {
+            runes: mine.runes ? "mine" : applied.runes,
+            spells: mine.spells ? "mine" : applied.spells,
+            noPage: false,
+          };
+          done = { runes: mine.runes ? "written" : null, spells: mine.spells !== null };
+          break;
+        case "applyRunes": {
+          const option = recommendation.runes[action.index];
+          if (!option) throw stale();
+          set(option.page, null);
+          applied = { ...applied, runes: "client", noPage: false };
+          done = { runes: "written", spells: false };
+          break;
+        }
+        case "applySpells": {
+          const option = recommendation.spells[action.index];
+          if (!option) throw stale();
+          set(null, option.spells);
+          applied = { ...applied, spells: "client" };
+          done = { runes: null, spells: true };
+          break;
+        }
+        case "restoreRecommended":
+          mine = null;
+          set(DOMINATION, [4, 32]);
+          applied = { runes: "client", spells: "client", noPage: false };
+          done = { runes: "written", spells: true };
+          break;
+      }
+      revision += 1;
+      changed();
+      return done;
+    },
+    presets: () => (mine ? 1 : 0),
+    clearPresets: () => {
+      mine = null;
+      revision += 1;
+      changed();
+    },
+  };
+}
+
 type LoadoutCommand =
   | "get_build"
   | "apply_runes"
@@ -239,13 +368,20 @@ type LoadoutCommand =
   | "write_item_set"
   | "clear_item_sets"
   | "get_loadout_summary"
-  | "clear_loadouts";
+  | "clear_loadouts"
+  | "clear_loadout_presets"
+  | "loadout_action";
 
-/** The demo's answers to the build panel and the rule cards. */
-export function demoLoadoutHandlers(settings: () => Settings): {
+/** The demo's answers to the build panel, the runes panels and the rule cards. */
+export function demoLoadoutHandlers(
+  settings: () => Settings,
+  loadout: DemoLoadout,
+): {
   [K in LoadoutCommand]: (args: Commands[K]["args"]) => Commands[K]["result"];
 } {
-  let remembered = 3;
+  /** Setups an older winer remembered, until deleted. */
+  let legacy: number | null = 3;
+  const summary = (): LoadoutSummary => ({ presets: loadout.presets(), legacy });
   const sets = new Set<string>();
   return {
     get_build: ({ championId, mode, lane }) => demoBuild(championId, mode, lane, settings()),
@@ -260,10 +396,15 @@ export function demoLoadoutHandlers(settings: () => Settings): {
       sets.clear();
       return removed;
     },
-    get_loadout_summary: () => ({ remembered }),
+    get_loadout_summary: summary,
     clear_loadouts: () => {
-      remembered = 0;
-      return { remembered };
+      legacy = null;
+      return summary();
     },
+    clear_loadout_presets: () => {
+      loadout.clearPresets();
+      return summary();
+    },
+    loadout_action: ({ target, action }) => loadout.act(target, action),
   };
 }

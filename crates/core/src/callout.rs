@@ -784,6 +784,7 @@ pub fn preview(
         callout: Vec::new(),
         side: Some(Side::Blue),
         recommendations: Vec::new(),
+        loadout: None,
     };
     lines(
         &view,
@@ -1236,6 +1237,7 @@ mod tests {
             callout: Vec::new(),
             side: None,
             recommendations: Vec::new(),
+            loadout: None,
         }
     }
 

@@ -86,6 +86,7 @@ const SETTINGS = {
     lobbyPanel: true,
     // The history panel in the client.
     historyInClient: true,
+    loadoutPanel: true,
   },
   profile: {
     rankDisguise: { enabled: false, queue: "solo", tier: "DIAMOND", division: "I" },

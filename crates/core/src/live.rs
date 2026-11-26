@@ -194,6 +194,7 @@ pub fn champ_select_view(
             .and_then(|player| side(player.team))
             .filter(|_| has_sides(mode)),
         recommendations: Vec::new(),
+        loadout: None,
     }
 }
 

@@ -1286,6 +1286,45 @@ describe("loadout", () => {
     return rendered;
   }
 
+  it("keeps the player's own setup from champ select, each request naming the view it was made on", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openLive(backend);
+    const bar = await screen.findByRole("group", { name: zhCN["loadout.mine"] });
+    expect(within(bar).getByText(zhCN["loadout.mineNone"])).toBeInTheDocument();
+    expect(within(bar).queryByRole("button", { name: zhCN["loadout.restore"] })).toBeNull();
+
+    await user.click(within(bar).getByRole("button", { name: zhCN["loadout.saveMine"] }));
+    expect(call).toHaveBeenCalledWith("loadout_action", {
+      target: { gameId: 1, championId: 103, revision: 1 },
+      action: { kind: "saveMine" },
+    });
+    expect(await screen.findByText(zhCN["loadout.savedMine"])).toBeInTheDocument();
+    // The core draws champ select again with the setup, under the next revision.
+    expect(
+      await within(bar).findByText(
+        "已保存这个英雄在这个模式的方案：符文和召唤师技能。锁定后先用它，没有的部分用推荐。",
+      ),
+    ).toBeInTheDocument();
+    await user.click(within(bar).getByRole("button", { name: zhCN["loadout.restore"] }));
+    expect(call).toHaveBeenCalledWith("loadout_action", {
+      target: { gameId: 1, championId: 103, revision: 2 },
+      action: { kind: "restoreRecommended" },
+    });
+    expect(await screen.findByText(zhCN["loadout.restored"])).toBeInTheDocument();
+    expect(await within(bar).findByText(zhCN["loadout.mineNone"])).toBeInTheDocument();
+  });
+
+  it("says a request made before champ select changed did nothing", async () => {
+    const backend = demoWith({
+      loadout_action: () => Promise.reject({ code: "stale", message: "champ select has changed" }),
+    });
+    const { user } = await openLive(backend);
+    const bar = await screen.findByRole("group", { name: zhCN["loadout.mine"] });
+    await user.click(within(bar).getByRole("button", { name: zhCN["loadout.saveMine"] }));
+    expect(await screen.findByText(zhCN["loadout.stale"])).toBeInTheDocument();
+  });
+
   it("shows the build of the champion in champ select, Hextech ARAM's augments by rarity", async () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");
@@ -1532,7 +1571,7 @@ describe("loadout", () => {
     expect(call).not.toHaveBeenCalledWith("get_build", expect.anything());
   });
 
-  it("scopes the rune and spell memory and the item sets, and takes back what winer wrote", async () => {
+  it("scopes the runes and spells and the item sets, and takes back what winer wrote", async () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");
     const { user, nav } = await renderApp(backend);
@@ -1561,10 +1600,15 @@ describe("loadout", () => {
       ]),
     );
 
-    expect(await screen.findByText("已记住 3 套")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: zhCN["loadout.forget"] }));
+    // The user's own setups: none yet in the demo, so nothing to clear.
+    expect(await screen.findByText("我的方案 0 套")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: zhCN["loadout.forget"] })).toBeDisabled();
+    // The setups an older winer remembered: only counted, and deleted when asked.
+    expect(await screen.findByText(zhCN["loadout.legacy"])).toBeInTheDocument();
+    expect(screen.getByText(/^共 3 条。/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: zhCN["loadout.legacyDelete"] }));
     expect(call).toHaveBeenCalledWith("clear_loadouts");
-    expect(await screen.findByText("已记住 0 套")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(zhCN["loadout.legacy"])).toBeNull());
 
     expect(screen.getByText(zhCN["loadout.experimental"])).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: zhCN["loadout.itemSets"] })).not.toBeChecked();
@@ -1682,6 +1726,24 @@ describe("the history panel in the client", () => {
       }),
     );
     expect(screen.getByRole("switch", { name: zhCN["social.pluginLobby"] })).toBeChecked();
+  });
+
+  it("switches the runes panel in champ select on its own, on to begin with", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.plugin"] }));
+    const toggle = await screen.findByRole("switch", { name: zhCN["overlay.loadoutPanel"] });
+    expect(toggle).toBeChecked();
+    expect(screen.getByText(zhCN["overlay.loadoutPanelHint"])).toBeInTheDocument();
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          plugin: expect.objectContaining({ loadoutPanel: false, historyInClient: true }),
+        }),
+      }),
+    );
   });
 });
 

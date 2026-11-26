@@ -94,18 +94,48 @@ describe("build panel", () => {
     expect(augmentGroups(augments, catalog, "nothing")).toEqual([]);
   });
 
-  it("says in the activity feed what was set up, and why the runes were not", () => {
+  it("says in the activity feed what was set up, from where, and why a half was not", () => {
     const zh = (kind: NoticeKind) =>
       noticeText(kind, (key, params) => translate("zh-CN", key, params), null);
-    const applied = (runes: "written" | "noPage" | null, spells: boolean, recommended = false) =>
-      zh({ kind: "loadoutApplied", championId: 202, recommended, runes, spells });
-    expect(applied("written", true)).toBe("为 #202 应用了记住的符文和召唤师技能");
-    expect(applied("written", false, true)).toBe("为 #202 应用了客户端推荐的符文");
-    expect(applied(null, true)).toBe("为 #202 应用了记住的召唤师技能");
-    expect(applied("noPage", true)).toBe(
-      "为 #202 应用了记住的召唤师技能；符文没有改动：没有空位放 winer 的符文页",
+    type Origin = "mine" | "recommended" | "client" | null;
+    const applied = (
+      runes: Origin,
+      spells: Origin,
+      noPage = false,
+      kept: ("runes" | "spells")[] = [],
+    ) => zh({ kind: "loadoutApplied", championId: 202, runes, spells, noPage, kept });
+    expect(applied("recommended", "recommended")).toBe(
+      "已为 #202 应用符文（推荐）和召唤师技能（推荐）",
     );
-    expect(applied("noPage", false)).toBe("#202 的符文没有改动：没有空位放 winer 的符文页");
+    expect(applied("recommended", "mine")).toBe(
+      "已为 #202 应用符文（推荐）和召唤师技能（我的方案）",
+    );
+    expect(applied("client", null)).toBe("已为 #202 应用符文（客户端推荐）");
+    expect(applied(null, "mine", true)).toBe(
+      "已为 #202 应用召唤师技能（我的方案）；符文没有改动：没有空位放 winer 的符文页",
+    );
+    expect(applied(null, null, true)).toBe("#202 的符文没有改动：没有空位放 winer 的符文页");
+    expect(applied("client", null, false, ["spells"])).toBe(
+      "已为 #202 应用符文（客户端推荐）；召唤师技能你刚改过，没有覆盖",
+    );
+    expect(applied(null, null, false, ["runes", "spells"])).toBe(
+      "#202 的符文和召唤师技能你刚改过，没有覆盖",
+    );
+    const en = noticeText(
+      {
+        kind: "loadoutApplied",
+        championId: 202,
+        runes: "mine",
+        spells: "client",
+        noPage: false,
+        kept: [],
+      },
+      (key, params) => translate("en", key, params),
+      null,
+    );
+    expect(en).toBe(
+      "Set up runes (my setup) and summoner spells (the client's recommendation) for #202",
+    );
     expect(zh({ kind: "itemSetWritten", championId: 202 })).toBe("已为 #202 写入装备方案");
     expect(zh({ kind: "itemSetsFull" })).toBe(translate("zh-CN", "loadout.itemSetsFull"));
     expect(isFailure({ kind: "itemSetsFull" }), "drawn as a failure").toBe(true);

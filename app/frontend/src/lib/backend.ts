@@ -29,7 +29,10 @@ import type {
   HotkeyStatus,
   IconChange,
   IpcError,
+  LoadoutAction,
+  LoadoutDone,
   LoadoutSummary,
+  LoadoutTarget,
   MatchDetail,
   MatchPage,
   Mode,
@@ -140,6 +143,8 @@ export interface Commands {
   clear_item_sets: Command<undefined, number>;
   get_loadout_summary: Command<undefined, LoadoutSummary>;
   clear_loadouts: Command<undefined, LoadoutSummary>;
+  clear_loadout_presets: Command<undefined, LoadoutSummary>;
+  loadout_action: Command<{ target: LoadoutTarget; action: LoadoutAction }, LoadoutDone>;
   // The callout typed into the game's chat.
   /** What the callout's shortcut would type in the game, with the user's own form. */
   preview_game_callout: Command<{ rule: CalloutRule; general: General }, string[]>;

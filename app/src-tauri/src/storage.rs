@@ -4,8 +4,9 @@
 //! core's caches in memory (`winer_core`'s `service/caches.rs`).
 //!
 //! A cleanup removes only what is safe to: caches, old logs and spent installers, never a backup,
-//! the settings or the remembered setups. The WebView's caches are in use while its window is
-//! open, so a cleanup marks them, and they go when winer next starts, before the WebView does.
+//! the settings or the user's own setups (我的方案). The WebView's caches are in use while its
+//! window is open, so a cleanup marks them, and they go when winer next starts, before the WebView
+//! does.
 
 use std::{
     fs, io,
@@ -55,7 +56,7 @@ pub(crate) struct Storage {
     logs: Logs,
     /// `%LOCALAPPDATA%\app.winer.desktop`: the WebView's folder, the backups and Pengu Loader.
     local: PathBuf,
-    /// `%APPDATA%\app.winer.desktop`: the settings and the remembered setups.
+    /// `%APPDATA%\app.winer.desktop`: the settings and the user's own setups.
     config: PathBuf,
     /// The system's temporary folder.
     temp: PathBuf,

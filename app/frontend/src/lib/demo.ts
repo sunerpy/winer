@@ -49,6 +49,7 @@ import {
   DEMO_ITEMS,
   DEMO_PERKS,
   DEMO_SPELLS,
+  demoLoadout,
   demoLoadoutHandlers,
 } from "./demoLoadout";
 import { demoRewardsHandlers } from "./demoRewards";
@@ -983,6 +984,7 @@ const DEFAULT_SETTINGS: Settings = {
     lobbyPanel: true,
     // The history panel in the client.
     historyInClient: true,
+    loadoutPanel: true,
   },
   profile: {
     rankDisguise: { enabled: false, queue: "solo", tier: "DIAMOND", division: "I" },
@@ -1137,6 +1139,16 @@ export function demoBackend(): Backend {
     // The client shows no lobby during champ select.
     lobby: null,
   };
+  // Champ select's runes and spells: the local player (cell 0) holds Ahri (103). A change draws
+  // champ select again, as the core does.
+  const loadout = demoLoadout(1, 103, () => {
+    snapshot.rev += 1;
+    emit({
+      type: "update",
+      data: { rev: snapshot.rev, patch: { key: "champSelect", value: withLoadout() } },
+    });
+  });
+  const withLoadout = (): ChampSelectView => ({ ...champSelect(), loadout: loadout.view() });
 
   // The profile the demo player shows, and what they backed up before.
   let presence: Presence = { availability: "chat", statusMessage: "今晚上分" };
@@ -1184,7 +1196,7 @@ export function demoBackend(): Backend {
   );
 
   const handlers: { [K in CommandName]: (args: Commands[K]["args"]) => Commands[K]["result"] } = {
-    get_snapshot: () => ({ ...snapshot, champSelect: champSelect(), friends: friends() }),
+    get_snapshot: () => ({ ...snapshot, champSelect: withLoadout(), friends: friends() }),
     get_settings: () => settings,
     set_settings: ({ settings: next }) => {
       // As the core keeps quick messages: a blank one goes, with its shortcut; ten at most.
@@ -1461,7 +1473,7 @@ export function demoBackend(): Backend {
     reveal_game_settings_backup: () => null,
     get_hotkey_status: () => hotkey,
     suspend_hotkey: ({ suspended }) => setHotkey(suspended),
-    ...demoLoadoutHandlers(() => settings),
+    ...demoLoadoutHandlers(() => settings, loadout),
     // Callout: as the core does, the best tier to watch and the worst to go after on the red side,
     // the user in every tier of the team on the blue side, by champion, typed as one press would.
     preview_game_callout: ({ rule }) => {
