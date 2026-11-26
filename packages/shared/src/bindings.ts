@@ -60,7 +60,8 @@ side: Side | null,
 recommendations: Array<Recommendation>, 
 /**
  * The local player's champion's runes and spells (`loadout::LoadoutView`); absent where the
- * kind of game has none to choose, or before a champion is in hand.
+ * kind of game has none to choose, or before a champion is in hand. Boxed: it is the largest
+ * part of the view, and the view travels inside every update.
  */
 loadout?: LoadoutView, };
 
