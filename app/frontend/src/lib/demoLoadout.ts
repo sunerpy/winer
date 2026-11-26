@@ -297,6 +297,8 @@ export function demoLoadout(gameId: number, championId: number, changed: () => v
       lane: null,
       held: true,
       revision,
+      // The demo's rule is on: the setup and the recommendation go up at lock-in.
+      auto: "mineOrRecommended",
       current,
       mine,
       recommendation: { state: "ready", recommendation },

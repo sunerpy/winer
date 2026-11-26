@@ -688,13 +688,20 @@ fn posted(outcome: Result<Spaced, winer_core::CoreError>, message: Option<u8>) -
     }
 }
 
-/// A press of quick message `index`'s shortcut (counted from 0). What it does is the core's to say
-/// (`Service::message_press`), as for a random line: in champ select the message is posted in its
-/// chat; while the game runs it is typed into the game's team chat, or everyone's for a message
-/// to all. What came of it goes to the activity feed, never the message itself. One press at a
-/// time, as for the others.
+/// A press of the shortcut slot `index` of the quick messages holds (counted from 0). The core finds
+/// the message by the combination the slot holds (`Service::message_press`), not by the slot: a
+/// press that crosses an edit sends the message it was for, or nothing. In champ select the message
+/// is posted in its chat; while the game runs it is typed into the game's team chat, or everyone's
+/// for a message to all. What came of it goes to the activity feed, never the message itself. One
+/// press at a time, as for the others. Main thread only.
 fn send_message<R: Runtime>(app: &AppHandle<R>, index: u8) {
     let (Some(service), Some(hotkey)) = (app.try_state::<Service>(), app.try_state::<Hotkey>())
+    else {
+        return;
+    };
+    let Some(shortcut) = lock(&hotkey.state).slots[Action::Message(index).index()]
+        .wanted
+        .clone()
     else {
         return;
     };
@@ -702,34 +709,36 @@ fn send_message<R: Runtime>(app: &AppHandle<R>, index: u8) {
         return;
     }
     let (service, sending) = (service.inner().clone(), Sending(app.clone()));
-    let number = Some(index + 1);
-    tauri::async_runtime::spawn_blocking(move || match service.message_press(index) {
-        ComebackPress::ChampSelect { line, game_id } => {
-            tauri::async_runtime::spawn(async move {
-                let _sending = sending;
-                service.report(posted(service.send_message(line, game_id).await, number));
-            });
-        }
-        ComebackPress::Game { line, all } => {
-            let _sending = sending;
-            let typed = game_chat::type_lines(std::slice::from_ref(&line), all);
-            if game_chat::sent(typed) > 0 {
-                service.message_went_out();
+    tauri::async_runtime::spawn_blocking(move || {
+        let (number, press) = service.message_press(&shortcut);
+        match press {
+            ComebackPress::ChampSelect { line, game_id } => {
+                tauri::async_runtime::spawn(async move {
+                    let _sending = sending;
+                    service.report(posted(service.send_message(line, game_id).await, number));
+                });
             }
-            service.report(game_chat::comeback_notice(typed, all, number));
-        }
-        ComebackPress::Skip { place, reason } => {
-            info!(
-                ?place,
-                ?reason,
-                index,
-                "a quick message's shortcut sent nothing"
-            );
-            service.report(NoticeKind::ComebackSkipped {
-                place,
-                reason,
-                message: number,
-            });
+            ComebackPress::Game { line, all } => {
+                let _sending = sending;
+                let typed = game_chat::type_lines(std::slice::from_ref(&line), all);
+                if game_chat::sent(typed) > 0 {
+                    service.message_went_out();
+                }
+                service.report(game_chat::comeback_notice(typed, all, number));
+            }
+            ComebackPress::Skip { place, reason } => {
+                info!(
+                    ?place,
+                    ?reason,
+                    ?number,
+                    "a quick message's shortcut sent nothing"
+                );
+                service.report(NoticeKind::ComebackSkipped {
+                    place,
+                    reason,
+                    message: number,
+                });
+            }
         }
     });
 }

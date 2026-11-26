@@ -75,9 +75,7 @@ export function LoadoutPanel({
       {legacy !== null && (
         <Row
           label={t("loadout.legacy")}
-          help={
-            legacy > 0 ? t("loadout.legacyCount", { n: legacy }) : t("loadout.legacyUnreadable")
-          }
+          help={legacy > 0 ? t("loadout.legacyCount", { n: legacy }) : t("loadout.legacyNone")}
         >
           <Button
             size="sm"

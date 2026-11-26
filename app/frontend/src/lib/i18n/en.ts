@@ -948,8 +948,15 @@ export const en: Record<MessageKey, string> = {
   "loadout.mine": "My setup",
   "loadout.mineNone":
     "No setup of yours for this champion in this mode: the recommendation goes up once it is locked in.",
+  "loadout.mineNoneKeep":
+    "No setup of yours for this champion in this mode: nothing is set up once it is locked in.",
+  "loadout.mineNoneOff": "No setup of yours for this champion in this mode.",
   "loadout.mineSaved":
     "Your setup for this champion in this mode: {what}. It goes up first once the champion is locked in, the recommendation for what it lacks.",
+  "loadout.mineSavedOnly":
+    "Your setup for this champion in this mode: {what}. It goes up once the champion is locked in.",
+  "loadout.mineSavedOff":
+    "Your setup for this champion in this mode: {what}. With Set up runes and summoner spells on in Automation, it goes up first once the champion is locked in.",
   "loadout.saveMine": "Save as my setup",
   "loadout.saveMineHint":
     "Keep the rune page and spells you have now as this champion's setup in this mode",
@@ -958,6 +965,8 @@ export const en: Record<MessageKey, string> = {
   "loadout.restoreHint":
     "Forget your setup for this champion in this mode and set up the recommended runes and spells",
   "loadout.savedMine": "Saved as your setup: this champion uses it first in this mode from now on",
+  "loadout.savedMineOff":
+    "Saved as your setup; with Set up runes and summoner spells on, it goes up first once the champion is locked in",
   "loadout.appliedMine": "Your setup is applied",
   "loadout.restored": "Back to the recommendation",
   "loadout.stale": "Champ select has changed; click again",
@@ -985,7 +994,7 @@ export const en: Record<MessageKey, string> = {
   "loadout.section": "Runes and summoner spells",
   "loadout.rule": "Set up runes and summoner spells",
   "loadout.ruleHint":
-    "Once a champion is locked in (in ARAM, each time it changes), winer sets up its runes and summoner spells: your own setup where you saved one, else the recommendation. On ranked and normal games it comes from Tencent 101 (or OP.GG, as chosen in Settings), in ARAM from OP.GG, and in Hextech ARAM and other modes from the client's own recommended pages. Once per champion, so a change you make afterwards stands.",
+    "Once a champion is locked in (in ARAM, each time it changes), winer sets up its runes and summoner spells: your own setup where you saved one, else the recommendation. On ranked and normal games it comes from Tencent 101 (or OP.GG, as chosen in Settings), in ARAM from OP.GG, and in Hextech ARAM from the client's own recommended pages; other modes have no recommendation, so only your own setup goes up there. Once per champion, so a change you make afterwards stands.",
   "loadout.recommended": "Use the recommendation without a setup of mine",
   "loadout.recommendedHint":
     "Where you saved no setup for the champion in this mode, winer sets up the recommended runes and spells; off, it sets up only your own setups.",
@@ -995,8 +1004,8 @@ export const en: Record<MessageKey, string> = {
   "loadout.legacy": "Last-game setups of older versions (no longer used)",
   "loadout.legacyCount":
     "{n} in all: what winer up to 0.0.24 noted at the start of each game. Nothing uses them any more; you can delete them.",
-  "loadout.legacyUnreadable":
-    "The file cannot be read. Nothing uses it any more; you can delete it.",
+  "loadout.legacyNone":
+    "The file where winer up to 0.0.24 noted each game's runes and spells. Nothing uses it any more; you can delete it.",
   "loadout.legacyDelete": "Delete",
   "loadout.legacyDeleted": "The old last-game setups are deleted",
   "loadout.forget": "Clear my setups",

@@ -12,6 +12,7 @@ import type {
   MatchSummary,
   Mode,
   Seat,
+  Settings,
   Snapshot,
 } from "@winer/shared";
 
@@ -1315,6 +1316,37 @@ describe("loadout", () => {
     expect(await within(bar).findByText(zhCN["loadout.mineNone"])).toBeInTheDocument();
   });
 
+  it("keeps the setup bar with builds off, and promises nothing at lock-in while the rule is off", async () => {
+    const base = demoBackend();
+    const call = base.call.bind(base) as (
+      command: CommandName,
+      ...args: unknown[]
+    ) => Promise<unknown>;
+    const backend: Backend = {
+      ...base,
+      call: (async (command: CommandName, ...args: unknown[]) => {
+        const answer = await call(command, ...args);
+        if (command === "get_settings") {
+          const settings = answer as Settings;
+          return { ...settings, builds: { ...settings.builds, enabled: false } };
+        }
+        if (command === "get_snapshot") {
+          const snapshot = answer as Snapshot;
+          const view = snapshot.champSelect;
+          return view?.loadout
+            ? { ...snapshot, champSelect: { ...view, loadout: { ...view.loadout, auto: "off" } } }
+            : snapshot;
+        }
+        return answer;
+      }) as Backend["call"],
+    };
+    const { user } = await openLive(backend);
+    const bar = await screen.findByRole("group", { name: zhCN["loadout.mine"] });
+    expect(within(bar).getByText(zhCN["loadout.mineNoneOff"])).toBeInTheDocument();
+    await user.click(within(bar).getByRole("button", { name: zhCN["loadout.saveMine"] }));
+    expect(await screen.findByText(zhCN["loadout.savedMineOff"])).toBeInTheDocument();
+  });
+
   it("says a request made before champ select changed did nothing", async () => {
     const backend = demoWith({
       loadout_action: () => Promise.reject({ code: "stale", message: "champ select has changed" }),
@@ -1569,6 +1601,13 @@ describe("loadout", () => {
     expect(await screen.findByText(/^1L: 👑 峡谷通天代\|/)).toBeInTheDocument();
     expect(screen.queryByText(zhCN["loadout.panel"])).toBeNull();
     expect(call).not.toHaveBeenCalledWith("get_build", expect.anything());
+  });
+
+  it("names the old file without calling it unreadable when it holds nothing", async () => {
+    const backend = demoWith({ get_loadout_summary: () => ({ presets: 0, legacy: 0 }) });
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.automation"] }));
+    expect(await screen.findByText(zhCN["loadout.legacyNone"])).toBeInTheDocument();
   });
 
   it("scopes the runes and spells and the item sets, and takes back what winer wrote", async () => {
@@ -2670,6 +2709,42 @@ describe("comebacks", () => {
     await saved(call, { messages: [{ text: "撤退", hotkey: "Alt+2", all: false }] });
     expect(list().getByRole("textbox", { name: "第 1 条快捷消息" })).toHaveValue("撤退");
     expect(screen.getByText("1 / 10")).toBeInTheDocument();
+  });
+
+  it("ends a recording when a message is removed, so the next combination goes to no other message", async () => {
+    const backend = demoBackend();
+    const settings = await backend.call("get_settings");
+    await backend.call("set_settings", {
+      settings: {
+        ...settings,
+        comeback: {
+          ...settings.comeback,
+          messages: ["集合", "撤退", "GG"].map((text) => ({ text, hotkey: null, all: false })),
+        },
+      },
+    });
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openComebacks(backend);
+    const list = () => within(screen.getByRole("list", { name: zhCN["comeback.quick"] }));
+    const second = list().getAllByRole("listitem")[1] as HTMLElement;
+    await user.click(within(second).getByRole("button", { name: zhCN["social.hotkeyRecord"] }));
+    await user.click(list().getByRole("button", { name: "删除第 1 条快捷消息" }));
+    await saved(call, {
+      messages: [
+        { text: "撤退", hotkey: null, all: false },
+        { text: "GG", hotkey: null, all: false },
+      ],
+    });
+    call.mockClear();
+    fireEvent.keyDown(window, { code: "Digit2", key: "2", altKey: true });
+    expect(
+      call.mock.calls.filter(([command]) => command === "set_settings"),
+      "GG, now in that row, gets nothing",
+    ).toEqual([]);
+    expect(
+      list().getAllByRole("button", { name: zhCN["social.hotkeyRecord"] }),
+      "no row is recording",
+    ).toHaveLength(3 - 1);
   });
 
   it("takes ten quick messages at most", async () => {

@@ -43,6 +43,12 @@ let recording: (() => void) | null = null;
 /** Recorders holding the shortcuts let go; the shell takes them back when the last one ends. */
 let suspending = 0;
 
+/** Ends the recorder listening now, if any: a row about to move (a quick message removed above it)
+ *  must not take the next combination for the message that moves into its place. */
+export function stopRecording(): void {
+  recording?.();
+}
+
 /** One shortcut: its keys, a recorder for a new combination and a ✕ that turns it off. */
 function ShortcutRow({
   label,

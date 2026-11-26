@@ -150,6 +150,7 @@ pub fn typescript() -> String {
         // Champ select's runes and spells: the view, the user's own setups, the requests.
         loadout::LoadoutView,
         loadout::LoadoutCurrent,
+        loadout::LoadoutAuto,
         loadout::Setup,
         loadout::RecommendationState,
         loadout::LoadoutRecommendation,

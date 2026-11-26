@@ -15,7 +15,7 @@ places it connects to:
 
 The build panel reads the statistics of the champion on the Live game page only (yours, in champ
 select and in the game); while item sets are written by themselves, runes and spells are set up for
-you or the client's runes panel is on, champ select also reads them once for the champion you hover
+you or the client's runes panel shows, champ select also reads them once for the champion you hover
 or lock in. A request carries the champion, mode, lane and patch and nothing about your account or
 any player; with **Builds** off in **Settings › General**, nothing is read.
 

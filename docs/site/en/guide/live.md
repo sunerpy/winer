@@ -247,7 +247,9 @@ a lookup), the lane the champion is played in most comes first.
 
 In champ select, a **My setup** bar sits above the panel: **Save as my setup** keeps your current
 rune page and spells as the champion's setup for this mode, which winer sets up first once the
-champion is locked in; once one is saved, **Apply my setup** and **Back to recommended** join it.
+champion is locked in while [Set up runes and summoner spells](/en/guide/automation#runes-and-summoner-spells)
+is on; once one is saved, **Apply my setup** and **Back to recommended** join it. With **Builds**
+off in **Settings › General** the panel is hidden, and the bar stays.
 See [My setup](/en/guide/automation#my-setup).
 
 ### Where the numbers come from
@@ -266,14 +268,14 @@ the games behind the numbers.
 All of these are switched in **Settings › General › Data sources**. OP.GG's terms do not allow
 automated collection, and ARAM.GG asks programs not to read its data files; if that matters to you,
 switch the row off. With ARAM's or Arena's source off, that mode's panel only says the source is
-switched off, and setting up runes and spells uses the client's own recommended pages; with the
-Hextech fallback off, only Tencent's numbers are used.
+switched off, and in ARAM setting up runes and spells uses the client's own recommended pages; with
+the Hextech fallback off, only Tencent's numbers are used.
 
 These are public statistics from third parties and can lag a patch; in a patch's first days, when
 there are none yet, the previous patch's are used. When a source does not answer, the panel says so
 and offers **Retry**. Items and augments the client does not know (from another patch, say) are left
 out. winer reads the numbers of the champion on screen only, keeps them for a few hours, and never
-reads other champions ahead. With runes and spells set up for you, or the client's runes panel on,
+reads other champions ahead. With runes and spells set up for you, or the client's runes panel showing,
 champ select also reads the recommendation once for the champion you hover or lock in, and only
 that one. With **Builds** off in **Settings › General**, the panel is hidden and nothing is fetched.
 

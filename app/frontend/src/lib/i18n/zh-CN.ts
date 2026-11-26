@@ -906,14 +906,21 @@ export const zhCN = {
   "loadout.spellsApplied": "已换上这两个召唤师技能。",
   "loadout.itemSetWritten": "已写入装备方案，游戏内商店的装备方案里能找到它。",
   "loadout.mine": "我的方案",
-  "loadout.mineNone": "还没有保存这个英雄在这个模式的方案，锁定后用推荐。",
+  "loadout.mineNone": "这个英雄在这个模式没有保存的方案，锁定后用推荐。",
+  "loadout.mineNoneKeep": "这个英雄在这个模式没有保存的方案，锁定后不会自动更换。",
+  "loadout.mineNoneOff": "这个英雄在这个模式没有保存的方案。",
   "loadout.mineSaved": "已保存这个英雄在这个模式的方案：{what}。锁定后先用它，没有的部分用推荐。",
+  "loadout.mineSavedOnly": "已保存这个英雄在这个模式的方案：{what}。锁定后换上它。",
+  "loadout.mineSavedOff":
+    "已保存这个英雄在这个模式的方案：{what}。在自动化里打开「自动配置符文和召唤师技能」后，锁定英雄时会先用它。",
   "loadout.saveMine": "保存为我的方案",
   "loadout.saveMineHint": "把现在的符文页和召唤师技能存成这个英雄在这个模式的方案",
   "loadout.applyMine": "应用我的方案",
   "loadout.restore": "恢复推荐",
   "loadout.restoreHint": "删掉这个英雄在这个模式的方案，换上推荐的符文和召唤师技能",
   "loadout.savedMine": "已保存为我的方案，以后这个英雄在这个模式会先用它",
+  "loadout.savedMineOff":
+    "已保存为我的方案；打开「自动配置符文和召唤师技能」后，锁定英雄时会先用它",
   "loadout.appliedMine": "已应用我的方案",
   "loadout.restored": "已恢复推荐",
   "loadout.stale": "选人已经变化，请再点一次",
@@ -940,7 +947,7 @@ export const zhCN = {
   "loadout.section": "符文与召唤师技能",
   "loadout.rule": "自动配置符文和召唤师技能",
   "loadout.ruleHint":
-    "锁定英雄后（大乱斗里每换一次英雄），换上这个英雄的符文和召唤师技能：有「我的方案」就用你的方案，没有就用推荐。排位和匹配的推荐来自腾讯 101（或设置里选的 OP.GG），极地大乱斗来自 OP.GG，海克斯大乱斗和其他模式用客户端自己的推荐页。每个英雄只换一次，之后你自己的改动不会被覆盖。",
+    "锁定英雄后（大乱斗里每换一次英雄），换上这个英雄的符文和召唤师技能：有「我的方案」就用你的方案，没有就用推荐。排位和匹配的推荐来自腾讯 101（或设置里选的 OP.GG），极地大乱斗来自 OP.GG，海克斯大乱斗用客户端自己的推荐页；其他模式没有推荐，只换你保存的方案。每个英雄只换一次，之后你自己的改动不会被覆盖。",
   "loadout.recommended": "没有我的方案时用推荐",
   "loadout.recommendedHint":
     "这个英雄在这个模式里没有你保存的方案时，换上推荐的符文和召唤师技能；关闭后只换你自己的方案。",
@@ -950,7 +957,8 @@ export const zhCN = {
   "loadout.legacy": "旧版本记下的上一局配置（已停用）",
   "loadout.legacyCount":
     "共 {n} 条。0.0.24 及以前每局开局自动记下的符文和召唤师技能，现在不再使用，可以删除。",
-  "loadout.legacyUnreadable": "文件读不出来，现在不再使用，可以删除。",
+  "loadout.legacyNone":
+    "0.0.24 及以前每局开局自动记下符文和召唤师技能的文件，现在不再使用，可以删除。",
   "loadout.legacyDelete": "删除",
   "loadout.legacyDeleted": "已删除旧的上一局配置",
   "loadout.forget": "清除我的方案",

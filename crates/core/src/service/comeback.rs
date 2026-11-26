@@ -274,13 +274,19 @@ impl Service {
         .await
     }
 
-    /// What a press of quick message `index`'s shortcut does now (`comeback::message_press`), from
-    /// the phase, champ select's game id and the settings as saved, against the last line that went
-    /// out. The shell acts on it as on a comeback's: champ select's message goes out through
-    /// [`Self::send_message`], the game's is typed by the shell, which then tells
-    /// [`Self::message_went_out`].
-    pub fn message_press(&self, index: u8) -> ComebackPress {
+    /// What a press of the quick message whose combination is `shortcut` does now
+    /// (`comeback::message_press`), from the phase, champ select's game id and the settings as
+    /// saved, against the last line that went out, with the message's number (from 1). The message
+    /// is found by its combination, which no two share, never by its place: a press that crosses
+    /// an edit sends the message it was for, or nothing once that one is gone. The shell acts on it
+    /// as on a comeback's: champ select's message goes out through [`Self::send_message`], the
+    /// game's is typed by the shell, which then tells [`Self::message_went_out`].
+    pub fn message_press(&self, shortcut: &str) -> (Option<u8>, ComebackPress) {
         let rule = self.settings().comeback;
+        let index = rule
+            .messages
+            .iter()
+            .position(|message| message.hotkey.as_deref() == Some(shortcut));
         let (phase, champ_select) = {
             let state = lock(&self.inner.state);
             (
@@ -289,14 +295,15 @@ impl Service {
             )
         };
         let memory = lock(&self.inner.comeback.memory).clone();
-        comeback::message_press(
+        let press = comeback::message_press(
             phase,
             champ_select,
             &rule,
-            usize::from(index),
+            index.unwrap_or(usize::MAX),
             &memory,
             Instant::now(),
-        )
+        );
+        (index.and_then(|index| u8::try_from(index + 1).ok()), press)
     }
 
     /// A quick message reached the game's chat, whole or in part, just now: nothing follows within
@@ -1388,26 +1395,69 @@ mod tests {
         service.set_settings(settings).unwrap();
         seat_champ_select(&service, 7);
         assert_eq!(
-            service.message_press(1),
-            ComebackPress::ChampSelect {
-                line: "GG".into(),
-                game_id: 7
-            }
+            service.message_press("Alt+2"),
+            (
+                Some(2),
+                ComebackPress::ChampSelect {
+                    line: "GG".into(),
+                    game_id: 7
+                }
+            )
         );
-        assert!(matches!(
-            service.message_press(4),
-            ComebackPress::Skip {
-                reason: CalloutSkip::NoLines,
-                ..
-            }
-        ));
+        assert!(
+            matches!(
+                service.message_press("Alt+5"),
+                (
+                    None,
+                    ComebackPress::Skip {
+                        reason: CalloutSkip::NoLines,
+                        ..
+                    }
+                )
+            ),
+            "a combination no message has, such as one of a message removed meanwhile"
+        );
+        // The first removed: the second's combination still sends the second, now first.
+        let mut fewer = service.settings();
+        fewer.comeback.messages.remove(0);
+        service.set_settings(fewer).unwrap();
+        seat_champ_select(&service, 7);
+        assert_eq!(
+            service.message_press("Alt+2"),
+            (
+                Some(1),
+                ComebackPress::ChampSelect {
+                    line: "GG".into(),
+                    game_id: 7
+                }
+            )
+        );
+        assert_eq!(
+            service.message_press("Alt+1").0,
+            None,
+            "the removed one sends nothing"
+        );
+        let mut again = service.settings();
+        again.comeback.messages.insert(
+            0,
+            QuickMessage {
+                text: "集合".into(),
+                hotkey: Some("Alt+1".into()),
+                all: false,
+            },
+        );
+        service.set_settings(again).unwrap();
+        seat_champ_select(&service, 7);
 
         // Posted in this champ select's chat and nowhere else; once it went out, no line follows
         // within the spacing, and it is no random line to avoid.
         let other = FakeChat::new(&[Some(8)], Some("room"));
         assert!(service.send_message_through(&other, "GG", 7).await.is_err());
         assert!(lock(&other.posts).is_empty());
-        assert!(!too_soon(service.message_press(1)), "nothing went out");
+        assert!(
+            !too_soon(service.message_press("Alt+2").1),
+            "nothing went out"
+        );
         let chat = FakeChat::new(&[Some(7), Some(7)], Some("room"));
         assert_eq!(
             service.send_message_through(&chat, "GG", 7).await.unwrap(),
@@ -1415,7 +1465,7 @@ mod tests {
         );
         assert_eq!(*lock(&chat.posts), [("room".to_owned(), "GG".to_owned())]);
         assert!(lock(&service.inner.comeback.memory).last.is_none());
-        assert!(too_soon(service.message_press(0)));
+        assert!(too_soon(service.message_press("Alt+1").1));
         assert!(too_soon(service.comeback_press(false)));
         let next = FakeChat::new(&[], Some("room"));
         assert!(
@@ -1432,9 +1482,9 @@ mod tests {
 
         // Typed into the game, it counts once it reached the chat.
         lock(&service.inner.comeback.memory).sent_at = None;
-        assert!(!too_soon(service.message_press(0)));
+        assert!(!too_soon(service.message_press("Alt+1").1));
         service.message_went_out();
-        assert!(too_soon(service.message_press(0)));
+        assert!(too_soon(service.message_press("Alt+1").1));
         assert!(lock(&service.inner.comeback.memory).last.is_none());
     }
 

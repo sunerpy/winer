@@ -199,6 +199,7 @@ impl Bridge {
             Err(error) => return debug!(%error, "plugin connection refused"),
         };
         self.connected.fetch_add(1, Ordering::Relaxed);
+        service.plugin_attached();
         let (mut sink, mut incoming) = socket.split();
         let mut events = service.subscribe();
         let hello = || BridgeMessage::Hello {
@@ -274,6 +275,7 @@ impl Bridge {
             }
         }
         self.connected.fetch_sub(1, Ordering::Relaxed);
+        service.plugin_detached();
         info!(%context, "plugin disconnected");
     }
 }

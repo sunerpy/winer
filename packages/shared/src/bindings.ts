@@ -1026,7 +1026,11 @@ held: boolean,
  * Taken from one counter for the whole run, the next one whenever anything else here
  * changes: no two views with other contents share one.
  */
-revision: number, current: LoadoutCurrent, 
+revision: number, 
+/**
+ * What the rule sets up once the champion is the player's, so the panels promise no more.
+ */
+auto: LoadoutAuto, current: LoadoutCurrent, 
 /**
  * The user's own setup for the champion, kind of game and lane (我的方案).
  */
@@ -1050,6 +1054,8 @@ runes: RunePage | null,
  * Its name: `winer · 烬`, or one of the player's.
  */
 page: string, spells: [number, number], };
+
+export type LoadoutAuto = "off" | "mine" | "mineOrRecommended";
 
 export type Setup = { 
 /**

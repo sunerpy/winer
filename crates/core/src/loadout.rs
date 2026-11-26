@@ -18,7 +18,7 @@ use ts_rs::TS;
 use crate::{
     builds::{Build, BuildSource, ItemOption, Rates, RuneOption, RunePage, SpellOption},
     model::ChampSelectSession,
-    settings::{Language, Mode, write_atomic},
+    settings::{Automation, Language, Mode, write_atomic},
     view::Position,
 };
 
@@ -486,6 +486,8 @@ pub struct LoadoutView {
     /// Taken from one counter for the whole run, the next one whenever anything else here
     /// changes: no two views with other contents share one.
     pub revision: u32,
+    /// What the rule sets up once the champion is the player's, so the panels promise no more.
+    pub auto: LoadoutAuto,
     pub current: LoadoutCurrent,
     /// The user's own setup for the champion, kind of game and lane (我的方案).
     pub mine: Option<Setup>,
@@ -495,6 +497,40 @@ pub struct LoadoutView {
     /// The runes, styles and spells the view names, with their names and icons: the client's
     /// panel has no catalog of its own.
     pub assets: Vec<crate::view::AssetInfo>,
+}
+
+/// What 自动配置符文和召唤师技能 does for the champion in hand once it is the player's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum LoadoutAuto {
+    /// The rule is off, or not for this kind of game: nothing goes up by itself.
+    Off,
+    /// The user's own setup only: 没有我的方案时用推荐 is off, or the kind of game has no
+    /// recommendation.
+    Mine,
+    /// The user's own setup, else the recommendation.
+    MineOrRecommended,
+}
+
+impl LoadoutAuto {
+    /// What the rule does in a game of `mode` under `rule`.
+    pub fn of(rule: &Automation, mode: Mode) -> Self {
+        if !rule.restores_loadout(Some(mode)) {
+            Self::Off
+        } else if rule.loadout.recommended && recommends(mode) {
+            Self::MineOrRecommended
+        } else {
+            Self::Mine
+        }
+    }
+}
+
+/// Whether winer has a recommendation for a kind of game: the Rift's and the two ARAMs'.
+pub fn recommends(mode: Mode) -> bool {
+    matches!(
+        mode,
+        Mode::Ranked | Mode::Normal | Mode::Aram | Mode::Hextech
+    )
 }
 
 /// What the player has now.
@@ -1029,6 +1065,34 @@ pub fn item_set(build: &Build, champion: &str, language: Language) -> Box<RawVal
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_view_says_what_the_rule_sets_up_and_no_more() {
+        let mut rule = Automation::default();
+        assert_eq!(
+            LoadoutAuto::of(&rule, Mode::Ranked),
+            LoadoutAuto::Off,
+            "off by default"
+        );
+        rule.loadout.enabled = true;
+        rule.scopes.loadout = vec![Mode::Ranked, Mode::Other];
+        assert_eq!(
+            LoadoutAuto::of(&rule, Mode::Ranked),
+            LoadoutAuto::MineOrRecommended
+        );
+        assert_eq!(
+            LoadoutAuto::of(&rule, Mode::Other),
+            LoadoutAuto::Mine,
+            "no recommendation in other modes"
+        );
+        assert_eq!(
+            LoadoutAuto::of(&rule, Mode::Aram),
+            LoadoutAuto::Off,
+            "outside its modes"
+        );
+        rule.loadout.recommended = false;
+        assert_eq!(LoadoutAuto::of(&rule, Mode::Ranked), LoadoutAuto::Mine);
+    }
     use crate::test_support::fixture;
 
     fn session(name: &str) -> ChampSelectSession {

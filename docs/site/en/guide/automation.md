@@ -47,7 +47,7 @@ there. The automation switches on the overview list their modes too.
   | Ranked, Normal | Tencent 101, for your assigned position; OP.GG instead in **Settings › General › Data sources** |
   | ARAM           | OP.GG; the client's own recommended pages with that source off                                  |
   | Hextech ARAM   | the client's own recommended pages: no source has rune or spell numbers for Hextech ARAM        |
-  | Other modes    | the client's own recommended pages, where it has them                                           |
+  | Other modes    | no recommendation: only your own setup goes up                                                  |
 
   When the numbers cannot be read, or with **Builds** off in **Settings › General**, the client's own
   recommended pages are used.
@@ -81,8 +81,10 @@ Flash and Ghost in Hextech ARAM. Saved while the rune page is not a full one, a 
 spells only, and the runes still follow the recommendation.
 
 - **Apply my setup**: sets up the saved setup at once.
-- **Back to recommended**: deletes the champion's setup for this mode (and lane) and sets up the
-  recommendation at once.
+- **Back to recommended**: deletes the setup the panel shows and sets up the recommendation at
+  once. When that was a lane's own setup in Ranked or Normal and one saved with no lane remains,
+  that lane uses the lane-less one from then on; the panel shows it, and a second press deletes it
+  too.
 - Each button acts on what the panel showed when you pressed it: if champ select changed before
   (another champion or lane, say), winer changes nothing and asks you to press again.
 

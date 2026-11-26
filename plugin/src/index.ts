@@ -17,7 +17,7 @@ import {
 } from "./history";
 import { type HomeState, PROMOTIONS, decorateHome, forgetHub } from "./home";
 import { text } from "./i18n";
-import { LoadoutPanel } from "./loadout";
+import { LOADOUT_PANEL, LoadoutPanel } from "./loadout";
 import {
   type FloatingPanel,
   clearLobby,
@@ -334,6 +334,7 @@ export class Controller {
       head.addEventListener("click", () => {
         panel.collapsed = !panel.collapsed;
         host.dataset.collapsed = String(panel.collapsed);
+        this.#markTeamPanel(host);
       });
       this.doc.body.append(host);
       this.#panel = panel;
@@ -346,12 +347,27 @@ export class Controller {
       this.#panelKey = key;
       const open = (puuid: string, anchor: Element) => void this.pick(puuid, anchor);
       this.#panel.body.replaceChildren(panelRows(view, language, open));
+      this.#markTeamPanel(this.#panel.host);
     }
+  }
+
+  /** Where the team panel ends, so the runes panel below it on the same edge stays clear of it
+   *  (style.css). Read only when the panel changed. */
+  #markTeamPanel(host: HTMLElement): void {
+    const root = this.doc.documentElement;
+    root.dataset.winerTeamPanel = "true";
+    root.style.setProperty(
+      "--winer-team-bottom",
+      `${Math.ceil(host.getBoundingClientRect().bottom)}px`,
+    );
   }
 
   #hidePanel(): void {
     removePanels(this.doc, "team");
     this.#panel = null;
+    const root = this.doc.documentElement;
+    delete root.dataset.winerTeamPanel;
+    root.style.removeProperty("--winer-team-bottom");
   }
 
   // ---- The history panel: a player's latest games over the client page ----
@@ -437,8 +453,10 @@ export class Controller {
         ? (snapshot.champSelect?.loadout ?? null)
         : null;
     if (!view || !settings) {
+      // The page's other context may have drawn the last one: it goes whichever drew it.
       if (this.loadout.isShown) this.loadout.hide();
-      else this.#reports.delete("loadout");
+      else removePanels(this.doc, LOADOUT_PANEL);
+      this.#reports.delete("loadout");
       return;
     }
     this.loadout.show(view, settings.general.language);

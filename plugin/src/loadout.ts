@@ -23,8 +23,9 @@ import { removePanels } from "./lobby";
 export const LOADOUT_PANEL = "loadout";
 /** Pengu's DataStore key the fold is kept under, so the panel stays folded across reloads. */
 export const COLLAPSED_KEY = "winer-loadout-collapsed";
-/** Longer than any write winer makes: only an answer that got lost runs into it. */
-export const LOADOUT_TIMEOUT_MS = 20_000;
+/** Longer than any request takes, a lookup of the numbers included (Back to recommended may need
+ *  one first, each of its requests 10 s at most): only an answer that got lost runs into it. */
+export const LOADOUT_TIMEOUT_MS = 60_000;
 
 /** Pengu's synchronous store (`docs/platform-notes.md`); absent outside the client. */
 export interface Store {
@@ -36,8 +37,14 @@ type ActionKind = LoadoutAction["kind"];
 
 /** What the panel says under its buttons: a request under way, or what came of the last one. */
 export type Said =
-  | { state: "busy"; action: ActionKind }
-  | { state: "done"; text: string; ok: boolean };
+  | { state: "busy"; action: LoadoutAction }
+  | { state: "done"; text: string; ok: boolean; stale?: true };
+
+/** The same request: its kind, and for an option its place. */
+function sameAction(a: LoadoutAction, b: LoadoutAction): boolean {
+  const index = (action: LoadoutAction) => ("index" in action ? action.index : -1);
+  return a.kind === b.kind && index(a) === index(b);
+}
 
 /** Sends `action` on the view `target` names; the id its answer comes under, null without a
  *  connection. */
@@ -161,7 +168,7 @@ export function loadoutBody(
     const element = h(
       "button",
       { type: "button", class: kind, "data-action": action.kind },
-      busy && said.action === action.kind ? text(language, "loadoutWorking") : label,
+      busy && sameAction(said.action, action) ? text(language, "loadoutWorking") : label,
     );
     if (busy) element.setAttribute("disabled", "");
     element.addEventListener("click", (event) => {
@@ -268,7 +275,15 @@ export function loadoutBody(
             ? "loadoutMineRunes"
             : "loadoutMineSpells",
       )
-    : text(language, "loadoutMineNone");
+    : text(
+        language,
+        // Only what the rule will do: with it off, or not for this mode, nothing goes up.
+        view.auto === "mineOrRecommended"
+          ? "loadoutMineNone"
+          : view.auto === "mine"
+            ? "loadoutMineNoneKeep"
+            : "loadoutMineNoneOff",
+      );
   const own = h(
     "div",
     { class: "winer-loadout-section" },
@@ -311,17 +326,17 @@ export function answerText(
   result: LoadoutResult,
   action: ActionKind,
   language: Language,
-): { text: string; ok: boolean } {
+): { text: string; ok: boolean; stale?: true } {
   const { done, error } = result;
+  if (error?.code === "stale")
+    return { text: text(language, "loadoutStale"), ok: false, stale: true };
   if (error) {
     const key =
-      error.code === "stale"
-        ? "loadoutStale"
-        : error.code === "busy"
-          ? "loadoutBusy"
-          : error.code === "notConnected"
-            ? "loadoutOffline"
-            : null;
+      error.code === "busy"
+        ? "loadoutBusy"
+        : error.code === "notConnected"
+          ? "loadoutOffline"
+          : null;
     return {
       text: key
         ? text(language, key)
@@ -356,7 +371,14 @@ export class LoadoutPanel {
   /** The view drawn last: a button's request names it. */
   #view: LoadoutView | null = null;
   #language: Language = "zh-CN";
-  #pending: { id: number; action: ActionKind; timer: ReturnType<typeof setTimeout> } | null = null;
+  /** The request awaited. `orphan` once the panel shows another champion or champ select than it
+   *  was made on: then only a stale answer to it is still news. */
+  #pending: {
+    id: number;
+    action: ActionKind;
+    timer: ReturnType<typeof setTimeout>;
+    orphan: boolean;
+  } | null = null;
   #said: Said | null = null;
   #collapsed: boolean;
 
@@ -378,6 +400,8 @@ export class LoadoutPanel {
   show(view: LoadoutView, language: Language): void {
     removePanels(this.doc, LOADOUT_PANEL, this.context);
     if (!this.#host?.isConnected) {
+      // Read now, not only when the context began: the page's other context may have folded it.
+      this.#collapsed = readCollapsed(this.store);
       const head = h(
         "button",
         { type: "button", class: "winer-head", "aria-expanded": String(!this.#collapsed) },
@@ -412,12 +436,15 @@ export class LoadoutPanel {
       this.#body = body;
       this.#key = "";
     }
-    // A request made on another champ select or champion is not this view's to report.
+    // A request made on another champ select or champion is not this view's to report, unless it
+    // did nothing: then the player is asked to click again.
     if (
       this.#view &&
       (this.#view.gameId !== view.gameId || this.#view.championId !== view.championId)
-    )
-      this.#forget();
+    ) {
+      if (!(this.#said?.state === "done" && this.#said.stale)) this.#said = null;
+      if (this.#pending) this.#pending.orphan = true;
+    }
     this.#view = view;
     this.#language = language;
     // Rebuilt only when what it shows changed: a rebuild is a DOM mutation, which wakes the
@@ -445,14 +472,21 @@ export class LoadoutPanel {
     if (!pending || pending.id !== result.requestId) return false;
     clearTimeout(pending.timer);
     this.#pending = null;
-    this.#said = { state: "done", ...answerText(result, pending.action, this.#language) };
+    if (!pending.orphan)
+      this.#said = { state: "done", ...answerText(result, pending.action, this.#language) };
+    else if (result.error?.code === "stale")
+      this.#said = { state: "done", ...answerText(result, pending.action, this.#language) };
+    else return true;
     this.changed();
     return true;
   }
 
   #act(action: LoadoutAction): void {
     const view = this.#view;
-    if (!view || this.#pending) return;
+    if (!view || (this.#pending && !this.#pending.orphan)) return;
+    // One made on an older champion gives way: its answer is no longer awaited.
+    if (this.#pending) clearTimeout(this.#pending.timer);
+    this.#pending = null;
     const target = { gameId: view.gameId, championId: view.championId, revision: view.revision };
     const id = this.request(target, action);
     if (id === null) {
@@ -460,12 +494,14 @@ export class LoadoutPanel {
     } else {
       const timer = setTimeout(() => {
         if (this.#pending?.id !== id) return;
+        const orphan = this.#pending.orphan;
         this.#pending = null;
+        if (orphan) return;
         this.#said = { state: "done", text: text(this.#language, "loadoutTimeout"), ok: false };
         this.changed();
       }, LOADOUT_TIMEOUT_MS);
-      this.#pending = { id, action: action.kind, timer };
-      this.#said = { state: "busy", action: action.kind };
+      this.#pending = { id, action: action.kind, timer, orphan: false };
+      this.#said = { state: "busy", action };
     }
     this.changed();
   }

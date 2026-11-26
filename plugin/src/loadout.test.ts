@@ -40,6 +40,7 @@ function loadout(change: Partial<LoadoutView> = {}): LoadoutView {
     lane: null,
     held: true,
     revision: 4,
+    auto: "mineOrRecommended",
     current: { runes: ELECTROCUTE, page: "winer · 阿狸", spells: [4, 32] },
     mine: null,
     recommendation: {
@@ -84,6 +85,8 @@ afterEach(() => {
   delete document.documentElement.dataset.winerOwner;
   delete document.documentElement.dataset.winerBeat;
   delete document.documentElement.dataset.winerConnected;
+  delete document.documentElement.dataset.winerTeamPanel;
+  document.documentElement.style.removeProperty("--winer-team-bottom");
   vi.useRealTimers();
 });
 
@@ -106,6 +109,16 @@ describe("what the runes panel shows", () => {
     expect(currentIs(loadout({ current: { runes: COMET, page: "我的", spells: [4, 32] } }))).toBe(
       "changed",
     );
+    const other = loadoutBody(
+      loadout({ current: { runes: COMET, page: "我的", spells: [4, 32] } }),
+      "zh-CN",
+      null,
+      () => undefined,
+    );
+    expect(
+      other.querySelector(".winer-loadout-tag")?.textContent,
+      "neither theirs nor the recommendation, which may be the page they always had",
+    ).toBe("其他");
     expect(currentIs(loadout({ current: { runes: null, page: "", spells: [4, 32] } }))).toBeNull();
   });
 
@@ -136,16 +149,34 @@ describe("what the runes panel shows", () => {
     apply[1]?.click();
     (body.querySelector('[data-action="saveMine"]') as HTMLButtonElement).click();
     expect(acted).toEqual(["applyRunes", "saveMine"]);
+    // It promises only what the rule does.
+    const off = loadoutBody(loadout({ auto: "off" }), "zh-CN", null, () => undefined);
+    expect(off.textContent).toContain("我的方案 · 未保存");
+    expect(off.textContent, "the rule is off").not.toContain("锁定后");
+    const keep = loadoutBody(loadout({ auto: "mine" }), "zh-CN", null, () => undefined);
+    expect(keep.textContent).toContain("未保存，锁定后不自动更换");
 
     const busy = loadoutBody(
       loadout({ mine: { runes: COMET, spells: [4, 6], savedAt: 1 } }),
       "zh-CN",
-      { state: "busy", action: "saveMine" },
+      { state: "busy", action: { kind: "saveMine" } },
       () => acted.push("never"),
     );
     const buttons = [...busy.querySelectorAll<HTMLButtonElement>("button")];
     expect(buttons.every((button) => button.disabled)).toBe(true);
     expect(busy.querySelector('[data-action="saveMine"]')?.textContent).toBe("正在设置…");
+    // Of several options, only the one asked for says so.
+    const second = loadoutBody(
+      loadout(),
+      "zh-CN",
+      { state: "busy", action: { kind: "applyRunes", index: 1 } },
+      () => undefined,
+    );
+    expect(
+      [...second.querySelectorAll('[data-action="applyRunes"]')].map(
+        (button) => button.textContent,
+      ),
+    ).toEqual(["应用", "正在设置…"]);
     expect(busy.querySelector('[data-action="restoreRecommended"]')).not.toBeNull();
     expect(busy.textContent).toContain("已保存符文和召唤师技能");
 
@@ -180,7 +211,7 @@ describe("what the runes panel shows", () => {
     ).toBe(false);
     expect(
       answerText(result({ error: { code: "stale", message: "old" } }), "applyRunes", "zh-CN"),
-    ).toEqual({ text: "选人已经变化，请再点一次", ok: false });
+    ).toEqual({ text: "选人已经变化，请再点一次", ok: false, stale: true });
     expect(
       answerText(result({ error: { code: "invalid", message: "no page" } }), "saveMine", "en").text,
     ).toBe("It did not work：no page");
@@ -251,12 +282,42 @@ describe("the runes panel on the page", () => {
         '[data-action="applyMine"], [data-action="saveMine"]',
       ) as HTMLButtonElement
     ).click();
-    // The champion changed before the answer: nothing of it is reported.
+    // The champion changed before the answer: what it did for the other one is not reported.
     panel.show(loadout({ championId: 22 }), "en");
     expect(panel.answer({ type: "loadoutResult", requestId: 7, done: null, error: null })).toBe(
-      false,
+      true,
     );
+    panel.show(loadout({ championId: 22 }), "en");
     expect(document.querySelector(".winer-loadout-said")?.textContent).toBe("");
+  });
+
+  it("asks to click again when a request made on the champion before did nothing", () => {
+    const panel = new LoadoutPanel(
+      document,
+      "c-1",
+      () => 3,
+      () => undefined,
+      memoryStore(),
+    );
+    const stale = { type: "loadoutResult", requestId: 3, done: null } as const;
+    const said = () => document.querySelector(".winer-loadout-said")?.textContent;
+    // The new view first, then the answer.
+    panel.show(loadout(), "zh-CN");
+    (document.querySelector('[data-action="saveMine"]') as HTMLButtonElement).click();
+    panel.show(loadout({ championId: 22, revision: 5 }), "zh-CN");
+    expect(
+      document.querySelector<HTMLButtonElement>('[data-action="saveMine"]')?.disabled,
+      "the new champion's buttons are free",
+    ).toBe(false);
+    panel.answer({ ...stale, error: { code: "stale", message: "old" } });
+    panel.show(loadout({ championId: 22, revision: 5 }), "zh-CN");
+    expect(said()).toBe("选人已经变化，请再点一次");
+    // The answer first, then the new view: the prompt stays.
+    panel.show(loadout({ championId: 103, revision: 6 }), "zh-CN");
+    (document.querySelector('[data-action="saveMine"]') as HTMLButtonElement).click();
+    panel.answer({ ...stale, error: { code: "stale", message: "old" } });
+    panel.show(loadout({ championId: 22, revision: 7 }), "zh-CN");
+    expect(said()).toBe("选人已经变化，请再点一次");
   });
 
   it("stays folded as the user left it, across a reload of the page", () => {
@@ -284,6 +345,11 @@ describe("the runes panel on the page", () => {
     again.show(loadout(), "zh-CN");
     expect(document.querySelector<HTMLElement>(".winer-panel")?.dataset.collapsed).toBe("true");
     expect(head?.isConnected).toBe(false);
+    // Unfolded by that one while this one's panel was gone: drawn again, it reads the store anew.
+    store.values.set(COLLAPSED_KEY, false);
+    again.hide();
+    panel.show(loadout(), "zh-CN");
+    expect(document.querySelector<HTMLElement>(".winer-panel")?.dataset.collapsed).toBe("false");
   });
 
   it("hands a click Pengu's root took over one of its buttons to that button", () => {
@@ -367,6 +433,34 @@ describe("the runes panel in the controller", () => {
     controller.state.hello(snapshot("InProgress", loadout()), settings(true));
     controller.render();
     expect(panel(), "the game started").toBeNull();
+  });
+
+  it("takes away a runes panel the page's other context left once there is nothing to show", () => {
+    const controller = new Controller(document);
+    const left = document.createElement("section");
+    left.className = "winer-panel";
+    left.dataset.winerPanel = LOADOUT_PANEL;
+    left.dataset.winerContext = "the-other-context";
+    document.body.append(left);
+    controller.state.hello(snapshot("Lobby", undefined), settings(true));
+    controller.render();
+    expect(panel()).toBeNull();
+  });
+
+  it("keeps the runes panel clear of the team panel on the same edge", () => {
+    const controller = new Controller(document);
+    const both = settings(true);
+    both.plugin.teamPanel = true;
+    // No party rows on this page: the team panel shows at the top right.
+    controller.state.hello(snapshot("ChampSelect", loadout()), both);
+    controller.render();
+    const root = document.documentElement;
+    expect(root.dataset.winerTeamPanel).toBe("true");
+    expect(root.style.getPropertyValue("--winer-team-bottom")).toBe("0px");
+    controller.state.hello(snapshot("Lobby", undefined), both);
+    controller.render();
+    expect(root.dataset.winerTeamPanel).toBeUndefined();
+    expect(root.style.getPropertyValue("--winer-team-bottom")).toBe("");
   });
 
   it("asks winer only from the context that draws", () => {

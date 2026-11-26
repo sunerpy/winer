@@ -114,6 +114,11 @@ pub(crate) fn forward<R: Runtime>(app: AppHandle<R>, service: Service, bridge: B
                 }
                 Err(RecvError::Lagged(missed)) => {
                     warn!(missed, "the window fell behind; asking it to resync");
+                    // What the missed events would have set up follows the state as it is now:
+                    // the shortcuts from the settings, the game's keyboard hook from the phase.
+                    let settings = Event::Settings(Box::new(service.settings()));
+                    react(&app, &service, &bridge, &settings);
+                    hotkey::on_phase(&app, service.phase());
                     let _ = app.emit(RESYNC, ());
                 }
                 Err(RecvError::Closed) => break,

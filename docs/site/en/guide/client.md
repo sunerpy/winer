@@ -70,7 +70,7 @@ has already asked for those rights to connect to it, so the activation asks noth
   match-found prompt. With this option off, a click on a player opens their history in winer's
   window instead.
 - **Runes panel in champ select**: in champ select, a panel at the client's bottom right shows the
-  runes and spells you have now (marked as your setup, the recommendation, or changed by you), the
+  runes and spells you have now (marked as your setup, the recommendation, or other), the
   recommended runes and spells (each with **Apply**), and **Save as my setup**, **Apply my setup**
   and **Back to recommended**, explained in [My setup](/en/guide/automation#my-setup). It sits above
   the client's bottom bar, clear of the lock-in, rune and spell buttons; a click on its title folds

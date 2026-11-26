@@ -38,7 +38,7 @@ import {
 import { GameRightsNote, PageBody } from "./common";
 import { LibraryEditor } from "./LibraryEditor";
 import { Count, TextList } from "./TextList";
-import { ComebackHotkeyRow, QuickMessageHotkeyRow } from "./settings/HotkeyRow";
+import { ComebackHotkeyRow, QuickMessageHotkeyRow, stopRecording } from "./settings/HotkeyRow";
 
 const LEVELS: readonly LibraryLevel[] = ["mild", "strong", "both"];
 
@@ -116,12 +116,15 @@ function QuickMessagesPanel() {
                   icon={Trash2}
                   tone="danger"
                   label={t("comeback.quickRemove", { n: index + 1 })}
-                  onClick={() =>
+                  onClick={() => {
+                    // The rows below move up: a recorder listening in one would take the next
+                    // combination for the message that moves into its place.
+                    stopRecording();
                     save((rule) => ({
                       ...rule,
                       messages: rule.messages.filter((_, at) => at !== index),
-                    }))
-                  }
+                    }));
+                  }}
                 />
               </div>
               <div className="pl-8">

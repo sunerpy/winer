@@ -776,9 +776,9 @@
 }
 
 /* The runes panel in champ select: at the bottom right, above the client's bottom bar (its rune,
- * spell and lock-in controls start about 132px from the bottom of the 1280x720 page), its top kept
- * below the navigation bar; the body scrolls when the window is short. Measured on the client before
- * a release (docs/platform-notes.md): only `bottom` moves. */
+ * spell and lock-in controls start about 132px from the bottom of the 1280x720 page, an estimate
+ * to be measured on the client before a release, docs/platform-notes.md; only `bottom` moves), its
+ * top kept below the navigation bar; the body scrolls when the window is short. */
 .winer-panel[data-winer-panel="loadout"] {
   top: auto;
   right: 12px;
@@ -787,6 +787,12 @@
   flex-direction: column;
   width: 264px;
   max-height: calc(100vh - 216px);
+}
+
+/* With the team panel showing on the same edge (the party rows were not found), its top stays below
+ * that panel's bottom (`--winer-team-bottom`, set as the team panel changes). */
+html[data-winer-team-panel="true"] .winer-panel[data-winer-panel="loadout"] {
+  max-height: calc(100vh - 148px - var(--winer-team-bottom, 76px));
 }
 
 .winer-panel[data-winer-panel="loadout"][data-collapsed="true"] .winer-loadout-body {

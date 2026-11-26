@@ -907,6 +907,23 @@ export function MineBar({ loadout }: { loadout: LoadoutView }) {
   const what = mine
     ? t(`loadout.what.${mine.runes && mine.spells ? "both" : mine.runes ? "runes" : "spells"}`)
     : "";
+  // Only what the rule will do: with it off, or not for this mode, nothing goes up by itself.
+  const line = mine
+    ? t(
+        loadout.auto === "off"
+          ? "loadout.mineSavedOff"
+          : loadout.auto === "mine"
+            ? "loadout.mineSavedOnly"
+            : "loadout.mineSaved",
+        { what },
+      )
+    : t(
+        loadout.auto === "off"
+          ? "loadout.mineNoneOff"
+          : loadout.auto === "mine"
+            ? "loadout.mineNoneKeep"
+            : "loadout.mineNone",
+      );
   return (
     <div
       role="group"
@@ -914,16 +931,19 @@ export function MineBar({ loadout }: { loadout: LoadoutView }) {
       className="flex w-full flex-wrap items-center gap-2"
     >
       <Badge tone={mine ? "info" : "neutral"}>{t("loadout.mine")}</Badge>
-      <span className="min-w-0 flex-1 text-[12px] leading-4 text-fg-muted">
-        {mine ? t("loadout.mineSaved", { what }) : t("loadout.mineNone")}
-      </span>
+      <span className="min-w-0 flex-1 text-[12px] leading-4 text-fg-muted">{line}</span>
       <Button
         size="sm"
         icon={Save}
         title={t("loadout.saveMineHint")}
         loading={busy === "saveMine"}
         disabled={busy !== null}
-        onClick={() => void run({ kind: "saveMine" }, "loadout.savedMine")}
+        onClick={() =>
+          void run(
+            { kind: "saveMine" },
+            loadout.auto === "off" ? "loadout.savedMineOff" : "loadout.savedMine",
+          )
+        }
       >
         {t("loadout.saveMine")}
       </Button>
@@ -957,18 +977,23 @@ export function MineBar({ loadout }: { loadout: LoadoutView }) {
 }
 
 /** The panel for the champion the local player hovers or has locked, in their lane, with their own
- *  setup above it. */
+ *  setup above it. With builds off the panel is hidden, and the setup bar stays on its own: the
+ *  player's own setup needs no numbers. */
 export function ChampSelectBuild({ view }: { view: ChampSelectView }) {
+  const t = useT();
+  const builds = useSettings().builds;
   const mode = useQueueMode(view.queueId);
   const me = view.myTeam.find((seat) => seat.isSelf);
   if (!me || !mode) return null;
+  const mine = view.loadout ? <MineBar loadout={view.loadout} /> : undefined;
+  if (!builds.enabled) return mine ? <Panel eyebrow={t("loadout.mine")}>{mine}</Panel> : null;
   return (
     <BuildPanel
       championId={me.championId > 0 ? me.championId : null}
       mode={mode}
       lane={me.position}
       context="champSelect"
-      toolbar={view.loadout ? <MineBar loadout={view.loadout} /> : undefined}
+      toolbar={mine}
     />
   );
 }
