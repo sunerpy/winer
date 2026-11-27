@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.26](https://github.com/sunerpy/winer/compare/v0.0.25...v0.0.26) (2026-11-27)
+
+
+### 新功能
+
+* 「设置 › 关于」新增「自动检查更新」开关，默认开启：启动 20 秒后检查一次，运行期间每 6 小时再检查一次，发现新版本就在后台下载并校验签名；关闭后只在你点「检查更新」时联网 ([#60](https://github.com/sunerpy/winer/issues/60)) ([4787518](https://github.com/sunerpy/winer/commit/4787518115cb7072639ac1613aad2e5c16628003))
+* 新版本下载完成后，点标题栏的「重启以更新」即可静默安装并重新打开 winer，不再弹窗二次确认 ([#60](https://github.com/sunerpy/winer/issues/60)) ([4787518](https://github.com/sunerpy/winer/commit/4787518115cb7072639ac1613aad2e5c16628003))
+
 ## [0.0.25](https://github.com/sunerpy/winer/compare/v0.0.24...v0.0.25) (2026-11-27)
 
 
