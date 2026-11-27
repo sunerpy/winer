@@ -115,7 +115,9 @@ fn setup(app: &mut App, start_hidden: bool) -> Result<(), Box<dyn Error>> {
     app.manage(service.clone());
     app.manage(bridge.clone());
     app.manage(paths);
-    app.manage(updater::Updater::default());
+    app.manage(updater::Updater::new(
+        service.settings().general.auto_update,
+    ));
     app.manage(plugin_host::Host::new(local.join(storage::PENGU)));
     app.manage(hotkey::Hotkey::default());
     // On the main thread here, so it is registered before the window shows.

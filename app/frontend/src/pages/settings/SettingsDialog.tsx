@@ -482,6 +482,8 @@ function CommunityRow() {
 function AboutSection({ onOpenUpdate }: { onOpenUpdate: () => void }) {
   const t = useT();
   const store = useStore();
+  const save = useSave();
+  const general = useSettings().general;
   const info = useAsync(() => store.backend.call("get_app_info"), []);
   const update = useUpdateStatus();
   const busy = update.state === "checking" || update.state === "installing";
@@ -538,6 +540,15 @@ function AboutSection({ onOpenUpdate }: { onOpenUpdate: () => void }) {
         <Button size="sm" variant="ghost" icon={ExternalLink} onClick={() => call("open_releases")}>
           {t("settings.releases")}
         </Button>
+      </Row>
+      <Row label={t("settings.autoUpdate")} help={t("settings.autoUpdateHint")}>
+        <Toggle
+          checked={general.autoUpdate}
+          onChange={(autoUpdate) =>
+            save((settings) => ({ ...settings, general: { ...settings.general, autoUpdate } }))
+          }
+          label={t("settings.autoUpdate")}
+        />
       </Row>
       <CommunityRow />
       <DiagnosticsRow version={info.data?.version ?? ""} />

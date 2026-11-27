@@ -12,6 +12,7 @@ import {
   useState,
 } from "react";
 
+import { errorMessage } from "../lib/backend";
 import { useT } from "../lib/i18n";
 import { useObservable } from "../lib/observable";
 import { useLive, useStore, useUpdateStatus } from "../lib/store";
@@ -25,7 +26,7 @@ import { PluginPage } from "../pages/Plugin";
 import { ToolsPage } from "../pages/Tools";
 import { SettingsDialog } from "../pages/settings/SettingsDialog";
 import { UpdateDialog } from "../pages/settings/UpdateDialog";
-import { Lamp, Toaster } from "../ui";
+import { Lamp, Toaster, toast } from "../ui";
 import { ErrorBoundary } from "./ErrorBoundary";
 import {
   PAGE_ORDER,
@@ -69,15 +70,29 @@ function Readout() {
   );
 }
 
+/** The title bar's note that an update is waiting. A found or downloading one opens the dialog; a
+ *  downloaded one installs with this one click, the dialog opening to show the restart. */
 function UpdateBadge({ onOpen }: { onOpen: () => void }) {
   const t = useT();
+  const store = useStore();
   const status = useUpdateStatus();
   if (status.state !== "available" && status.state !== "downloading" && status.state !== "ready")
     return null;
+  const restart = () => {
+    onOpen();
+    void store.backend
+      .call("install_update")
+      .catch((error: unknown) => toast(errorMessage(error), "danger"));
+  };
   return (
     <button
       type="button"
-      onClick={onOpen}
+      onClick={status.state === "ready" ? restart : onOpen}
+      title={
+        status.state === "ready"
+          ? t("update.restartBadgeTitle", { version: status.version })
+          : undefined
+      }
       className="inline-flex h-7 items-center gap-1.5 rounded-6 bg-accent-soft px-2 text-[12px] font-medium text-accent-text hover:brightness-110"
     >
       <ArrowUpCircle size={14} strokeWidth={2} aria-hidden />

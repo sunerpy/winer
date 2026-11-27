@@ -3,15 +3,15 @@
 winer has no account, collects no usage data and runs no server of its own. These are the only
 places it connects to:
 
-| Connection                         | What it sends                                                  | What for                                                                                                                                      |
-| ---------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| The League client on your PC       | the local credentials the client generates                     | reading your summoner, games and history; carrying out the automation                                                                         |
-| Your region's match-history server | the access token the client got at sign-in                     | paging through match history, at addresses like `nj100-sgp.lol.qq.com`                                                                        |
-| ARAM.GG                            | a plain web request, with the champion when reading statistics | what Hextech ARAM's augments do (can be turned off in **Settings › General**); Hextech ARAM's augment statistics when Tencent's do not answer |
-| The Tencent League app             | the champion, lane and patch                                   | the build panel's statistics from the Chinese servers, at `mlol.qt.qq.com`                                                                    |
-| OP.GG                              | the champion, mode and lane                                    | the build panel's statistics from the world, at `lol-api-champion.op.gg`                                                                      |
-| GitHub                             | a plain web request                                            | checking for and downloading updates                                                                                                          |
-| jsDelivr and GitHub                | a plain web request                                            | only when you press download in **Quick chat › Online library**: the open 祖安语录 library, from jsDelivr's mirrors first, then GitHub        |
+| Connection                         | What it sends                                                  | What for                                                                                                                                               |
+| ---------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| The League client on your PC       | the local credentials the client generates                     | reading your summoner, games and history; carrying out the automation                                                                                  |
+| Your region's match-history server | the access token the client got at sign-in                     | paging through match history, at addresses like `nj100-sgp.lol.qq.com`                                                                                 |
+| ARAM.GG                            | a plain web request, with the champion when reading statistics | what Hextech ARAM's augments do (can be turned off in **Settings › General**); Hextech ARAM's augment statistics when Tencent's do not answer          |
+| The Tencent League app             | the champion, lane and patch                                   | the build panel's statistics from the Chinese servers, at `mlol.qt.qq.com`                                                                             |
+| OP.GG                              | the champion, mode and lane                                    | the build panel's statistics from the world, at `lol-api-champion.op.gg`                                                                               |
+| GitHub                             | a plain web request                                            | checking for and downloading updates (with **Check for updates automatically** off in **Settings › About**, only when you click **Check for updates**) |
+| jsDelivr and GitHub                | a plain web request                                            | only when you press download in **Quick chat › Online library**: the open 祖安语录 library, from jsDelivr's mirrors first, then GitHub                 |
 
 The build panel reads the statistics of the champion on the Live game page only (yours, in champ
 select and in the game); while item sets are written by themselves, runes and spells are set up for

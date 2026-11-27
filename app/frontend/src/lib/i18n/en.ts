@@ -824,6 +824,9 @@ export const en: Record<MessageKey, string> = {
   "settings.openLogs": "Open the log folder",
   "settings.update": "Updates",
   "settings.checkUpdate": "Check for updates",
+  "settings.autoUpdate": "Check for updates automatically",
+  "settings.autoUpdateHint":
+    "Checks 20 seconds after start, then every 6 hours. A new version is downloaded and verified in the background; once it is ready, click Restart to update in the title bar to install it. When off, winer connects only when you click Check for updates.",
   "settings.releases": "Releases",
   "settings.community": "Community",
   "settings.communityHint":
@@ -893,6 +896,7 @@ export const en: Record<MessageKey, string> = {
   "update.readyHint": "Restart and update will install it silently, then open winer again.",
   "update.restart": "Restart and update",
   "update.restartBadge": "Restart to update {version}",
+  "update.restartBadgeTitle": "Restart winer to finish updating to {version}",
   "update.view": "View update",
   "update.installingAction": "Installing",
   "update.installingHint": "winer will close, update silently and reopen shortly.",
