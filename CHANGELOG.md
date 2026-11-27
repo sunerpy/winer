@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.0.25](https://github.com/sunerpy/winer/compare/v0.0.24...v0.0.25) (2026-11-27)
+
+
+### 新功能
+
+* 「反击」更名为「快捷喊话」，可以添加最多 10 条自己的快捷消息，每条绑定一个快捷键，选择发到队伍或全体 ([#58](https://github.com/sunerpy/winer/issues/58)) ([d500e4f](https://github.com/sunerpy/winer/commit/d500e4f3aabafa494287df6794a8a44bdb2dd52e))
+* 「快捷语」并入「快捷喊话」页，成为它的第二个标签 ([#58](https://github.com/sunerpy/winer/issues/58)) ([d500e4f](https://github.com/sunerpy/winer/commit/d500e4f3aabafa494287df6794a8a44bdb2dd52e))
+* 单局评分计入为队友治疗和提供护盾：超出全场平均的部分加分，辅助英雄加得更多 ([#58](https://github.com/sunerpy/winer/issues/58)) ([d500e4f](https://github.com/sunerpy/winer/commit/d500e4f3aabafa494287df6794a8a44bdb2dd52e))
+* 战绩记分板新增「治疗」一列，数值和客户端一致（含自己的回复），全场最多的标出「治疗最多」；下方小字是为队友治疗和提供护盾的量 ([#58](https://github.com/sunerpy/winer/issues/58)) ([d500e4f](https://github.com/sunerpy/winer/commit/d500e4f3aabafa494287df6794a8a44bdb2dd52e))
+* 海克斯大乱斗不再配置符文；右下角面板改为显示召唤师技能、强化符文（按稀有度着色，带评级、名称和悬停说明）和推荐出装，可一键写入装备方案 ([#58](https://github.com/sunerpy/winer/issues/58)) ([d500e4f](https://github.com/sunerpy/winer/commit/d500e4f3aabafa494287df6794a8a44bdb2dd52e))
+* 选人时客户端右下角新增符文面板，显示当前和推荐的符文、召唤师技能，一键应用推荐、保存为我的方案或恢复推荐 ([#58](https://github.com/sunerpy/winer/issues/58)) ([d500e4f](https://github.com/sunerpy/winer/commit/d500e4f3aabafa494287df6794a8a44bdb2dd52e))
+* 锁定英雄后自动换上推荐的符文和召唤师技能，不再沿用上一局；改好的配置可以保存为「我的方案」，按英雄和模式分开保存，排位和匹配再按分路，以后先用你的方案 ([#58](https://github.com/sunerpy/winer/issues/58)) ([d500e4f](https://github.com/sunerpy/winer/commit/d500e4f3aabafa494287df6794a8a44bdb2dd52e))
+
+
+### 问题修复
+
+* winer 更新客户端插件后，会在客户端空闲时重载一次界面，新插件不必等到下次启动客户端才生效 ([#58](https://github.com/sunerpy/winer/issues/58)) ([d500e4f](https://github.com/sunerpy/winer/commit/d500e4f3aabafa494287df6794a8a44bdb2dd52e))
+* 修复选人匿名时部分玩家无法查询战绩的问题；可以还原身份的正常查询，异常身份仍保持隐藏 ([#58](https://github.com/sunerpy/winer/issues/58)) ([d500e4f](https://github.com/sunerpy/winer/commit/d500e4f3aabafa494287df6794a8a44bdb2dd52e))
+* 房间页面上也显示「房间成员」悬浮条；悬浮条可以收起，并记住收起状态 ([#58](https://github.com/sunerpy/winer/issues/58)) ([d500e4f](https://github.com/sunerpy/winer/commit/d500e4f3aabafa494287df6794a8a44bdb2dd52e))
+
 ## [0.0.24](https://github.com/sunerpy/winer/compare/v0.0.23...v0.0.24) (2026-11-22)
 
 
