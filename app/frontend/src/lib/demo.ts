@@ -937,6 +937,7 @@ const DEFAULT_SETTINGS: Settings = {
     augmentDetails: true,
     titles: true,
     hotkey: "Alt+Backquote",
+    autoUpdate: true,
   },
   automation: {
     accept: { enabled: true, delayMs: 1500 },

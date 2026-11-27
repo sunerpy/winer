@@ -791,6 +791,9 @@ export const zhCN = {
   "settings.openLogs": "打开日志目录",
   "settings.update": "软件更新",
   "settings.checkUpdate": "检查更新",
+  "settings.autoUpdate": "自动检查更新",
+  "settings.autoUpdateHint":
+    "启动 20 秒后检查，之后每 6 小时检查一次；发现新版本就在后台下载并校验，下载完成后点标题栏的“重启以更新”即可安装。关闭后只在你点“检查更新”时联网。",
   "settings.releases": "发布页",
   "settings.community": "交流群",
   "settings.communityHint": "winer交流群 · 群号 {number}：反馈问题、交流使用",
@@ -853,6 +856,7 @@ export const zhCN = {
   "update.readyHint": "点击“重启并更新”后，winer 会静默完成安装并重新打开。",
   "update.restart": "重启并更新",
   "update.restartBadge": "重启以更新 {version}",
+  "update.restartBadgeTitle": "重启 winer，完成更新到 {version}",
   "update.view": "查看更新",
   "update.installingAction": "正在安装",
   "update.installingHint": "winer 即将关闭并静默更新，请稍候。",

@@ -50,11 +50,17 @@ gh attestation verify winer_0.0.1_x64-setup.exe --repo sunerpy/winer \
 
 ## Update
 
-winer checks for updates by itself after it starts and every few hours while it runs. When there is
-one, an update button appears at the right of the title bar; open it and choose **Update now**:
-winer installs the update and restarts. **Settings › About** checks on demand. Every update is
-signed, and winer installs only an update whose signature verifies against the public key built
-into it.
+winer checks for updates 20 seconds after it starts and every 6 hours while it runs. When there is
+a new version, it downloads it in the background and verifies its signature, with the progress at
+the right of the title bar; once it is ready, the title bar shows **Restart to update**, and one
+click installs it silently and opens winer again. Until you click it, the new version waits: winer
+never restarts by itself. **Settings › About** checks on demand.
+
+To update by hand instead, turn off **Check for updates automatically** in **Settings › About** (it
+is on by default): winer then connects to the update server only when you click **Check for
+updates**; for a new version, choose **Update now** to download it, then **Restart and update** to
+install it. Every update is signed, and winer installs only an update whose signature verifies
+against the public key built into it.
 
 ## Uninstall
 

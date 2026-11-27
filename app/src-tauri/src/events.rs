@@ -11,7 +11,7 @@ use winer_core::{
     view::{CheckStatus, Connection, Event, NoticeKind, Patch},
 };
 
-use crate::{diagnostics, elevation, hotkey, plugin_host, tray, window};
+use crate::{diagnostics, elevation, hotkey, plugin_host, tray, updater, window};
 
 /// Every core [`Event`], unchanged.
 pub(crate) const EVENT: &str = "winer://event";
@@ -195,6 +195,8 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
             // Typing into the game, set up just now while connected to a client that outranks
             // winer: its games will too.
             elevate_for_the_game(app, service, settings);
+            // Updates on their own: turned on, winer looks at once.
+            updater::follow(app, settings.general.auto_update);
         }
         // Social: a click in the client asked for a player's history, which the window opens.
         Event::OpenHistory { .. } => window::show(app),

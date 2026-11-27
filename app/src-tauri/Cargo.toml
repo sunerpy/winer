@@ -73,3 +73,5 @@ windows-sys = { workspace = true, features = [
 sha2.workspace = true
 tauri = { workspace = true, features = ["test"] }
 tempfile.workspace = true
+# The updater's schedule runs hours on a paused clock.
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }

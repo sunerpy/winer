@@ -511,7 +511,7 @@ describe("App", () => {
 });
 
 describe("updates", () => {
-  it("keeps a verified update in winer until the user explicitly restarts", async () => {
+  it("installs a downloaded update with one click on the title bar, never before", async () => {
     const backend = demoWith({
       get_update_status: () => ({ state: "ready", version: "0.0.8" }),
       install_update: () => null,
@@ -519,19 +519,68 @@ describe("updates", () => {
     const call = vi.spyOn(backend, "call");
     const { user } = await renderApp(backend);
 
+    const badge = await screen.findByRole("button", {
+      name: zhCN["update.restartBadge"].replace("{version}", "0.0.8"),
+    });
+    expect(badge).toHaveAttribute(
+      "title",
+      zhCN["update.restartBadgeTitle"].replace("{version}", "0.0.8"),
+    );
+    expect(call).not.toHaveBeenCalledWith("install_update");
+
+    await user.click(badge);
+    expect(call).toHaveBeenCalledWith("install_update");
+    // The dialog opens on the restart, to show it under way.
+    expect(
+      screen.getByRole("dialog", { name: zhCN["update.ready"].replace("{version}", "0.0.8") }),
+    ).toBeInTheDocument();
+  });
+
+  it("opens a found update in the dialog rather than downloading it from the badge", async () => {
+    const backend = demoWith({
+      get_update_status: () => ({
+        state: "available",
+        version: "0.0.8",
+        current: "0.0.7",
+        notes: null,
+        date: null,
+      }),
+    });
+    const call = vi.spyOn(backend, "call");
+    const { user } = await renderApp(backend);
+
     await user.click(
       await screen.findByRole("button", {
-        name: zhCN["update.restartBadge"].replace("{version}", "0.0.8"),
+        name: zhCN["update.available"].replace("{version}", "0.0.8"),
       }),
     );
-    const dialog = screen.getByRole("dialog", {
-      name: zhCN["update.ready"].replace("{version}", "0.0.8"),
-    });
-    expect(within(dialog).getByText(zhCN["update.verified"])).toBeInTheDocument();
-    expect(within(dialog).getByText(zhCN["update.readyHint"])).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: zhCN["update.available"].replace("{version}", "0.0.8") }),
+    ).toBeInTheDocument();
+    expect(call).not.toHaveBeenCalledWith("install_update");
+  });
 
-    await user.click(within(dialog).getByRole("button", { name: zhCN["update.restart"] }));
-    expect(call).toHaveBeenCalledWith("install_update");
+  it("checks and downloads updates on its own until switched off in Settings › About", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await renderApp(backend);
+    fireEvent.keyDown(window, { key: ",", ctrlKey: true });
+    const dialog = screen.getByRole("dialog", { name: zhCN["settings.title"] });
+    await user.click(within(dialog).getByRole("tab", { name: zhCN["settings.about"] }));
+
+    const toggle = within(dialog).getByRole("switch", { name: zhCN["settings.autoUpdate"] });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(within(dialog).getByText(zhCN["settings.autoUpdateHint"])).toBeInTheDocument();
+
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          general: expect.objectContaining({ autoUpdate: false }),
+        }),
+      }),
+    );
+    expect(toggle).toHaveAttribute("aria-checked", "false");
   });
 });
 

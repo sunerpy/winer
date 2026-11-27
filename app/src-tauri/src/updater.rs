@@ -1,5 +1,11 @@
 //! Signed updates, driven from Rust. The window only renders [`UpdateStatus`]; it never touches
 //! the updater plugin itself.
+//!
+//! With `general.autoUpdate` on (the default) winer looks on its own: [`FIRST_CHECK`] after start,
+//! then every [`CHECK_EVERY`], and at once when the switch is turned on. A look downloads and
+//! verifies what it finds and stops at [`UpdateStatus::Ready`]; the title bar then offers the
+//! restart, and only the user's click installs. A check by hand that finds an update downloads it
+//! the same way while the switch is on. Off, winer asks the update server only when the user checks.
 
 use std::{
     sync::{
@@ -13,6 +19,7 @@ use std::{
 use tauri::utils::config::{BundleType, PluginConfig};
 use tauri::{AppHandle, Emitter as _, Manager, Runtime};
 use tauri_plugin_updater::{Update, UpdaterExt as _};
+use tokio::sync::Notify;
 use tracing::{info, warn};
 use winer_core::view::{ErrorCode, IpcError, UpdateStatus};
 
@@ -41,6 +48,10 @@ pub(crate) struct Updater {
     pending: Mutex<Option<Pending>>,
     /// How the last check went, the quiet ones included: those leave `status` alone.
     last_check: Mutex<Option<LastCheck>>,
+    /// `general.autoUpdate` as last read: winer looks for updates on its own and downloads them.
+    auto: AtomicBool,
+    /// Wakes the looks on their own when the switch is turned on.
+    wake: Notify,
 }
 
 /// One check for updates as the self-check reads it.
@@ -52,6 +63,40 @@ pub(crate) struct LastCheck {
 }
 
 impl Updater {
+    /// With the switch as the settings have it at start.
+    pub(crate) fn new(auto: bool) -> Self {
+        Self {
+            auto: AtomicBool::new(auto),
+            ..Self::default()
+        }
+    }
+
+    /// The settings changed: keep the switch, and look at once when it was just turned on.
+    pub(crate) fn follow(&self, on: bool) {
+        let was = self.auto.swap(on, Ordering::AcqRel);
+        if on && !was {
+            self.wake.notify_one();
+        }
+    }
+
+    /// The looks on their own: `look` runs [`FIRST_CHECK`] after start and [`CHECK_EVERY`] after
+    /// each one while the switch is on, and at once when it is turned on; never while it is off.
+    async fn looks<F, Fut>(&self, mut look: F)
+    where
+        F: FnMut() -> Fut,
+        Fut: Future<Output = ()>,
+    {
+        let mut wait = FIRST_CHECK;
+        loop {
+            // Either the time is up or the switch was just turned on.
+            let _ = tokio::time::timeout(wait, self.wake.notified()).await;
+            if self.auto.load(Ordering::Acquire) {
+                look().await;
+            }
+            wait = CHECK_EVERY;
+        }
+    }
+
     pub(crate) fn status(&self) -> UpdateStatus {
         self.status
             .lock()
@@ -130,36 +175,92 @@ fn available(update: &Update) -> UpdateStatus {
     }
 }
 
-/// Checks on its own: soon after start, then every few hours. An update found shows as the title
-/// bar's badge. A failed check stays quiet, to be retried at the next interval, and a check or
-/// install the user started is never interrupted.
+/// The looks on their own for as long as winer runs ([`Updater::looks`]).
 pub(crate) fn check_in_background<R: Runtime>(app: AppHandle<R>) {
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(FIRST_CHECK).await;
-        loop {
-            quiet_check(&app).await;
-            tokio::time::sleep(CHECK_EVERY).await;
-        }
+        app.state::<Updater>().looks(|| look(&app)).await;
     });
 }
 
-async fn quiet_check<R: Runtime>(app: &AppHandle<R>) {
+/// The settings changed: follow `general.autoUpdate` ([`Updater::follow`]).
+pub(crate) fn follow<R: Runtime>(app: &AppHandle<R>, on: bool) {
+    if let Some(updater) = app.try_state::<Updater>() {
+        updater.follow(on);
+    }
+}
+
+/// One look on its own: the manifest is asked unless an update is known already, and what it finds
+/// is downloaded and verified, ending at [`UpdateStatus::Ready`]. A look never installs, and never
+/// interrupts a check or an install the user started. A failed check stays quiet; a failed
+/// download leaves the update found. The next look tries again.
+async fn look<R: Runtime>(app: &AppHandle<R>) {
     let updater = app.state::<Updater>();
     if matches!(
         updater.status(),
-        UpdateStatus::Available { .. }
-            | UpdateStatus::Downloading { .. }
+        UpdateStatus::Downloading { .. }
             | UpdateStatus::Ready { .. }
             | UpdateStatus::Installing { .. }
     ) || updater.begin().is_err()
     {
         return;
     }
-    let found = find(app).await;
-    updater.checked(found.is_ok());
-    match found {
-        Ok(Some(update)) => {
-            info!(version = %update.version, "update available");
+    let known = updater
+        .pending
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take();
+    let update = match known {
+        Some(Pending::Available(update)) => update,
+        // Downloaded already: the restart is the user's.
+        Some(ready @ Pending::Ready { .. }) => {
+            *updater
+                .pending
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(ready);
+            updater.busy.store(false, Ordering::Release);
+            return;
+        }
+        None => {
+            info!("checking for updates on its own");
+            let found = find(app).await;
+            updater.checked(found.is_ok());
+            match found {
+                Ok(Some(update)) => {
+                    info!(version = %update.version, "update available");
+                    updater.publish(app, available(&update));
+                    update
+                }
+                Ok(None) => {
+                    updater.finish(
+                        app,
+                        UpdateStatus::UpToDate {
+                            version: VERSION.into(),
+                            checked_at: now_ms(),
+                        },
+                    );
+                    return;
+                }
+                Err(error) => {
+                    warn!(error = %describe(&error), "background update check failed");
+                    updater.busy.store(false, Ordering::Release);
+                    return;
+                }
+            }
+        }
+    };
+    let version = update.version.clone();
+    match download(app, &updater, &update).await {
+        Ok(bytes) => {
+            info!(%version, "update downloaded and verified in the background");
+            *updater
+                .pending
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) =
+                Some(Pending::Ready { update, bytes });
+            updater.finish(app, UpdateStatus::Ready { version });
+        }
+        Err(error) => {
+            warn!(%version, error = %describe(&error), "background update download failed");
             let status = available(&update);
             *updater
                 .pending
@@ -168,18 +269,44 @@ async fn quiet_check<R: Runtime>(app: &AppHandle<R>) {
                 Some(Pending::Available(update));
             updater.finish(app, status);
         }
-        Ok(None) => updater.finish(
-            app,
-            UpdateStatus::UpToDate {
-                version: VERSION.into(),
-                checked_at: now_ms(),
-            },
-        ),
-        Err(error) => {
-            warn!(error = %describe(&error), "background update check failed");
-            updater.busy.store(false, Ordering::Release);
-        }
     }
+}
+
+/// Downloads `update` and verifies its signature, publishing the progress on the way.
+async fn download<R: Runtime>(
+    app: &AppHandle<R>,
+    updater: &Updater,
+    update: &Update,
+) -> Result<Vec<u8>, tauri_plugin_updater::Error> {
+    let version = update.version.clone();
+    let (mut received, mut published) = (0u64, 0u64);
+    updater.publish(
+        app,
+        UpdateStatus::Downloading {
+            version: version.clone(),
+            received: 0,
+            total: None,
+        },
+    );
+    update
+        .download(
+            |chunk, total| {
+                received += chunk as u64;
+                if received - published >= PROGRESS_STEP || Some(received) == total {
+                    published = received;
+                    updater.publish(
+                        app,
+                        UpdateStatus::Downloading {
+                            version: version.clone(),
+                            received,
+                            total,
+                        },
+                    );
+                }
+            },
+            || {},
+        )
+        .await
 }
 
 pub(crate) async fn check<R: Runtime>(app: &AppHandle<R>) -> Result<UpdateStatus, IpcError> {
@@ -216,6 +343,11 @@ pub(crate) async fn check<R: Runtime>(app: &AppHandle<R>) -> Result<UpdateStatus
         }
     };
     updater.finish(app, status.clone());
+    // Switched on, an update found by hand downloads as one found on its own does.
+    if matches!(status, UpdateStatus::Available { .. }) && updater.auto.load(Ordering::Acquire) {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move { look(&app).await });
+    }
     Ok(status)
 }
 
@@ -261,35 +393,7 @@ pub(crate) async fn install<R: Runtime>(app: &AppHandle<R>) -> Result<(), IpcErr
         Pending::Ready { update, bytes } => (update, bytes),
         Pending::Available(update) => {
             let version = update.version.clone();
-            let (mut received, mut published) = (0u64, 0u64);
-            updater.publish(
-                app,
-                UpdateStatus::Downloading {
-                    version: version.clone(),
-                    received: 0,
-                    total: None,
-                },
-            );
-            let download = update
-                .download(
-                    |chunk, total| {
-                        received += chunk as u64;
-                        if received - published >= PROGRESS_STEP || Some(received) == total {
-                            published = received;
-                            updater.publish(
-                                app,
-                                UpdateStatus::Downloading {
-                                    version: version.clone(),
-                                    received,
-                                    total,
-                                },
-                            );
-                        }
-                    },
-                    || {},
-                )
-                .await;
-            let bytes = match download {
+            let bytes = match download(app, &updater, &update).await {
                 Ok(bytes) => bytes,
                 Err(error) => {
                     updater.finish(
@@ -396,8 +500,92 @@ fn now_ms() -> i64 {
 mod tests {
     use std::{error::Error, fmt};
 
-    use super::{describe, set_windows_install_mode, windows_install_mode};
+    use std::{cell::RefCell, time::Duration};
+
+    use super::{
+        CHECK_EVERY, FIRST_CHECK, Updater, describe, set_windows_install_mode, windows_install_mode,
+    };
     use tauri::utils::config::{BundleType, PluginConfig};
+    use tokio::time::{Instant, sleep};
+
+    const HOUR: Duration = Duration::from_secs(60 * 60);
+
+    /// Runs the updater's looks on its own for `span` while `drive` moves the switch, and returns
+    /// when each look ran, from the start.
+    async fn looks_within(
+        updater: &Updater,
+        span: Duration,
+        drive: impl Future<Output = ()>,
+    ) -> Vec<Duration> {
+        let start = Instant::now();
+        let seen = RefCell::new(Vec::new());
+        let looks = updater.looks(|| {
+            seen.borrow_mut().push(start.elapsed());
+            std::future::ready(())
+        });
+        let until = async {
+            drive.await;
+            sleep(span.saturating_sub(start.elapsed())).await;
+        };
+        tokio::select! {
+            () = looks => unreachable!("the looks never end"),
+            () = until => {}
+        }
+        seen.into_inner()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn switched_on_it_looks_soon_after_start_then_every_few_hours() {
+        let updater = Updater::new(true);
+        let looks = looks_within(&updater, 13 * HOUR, async {}).await;
+        assert_eq!(
+            looks,
+            [
+                FIRST_CHECK,
+                FIRST_CHECK + CHECK_EVERY,
+                FIRST_CHECK + 2 * CHECK_EVERY
+            ]
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn switched_off_it_never_looks_on_its_own() {
+        let updater = Updater::new(false);
+        assert_eq!(
+            looks_within(&updater, 13 * HOUR, async {}).await,
+            [Duration::ZERO; 0]
+        );
+        // Settings that change something else leave it off.
+        let updater = Updater::new(false);
+        let looks = looks_within(&updater, 13 * HOUR, async {
+            sleep(HOUR).await;
+            updater.follow(false);
+        })
+        .await;
+        assert_eq!(looks, [Duration::ZERO; 0]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn turned_on_it_looks_at_once_and_turned_off_it_stops() {
+        let updater = Updater::new(false);
+        let looks = looks_within(&updater, 10 * HOUR, async {
+            sleep(HOUR).await;
+            updater.follow(true);
+            // Saved again with the switch still on: no second look.
+            sleep(HOUR).await;
+            updater.follow(true);
+        })
+        .await;
+        assert_eq!(looks, [HOUR, HOUR + CHECK_EVERY]);
+
+        let updater = Updater::new(true);
+        let looks = looks_within(&updater, 13 * HOUR, async {
+            sleep(HOUR).await;
+            updater.follow(false);
+        })
+        .await;
+        assert_eq!(looks, [FIRST_CHECK], "none after it went off");
+    }
 
     #[derive(Debug)]
     struct Outer(Inner);

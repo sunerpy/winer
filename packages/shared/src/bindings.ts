@@ -561,7 +561,12 @@ titles: boolean,
  * The global shortcut that shows and hides the window, in [`normalize_hotkey`]'s form; `None`
  * turns it off. A file without the field gets the default; `null` keeps it off.
  */
-hotkey: string | null, };
+hotkey: string | null, 
+/**
+ * winer checks for updates on its own and downloads what it finds; the title bar then offers
+ * the restart that installs it. Off, it asks the update server only when the user checks.
+ */
+autoUpdate: boolean, };
 
 export type Language = "zh-CN" | "en";
 

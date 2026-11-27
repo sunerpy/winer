@@ -105,6 +105,9 @@ pub struct General {
     /// The global shortcut that shows and hides the window, in [`normalize_hotkey`]'s form; `None`
     /// turns it off. A file without the field gets the default; `null` keeps it off.
     pub hotkey: Option<String>,
+    /// winer checks for updates on its own and downloads what it finds; the title bar then offers
+    /// the restart that installs it. Off, it asks the update server only when the user checks.
+    pub auto_update: bool,
 }
 
 impl Default for General {
@@ -115,6 +118,7 @@ impl Default for General {
             augment_details: true,
             titles: true,
             hotkey: Some(DEFAULT_HOTKEY.to_owned()),
+            auto_update: true,
         }
     }
 }
@@ -1705,6 +1709,22 @@ mod tests {
         let lines: Settings =
             serde_json::from_str(r#"{"automation":{"callout":{"delivery":"lines"}}}"#).unwrap();
         assert_eq!(lines.automation.callout.delivery, CalloutDelivery::Lines);
+    }
+
+    #[test]
+    fn updates_are_checked_and_downloaded_on_their_own_unless_switched_off() {
+        assert!(Settings::default().general.auto_update, "on by default");
+        // Settings saved before the switch existed keep updating on their own.
+        let before: Settings =
+            serde_json::from_str(r#"{"general":{"closeToTray":false}}"#).unwrap();
+        assert!(before.general.auto_update);
+        let off: Settings = serde_json::from_str(r#"{"general":{"autoUpdate":false}}"#).unwrap();
+        assert!(!off.general.auto_update);
+        assert_eq!(
+            serde_json::to_value(&off).unwrap()["general"]["autoUpdate"],
+            false,
+            "written as the window reads it"
+        );
     }
 
     #[test]

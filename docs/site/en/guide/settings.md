@@ -127,8 +127,11 @@ The rating scheme, custom tiers, roast titles and the basis of every rating: see
 
 ### About
 
-The version, whether winer runs as administrator, the log folder, and **Updates**. winer checks for
-updates by itself after it starts and while it runs; this checks again on demand.
+The version, whether winer runs as administrator, the log folder, and **Updates**, which checks
+again on demand. **Check for updates automatically** is on by default: winer checks 20 seconds after
+it starts and every 6 hours while it runs, downloads a new version in the background, and once it is
+ready, **Restart to update** in the title bar installs it; see [Update](/en/guide/install#update).
+When it is off, winer connects to the update server only when you click **Check for updates**.
 
 **Community**: the QQ group winer交流群 (number 1109319256), for reports and questions.
 **Join the QQ group** opens its invitation link, **Copy the number** copies the number.

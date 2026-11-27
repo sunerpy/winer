@@ -35,6 +35,7 @@ const SETTINGS = {
     augmentDetails: true,
     titles: true,
     hotkey: "Alt+Backquote",
+    autoUpdate: true,
   },
   automation: {
     accept: { enabled: false, delayMs: 1500 },
