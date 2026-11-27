@@ -35,6 +35,8 @@ function line(
     gold: 12_000,
     damage,
     damageTaken: 20_000,
+    healing: 0,
+    healingOnTeammates: null,
     vision: 0,
     largestMultiKill: 2,
     win: award === "mvp",
@@ -178,6 +180,62 @@ describe("MatchDetailView", () => {
       "KDA 5 以上，伤害占比却不到一成五。",
     );
     expect(within(row("cy")).queryByText(/大师|防御塔/), "a team of one earns nothing").toBeNull();
+  });
+
+  it("shows each line's healing as the client counts it, with what went to teammates under it", () => {
+    const healed: MatchDetail = {
+      ...DETAIL,
+      teams: [
+        {
+          ...DETAIL.teams[0]!,
+          players: [
+            { ...line("ann", 8.6, "mvp", 45_000, 0.31), healing: 50_332, healingOnTeammates: 808 },
+            {
+              ...line("bo", 6.1, null, 20_000, 0.14),
+              healing: 60_536,
+              healingOnTeammates: 39_348,
+            },
+          ],
+        },
+        {
+          ...DETAIL.teams[1]!,
+          players: [
+            { ...line("cy", 7.2, "svp", 30_000, 0.4), healing: 163_277, healingOnTeammates: 0 },
+          ],
+        },
+      ],
+    };
+    expect(standouts(healed).healing).toBe(163_277);
+    const { rerender } = render(
+      <StoreContext value={new AppStore(demoBackend())}>
+        <MatchDetailView detail={healed} />
+      </StoreContext>,
+    );
+    const row = (name: string) => screen.getByText(`${name}#1`).closest("li") as HTMLElement;
+    // The most healing is the champion's own healing too, as in the client.
+    expect(within(row("cy")).getByTitle("全场治疗最多")).toHaveTextContent("163k");
+    expect(within(row("bo")).getByText("61k")).toBeInTheDocument();
+    expect(
+      within(row("bo")).getByTitle("为队友治疗和提供护盾 39,348，评分的治疗加分只看这一项"),
+    ).toHaveTextContent("39k");
+    expect(within(row("ann")).getByTitle(/为队友治疗和提供护盾 808，/)).toHaveTextContent("808");
+    // The header and the score's hint say the same words, but without a number after them.
+    const teammates = /^为队友治疗和提供护盾 \d/;
+    expect(within(row("cy")).queryByTitle(teammates), "nothing for teammates, no line").toBeNull();
+    expect(screen.getAllByText("治疗")[0]).toHaveAttribute(
+      "title",
+      "治疗量，和客户端里看到的一致，含英雄自己的回复。下方小字是为队友治疗和提供护盾的量，只有战绩服务器的数据里有；评分的治疗加分只看这部分，超出全场平均才加，辅助英雄加得更多。",
+    );
+
+    // The client's own copy of a game has the healing but nothing on teammates.
+    rerender(
+      <StoreContext value={new AppStore(demoBackend())}>
+        <MatchDetailView detail={DETAIL} />
+      </StoreContext>,
+    );
+    expect(within(row("ann")).queryByText("—"), "healing is always a number").toBeNull();
+    expect(screen.queryByTitle(teammates)).toBeNull();
+    expect(standouts(DETAIL).healing, "everyone healed nothing").toBeUndefined();
   });
 
   it("counts dragons and barons for both sides once either took one", () => {

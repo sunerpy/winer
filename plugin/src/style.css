@@ -365,13 +365,13 @@
   border-color: #c8aa6e;
 }
 
-/* The lobby's fallback panel sits left of the friends list down the client's right edge (about
- * 225px wide; not measured, see selectors.ts), which the friends' decorations draw into. */
+/* The lobby panel sits left of the friends list down the client's right edge (about 225px wide;
+ * not measured, see selectors.ts), which the friends' decorations draw into. */
 .winer-panel[data-winer-panel="lobby"] {
   right: 237px;
 }
 
-/* The lobby's fallback panel lists its rows as buttons. */
+/* The lobby panel lists its rows as buttons. */
 .winer-row--button {
   width: 100%;
   border: 0;
@@ -773,4 +773,311 @@
 /* A fallback panel's own row keeps its highlight as a button. */
 .winer-row--self.winer-row--button {
   background: #162230;
+}
+
+/* The runes panel in champ select: at the bottom right, above the client's bottom bar (its rune,
+ * spell and lock-in controls start about 132px from the bottom of the 1280x720 page, an estimate
+ * to be measured on the client before a release, docs/platform-notes.md; only `bottom` moves), its
+ * top kept below the navigation bar; the body scrolls when the window is short. */
+.winer-panel[data-winer-panel="loadout"] {
+  top: auto;
+  right: 12px;
+  bottom: 140px;
+  display: flex;
+  flex-direction: column;
+  width: 264px;
+  max-height: calc(100vh - 216px);
+}
+
+/* With the team panel showing on the same edge (the party rows were not found), its top stays below
+ * that panel's bottom (`--winer-team-bottom`, set as the team panel changes). */
+html[data-winer-team-panel="true"] .winer-panel[data-winer-panel="loadout"] {
+  max-height: calc(100vh - 148px - var(--winer-team-bottom, 76px));
+}
+
+.winer-panel[data-winer-panel="loadout"][data-collapsed="true"] .winer-loadout-body {
+  display: none;
+}
+
+.winer-loadout-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.winer-loadout {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px 10px;
+}
+
+.winer-loadout-now,
+.winer-loadout-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.winer-loadout-now {
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: #162230;
+}
+
+.winer-loadout-label {
+  color: #9ba7b3;
+  font-size: 11px;
+}
+
+.winer-loadout-page,
+.winer-loadout-spells {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+}
+
+.winer-loadout-icon {
+  display: block;
+  border-radius: 4px;
+}
+
+.winer-loadout-glyph {
+  display: inline-block;
+  border-radius: 4px;
+  background: #223142;
+}
+
+.winer-loadout-tag {
+  margin-left: auto;
+  color: #9ba7b3;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.winer-loadout-tag--mine,
+.winer-loadout-tag--recommended {
+  color: #4ccb93;
+}
+
+.winer-loadout-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.winer-loadout-title {
+  color: #d9bf86;
+  font-weight: 600;
+}
+
+.winer-loadout-muted {
+  margin: 0;
+  color: #9ba7b3;
+  font-weight: 400;
+}
+
+.winer-loadout-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.winer-loadout-rates {
+  overflow: hidden;
+  color: #9ba7b3;
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.winer-loadout-option .winer-loadout-button {
+  margin-left: auto;
+}
+
+.winer-loadout-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.winer-loadout-button {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid #2e4157;
+  border-radius: 6px;
+  background: #162230;
+  color: #ece6d6;
+  font:
+    12px/16px "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    sans-serif;
+  cursor: pointer;
+}
+
+.winer-loadout-button:hover:not([disabled]) {
+  border-color: #c8aa6e;
+}
+
+.winer-loadout-button--primary {
+  border-color: #785a28;
+  color: #d9bf86;
+}
+
+.winer-loadout-button[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.winer-loadout-button:focus-visible,
+.winer-panel[data-winer-panel="loadout"] .winer-head:focus-visible {
+  outline: 2px solid #c8aa6e;
+  outline-offset: 2px;
+}
+
+/* Hextech ARAM: its augments in a grid, each with its tier under it, and its items. */
+.winer-loadout-augments {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  margin: 4px 0 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.winer-loadout-augment {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* The client's dark plate in a ring of the augment's rarity, as the History page draws them. */
+.winer-loadout-augment-icon {
+  position: relative;
+  display: inline-grid;
+  border-radius: 4px;
+  background: #0a1016;
+}
+
+.winer-loadout-augment--silver .winer-loadout-augment-icon {
+  box-shadow: 0 0 0 1.5px #a6b2bf;
+}
+
+.winer-loadout-augment--gold .winer-loadout-augment-icon {
+  box-shadow: 0 0 0 1.5px #d9ab52;
+}
+
+.winer-loadout-augment--prismatic .winer-loadout-augment-icon {
+  box-shadow: 0 0 0 1.5px #b77cf2;
+}
+
+.winer-loadout-augment-icon .winer-loadout-icon {
+  border-radius: 4px;
+}
+
+.winer-loadout-augment-name {
+  width: 100%;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 12px;
+  color: #c8c3b4;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.winer-loadout-tier {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  min-width: 12px;
+  padding: 0 2px;
+  border-radius: 3px;
+  background: #101923;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 12px;
+  color: #a09b8c;
+  text-align: center;
+}
+
+/* An augment's hover card, beside the panel: its name in its rarity's colour, then the facts, then
+ * what it does. */
+.winer-tip {
+  position: fixed;
+  z-index: 9001;
+  max-width: 240px;
+  padding: 8px 10px;
+  border: 1px solid #785a28;
+  border-radius: 4px;
+  background: #010a13;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  color: #a09b8c;
+  font:
+    12px/16px "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    sans-serif;
+  pointer-events: none;
+}
+
+.winer-tip-name {
+  font-weight: 700;
+  color: #f0e6d2;
+}
+
+.winer-tip--silver .winer-tip-name {
+  color: #c8d2dc;
+}
+
+.winer-tip--gold .winer-tip-name {
+  color: #f0c060;
+}
+
+.winer-tip--prismatic .winer-tip-name {
+  color: #d3a8ff;
+}
+
+.winer-tip-facts {
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+.winer-tip-text {
+  margin-top: 6px;
+  color: #cdbe91;
+  white-space: pre-line;
+}
+
+.winer-loadout-tier--s {
+  color: #f0c060;
+}
+
+.winer-loadout-tier--a {
+  color: #c389f5;
+}
+
+.winer-loadout-tier--b {
+  color: #6fb8f0;
+}
+
+.winer-loadout-items {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.winer-loadout-said {
+  min-height: 16px;
+  margin: 0;
+  color: #9ba7b3;
+  font-size: 11.5px;
+}
+
+.winer-loadout-said--bad {
+  color: #f0736a;
 }

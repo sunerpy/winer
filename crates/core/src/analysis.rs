@@ -195,8 +195,12 @@ struct Read {
 fn read(game: &Game, participant: &Participant, roles: &Roles) -> Read {
     let remake = is_remake(game, participant);
     let full = game.participants.len() > 1;
-    let contribution_of =
-        |row: &Participant| contribution(&row.stats, roles.get(&row.champion_id).copied());
+    // Without healing: the strength's offsets and models were measured on games read without it
+    // (`fixtures/sgp/` kept none), and against them every game of a support would score high.
+    let contribution_of = |row: &Participant| Contribution {
+        healing: 0,
+        ..contribution(&row.stats, roles.get(&row.champion_id).copied())
+    };
     let score = if remake {
         None
     } else if full {
@@ -404,6 +408,8 @@ fn line(game: &Game, participant: &Participant) -> PlayerLine {
         gold: stats.gold_earned,
         damage: stats.total_damage_dealt_to_champions,
         damage_taken: stats.total_damage_taken,
+        healing: stats.total_heal,
+        healing_on_teammates: stats.healing_on_teammates(),
         vision: stats.vision_score,
         largest_multi_kill: stats.largest_multi_kill,
         win: stats.win,
@@ -444,13 +450,14 @@ fn own_feats(stats: &Stats) -> Vec<Feat> {
 type LeadValue = fn(&Stats) -> i64;
 
 /// The stats a game leader is named for, and what each reads.
-const LEADS: [(Feat, LeadValue); 7] = [
+const LEADS: [(Feat, LeadValue); 8] = [
     (Feat::MostKills, |stats| stats.kills),
     (Feat::MostDamage, |stats| {
         stats.total_damage_dealt_to_champions
     }),
     (Feat::MostTowers, |stats| stats.turret_kills),
     (Feat::MostAssists, |stats| stats.assists),
+    (Feat::MostHealing, |stats| stats.total_heal),
     (Feat::MostGold, |stats| stats.gold_earned),
     (Feat::MostTaken, |stats| stats.total_damage_taken),
     (Feat::MostCs, |stats| {
@@ -486,6 +493,7 @@ fn contribution(stats: &Stats, role: Option<rating::Role>) -> Contribution {
         minions: stats.total_minions_killed + stats.neutral_minions_killed,
         vision: stats.vision_score,
         crowd_control: stats.time_ccing_others,
+        healing: stats.healing_on_teammates().unwrap_or(0),
         role,
     }
 }
@@ -1275,6 +1283,114 @@ mod tests {
                 .all(|game| game.remake || game.score.is_some()),
             "{:?}",
             form.matches
+        );
+    }
+
+    /// The Hextech ARAM game of `fixtures/live/responses/`, as the shard's server sends it, and
+    /// Soraka (16) and Morgana (25), its two support champions.
+    fn healed_game() -> (Game, Roles) {
+        let page: crate::sgp::History = fixture("live/responses/sgp-match-history-summary.json");
+        let game = page
+            .into_page()
+            .entries
+            .into_iter()
+            .flatten()
+            .next()
+            .unwrap();
+        let roles = Roles::from([(16, rating::Role::Support), (25, rating::Role::Support)]);
+        (game, roles)
+    }
+
+    /// `game` as the client's own documents carry it: no healing on teammates.
+    fn without_healing(mut game: Game) -> Game {
+        for row in &mut game.participants {
+            row.stats.total_heals_on_teammates = None;
+            row.stats.total_damage_shielded_on_teammates = None;
+        }
+        game
+    }
+
+    fn line_of(detail: &MatchDetail, champion: i64) -> &PlayerLine {
+        detail
+            .teams
+            .iter()
+            .flat_map(|team| &team.players)
+            .find(|line| line.champion_id == champion)
+            .unwrap()
+    }
+
+    #[test]
+    fn the_scoreboard_shows_the_clients_healing_and_scores_healing_on_teammates() {
+        let (game, roles) = healed_game();
+        let detail = match_detail(&game, &roles);
+        let healing: Vec<(i64, i64, Option<i64>)> = [16, 25, 98, 119, 8]
+            .map(|champion| {
+                let line = line_of(&detail, champion);
+                (champion, line.healing, line.healing_on_teammates)
+            })
+            .to_vec();
+        // The healing is the client's own figure, the champion's own healing included: Vladimir
+        // healed himself the most. Soraka healed teammates; Morgana shielded 7,941 and healed 658;
+        // Shen shielded; Draven and Vladimir did neither.
+        assert_eq!(
+            healing,
+            [
+                (16, 60_536, Some(39_348)),
+                (25, 19_956, Some(8_599)),
+                (98, 50_332, Some(808)),
+                (119, 10_350, Some(0)),
+                (8, 163_277, Some(0)),
+            ]
+        );
+        let leaders = |detail: &MatchDetail| -> Vec<i64> {
+            detail
+                .teams
+                .iter()
+                .flat_map(|team| &team.players)
+                .filter(|line| line.feats.contains(&Feat::MostHealing))
+                .map(|line| line.champion_id)
+                .collect()
+        };
+        assert_eq!(leaders(&detail), [8]);
+        // Healing on teammates above the game's average lifts the healers' scores, and only theirs;
+        // Vladimir's own healing adds nothing.
+        let plain = match_detail(&without_healing(game.clone()), &roles);
+        assert!(
+            line_of(&detail, 16).score > line_of(&plain, 16).score
+                && line_of(&detail, 25).score > line_of(&plain, 25).score
+        );
+        for champion in [98, 119, 8] {
+            assert_eq!(
+                line_of(&detail, champion).score,
+                line_of(&plain, champion).score
+            );
+        }
+        // The client's own copy has the same healing and the same lead, but nothing on teammates.
+        assert!(
+            plain
+                .teams
+                .iter()
+                .flat_map(|team| &team.players)
+                .all(|line| line.healing_on_teammates.is_none())
+        );
+        assert_eq!(line_of(&plain, 8).healing, 163_277);
+        assert_eq!(leaders(&plain), [8]);
+    }
+
+    #[test]
+    fn the_strength_reads_a_game_as_it_scored_before_healing_counted() {
+        let (game, roles) = healed_game();
+        let soraka = line_of(&match_detail(&game, &roles), 16).clone();
+        let plain = line_of(&match_detail(&without_healing(game.clone()), &roles), 16).clone();
+        let catalog = Catalog {
+            kinds: &QueueKinds::new(),
+            roles: &roles,
+        };
+        let form = recent_form(&soraka.puuid, std::slice::from_ref(&game), &catalog, None);
+        assert_ne!(soraka.score, plain.score);
+        assert_eq!(
+            form.matches[0].score, plain.score,
+            "the strength's averages were measured without healing"
         );
     }
 

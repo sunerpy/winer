@@ -2,7 +2,7 @@
 //! it implies, and a form score that ranks teammates in champ select. Both formulas are written
 //! out here and on the site's rating page (`docs/site/rating.md`). WeGame does not publish its
 //! rating; the game score's weights were fitted so that its MVP and SVP fall where WeGame's do as
-//! often as possible (`Weights`).
+//! often as possible (`Weights`), all but the bonus for healing teammates (`HEALING`).
 
 use std::{cmp::Ordering, collections::HashMap};
 
@@ -51,6 +51,9 @@ pub struct Contribution {
     pub minions: i64,
     pub vision: i64,
     pub crowd_control: i64,
+    /// Healing and shielding on teammates, which only the shard's server sends; zero where the
+    /// game's data does not say.
+    pub healing: i64,
     /// The champion's role, where the client's champion list names one.
     pub role: Option<Role>,
 }
@@ -185,6 +188,19 @@ impl Scoring {
 
 /// No single part may count for more than three average players.
 const CAP: f64 = 3.0;
+/// Healing and shielding on teammates count only above the game's average player, as a bonus of
+/// `weight × (healing / average − 1)`, the ratio capped at [`CAP`]. Most champions heal no one, so
+/// falling short of the average costs nothing, and the bonus adds no weight to what a line is
+/// divided by: a line at or under the average scores exactly as it would without it. A support
+/// champion's healing counts four times anyone else's: keeping teammates alive is what it is for,
+/// where another champion's comes from a summoner spell or an item. At most it adds 0.08 to a
+/// support's weighted parts and 0.02 to anyone else's, about 0.8 and 0.2 of a point in the middle
+/// of the scale. The owner asked for it (2026-11-26), and it was set rather than fitted: WeGame
+/// appears to weigh healing less, and of the 155 Hextech ARAM games it scored, two of winer's MVPs
+/// and one SVP stop matching WeGame's with it.
+const HEALING: f64 = 0.04;
+/// The same for every champion that is not a support.
+const HEALING_OTHERS: f64 = 0.01;
 /// A part whose game average is below this says nothing (vision in ARAM).
 const MEANINGFUL: f64 = 1.0;
 /// The logistic curve's steepness. Lines in one game sit close together (an ARAM team shares
@@ -217,7 +233,8 @@ fn round1(value: f64) -> f64 {
 /// weighted sum of the parts, with the weights of the player's role, over the sum of the base
 /// weights is how many "average players" the line was worth, and the logistic
 /// `10 / (1 + e^(−k·(x − c)))` maps that onto 0–10: one average at 6.0, 1.25 at 8.0, 1.5 at 9.2,
-/// 0.75 at 3.6 and half of one at 1.7. No line can score past 10.
+/// 0.75 at 3.6 and half of one at 1.7. No line can score past 10. Healing and shielding on
+/// teammates above the game's average adds to the weighted parts ([`HEALING`]).
 pub fn game_scores(players: &[Contribution], scoring: &Scoring) -> Vec<f64> {
     if players.is_empty() {
         return Vec::new();
@@ -229,6 +246,7 @@ pub fn game_scores(players: &[Contribution], scoring: &Scoring) -> Vec<f64> {
             *sum += value / count;
         }
         average.deaths += player.deaths as f64 / count;
+        average.healing += player.healing as f64 / count;
     }
     players
         .iter()
@@ -236,11 +254,13 @@ pub fn game_scores(players: &[Contribution], scoring: &Scoring) -> Vec<f64> {
         .collect()
 }
 
-/// The average player a line is set against: the eight parts of [`Weights`] and deaths.
+/// The average player a line is set against: the eight parts of [`Weights`], deaths, and healing
+/// on teammates ([`HEALING`]), zero where nothing is known of it.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct Average {
     parts: [f64; 8],
     deaths: f64,
+    healing: f64,
 }
 
 /// One line's score against `average` under `scoring`, unrounded (see [`game_scores`]).
@@ -260,22 +280,34 @@ fn line_score(player: &Contribution, average: &Average, scoring: &Scoring) -> f6
     }
     total += own.survival * ((average.deaths + 1.0) / (player.deaths as f64 + 1.0)).min(CAP);
     weight += base.survival;
+    if average.healing >= MEANINGFUL {
+        let bonus = if player.role == Some(Role::Support) {
+            HEALING
+        } else {
+            HEALING_OTHERS
+        };
+        let over = (player.healing as f64 / average.healing).min(CAP) - 1.0;
+        total += bonus * over.max(0.0);
+    }
     10.0 / (1.0 + (-STEEPNESS * (total / weight - CENTRE)).exp())
 }
 
 /// What the average player of a kind of game does a minute: kills, assists, damage to champions,
 /// damage taken, gold, minions and monsters, vision score and crowd control seconds, then deaths.
 /// Measured on real players' games from the shard's server (`fixtures/sgp/`, November 2026): 14,510
-/// Rift lines and 27,470 of the two ARAMs. Arena and the rotating modes have none.
+/// Rift lines and 27,470 of the two ARAMs. Arena and the rotating modes have none. No healing: the
+/// sample kept none, and the client's own rows, the only ones read this way, carry none.
 fn per_minute(family: ModeFamily) -> Option<Average> {
     match family {
         ModeFamily::Rift => Some(Average {
             parts: [0.229, 0.302, 745.7, 919.6, 420.7, 5.80, 1.093, 0.897],
             deaths: 0.230,
+            healing: 0.0,
         }),
         ModeFamily::Aram => Some(Average {
             parts: [0.674, 1.564, 2162.8, 2368.9, 952.8, 2.23, 0.0046, 1.747],
             deaths: 0.676,
+            healing: 0.0,
         }),
         ModeFamily::Arena | ModeFamily::Other => None,
     }
@@ -295,6 +327,7 @@ pub fn lite_score(player: &Contribution, game_mode: &str, seconds: i64) -> Optio
     let average = Average {
         parts: per_minute.parts.map(|value| value * minutes),
         deaths: per_minute.deaths * minutes,
+        healing: per_minute.healing * minutes,
     };
     Some(round1(line_score(player, &average, Scoring::of(game_mode))))
 }
@@ -643,8 +676,9 @@ pub fn par(family: ModeFamily, position: Option<Position>, role: Option<Role>) -
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Played {
     /// The game's score set against its position or role ([`par`]): the score against its other
-    /// players ([`game_scores`]), or against the mode's average player where only this player's row
-    /// is known (`lite`, [`lite_score`]); `None` where neither can be had.
+    /// players ([`game_scores`]) without the healing bonus, which the offsets and models were
+    /// measured without, or against the mode's average player where only this player's row is
+    /// known (`lite`, [`lite_score`]); `None` where neither can be had.
     pub score: Option<f64>,
     pub lite: bool,
     pub win: bool,
@@ -1097,6 +1131,7 @@ mod tests {
             minions: 0,
             vision: 0,
             crowd_control: 20,
+            healing: 0,
             role: None,
         }
     }
@@ -1158,6 +1193,8 @@ mod tests {
                     crowd_control: row[7],
                     minions: row[8],
                     vision: row[9],
+                    // These games were kept without healing figures.
+                    healing: 0,
                     role: [
                         None,
                         Some(Role::Tank),
@@ -1237,6 +1274,59 @@ mod tests {
         assert_eq!(rift[0], rift[1], "the Rift weighs no role: {rift:?}");
         assert_eq!(Role::parse("Marksman"), Some(Role::Marksman));
         assert_eq!(Role::parse("unknown"), None);
+    }
+
+    #[test]
+    fn a_support_who_heals_and_shields_more_scores_higher() {
+        // Ten ordinary lines; two supports alike but for what they healed and shielded.
+        let mut game = vec![player(5, 5, 10, 20_000); 10];
+        game[0].role = Some(Role::Support);
+        game[1].role = Some(Role::Support);
+        let both = |game: &[Contribution]| {
+            [&Scoring::RIFT, &Scoring::ARAM].map(|scoring| game_scores(game, scoring))
+        };
+        let before = both(&game);
+        game[0].healing = 30_000;
+        game[1].healing = 3_000;
+        let after = both(&game);
+        // Thirty thousand is over three times the game's average (3,300): the most it adds.
+        assert_eq!((before[0][0], after[0][0]), (6.0, 6.8), "the Rift");
+        assert_eq!((before[1][0], after[1][0]), (6.7, 7.4), "ARAM");
+        // Three thousand is under the average: nothing more, and nothing less.
+        assert_eq!((after[0][1], after[1][1]), (before[0][1], before[1][1]));
+        // Nobody else healed anyone, and nobody is the worse for it.
+        assert_eq!(after[0][2..], before[0][2..]);
+        assert_eq!(after[1][2..], before[1][2..]);
+    }
+
+    #[test]
+    fn a_carry_that_heals_no_one_scores_as_before_and_one_that_does_barely_moves() {
+        let mut game = vec![player(5, 5, 10, 20_000); 10];
+        game[0].role = Some(Role::Support);
+        game[2].role = Some(Role::Marksman);
+        let before = game_scores(&game, &Scoring::RIFT);
+        game[0].healing = 30_000;
+        assert_eq!(
+            game_scores(&game, &Scoring::RIFT)[2],
+            before[2],
+            "the support's healing costs the marksman nothing"
+        );
+        // A marksman who heals as much (a summoner spell, an item) gains a quarter of it.
+        game[2].healing = 30_000;
+        let after = game_scores(&game, &Scoring::RIFT);
+        assert_eq!((before[2], after[2], after[0]), (6.0, 6.2, 6.8));
+        // A line alone has no game's average to set its healing against.
+        assert_eq!(
+            lite_score(&game[2], "CLASSIC", 1800),
+            lite_score(
+                &Contribution {
+                    healing: 0,
+                    ..game[2]
+                },
+                "CLASSIC",
+                1800
+            )
+        );
     }
 
     #[test]
@@ -1452,6 +1542,7 @@ mod tests {
                 vision: part(6),
                 crowd_control: part(7),
                 deaths: (per.deaths * minutes).round() as i64,
+                healing: 0,
                 role: None,
             }
         };
@@ -1605,6 +1696,8 @@ mod tests {
             minions: row[9] as i64,
             vision: row[10] as i64,
             crowd_control: row[11] as i64,
+            // WeGame's healing on teammates; it reports no shields.
+            healing: row[12] as i64,
             role: roles.get(&(row[1] as i64)).copied(),
         }
     }
@@ -1649,6 +1742,37 @@ mod tests {
             across >= 0.81 && alone >= 0.65 && alone < across,
             "{across} {alone}"
         );
+    }
+
+    #[test]
+    fn counting_healing_gives_up_few_of_wegames_mvps_and_svps() {
+        let fixture: WegameAram = crate::test_support::fixture("wegame/aram-scores.json");
+        let roles = live_roles();
+        // How many games' MVP and SVP are WeGame's, with healing and without it.
+        let matches = |healing: bool| {
+            let (mut mvp, mut svp) = (0, 0);
+            for game in &fixture.games {
+                let lines: Vec<Contribution> = game
+                    .players
+                    .iter()
+                    .map(|row| wegame_line(row, &roles))
+                    .map(|line| Contribution {
+                        healing: if healing { line.healing } else { 0 },
+                        ..line
+                    })
+                    .collect();
+                let won: Vec<bool> = game.players.iter().map(|row| row[0] == 1.0).collect();
+                let scores = game_scores(&lines, Scoring::of("KIWI"));
+                for (row, award) in game.players.iter().zip(awards(&scores, &won)) {
+                    mvp += i32::from(award == Some(Award::Mvp) && row[15] == 1.0);
+                    svp += i32::from(award == Some(Award::Svp) && row[15] == 2.0);
+                }
+            }
+            (mvp, svp)
+        };
+        // WeGame weighs healing less than winer does (the owner's request, 2026-11-26): of 155
+        // games, two MVPs and one SVP stop matching.
+        assert_eq!((matches(false), matches(true)), ((121, 111), (119, 110)));
     }
 
     #[derive(serde::Deserialize)]
@@ -1697,6 +1821,8 @@ mod tests {
             minions: line.9,
             vision: line.10,
             crowd_control: line.11,
+            // The sample kept no healing figures, and the strength reads games without them.
+            healing: 0,
             role: roles.get(&line.2).copied(),
         }
     }

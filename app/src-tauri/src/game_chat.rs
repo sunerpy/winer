@@ -227,21 +227,30 @@ pub(crate) fn sent(typed: Typed) -> u32 {
     }
 }
 
-/// The activity feed's entry for `typed`, a comeback for the team's chat or, with `all`,
-/// everyone's.
-pub(crate) fn comeback_notice(typed: Typed, all: bool) -> NoticeKind {
+/// The activity feed's entry for `typed`, a line of the Quick chat page for the team's chat or, with
+/// `all`, everyone's: quick message `message` (counted from 1), or for `None` a random line.
+pub(crate) fn comeback_notice(typed: Typed, all: bool, message: Option<u8>) -> NoticeKind {
     let place = if all {
         ComebackPlace::All
     } else {
         ComebackPlace::Team
     };
     match typed {
-        Typed::Sent(messages) => NoticeKind::ComebackSent { place, messages },
-        Typed::Nothing(reason) => NoticeKind::ComebackSkipped { place, reason },
+        Typed::Sent(messages) => NoticeKind::ComebackSent {
+            place,
+            messages,
+            message,
+        },
+        Typed::Nothing(reason) => NoticeKind::ComebackSkipped {
+            place,
+            reason,
+            message,
+        },
         Typed::Stopped { sent, reason } => NoticeKind::ComebackStopped {
             place,
             sent,
             reason,
+            message,
         },
     }
 }
@@ -684,19 +693,22 @@ mod tests {
     #[test]
     fn what_came_of_typing_a_comeback_is_put_in_the_activity_feed_with_its_chat() {
         assert_eq!(
-            comeback_notice(Typed::Sent(2), true),
+            comeback_notice(Typed::Sent(2), true, None),
             NoticeKind::ComebackSent {
                 place: ComebackPlace::All,
-                messages: 2
+                messages: 2,
+                message: None
             },
             "a long line, whole in two messages"
         );
         assert_eq!(
-            comeback_notice(Typed::Sent(1), false),
+            comeback_notice(Typed::Sent(1), false, Some(3)),
             NoticeKind::ComebackSent {
                 place: ComebackPlace::Team,
-                messages: 1
-            }
+                messages: 1,
+                message: Some(3)
+            },
+            "quick message 3"
         );
         assert_eq!(
             comeback_notice(
@@ -704,12 +716,14 @@ mod tests {
                     sent: 1,
                     reason: CalloutSkip::NotInFront
                 },
-                true
+                true,
+                Some(1)
             ),
             NoticeKind::ComebackStopped {
                 place: ComebackPlace::All,
                 sent: 1,
-                reason: CalloutSkip::NotInFront
+                reason: CalloutSkip::NotInFront,
+                message: Some(1)
             },
             "a line of two messages, cut after the first"
         );
@@ -723,8 +737,12 @@ mod tests {
         ] {
             for (all, place) in [(false, ComebackPlace::Team), (true, ComebackPlace::All)] {
                 assert_eq!(
-                    comeback_notice(Typed::Nothing(reason), all),
-                    NoticeKind::ComebackSkipped { place, reason }
+                    comeback_notice(Typed::Nothing(reason), all, None),
+                    NoticeKind::ComebackSkipped {
+                        place,
+                        reason,
+                        message: None
+                    }
                 );
             }
         }

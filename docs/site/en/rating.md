@@ -42,7 +42,9 @@ Recent form reads how each game was played, not only wins and KDA: the score of 
 ### Each game's score
 
 - With all ten players known, it is the scoreboard's score: the line against the game's other
-  players.
+  players, without its healing bonus (see the game score, below). The offsets and constants below
+  were measured on games without healing figures; with the bonus, every game a support plays would
+  score above what they expect. Counting it here needs them measured again on games that have it.
 - With the player's own row only, the line is set against the average player of the same mode over
   the same minutes, with the same weights. That average was measured on real games (4,590 Rift
   lines, 8,370 of the two ARAMs, October 2026). It cannot tell a bloody game from a quiet one, so it
@@ -98,10 +100,11 @@ each read as winer reads a record (100 games at most) and kept up to their fifti
 ten at least: 40 met in Hextech ARAM and 30 met on Summoner's Rift (the first version, in October
 2026, took each player's newest 20 games). Only each
 game's numbers were kept, no names, ids or times (`fixtures/sgp/players.json`), and the tests check
-every constant above against them. The game score itself is unchanged: on 155 Hextech ARAM games
-WeGame scored, it orders each game's ten players with a rank correlation of 0.85 to WeGame's, and its
-MVP is WeGame's in 78% of them and its SVP in 72%. Adding experience, healing on teammates and the
-like brought no improvement that would show.
+every constant above against them. This calibration left the game score as it was: on 155 Hextech
+ARAM games WeGame scored, it orders each game's ten players with a rank correlation of 0.85 to
+WeGame's, and its MVP is WeGame's in 77% of them and its SVP in 71%. Adding experience, healing on
+teammates and the like brought it no closer to WeGame; the healing bonus (see the game score, below)
+was added apart from that, and without it these are 78% and 72%.
 
 ## Schemes
 
@@ -343,7 +346,28 @@ A champion the client gives no role uses the ARAM column above. The same on Summ
 no gain that would show, so the Rift weighs no role. Arena, URF and the other modes use the
 Summoner's Rift column.
 
-The weighted mean x (how many average players the line was worth) goes into
+**Healing bonus**: healing and shields given to teammates (`totalHealsOnTeammates` plus
+`totalDamageShieldedOnTeammates` as the match-history server records them, the small figure under
+the scoreboard's Healing column) earn a bonus for what goes beyond the game's average, added to the weighted parts
+above: `bonus = weight × (min(healing / game average, 3) − 1)`, nothing under the average.
+
+| The champion's first role | Weight | At the most (3 averages or more), mid-scale about |
+| ------------------------- | ------ | ------------------------------------------------- |
+| Support                   | 0.04   | 0.8 points more                                   |
+| Any other                 | 0.01   | 0.2 points more                                   |
+
+Most champions heal no teammate at all, so falling short of the average costs nothing, and the bonus
+adds nothing to the weights a line is divided by: a player who healed and shielded no one scores
+exactly as without it. A support's weight is four times the others' because keeping teammates alive
+is its job, while other champions' healing mostly comes from a summoner spell or an item. The bonus
+was not fitted, and WeGame appears to weigh healing less: the 126 and 139 games above
+carry no healing figures, so those numbers are without it; on another 155 Hextech ARAM games that do
+carry them, counting healing makes winer's MVP differ from WeGame's in 2 more games and its SVP in 1
+more. The client's own records carry neither figure, and a game read from them gets no bonus. Recent
+form does not count it yet (see each game's score, above).
+
+x, the weighted parts plus the healing bonus over the sum of the weights (how many average players
+the line was worth), goes into
 `10 / (1 + e^(−4 × (x − c)))` with `c = 1 − ln(1.5) / 4`, which puts exactly one average player at
 6.0: 1.25 averages score 8.0, 1.5 score 9.2, 0.75 score 3.6, half of one 1.7; the most is 10.
 
@@ -364,14 +388,16 @@ The weighted mean x (how many average players the line was worth) goes into
 
 The history list and the scoreboard also mark each player's feats in a game:
 
-| Feat                                                        | Rule                                                                                                       |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Double, triple, quadra, penta kill                          | the game's best multikill, the highest one only                                                            |
-| Legendary                                                   | eight kills or more without dying                                                                          |
-| First blood                                                 | took the game's first kill                                                                                 |
-| Most kills, assists, gold, CS, damage, damage taken, towers | the most in the game; a tie leads together, and when everyone has the same (none at all, say), nobody does |
-| AFK                                                         | the game marked the player away: left or idled                                                             |
+| Feat                                                                 | Rule                                                                                                       |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Double, triple, quadra, penta kill                                   | the game's best multikill, the highest one only                                                            |
+| Legendary                                                            | eight kills or more without dying                                                                          |
+| First blood                                                          | took the game's first kill                                                                                 |
+| Most kills, assists, healing, gold, CS, damage, damage taken, towers | the most in the game; a tie leads together, and when everyone has the same (none at all, say), nobody does |
+| AFK                                                                  | the game marked the player away: left or idled                                                             |
 
 A remake keeps AFK only. The AFK mark comes from the match-history server and the client's own 20
 games do not carry it. The game's leads need all ten players, so they are marked only where the
-whole game was read.
+whole game was read; Most healing counts healing done (`totalHeal`, the figure the client shows,
+the champion's own healing included), not the healing and shields on teammates the score's bonus
+reads.

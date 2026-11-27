@@ -86,6 +86,7 @@ const SETTINGS = {
     lobbyPanel: true,
     // The history panel in the client.
     historyInClient: true,
+    loadoutPanel: true,
   },
   profile: {
     rankDisguise: { enabled: false, queue: "solo", tier: "DIAMOND", division: "I" },
@@ -109,6 +110,7 @@ const SETTINGS = {
     phraseHotkey: null,
     library: { enabled: false, level: "mild" },
     trade: { onAsk: false, onDone: false, thanks: "" },
+    messages: [],
   },
 } satisfies Settings;
 
@@ -342,6 +344,8 @@ describe("tiers", () => {
     gold: 10_000,
     damage: 20_000,
     damageTaken: 20_000,
+    healing: 0,
+    healingOnTeammates: null,
     vision: 10,
     largestMultiKill: 1,
     win: true,

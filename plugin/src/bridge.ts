@@ -4,6 +4,8 @@
 import type {
   BridgeMessage,
   Event,
+  LoadoutAction,
+  LoadoutTarget,
   LogLevel,
   PluginMessage,
   Settings,
@@ -30,10 +32,15 @@ export interface BridgeHandlers {
   // The history panel.
   /** winer's answer to a `history` request. */
   onHistory(result: HistoryResult): void;
+  // The runes panel.
+  /** winer's answer to a `loadout` request. */
+  onLoadout(result: LoadoutResult): void;
 }
 
 /** winer's answer to a `history` request: the player's latest games, or why there are none. */
 export type HistoryResult = Extract<BridgeMessage, { type: "historyResult" }>;
+/** winer's answer to a `loadout` request: what went up, or why nothing did. */
+export type LoadoutResult = Extract<BridgeMessage, { type: "loadoutResult" }>;
 
 /** Waits between attempts: quick at first, then every ten seconds while the app is away. */
 export function backoff(attempt: number): number {
@@ -92,6 +99,16 @@ export class Bridge {
     return this.#requests;
   }
 
+  // The runes panel.
+  /** Asks winer for `action` on the champ select view `target` names. The answer comes to
+   *  `onLoadout` under the id this returns; null while there is no connection. */
+  loadout(target: LoadoutTarget, action: LoadoutAction): number | null {
+    if (this.#socket?.readyState !== WebSocket.OPEN) return null;
+    this.#requests += 1;
+    this.#send({ type: "loadout", requestId: this.#requests, target, action });
+    return this.#requests;
+  }
+
   #send(message: PluginMessage): void {
     if (this.#socket?.readyState === WebSocket.OPEN) this.#socket.send(JSON.stringify(message));
   }
@@ -131,7 +148,9 @@ export class Bridge {
       }
       if (data.type === "hello") this.handlers.onHello(data.snapshot, data.settings);
       else if (data.type === "historyResult") this.handlers.onHistory(data);
-      else this.handlers.onEvent(data.event);
+      else if (data.type === "loadoutResult") this.handlers.onLoadout(data);
+      // A message a newer winer sends that this plugin does not know is left alone.
+      else if (data.type === "event") this.handlers.onEvent(data.event);
     });
     socket.addEventListener("close", () => {
       if (this.#socket === socket) this.#socket = null;

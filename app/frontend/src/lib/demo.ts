@@ -43,12 +43,13 @@ import type {
 
 import type { ArgsOf, Backend, CommandName, Commands } from "./backend";
 import { typedLines } from "./callout";
-import { fillPhrase, phrasesOf, seatLabel } from "./comeback";
+import { QUICK_LIMIT, fillPhrase, phrasesOf, seatLabel } from "./comeback";
 import {
   DEMO_AUGMENTS,
   DEMO_ITEMS,
   DEMO_PERKS,
   DEMO_SPELLS,
+  demoLoadout,
   demoLoadoutHandlers,
 } from "./demoLoadout";
 import { demoRewardsHandlers } from "./demoRewards";
@@ -157,6 +158,7 @@ const LEADS: [Feat, (line: PlayerLine) => number][] = [
   ["mostKills", (line) => line.kills],
   ["mostDamage", (line) => line.damage],
   ["mostAssists", (line) => line.assists],
+  ["mostHealing", (line) => line.healing],
   ["mostGold", (line) => line.gold],
   ["mostTaken", (line) => line.damageTaken],
   ["mostCs", (line) => line.cs],
@@ -190,6 +192,8 @@ function line(
     gold: 9000 + Math.floor(pick() * 6000),
     damage: 9000 + Math.floor(pick() * 26_000),
     damageTaken: 12_000 + Math.floor(pick() * 15_000),
+    healing: 0,
+    healingOnTeammates: null,
     vision: 10 + Math.floor(pick() * 30),
     largestMultiKill: pick() > 0.85 ? 3 : 1,
     win,
@@ -238,14 +242,22 @@ function scoreboard(gameId: number): MatchDetail {
     towers: win ? 9 : 3,
     dragons: win ? 3 : 1,
     barons: win ? 1 : 0,
-    players: TEAM.map(([puuid, name]) => {
-      const played = line(
+    players: TEAM.map(([puuid, name, , position]) => {
+      const drawn = line(
         pick,
         teamId === 100 ? puuid : `${puuid}-x`,
         teamId === 100 ? name : `${name}·对手`,
         win,
         champion(pick),
       );
+      // Everyone heals themselves a little and the support heals its team; read from what was
+      // drawn, so the rest of the game stays the same.
+      const team = position === "utility" ? 4_000 + drawn.assists * 650 : 0;
+      const played = {
+        ...drawn,
+        healing: 1_500 + Math.round(drawn.damageTaken / 5) + team,
+        healingOnTeammates: team,
+      };
       if (played.puuid !== DEMO_PLAYER) return played;
       return { ...played, name: { gameName: name, tagLine: "10003" }, ...standout?.line };
     }),
@@ -983,6 +995,7 @@ const DEFAULT_SETTINGS: Settings = {
     lobbyPanel: true,
     // The history panel in the client.
     historyInClient: true,
+    loadoutPanel: true,
   },
   profile: {
     rankDisguise: { enabled: false, queue: "solo", tier: "DIAMOND", division: "I" },
@@ -997,7 +1010,7 @@ const DEFAULT_SETTINGS: Settings = {
     recommend: true,
   },
   history: { hideCustomGames: true },
-  // The Comebacks page: none of the user's lines, no shortcut, no library in use.
+  // The Quick chat page: none of the user's lines or messages, no shortcut, no library in use.
   comeback: {
     lines: [],
     hotkey: null,
@@ -1007,6 +1020,7 @@ const DEFAULT_SETTINGS: Settings = {
     phraseHotkey: null,
     library: { enabled: false, level: "mild" },
     trade: { onAsk: false, onDone: false, thanks: "" },
+    messages: [],
   },
 };
 
@@ -1068,6 +1082,9 @@ export function demoBackend(): Backend {
     comeback: held(settings.comeback.hotkey, suspended),
     comebackAll: held(settings.comeback.allHotkey, suspended),
     phrase: held(settings.comeback.phraseHotkey, suspended),
+    messages: Array.from({ length: QUICK_LIMIT }, (_, n) =>
+      held(settings.comeback.messages[n]?.hotkey ?? null, suspended),
+    ),
   });
   let hotkey = hotkeyOf(false);
   const setHotkey = (suspended: boolean) => {
@@ -1133,6 +1150,16 @@ export function demoBackend(): Backend {
     // The client shows no lobby during champ select.
     lobby: null,
   };
+  // Champ select's runes and spells: the local player (cell 0) holds Ahri (103). A change draws
+  // champ select again, as the core does.
+  const loadout = demoLoadout(1, 103, () => {
+    snapshot.rev += 1;
+    emit({
+      type: "update",
+      data: { rev: snapshot.rev, patch: { key: "champSelect", value: withLoadout() } },
+    });
+  });
+  const withLoadout = (): ChampSelectView => ({ ...champSelect(), loadout: loadout.view() });
 
   // The profile the demo player shows, and what they backed up before.
   let presence: Presence = { availability: "chat", statusMessage: "今晚上分" };
@@ -1180,16 +1207,24 @@ export function demoBackend(): Backend {
   );
 
   const handlers: { [K in CommandName]: (args: Commands[K]["args"]) => Commands[K]["result"] } = {
-    get_snapshot: () => ({ ...snapshot, champSelect: champSelect(), friends: friends() }),
+    get_snapshot: () => ({ ...snapshot, champSelect: withLoadout(), friends: friends() }),
     get_settings: () => settings,
     set_settings: ({ settings: next }) => {
-      settings = next;
+      // As the core keeps quick messages: a blank one goes, with its shortcut; ten at most.
+      const messages = next.comeback.messages
+        .map((message) => ({ ...message, text: message.text.replace(/\s+/gu, " ").trim() }))
+        .filter((message) => message.text !== "")
+        .slice(0, QUICK_LIMIT);
+      settings = { ...next, comeback: { ...next.comeback, messages } };
       if (
         settings.general.hotkey !== hotkey.shortcut ||
         settings.automation.callout.hotkey !== hotkey.callout.shortcut ||
         settings.comeback.hotkey !== hotkey.comeback.shortcut ||
         settings.comeback.allHotkey !== hotkey.comebackAll.shortcut ||
-        settings.comeback.phraseHotkey !== hotkey.phrase.shortcut
+        settings.comeback.phraseHotkey !== hotkey.phrase.shortcut ||
+        hotkey.messages.some(
+          (slot, n) => (settings.comeback.messages[n]?.hotkey ?? null) !== slot.shortcut,
+        )
       )
         setHotkey(hotkey.suspended);
       return settings;
@@ -1449,7 +1484,7 @@ export function demoBackend(): Backend {
     reveal_game_settings_backup: () => null,
     get_hotkey_status: () => hotkey,
     suspend_hotkey: ({ suspended }) => setHotkey(suspended),
-    ...demoLoadoutHandlers(() => settings),
+    ...demoLoadoutHandlers(() => settings, loadout),
     // Callout: as the core does, the best tier to watch and the worst to go after on the red side,
     // the user in every tier of the team on the blue side, by champion, typed as one press would.
     preview_game_callout: ({ rule }) => {

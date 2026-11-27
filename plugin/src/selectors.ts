@@ -35,7 +35,8 @@ export const FRIENDS_LIST = {
   ids: ["data-puuid", "puuid", "data-pid", "pid", "data-id", "data-summoner-puuid"],
 } as const;
 
-/** The party in the lobby. A miss, or cards that name no member, falls back to the panel. */
+/** The party in the lobby. A miss, or cards that name no member, gets no lines; the panel lists the
+ *  party either way. */
 export const LOBBY = {
   /** One member's card in the party. Measured on 16.19 (GZ100, a normal ARAM lobby, 2026-10-06):
    *  `div.party-members-container` holds one `div.v2-banner-component` per member, whose

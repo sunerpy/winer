@@ -11,11 +11,12 @@ places it connects to:
 | The Tencent League app             | the champion, lane and patch                                   | the build panel's statistics from the Chinese servers, at `mlol.qt.qq.com`                                                                    |
 | OP.GG                              | the champion, mode and lane                                    | the build panel's statistics from the world, at `lol-api-champion.op.gg`                                                                      |
 | GitHub                             | a plain web request                                            | checking for and downloading updates                                                                                                          |
-| jsDelivr and GitHub                | a plain web request                                            | only when you press download in **Comebacks › Online library**: the open 祖安语录 library, from jsDelivr's mirrors first, then GitHub         |
+| jsDelivr and GitHub                | a plain web request                                            | only when you press download in **Quick chat › Online library**: the open 祖安语录 library, from jsDelivr's mirrors first, then GitHub        |
 
 The build panel reads the statistics of the champion on the Live game page only (yours, in champ
-select and in the game), and once more when a champion is locked in while item sets are written by
-themselves. A request carries the champion, mode, lane and patch and nothing about your account or
+select and in the game); while item sets are written by themselves, runes and spells are set up for
+you or the client's runes panel shows, champ select also reads them once for the champion you hover
+or lock in. A request carries the champion, mode, lane and patch and nothing about your account or
 any player; with **Builds** off in **Settings › General**, nothing is read.
 
 The client's credentials and access token are used in memory only; they are never written to the
@@ -23,18 +24,19 @@ settings file or a log.
 
 ## What stays on your computer
 
-| What                                | Where                                                                                 | How long, and how large at most                                                                          |
-| ----------------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Settings                            | `%APPDATA%\app.winer.desktop\settings.json`                                           | kept, a few KB                                                                                           |
-| Remembered runes and spells         | `%APPDATA%\app.winer.desktop\loadouts.json`                                           | kept, one setup per champion and mode, under 1 MB with every one remembered; forgotten in **Automation** |
-| Player notes                        | `%APPDATA%\app.winer.desktop\notes.json`                                              | kept, 5,000 notes at most, 200 characters each; deleted in **Tools › My notes**                          |
-| The client version last seen        | `%APPDATA%\app.winer.desktop\diagnostics.json`                                        | kept, the version number alone, for the self-check after the client updates                              |
-| The downloaded online library       | `%APPDATA%\app.winer.desktop\comeback-library.json`                                   | only once you download it, about 200 KB; **Remove** in **Comebacks › Online library** deletes it         |
-| Game settings backups               | `%LOCALAPPDATA%\app.winer.desktop\game-settings`                                      | 10 at most, a few KB each; a new one past that removes the oldest                                        |
-| The bundled Pengu Loader and plugin | `%LOCALAPPDATA%\app.winer.desktop\pengu`                                              | about 0.5 MB, updated with winer                                                                         |
-| Logs                                | `%LOCALAPPDATA%\app.winer.desktop\logs`                                               | the last 7 days, 50 MB in all and 10 MB a file at most; past that the oldest files go first              |
-| The window's WebView data           | `%LOCALAPPDATA%\app.winer.desktop\EBWebView`                                          | its page cache 32 MB at most; the rest are components WebView2 downloads and updates itself              |
-| Update installers                   | folders starting `winer-` and containing `-updater-` in the system's temporary folder | removed when winer next starts after the update                                                          |
+| What                                | Where                                                                                 | How long, and how large at most                                                                   |
+| ----------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Settings                            | `%APPDATA%\app.winer.desktop\settings.json`                                           | kept, a few KB                                                                                    |
+| Your own setups (runes and spells)  | `%APPDATA%\app.winer.desktop\loadout-presets.json`                                    | kept, a few hundred bytes for each one you save; cleared in **Automation**                        |
+| Last-game setups of older versions  | `%APPDATA%\app.winer.desktop\loadouts.json`                                           | written by 0.0.24 and earlier, no longer used; deleted in **Automation**                          |
+| Player notes                        | `%APPDATA%\app.winer.desktop\notes.json`                                              | kept, 5,000 notes at most, 200 characters each; deleted in **Tools › My notes**                   |
+| The client version last seen        | `%APPDATA%\app.winer.desktop\diagnostics.json`                                        | kept, the version number alone, for the self-check after the client updates                       |
+| The downloaded online library       | `%APPDATA%\app.winer.desktop\comeback-library.json`                                   | only once you download it, about 200 KB; **Remove** in **Quick chat › Online library** deletes it |
+| Game settings backups               | `%LOCALAPPDATA%\app.winer.desktop\game-settings`                                      | 10 at most, a few KB each; a new one past that removes the oldest                                 |
+| The bundled Pengu Loader and plugin | `%LOCALAPPDATA%\app.winer.desktop\pengu`                                              | about 0.5 MB, updated with winer                                                                  |
+| Logs                                | `%LOCALAPPDATA%\app.winer.desktop\logs`                                               | the last 7 days, 50 MB in all and 10 MB a file at most; past that the oldest files go first       |
+| The window's WebView data           | `%LOCALAPPDATA%\app.winer.desktop\EBWebView`                                          | its page cache 32 MB at most; the rest are components WebView2 downloads and updates itself       |
+| Update installers                   | folders starting `winer-` and containing `-updater-` in the system's temporary folder | removed when winer next starts after the update                                                   |
 
 Logs are kept by day (UTC dates). winer checks them when it starts and once a day while it runs, and
 removes the files past those limits.
@@ -45,7 +47,7 @@ schedule, and all of it goes when winer quits.
 
 **Storage** in **Settings › About** lists how large each of these is and its limit. **Clear cache**
 removes old logs, update installers and the caches in memory, and clears the WebView's cache the next
-time winer starts; the settings, the remembered runes and spells and the game settings backups stay.
+time winer starts; the settings, your own setups and the game settings backups stay.
 
 ## The client plugin
 

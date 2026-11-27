@@ -66,13 +66,18 @@ async fn self_check_after_update<R: Runtime>(
     }
 }
 
-/// Whether `settings` have winer type into the game: the callout's shortcut or a comeback's, with
-/// typing into the game switched on beside it. Without a shortcut, or with the switch off, nothing
-/// is typed, and champ select's chat needs no rights.
+/// Whether `settings` have winer type into the game: the callout's shortcut, a random line's or a
+/// quick message's, with typing into the game switched on beside it. Without a shortcut, or with
+/// the switch off, nothing is typed, and champ select's chat needs no rights.
 fn types_in_game(settings: &Settings) -> bool {
     let (callout, comeback) = (&settings.automation.callout, &settings.comeback);
+    let quick = comeback
+        .messages
+        .iter()
+        .any(|message| message.hotkey.is_some());
     (callout.in_game && callout.hotkey.is_some())
-        || (comeback.in_game && (comeback.hotkey.is_some() || comeback.all_hotkey.is_some()))
+        || (comeback.in_game
+            && (comeback.hotkey.is_some() || comeback.all_hotkey.is_some() || quick))
 }
 
 /// A game the client starts runs with the client's rights, and the system drops every key a
@@ -109,6 +114,11 @@ pub(crate) fn forward<R: Runtime>(app: AppHandle<R>, service: Service, bridge: B
                 }
                 Err(RecvError::Lagged(missed)) => {
                     warn!(missed, "the window fell behind; asking it to resync");
+                    // What the missed events would have set up follows the state as it is now:
+                    // the shortcuts from the settings, the game's keyboard hook from the phase.
+                    let settings = Event::Settings(Box::new(service.settings()));
+                    react(&app, &service, &bridge, &settings);
+                    hotkey::on_phase(&app, service.phase());
                     let _ = app.emit(RESYNC, ());
                 }
                 Err(RecvError::Closed) => break,
@@ -120,9 +130,10 @@ pub(crate) fn forward<R: Runtime>(app: AppHandle<R>, service: Service, bridge: B
 fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, event: &Event) {
     match event {
         // A client came up: set up the loader and the plugin, and point it at this session's
-        // bridge. A loader linked just now starts with the client's interface, which is restarted
-        // for it once the client has finished starting with the player idle
-        // (`plugin_host::start_loader`); otherwise it starts with the client's next launch.
+        // bridge. A loader linked just now, or a plugin written over the one the interface loaded,
+        // starts with the client's interface, which is restarted for it once the client has
+        // finished starting with the player idle (`plugin_host::start_loader`); otherwise it
+        // starts with the client's next launch.
         // Only an administrator can create the link: without those rights winer restarts
         // elevated, as for an elevated client, and the elevated copy links on its connection.
         // It restarts elevated too when it is to type into the games of a client that outranks it.
@@ -146,8 +157,10 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
                     elevation::ask_once(&app, "only an administrator can link the loader");
                 }
                 elevate_for_the_game(&app, &service, &service.settings());
-                if outcome.linked {
-                    plugin_host::start_loader(&service);
+                // A loader linked just now, or a plugin written over the one the running interface
+                // loaded: the interface starts again for it once the player is idle.
+                if let Some(what) = outcome.reload_for() {
+                    plugin_host::start_loader(&service, what);
                 }
                 if let Some(program) = outcome.foreign
                     && !FOREIGN_TOLD.swap(true, Ordering::Relaxed)
@@ -171,12 +184,13 @@ fn react<R: Runtime>(app: &AppHandle<R>, service: &Service, bridge: &Bridge, eve
             hotkey::apply(app, settings.general.hotkey.clone());
             // Callout: its own shortcut.
             hotkey::apply_callout(app, settings.automation.callout.hotkey.clone());
-            // Comebacks: their two shortcuts, and the quick phrase's.
+            // Quick chat: its two random-line shortcuts, the quick phrase's and the messages'.
             hotkey::apply_comebacks(
                 app,
                 settings.comeback.hotkey.clone(),
                 settings.comeback.all_hotkey.clone(),
                 settings.comeback.phrase_hotkey.clone(),
+                hotkey::message_hotkeys(settings),
             );
             // Typing into the game, set up just now while connected to a client that outranks
             // winer: its games will too.
@@ -219,5 +233,15 @@ mod tests {
         assert!(types_in_game(&settings), "the team's alone");
         settings.comeback.hotkey = None;
         assert!(!types_in_game(&settings), "the switch without a shortcut");
+        settings.comeback.messages = vec![winer_core::settings::QuickMessage {
+            text: "集合".into(),
+            hotkey: None,
+            all: false,
+        }];
+        assert!(!types_in_game(&settings), "a message without a shortcut");
+        settings.comeback.messages[0].hotkey = Some("Alt+1".into());
+        assert!(types_in_game(&settings), "a quick message's shortcut alone");
+        settings.comeback.in_game = false;
+        assert!(!types_in_game(&settings), "and only with the switch on");
     }
 }

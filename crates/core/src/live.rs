@@ -38,7 +38,7 @@ pub fn champ_select_puuids(session: &ChampSelectSession) -> Vec<String> {
         .my_team
         .iter()
         .chain(&session.their_team)
-        .filter_map(visible_puuid)
+        .filter_map(stats_puuid)
         .collect()
 }
 
@@ -52,10 +52,53 @@ pub fn game_puuids(session: &GameflowSession) -> Vec<String> {
         .collect()
 }
 
-fn visible_puuid(player: &ChampSelectPlayer) -> Option<String> {
-    let hidden =
-        player.puuid.is_empty() || player.name_visibility_type.eq_ignore_ascii_case("HIDDEN");
-    (!hidden).then(|| player.puuid.clone())
+/// Tencent's anonymous champ select XORs the PUUID's sixteen bytes with this fixed mask. The
+/// construction is the one in Sona's `deobfuscateChampSelectPuuid` (WJZ-P/sona, 69dc21e).
+const CHAMP_SELECT_PUUID_MASK: [u8; 16] = [
+    0x81, 0x70, 0x76, 0xa9, 0xf4, 0x51, 0x50, 0x9b, 0x95, 0x98, 0x68, 0x13, 0xce, 0x91, 0x17, 0xe7,
+];
+const HEX: &[u8; 16] = b"0123456789abcdef";
+
+/// The identity whose stats a champ select seat can query. Anonymous seats carry no plain PUUID,
+/// but their obfuscated one reverses with the same XOR; a malformed one stays hidden.
+fn stats_puuid(player: &ChampSelectPlayer) -> Option<String> {
+    if !player.puuid.is_empty() {
+        return Some(player.puuid.clone());
+    }
+    player
+        .name_visibility_type
+        .eq_ignore_ascii_case("HIDDEN")
+        .then(|| deobfuscate_champ_select_puuid(&player.obfuscated_puuid))
+        .flatten()
+}
+
+fn deobfuscate_champ_select_puuid(obfuscated: &str) -> Option<String> {
+    let normalized = obfuscated.trim();
+    let bytes = normalized.as_bytes();
+    if normalized.len() != 36
+        || bytes.iter().enumerate().any(|(index, byte)| {
+            if matches!(index, 8 | 13 | 18 | 23) {
+                *byte != b'-'
+            } else {
+                !byte.is_ascii_hexdigit()
+            }
+        })
+    {
+        return None;
+    }
+
+    let source = normalized.replace('-', "");
+    let mut puuid = String::with_capacity(36);
+    for (index, mask) in CHAMP_SELECT_PUUID_MASK.into_iter().enumerate() {
+        if matches!(index, 4 | 6 | 8 | 10) {
+            puuid.push('-');
+        }
+        let source = u8::from_str_radix(&source[index * 2..index * 2 + 2], 16).ok()?;
+        let decoded = source ^ mask;
+        puuid.push(HEX[usize::from(decoded >> 4)] as char);
+        puuid.push(HEX[usize::from(decoded & 0x0f)] as char);
+    }
+    Some(puuid)
 }
 
 /// Rates every seat of one team by recent form: a grade of its own where the ranking is absolute,
@@ -114,7 +157,7 @@ pub fn champ_select_view(
     mode: &str,
 ) -> ChampSelectView {
     let seat = |player: &ChampSelectPlayer| {
-        let puuid = visible_puuid(player);
+        let puuid = stats_puuid(player);
         let champion_id = if player.champion_id > 0 {
             player.champion_id
         } else {
@@ -194,6 +237,7 @@ pub fn champ_select_view(
             .and_then(|player| side(player.team))
             .filter(|_| has_sides(mode)),
         recommendations: Vec::new(),
+        loadout: None,
     }
 }
 
@@ -460,6 +504,84 @@ mod tests {
             .expect("the local player has a seat");
         assert_eq!(me.position, Some(Position::Top));
         assert_eq!(me.stats, PlayerStats::Loading);
+    }
+
+    #[test]
+    fn anonymous_puuids_reverse_the_fixed_champ_select_mask() {
+        assert_eq!(
+            deobfuscate_champ_select_puuid("  8161549A-B004-36EC-1D01-C2A8024CF918\n"),
+            Some("00112233-4455-6677-8899-aabbccddeeff".to_owned())
+        );
+        for malformed in [
+            "",
+            "not-a-uuid",
+            "8161549ab00436ec1d01c2a8024cf918",
+            "8161549ab-004-36ec-1d01-c2a8024cf918",
+            "8161549a-b004-36ec-1d01-c2a8024cf91g",
+            "8161549a-b004-36ec-1d01-c2a8024cf9180",
+        ] {
+            assert_eq!(
+                deobfuscate_champ_select_puuid(malformed),
+                None,
+                "{malformed}"
+            );
+        }
+    }
+
+    #[test]
+    fn recoverable_hidden_players_get_stats_but_malformed_identities_stay_hidden() {
+        const REAL: &str = "00112233-4455-6677-8899-aabbccddeeff";
+        let session: ChampSelectSession = serde_json::from_value(serde_json::json!({
+            "myTeam": [
+                {
+                    "cellId": 0,
+                    "puuid": "",
+                    "nameVisibilityType": "HIDDEN",
+                    "obfuscatedPuuid": "8161549a-b004-36ec-1d01-c2a8024cf918"
+                },
+                {
+                    "cellId": 1,
+                    "puuid": "",
+                    "nameVisibilityType": "HIDDEN",
+                    "obfuscatedPuuid": "malformed"
+                },
+                {
+                    "cellId": 2,
+                    "puuid": "plain-puuid",
+                    "nameVisibilityType": "HIDDEN",
+                    "obfuscatedPuuid": "malformed"
+                }
+            ]
+        }))
+        .unwrap();
+        assert_eq!(
+            champ_select_puuids(&session),
+            vec![REAL.to_owned(), "plain-puuid".to_owned()]
+        );
+
+        let view = champ_select_view(
+            &session,
+            |puuid| PlayerStats::Failed {
+                message: puuid.to_owned(),
+            },
+            &ranking(),
+            "CLASSIC",
+        );
+        assert_eq!(view.my_team[0].puuid.as_deref(), Some(REAL));
+        assert_eq!(
+            view.my_team[0].stats,
+            PlayerStats::Failed {
+                message: REAL.to_owned()
+            }
+        );
+        assert_eq!(view.my_team[1].stats, PlayerStats::Hidden);
+        assert_eq!(view.my_team[2].puuid.as_deref(), Some("plain-puuid"));
+        assert_eq!(
+            view.my_team[2].stats,
+            PlayerStats::Failed {
+                message: "plain-puuid".to_owned()
+            }
+        );
     }
 
     #[test]

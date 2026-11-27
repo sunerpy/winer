@@ -240,6 +240,13 @@ function FeaturesPanel() {
           label={t("overlay.historyInClient")}
         />
       </Row>
+      <Row label={t("overlay.loadoutPanel")} help={t("overlay.loadoutPanelHint")}>
+        <Toggle
+          checked={plugin.loadoutPanel}
+          onChange={(loadoutPanel) => save((value) => ({ ...value, loadoutPanel }))}
+          label={t("overlay.loadoutPanel")}
+        />
+      </Row>
       <Row label={t("plugin.hidePromotions")} help={t("plugin.hidePromotionsHint")}>
         <Toggle
           checked={plugin.hidePromotions}

@@ -274,6 +274,68 @@ impl Service {
         .await
     }
 
+    /// What a press of the quick message whose combination is `shortcut` does now
+    /// (`comeback::message_press`), from the phase, champ select's game id and the settings as
+    /// saved, against the last line that went out, with the message's number (from 1). The message
+    /// is found by its combination, which no two share, never by its place: a press that crosses
+    /// an edit sends the message it was for, or nothing once that one is gone. The shell acts on it
+    /// as on a comeback's: champ select's message goes out through [`Self::send_message`], the
+    /// game's is typed by the shell, which then tells [`Self::message_went_out`].
+    pub fn message_press(&self, shortcut: &str) -> (Option<u8>, ComebackPress) {
+        let rule = self.settings().comeback;
+        let index = rule
+            .messages
+            .iter()
+            .position(|message| message.hotkey.as_deref() == Some(shortcut));
+        let (phase, champ_select) = {
+            let state = lock(&self.inner.state);
+            (
+                state.phase,
+                state.champ_select.as_ref().map(|view| view.game_id),
+            )
+        };
+        let memory = lock(&self.inner.comeback.memory).clone();
+        let press = comeback::message_press(
+            phase,
+            champ_select,
+            &rule,
+            index.unwrap_or(usize::MAX),
+            &memory,
+            Instant::now(),
+        );
+        (index.and_then(|index| u8::try_from(index + 1).ok()), press)
+    }
+
+    /// A quick message reached the game's chat, whole or in part, just now: nothing follows within
+    /// `comeback::SPACING`. It is no random line, so the one not to repeat stays as it was.
+    pub fn message_went_out(&self) {
+        lock(&self.inner.comeback.memory).sent_at = Some(Instant::now());
+    }
+
+    /// Posts quick message `line` in the chat of champ select `game_id` as one message, and nowhere
+    /// else (`post_to`), unless the spacing has started again meanwhile; one that went out starts
+    /// it.
+    pub async fn send_message(&self, line: String, game_id: i64) -> Result<Spaced, CoreError> {
+        let client = self.client()?;
+        self.send_message_through(&LcuChat(&client.lcu), &line, game_id)
+            .await
+    }
+
+    async fn send_message_through(
+        &self,
+        chat: &impl ChampSelectChat,
+        line: &str,
+        game_id: i64,
+    ) -> Result<Spaced, CoreError> {
+        let spaced = self
+            .post_spaced(chat, game_id, line, Spacing::Kept(None))
+            .await?;
+        if spaced == Spaced::Sent {
+            info!("sent a quick message by its shortcut");
+        }
+        Ok(spaced)
+    }
+
     /// What a press of the quick phrase's shortcut does now (`comeback::phrase_press`), from the
     /// phase and champ select's session as the client last sent it, its trades among it. The shell
     /// sends the phrase through [`Self::send_phrase_by_shortcut`].
@@ -755,6 +817,7 @@ mod tests {
             callout: Vec::new(),
             side: None,
             recommendations: Vec::new(),
+            loadout: None,
         });
     }
 
@@ -1299,6 +1362,130 @@ mod tests {
         for _ in 0..10 {
             assert_ne!(line(service.comeback_press(false)), first);
         }
+    }
+
+    #[tokio::test]
+    async fn a_quick_message_goes_by_its_own_shortcut_and_spaces_every_line_after_it() {
+        use crate::{settings::QuickMessage, view::CalloutSkip};
+        let too_soon = |press: ComebackPress| {
+            matches!(
+                press,
+                ComebackPress::Skip {
+                    reason: CalloutSkip::TooSoon,
+                    ..
+                }
+            )
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let service = in_champ_select(&dir, 7);
+        let mut settings = service.settings();
+        settings.comeback.lines = vec!["a".into()];
+        settings.comeback.messages = vec![
+            QuickMessage {
+                text: "集合".into(),
+                hotkey: Some("Alt+1".into()),
+                all: false,
+            },
+            QuickMessage {
+                text: "GG".into(),
+                hotkey: Some("Alt+2".into()),
+                all: true,
+            },
+        ];
+        service.set_settings(settings).unwrap();
+        seat_champ_select(&service, 7);
+        assert_eq!(
+            service.message_press("Alt+2"),
+            (
+                Some(2),
+                ComebackPress::ChampSelect {
+                    line: "GG".into(),
+                    game_id: 7
+                }
+            )
+        );
+        assert!(
+            matches!(
+                service.message_press("Alt+5"),
+                (
+                    None,
+                    ComebackPress::Skip {
+                        reason: CalloutSkip::NoLines,
+                        ..
+                    }
+                )
+            ),
+            "a combination no message has, such as one of a message removed meanwhile"
+        );
+        // The first removed: the second's combination still sends the second, now first.
+        let mut fewer = service.settings();
+        fewer.comeback.messages.remove(0);
+        service.set_settings(fewer).unwrap();
+        seat_champ_select(&service, 7);
+        assert_eq!(
+            service.message_press("Alt+2"),
+            (
+                Some(1),
+                ComebackPress::ChampSelect {
+                    line: "GG".into(),
+                    game_id: 7
+                }
+            )
+        );
+        assert_eq!(
+            service.message_press("Alt+1").0,
+            None,
+            "the removed one sends nothing"
+        );
+        let mut again = service.settings();
+        again.comeback.messages.insert(
+            0,
+            QuickMessage {
+                text: "集合".into(),
+                hotkey: Some("Alt+1".into()),
+                all: false,
+            },
+        );
+        service.set_settings(again).unwrap();
+        seat_champ_select(&service, 7);
+
+        // Posted in this champ select's chat and nowhere else; once it went out, no line follows
+        // within the spacing, and it is no random line to avoid.
+        let other = FakeChat::new(&[Some(8)], Some("room"));
+        assert!(service.send_message_through(&other, "GG", 7).await.is_err());
+        assert!(lock(&other.posts).is_empty());
+        assert!(
+            !too_soon(service.message_press("Alt+2").1),
+            "nothing went out"
+        );
+        let chat = FakeChat::new(&[Some(7), Some(7)], Some("room"));
+        assert_eq!(
+            service.send_message_through(&chat, "GG", 7).await.unwrap(),
+            Spaced::Sent
+        );
+        assert_eq!(*lock(&chat.posts), [("room".to_owned(), "GG".to_owned())]);
+        assert!(lock(&service.inner.comeback.memory).last.is_none());
+        assert!(too_soon(service.message_press("Alt+1").1));
+        assert!(too_soon(service.comeback_press(false)));
+        let next = FakeChat::new(&[], Some("room"));
+        assert!(
+            matches!(
+                service
+                    .send_message_through(&next, "集合", 7)
+                    .await
+                    .unwrap(),
+                Spaced::TooSoon(_)
+            ),
+            "within the spacing nothing is asked of the client, nor posted"
+        );
+        assert!(lock(&next.posts).is_empty());
+
+        // Typed into the game, it counts once it reached the chat.
+        lock(&service.inner.comeback.memory).sent_at = None;
+        assert!(!too_soon(service.message_press("Alt+1").1));
+        service.message_went_out();
+        assert!(too_soon(service.message_press("Alt+1").1));
+        assert!(lock(&service.inner.comeback.memory).last.is_none());
     }
 
     /// Answers `routes` (a path, a status and a body each), one connection at a time, `count`

@@ -1,7 +1,8 @@
 // The party in the client's lobby: above each member's banner, one compact line of their recent
 // form (win rate, KDA, form score) that opens their history when clicked, as a click on the
 // member's avatar does: in the history panel over the client (`history.ts`) or in winer's window.
-// Where the members cannot be found, a compact panel lists the same.
+// A compact panel lists the same on every screen while the client is in the lobby, the lobby's own
+// too.
 import {
   formatKda,
   kda,
@@ -154,8 +155,29 @@ export interface FloatingPanel {
   body: HTMLElement;
 }
 
-/** The fallback panel's frame, as champ select's: a header that folds it, a body for the rows. */
-export function floatingPanel(doc: Document, title: string, context: string): FloatingPanel {
+/** The lobby panel's frame, as champ select's: a header that folds it, a body for the rows. */
+/** Pengu's synchronous store, where the lobby panel's fold is kept across a rebuild and a reload;
+ *  absent outside the client. */
+interface FoldStore {
+  get(key: string, fallback?: unknown): unknown;
+  set(key: string, value: unknown): boolean;
+}
+
+/** The DataStore key the lobby panel's fold is kept under. */
+export const LOBBY_COLLAPSED_KEY = "winer-lobby-collapsed";
+
+export function floatingPanel(
+  doc: Document,
+  title: string,
+  context: string,
+  store: FoldStore | undefined = (globalThis as { DataStore?: FoldStore }).DataStore,
+): FloatingPanel {
+  let collapsed = false;
+  try {
+    collapsed = store?.get(LOBBY_COLLAPSED_KEY, false) === true;
+  } catch {
+    // Unfolded, as on a first start.
+  }
   const head = h(
     "button",
     { type: "button", class: "winer-head" },
@@ -169,19 +191,25 @@ export function floatingPanel(doc: Document, title: string, context: string): Fl
       class: "winer-panel",
       "data-winer-context": context,
       "data-winer-panel": "lobby",
-      "data-collapsed": "false",
+      "data-collapsed": String(collapsed),
     },
     head,
     body,
   );
   head.addEventListener("click", () => {
-    host.dataset.collapsed = String(host.dataset.collapsed !== "true");
+    const folded = host.dataset.collapsed !== "true";
+    host.dataset.collapsed = String(folded);
+    try {
+      store?.set(LOBBY_COLLAPSED_KEY, folded);
+    } catch {
+      // Kept for this panel only.
+    }
   });
   doc.body.append(host);
   return { host, body };
 }
 
-/** The fallback panel's rows: each member's name and line, a button that opens their history. */
+/** The lobby panel's rows: each member's name and line, a button that opens their history. */
 export function lobbyRows(
   view: LobbyView,
   language: Language,

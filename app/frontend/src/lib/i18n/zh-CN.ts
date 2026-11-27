@@ -9,8 +9,7 @@ export const zhCN = {
   "nav.automation": "自动化",
   "nav.tools": "工具",
   "nav.plugin": "客户端增强",
-  "nav.comeback": "反击",
-  "nav.phrases": "快捷语",
+  "nav.comeback": "快捷喊话",
   "nav.settings": "设置",
   "nav.theme": "主题",
   "nav.collapse": "收起侧栏",
@@ -281,6 +280,10 @@ export const zhCN = {
   "history.player": "玩家",
   "history.score": "评分",
   "history.taken": "承伤",
+  "history.healing": "治疗",
+  "history.healingHint":
+    "治疗量，和客户端里看到的一致，含英雄自己的回复。下方小字是为队友治疗和提供护盾的量，只有战绩服务器的数据里有；评分的治疗加分只看这部分，超出全场平均才加，辅助英雄加得更多。",
+  "history.healingOnTeammates": "为队友治疗和提供护盾 {value}，评分的治疗加分只看这一项",
   "history.kp": "参团",
   "history.items": "装备",
   "augment.silver": "银色",
@@ -288,7 +291,7 @@ export const zhCN = {
   "augment.prismatic": "棱彩",
   "history.share": "占比 {p}",
   "history.scoreHint":
-    "winer 评分（0–10）：按经济、存活、击杀、助攻、伤害、承伤（峡谷还有补刀和视野）与全场平均比较得出，全场平均为 6.0；权重对照 WeGame 的 MVP、SVP 校准过。",
+    "winer 评分（0–10）：按经济、存活、击杀、助攻、伤害、承伤（峡谷还有补刀和视野）与全场平均比较得出，全场平均为 6.0，权重对照 WeGame 的 MVP、SVP 校准过；为队友治疗和提供护盾超出全场平均的部分另有加分，辅助英雄加得更多。",
   "history.version": "版本",
   "history.awardMvp": "MVP：胜方本局评分最高",
   "history.awardSvp": "SVP：败方本局评分最高",
@@ -298,6 +301,7 @@ export const zhCN = {
   "history.barons": "男爵",
   "history.best.damage": "全场伤害最高",
   "history.best.taken": "全场承伤最高",
+  "history.best.healing": "全场治疗最多",
   "history.best.gold": "全场经济最高",
   "history.best.deaths": "全场死亡最少",
   "history.best.score": "全场评分最高",
@@ -326,6 +330,8 @@ export const zhCN = {
   "feat.mostTowersWhy": "全场推掉的防御塔最多。",
   "feat.mostAssists": "助攻最多",
   "feat.mostAssistsWhy": "全场助攻最多。",
+  "feat.mostHealing": "治疗最多",
+  "feat.mostHealingWhy": "全场治疗量最多，含自己的回复。",
   "feat.mostGold": "金币最多",
   "feat.mostGoldWhy": "全场经济最高。",
   "feat.mostTaken": "承伤最高",
@@ -609,11 +615,11 @@ export const zhCN = {
     "按数据特征给出称号，和档位同一个方向：中游以上的只有夸的，比如三连胜叫“版本答案”，中游以下的才会被叫“黑白电视机资深会员”；击杀、死亡和助攻都和同一模式的平均水平比，8 场以上还看发挥稳不稳（“定海神针”“峡谷老虎机”）。",
   "rating.basis": "评价依据",
   "rating.basis.form":
-    "近期战力（0–10）：最近 50 场（不含自定义、人机和重开局；选人时只取当前模式）每一局的单局评分，按分路或英雄定位拉齐后加权平均，越近的局权重越高；场次少时向平均水平收拢，胜率只占 5%；最后换算成在玩家中的位置，5.0 是平均水平。",
+    "近期战力（0–10）：最近 50 场（不含自定义、人机和重开局；选人时只取当前模式）每一局的单局评分（不计治疗加分），按分路或英雄定位拉齐后加权平均，越近的局权重越高；场次少时向平均水平收拢，胜率只占 5%；最后换算成在玩家中的位置，5.0 是平均水平。",
   "rating.basis.tiers":
     "峡谷五档、马系、峡谷食物链和自定义在本队里按近期战力排名后均分到各档，五人五档正好一人一档；峡谷八档按固定分段定级，不和队友比：S+ 9.5 起，S 8.5，A 7.0，B 5.0，C 3.0，D 1.5，E 0.5，再低是 F。",
   "rating.basis.game":
-    "单局评分（记分板）：经济、存活、击杀、助攻、伤害、承伤，峡谷还有补刀和视野，各项和本局平均水平比，平均水平是 6.0，峡谷和大乱斗各用一套对照 WeGame 校准的权重；单局评级 S+ 9.0 起，S 8.0，A 7.0，B 6.0，C 5.0，D 4.0，E 3.0。",
+    "单局评分（记分板）：经济、存活、击杀、助攻、伤害、承伤，峡谷还有补刀和视野，各项和本局平均水平比，平均水平是 6.0，峡谷和大乱斗各用一套对照 WeGame 校准的权重；为队友治疗和提供护盾超出本局平均的部分另有加分，辅助英雄加得更多；单局评级 S+ 9.0 起，S 8.0，A 7.0，B 6.0，C 5.0，D 4.0，E 3.0。",
   "rating.basis.titles":
     "称号：近期看连胜连败、场均击杀、死亡和助攻，以及单局评分的起伏；单局看伤害占比、参团率、承伤和经济占比。",
   "rating.docs": "完整说明",
@@ -799,7 +805,7 @@ export const zhCN = {
   // Storage: what winer keeps on disk and in memory, and the cleanup (Settings › About).
   "storage.title": "存储空间",
   "storage.hint":
-    "winer 在本机保存的内容和各自的上限。清理缓存只删除缓存、旧日志和用过的更新安装包，不会删除游戏设置备份、设置和记住的配置。",
+    "winer 在本机保存的内容和各自的上限。清理缓存只删除缓存、旧日志和用过的更新安装包，不会删除游戏设置备份、设置和我的方案。",
   "storage.clear": "清理缓存",
   "storage.loadFailed": "读取存储空间失败",
   "storage.files": "{n} 个文件",
@@ -815,7 +821,7 @@ export const zhCN = {
   "storage.backupsNote": "最多保留 {n} 份，清理缓存不会删除",
   "storage.pengu": "客户端增强组件",
   "storage.penguNote": "Pengu Loader 与 winer 的客户端插件",
-  "storage.settings": "设置与记住的配置",
+  "storage.settings": "设置与我的方案",
   "storage.settingsNote": "清理缓存不会删除",
   "storage.updates": "更新安装包",
   "storage.updatesNote": "更新完成后留在系统临时文件夹里，winer 下次启动时删除",
@@ -905,6 +911,25 @@ export const zhCN = {
     "没有写入：没有空位放 winer 的符文页，当前页又是你自己的。删掉一页符文页，或者选中客户端的临时页后再试。",
   "loadout.spellsApplied": "已换上这两个召唤师技能。",
   "loadout.itemSetWritten": "已写入装备方案，游戏内商店的装备方案里能找到它。",
+  "loadout.mine": "我的方案",
+  "loadout.mineNone": "这个英雄在这个模式没有保存的方案，锁定后用推荐。",
+  "loadout.mineNoneKeep": "这个英雄在这个模式没有保存的方案，锁定后不会自动更换。",
+  "loadout.mineNoneOff": "这个英雄在这个模式没有保存的方案。",
+  "loadout.mineSaved": "已保存这个英雄在这个模式的方案：{what}。锁定后先用它，没有的部分用推荐。",
+  "loadout.mineSavedOnly": "已保存这个英雄在这个模式的方案：{what}。锁定后换上它。",
+  "loadout.mineSavedOff":
+    "已保存这个英雄在这个模式的方案：{what}。在自动化里打开「自动配置符文和召唤师技能」并选上这个模式后，锁定英雄时会先用它。",
+  "loadout.saveMine": "保存为我的方案",
+  "loadout.saveMineHint": "把现在的符文页和召唤师技能存成这个英雄在这个模式的方案",
+  "loadout.applyMine": "应用我的方案",
+  "loadout.restore": "恢复推荐",
+  "loadout.restoreHint": "删掉这里显示的方案，换上推荐的符文和召唤师技能",
+  "loadout.savedMine": "已保存为我的方案，以后这个英雄在这个模式会先用它",
+  "loadout.savedMineOff":
+    "已保存为我的方案；在自动化里为这个模式打开「自动配置符文和召唤师技能」后，锁定英雄时会先用它",
+  "loadout.appliedMine": "已应用我的方案",
+  "loadout.restored": "已恢复推荐",
+  "loadout.stale": "选人已经变化，请再点一次",
   "loadout.priority": "主升",
   "loadout.sequence": "前 {n} 级的加点",
   "loadout.good": "优势对位",
@@ -928,15 +953,22 @@ export const zhCN = {
   "loadout.section": "符文与召唤师技能",
   "loadout.rule": "自动配置符文和召唤师技能",
   "loadout.ruleHint":
-    "锁定英雄后（大乱斗里每换一次英雄），换上这个英雄在这个模式里上一局用的符文和召唤师技能。每个英雄只换一次，之后你自己的改动不会被覆盖。",
-  "loadout.recommended": "没有记录时用客户端推荐",
+    "锁定英雄后（大乱斗里每换一次英雄），换上这个英雄的符文和召唤师技能：有「我的方案」就用你的方案，没有就用推荐。排位和匹配的推荐来自腾讯 101（或设置里选的 OP.GG），极地大乱斗来自 OP.GG，海克斯大乱斗用客户端自己的推荐页；其他模式没有推荐，只换你保存的方案。每个英雄只换一次，之后你自己的改动不会被覆盖。",
+  "loadout.recommended": "没有我的方案时用推荐",
   "loadout.recommendedHint":
-    "这个英雄在这个模式里还没有记录时，用客户端自己推荐的符文页和召唤师技能。",
-  "loadout.remembered": "已记住 {n} 套",
-  "loadout.rememberedHint":
-    "每局开始时记下你最终用的符文和召唤师技能，按英雄和模式分开，只保存在这台电脑上。",
-  "loadout.forget": "清除记忆",
-  "loadout.forgotten": "已清除记住的符文和召唤师技能",
+    "这个英雄在这个模式里没有你保存的方案时，换上推荐的符文和召唤师技能；关闭后只换你自己的方案。",
+  "loadout.presets": "我的方案 {n} 套",
+  "loadout.presetsHint":
+    "在对局页或客户端右下角的符文面板里点「保存为我的方案」，按英雄和模式分开保存（排位和匹配再按分路），只保存在这台电脑上。",
+  "loadout.legacy": "旧版本记下的上一局配置（已停用）",
+  "loadout.legacyCount":
+    "共 {n} 条。0.0.24 及以前每局开局自动记下的符文和召唤师技能，现在不再使用，可以删除。",
+  "loadout.legacyNone":
+    "0.0.24 及以前每局开局自动记下符文和召唤师技能的文件，现在不再使用，可以删除。",
+  "loadout.legacyDelete": "删除",
+  "loadout.legacyDeleted": "已删除旧的上一局配置",
+  "loadout.forget": "清除我的方案",
+  "loadout.forgotten": "已清除我的方案",
   "loadout.pageNote":
     "winer 只用一页符文页，名为「winer · 英雄名」；没有这一页又没有空位时，只会写进客户端的临时页，不会改你自己的页。",
   "loadout.itemSetsSection": "装备方案",
@@ -964,10 +996,16 @@ export const zhCN = {
     "腾讯掌上英雄联盟没有数据时改用 ARAM.GG（第三方数据，它不允许程序批量读取数据文件）；关闭后只用腾讯的数据。",
   "loadout.source.off": "关闭",
   "loadout.sourceOff": "已在设置中关闭这个模式的数据源。",
-  "loadout.notice.remembered": "为 {champion} 应用了记住的{what}",
-  "loadout.notice.recommended": "为 {champion} 应用了客户端推荐的{what}",
   "loadout.notice.noPage": "{champion} 的符文没有改动：没有空位放 winer 的符文页",
   "loadout.notice.noPageToo": "{applied}；符文没有改动：没有空位放 winer 的符文页",
+  "loadout.notice.applied": "已为 {champion} 应用{parts}",
+  "loadout.notice.part": "{what}（{origin}）",
+  "loadout.notice.and": "和",
+  "loadout.notice.kept": "{what}你刚改过，没有覆盖",
+  "loadout.notice.keptOnly": "{champion} 的{what}你刚改过，没有覆盖",
+  "loadout.origin.mine": "我的方案",
+  "loadout.origin.recommended": "推荐",
+  "loadout.origin.client": "客户端推荐",
   "loadout.notice.itemSet": "已为 {champion} 写入装备方案",
   "loadout.itemSetsFull":
     "装备方案没有写入：客户端的装备方案列表放满了你自己的方案（上限约 64 KB）。在客户端里删掉一些装备方案后再试。",
@@ -975,7 +1013,7 @@ export const zhCN = {
   "loadout.what.runes": "符文",
   "loadout.what.spells": "召唤师技能",
 
-  "status.shortcuts": "Ctrl 1–8 切换页面 · Ctrl , 设置 · Ctrl B 侧栏",
+  "status.shortcuts": "Ctrl 1–7 切换页面 · Ctrl , 设置 · Ctrl B 侧栏",
   "error.title": "这一页出错了",
   "error.hint": "其他页面不受影响。可以重试，或打开日志目录把最新的日志发给开发者。",
 
@@ -1020,6 +1058,9 @@ export const zhCN = {
   "overlay.historyInClient": "在客户端里查看战绩",
   "overlay.historyInClientHint":
     "在组队房间或英雄选择界面点一名玩家时，直接在客户端里弹出他最近的对局；关闭后改为在 winer 的窗口里打开他的战绩。",
+  "overlay.loadoutPanel": "选人时显示符文面板",
+  "overlay.loadoutPanelHint":
+    "英雄选择中，在客户端右下角显示现在的和推荐的符文、召唤师技能，可以一键应用推荐、保存为我的方案或恢复推荐。打开后 winer 会为你选的英雄读取推荐数据。",
   // Callout: the shortcut that sends it, and the enemy lines it types into the game's chat.
   "callout.hotkey": "发送喊话的快捷键",
   "callout.hotkeyHint":
@@ -1074,7 +1115,7 @@ export const zhCN = {
   "callout.skip.unsupported": "游戏内发送只支持 Windows",
   "callout.skip.needsAdmin":
     "游戏以管理员身份运行而 winer 不是，模拟的按键会被系统丢弃；以管理员身份重启 winer 后再试",
-  "callout.skip.noLines": "还没有可以发的反击语句，请在「反击」页添加，或下载并打开在线语录",
+  "callout.skip.noLines": "没有可以发的语句：在「快捷喊话」页添加，或下载并打开在线语录",
   "callout.skip.tooSoon": "离上一句还不到 3 秒",
   // Typing into the game: a game started from WeGame runs as administrator, and Windows drops the
   // keys of a program that does not.
@@ -1086,35 +1127,52 @@ export const zhCN = {
   "list.add": "添加",
   "list.full": "最多 {n} 句。",
 
-  // The Comebacks page (反击): the user's own lines, their two shortcuts, typing into the game and
-  // the library downloaded on request.
-  "comeback.title": "反击",
-  "comeback.lines": "反击语句",
+  // The Quick chat page (快捷喊话, once 反击): the quick messages and their shortcuts, the random
+  // lines and their two shortcuts, typing into the game and the library downloaded on request.
+  "comeback.title": "快捷喊话",
+  "comeback.tabs": "快捷喊话和选人快捷语",
+  "comeback.quick": "快捷消息",
+  "comeback.quickHint":
+    "每条消息有自己的快捷键，按一下发出整句，最多 200 字。英雄选择中发到选人聊天；游戏中打开下面的「在游戏里输入」后，按这一条选的「队伍」或「全体」输入游戏聊天。winer 不自带任何消息。",
+  "comeback.quickEmpty": "还没有快捷消息",
+  "comeback.quickEmptyHint": "在下面写一句常用的话，添加后再给它设一个快捷键。",
+  "comeback.quickText": "第 {n} 条快捷消息",
+  "comeback.quickTarget": "第 {n} 条发到哪里",
+  "comeback.quickRemove": "删除第 {n} 条快捷消息",
+  "comeback.quickNew": "新的快捷消息",
+  "comeback.quickNewPlaceholder": "写一条消息，按 Enter 添加",
+  "comeback.quickFull": "最多 {n} 条。",
+  "comeback.quickHotkey": "快捷键",
+  "comeback.quickHotkeyHint": "按下就发这一条。默认不设置。",
+  "comeback.target.team": "队伍",
+  "comeback.target.all": "全体",
+  "comeback.lines": "随机语句",
   "comeback.linesHint":
-    "按一次发一句，随机，不会连着两次同一句。一句发成一条消息，最多 200 字；winer 不自带任何语句，这里只有你自己写的。",
-  "comeback.linesEmpty": "还没有反击语句",
+    "按「随机发一句」的快捷键时，从这里随机挑一句，不会连着两次同一句。一句发成一条消息，最多 200 字；winer 不自带任何语句，这里只有你自己写的。",
+  "comeback.linesEmpty": "还没有随机语句",
   "comeback.linesEmptyHint": "在下面写一句，按 Enter 或点“添加”。",
   "comeback.line": "第 {n} 句",
   "comeback.removeLine": "删除第 {n} 句",
-  "comeback.newLine": "新的反击语句",
-  "comeback.newLinePlaceholder": "写一句反击，按 Enter 添加",
-  "comeback.shortcuts": "快捷键",
-  "comeback.hotkey": "反击发到队伍",
+  "comeback.newLine": "新的随机语句",
+  "comeback.newLinePlaceholder": "写一句，按 Enter 添加",
+  "comeback.shortcuts": "随机语句的快捷键",
+  "comeback.hotkey": "随机发一句到队伍",
   "comeback.hotkeyHint":
     "英雄选择中按下，随机发一句到选人聊天；游戏中打开下面的「在游戏里输入」后，输入游戏的队伍聊天。默认不设置。",
-  "comeback.allHotkey": "反击发到全体",
+  "comeback.allHotkey": "随机发一句到全体",
   "comeback.allHotkeyHint":
-    "游戏中打开「在游戏里输入」后，在这一句前加上 /all 输入全体聊天，对面也看得到；英雄选择中和「反击发到队伍」一样，发到只有本队看得到的选人聊天。默认不设置。",
-  "comeback.hotkeyTakenByTeam": "这个组合键已用于把反击发到队伍，请换一个。",
-  "comeback.hotkeyTakenByAll": "这个组合键已用于把反击发到全体，请换一个。",
+    "游戏中打开「在游戏里输入」后，在这一句前加上 /all 输入全体聊天，对面也看得到；英雄选择中和「随机发一句到队伍」一样，发到只有本队看得到的选人聊天。默认不设置。",
+  "comeback.hotkeyTakenByTeam": "这个组合键已用于随机发一句到队伍，请换一个。",
+  "comeback.hotkeyTakenByAll": "这个组合键已用于随机发一句到全体，请换一个。",
+  "comeback.hotkeyTakenByMessage": "这个组合键已用于发送第 {n} 条快捷消息，请换一个。",
   "comeback.spacing":
-    "两次发送至少隔 3 秒，和选人快捷语一起算：上一句发出后 3 秒内再按，这一下不发，以免刷屏被举报。",
+    "两次发送至少隔 3 秒，快捷消息、随机语句和选人快捷语一起算：上一句发出后 3 秒内再按，这一下不发，以免刷屏被举报。",
   "comeback.noLinesYet":
-    "还没有可以发的语句，现在按这两个快捷键什么也不会发：在上面的「反击语句」里添加，或下载下面的在线语录并打开「使用在线语录」。",
+    "还没有可以随机发的语句，现在按这两个快捷键什么也不会发：在上面的「随机语句」里添加，或下载下面的在线语录并打开「使用在线语录」。",
   "comeback.gameSection": "游戏内发送",
   "comeback.inGame": "在游戏里输入",
   "comeback.inGameHint":
-    "游戏的聊天没有接口，winer 用模拟按键代你输入：按 Enter 打开聊天，输入这一句，再按 Enter 发送，太长的一句分成几条。只在游戏窗口已经在前台时输入，窗口一被切走就停下；按快捷键前先关上聊天框。",
+    "游戏的聊天没有接口，winer 用模拟按键代你输入：按 Enter 打开聊天，输入这一句，再按 Enter 发送，太长的一句分成几条。快捷消息和随机语句都是这样。只在游戏窗口已经在前台时输入，窗口一被切走就停下；按快捷键前先关上聊天框。",
   "comeback.inGameRisk":
     "向游戏模拟按键属于第三方输入，可能违反游戏的服务条款；辱骂性的聊天会被举报。两者都可能让账号被禁言或封禁，使用风险由你自行承担。默认关闭。",
   "comeback.library": "在线语录",
@@ -1164,10 +1222,15 @@ export const zhCN = {
   "comeback.level.strong": "火力全开",
   "comeback.level.both": "两者",
   // The Comebacks page's shortcuts, which act while the window may be hidden.
-  "comeback.notice.sent": "已把反击发到{place}",
-  "comeback.notice.sentParts": "已把反击发到{place}，分成 {n} 条消息",
-  "comeback.notice.stopped": "反击输入到一半停下了：{reason}（已发到{place} {n} 条）",
-  "comeback.notice.skipped": "反击没有发到{place}：{reason}",
+  "comeback.notice.sent": "已把随机语句发到{place}",
+  "comeback.notice.sentParts": "已把随机语句发到{place}，分成 {n} 条消息",
+  "comeback.notice.stopped": "随机语句输入到一半停下了：{reason}（已发到{place} {n} 条）",
+  "comeback.notice.skipped": "随机语句没有发到{place}：{reason}",
+  "comeback.notice.messageSent": "已把第 {m} 条快捷消息发到{place}",
+  "comeback.notice.messageSentParts": "已把第 {m} 条快捷消息发到{place}，分成 {n} 条消息",
+  "comeback.notice.messageStopped":
+    "第 {m} 条快捷消息输入到一半停下了：{reason}（已发到{place} {n} 条）",
+  "comeback.notice.messageSkipped": "第 {m} 条快捷消息没有发到{place}：{reason}",
   "comeback.place.champSelect": "选人聊天",
   "comeback.place.team": "队伍",
   "comeback.place.all": "全体",
@@ -1199,7 +1262,7 @@ export const zhCN = {
   "phrase.thanksReset": "恢复默认感谢语",
   "phrase.thanksPreview": "交换成功后会发：{text}",
   "phrase.spacing":
-    "选人聊天里两句至少隔 3 秒，反击和快捷语一起算：3 秒内按下的这一下不发，自动发的等满 3 秒再发。",
+    "选人聊天里两句至少隔 3 秒，快捷喊话和快捷语一起算：3 秒内按下的这一下不发，自动发的等满 3 秒再发。",
   // The quick phrase's shortcut and the trade's messages, which act while the window may be hidden.
   "phrase.notice.sent": "已把快捷语发到选人聊天",
   "phrase.notice.asked": "已把快捷语发给交换的队友",

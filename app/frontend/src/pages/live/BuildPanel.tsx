@@ -1,12 +1,15 @@
 // The build panel (配装推荐): what players take on a champion, from public statistics, in champ
 // select, during the game and from a champion search. The numbers come from the core; runes, spells
-// and item sets reach the client only when the user asks.
+// and item sets reach the client only when the user asks. In champ select a bar above it keeps the
+// user's own setup for the champion and mode (我的方案).
 import type {
   AugmentOption,
   Build,
   ChampSelectView,
   GameView,
   ItemOption,
+  LoadoutAction,
+  LoadoutView,
   Matchup,
   Mode,
   PageOutcome,
@@ -17,7 +20,7 @@ import type {
   SpellOption,
 } from "@winer/shared";
 import { positionLabel } from "@winer/shared";
-import { Check, ListPlus, Search, Sparkles, Swords } from "lucide-react";
+import { Check, ListPlus, RotateCcw, Save, Search, Sparkles, Swords } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { AssetIcon, AugmentIcon, ChampionIcon } from "../../game/icons";
@@ -37,6 +40,7 @@ import {
   Popover,
   Segmented,
   Skeleton,
+  toast,
 } from "../../ui";
 import {
   type BuildTab,
@@ -875,17 +879,121 @@ function useQueueMode(queueId: number): Mode | null {
   return queue ? modeOf(queue.gameMode, queue.ranked) : null;
 }
 
-/** The panel for the champion the local player hovers or has locked, in their lane. */
+/** 我的方案: the user's own setup for the champion in hand in this mode, and the requests on it.
+ *  Each request names the view it was made on: one made after champ select changed does nothing,
+ *  and says so. */
+export function MineBar({ loadout }: { loadout: LoadoutView }) {
+  const t = useT();
+  const store = useStore();
+  const [busy, setBusy] = useState<LoadoutAction["kind"] | null>(null);
+  const run = async (action: LoadoutAction, said: MessageKey) => {
+    setBusy(action.kind);
+    try {
+      const target = {
+        gameId: loadout.gameId,
+        championId: loadout.championId,
+        revision: loadout.revision,
+      };
+      const done = await store.backend.call("loadout_action", { target, action });
+      if (done.runes === "noPage") toast(t("loadout.runesNoPage"), "danger");
+      else toast(t(said), "ok");
+    } catch (error) {
+      toast(errorCode(error) === "stale" ? t("loadout.stale") : errorMessage(error), "danger");
+    } finally {
+      setBusy(null);
+    }
+  };
+  const mine = loadout.mine;
+  const what = mine
+    ? t(`loadout.what.${mine.runes && mine.spells ? "both" : mine.runes ? "runes" : "spells"}`)
+    : "";
+  // Only what the rule will do: with it off, or not for this mode, nothing goes up by itself.
+  const line = mine
+    ? t(
+        loadout.auto === "off"
+          ? "loadout.mineSavedOff"
+          : loadout.auto === "mine"
+            ? "loadout.mineSavedOnly"
+            : "loadout.mineSaved",
+        { what },
+      )
+    : t(
+        loadout.auto === "off"
+          ? "loadout.mineNoneOff"
+          : loadout.auto === "mine"
+            ? "loadout.mineNoneKeep"
+            : "loadout.mineNone",
+      );
+  return (
+    <div
+      role="group"
+      aria-label={t("loadout.mine")}
+      className="flex w-full flex-wrap items-center gap-2"
+    >
+      <Badge tone={mine ? "info" : "neutral"}>{t("loadout.mine")}</Badge>
+      <span className="min-w-0 flex-1 text-[12px] leading-4 text-fg-muted">{line}</span>
+      <Button
+        size="sm"
+        icon={Save}
+        title={t("loadout.saveMineHint")}
+        loading={busy === "saveMine"}
+        disabled={busy !== null}
+        onClick={() =>
+          void run(
+            { kind: "saveMine" },
+            loadout.auto === "off" ? "loadout.savedMineOff" : "loadout.savedMine",
+          )
+        }
+      >
+        {t("loadout.saveMine")}
+      </Button>
+      {mine && (
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={Sparkles}
+          loading={busy === "applyMine"}
+          disabled={busy !== null}
+          onClick={() => void run({ kind: "applyMine" }, "loadout.appliedMine")}
+        >
+          {t("loadout.applyMine")}
+        </Button>
+      )}
+      {mine && (
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={RotateCcw}
+          title={t("loadout.restoreHint")}
+          loading={busy === "restoreRecommended"}
+          disabled={busy !== null}
+          onClick={() => void run({ kind: "restoreRecommended" }, "loadout.restored")}
+        >
+          {t("loadout.restore")}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** The panel for the champion the local player hovers or has locked, in their lane, with their own
+ *  setup above it. With builds off the panel is hidden, and the setup bar stays on its own: the
+ *  player's own setup needs no numbers. */
 export function ChampSelectBuild({ view }: { view: ChampSelectView }) {
+  const t = useT();
+  const builds = useSettings().builds;
   const mode = useQueueMode(view.queueId);
   const me = view.myTeam.find((seat) => seat.isSelf);
   if (!me || !mode) return null;
+  const mine = view.loadout ? <MineBar loadout={view.loadout} /> : undefined;
+  if (!builds.enabled) return mine ? <Panel eyebrow={t("loadout.mine")}>{mine}</Panel> : null;
   return (
     <BuildPanel
       championId={me.championId > 0 ? me.championId : null}
       mode={mode}
       lane={me.position}
       context="champSelect"
+      toolbar={mine}
     />
   );
 }

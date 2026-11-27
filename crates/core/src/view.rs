@@ -6,7 +6,7 @@ use ts_rs::TS;
 
 use crate::notes::PlayerNote;
 
-use crate::{loadout::PageOutcome, settings::Settings};
+use crate::settings::Settings;
 
 /// Everything live, in one document. Changes after it arrive as [`Update`]s.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
@@ -239,6 +239,12 @@ pub struct ChampSelectView {
     /// Champions worth considering for the local player's pick, best first (`recommend`); empty
     /// where suggestions do not apply or are switched off.
     pub recommendations: Vec<Recommendation>,
+    /// The local player's champion's runes and spells (`loadout::LoadoutView`); absent where the
+    /// kind of game has none to choose, or before a champion is in hand. Boxed: it is the largest
+    /// part of the view, and the view travels inside every update.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub loadout: Option<Box<crate::loadout::LoadoutView>>,
 }
 
 /// A champion worth considering, and why (`recommend::suggest`).
@@ -430,9 +436,9 @@ pub struct RecentMatch {
     pub assists: i64,
     /// Epoch milliseconds.
     pub started_at: i64,
-    /// 0–10, the game's score as the strength reads it: against the game's other players, or
-    /// against the mode's average where only this player's row is known (`RecentForm::source`).
-    /// Absent for a remake and a mode with no average.
+    /// 0–10, the game's score as the strength reads it: against the game's other players, without
+    /// the healing bonus, or against the mode's average where only this player's row is known
+    /// (`RecentForm::source`). Absent for a remake and a mode with no average.
     pub score: Option<f64>,
     /// Someone else in the game left or idled (the shard's server says so).
     pub away: bool,
@@ -572,6 +578,11 @@ pub struct PlayerLine {
     pub gold: i64,
     pub damage: i64,
     pub damage_taken: i64,
+    /// Healing done, the champion's own included, as the client's scoreboard shows it.
+    pub healing: i64,
+    /// Healing and shielding on teammates, which the score's healing bonus reads; absent where the
+    /// game came from the client's own documents, which do not carry it.
+    pub healing_on_teammates: Option<i64>,
     pub vision: i64,
     pub largest_multi_kill: i64,
     pub win: bool,
@@ -609,6 +620,8 @@ pub enum Feat {
     FirstBlood,
     MostTowers,
     MostAssists,
+    /// The most healing, the champion's own included, as the client's scoreboard counts it.
+    MostHealing,
     MostGold,
     MostTaken,
     MostCs,
@@ -778,15 +791,16 @@ pub enum NoticeKind {
         message: String,
     },
     // Runes, spells and item sets (`loadout`).
-    /// Set up the runes and summoner spells for the champion just taken.
+    /// Set up the runes and summoner spells for the champion just taken: each half from the user's
+    /// own setup, winer's numbers or the client's pages (`None`: that half was not set up).
     LoadoutApplied {
         champion_id: i64,
-        /// The client's own recommendation: nothing was remembered for the champion.
-        recommended: bool,
-        /// What became of the rune page; absent where there were no runes to set up.
-        runes: Option<PageOutcome>,
-        /// The two summoner spells are the ones set up.
-        spells: bool,
+        runes: Option<crate::loadout::LoadoutOrigin>,
+        spells: Option<crate::loadout::LoadoutOrigin>,
+        /// Runes were to go up, but no page could take them.
+        no_page: bool,
+        /// Halves the player changed while winer looked up the recommendation: left as they are.
+        kept: Vec<crate::loadout::LoadoutPart>,
     },
     /// Wrote winer's item set for the champion just taken.
     ItemSetWritten {
@@ -819,24 +833,29 @@ pub enum NoticeKind {
     CalloutSkipped {
         reason: CalloutSkip,
     },
-    // The Comebacks page's shortcuts (`comeback::press`), which act while the window may be hidden.
-    /// A comeback went out whole, in `messages` messages: one in champ select; in the game a line
+    // The Quick chat page's shortcuts (`comeback::press`, `comeback::message_press`), which act
+    // while the window may be hidden. `message` names the quick message a shortcut sent, counted
+    // from 1; `None` is a random line's.
+    /// A line went out whole, in `messages` messages: one in champ select; in the game a line
     /// longer than one message is typed as two or more.
     ComebackSent {
         place: ComebackPlace,
         messages: u32,
+        message: Option<u8>,
     },
-    /// Typing a comeback into the game stopped after `sent` messages, for `reason`: the line went
-    /// out cut.
+    /// Typing a line into the game stopped after `sent` messages, for `reason`: the line went out
+    /// cut.
     ComebackStopped {
         place: ComebackPlace,
         sent: u32,
         reason: CalloutSkip,
+        message: Option<u8>,
     },
-    /// A comeback's shortcut sent nothing, for `reason`.
+    /// A shortcut of the page sent nothing, for `reason`.
     ComebackSkipped {
         place: ComebackPlace,
         reason: CalloutSkip,
+        message: Option<u8>,
     },
     // A quick phrase sent without the board's menu: by its shortcut (`comeback::phrase_press`), or
     // by a trade the user asked for (`comeback::trade_events`).
@@ -910,7 +929,8 @@ pub enum CalloutSkip {
     /// The game runs with more rights than winer (a client started from WeGame runs elevated, and
     /// so does its game), so the system would drop every key winer pressed: nothing was typed.
     NeedsAdmin,
-    /// The Comebacks page has no line to send: none of the user's, and no library in use.
+    /// The Quick chat page has no line to send: no random line of the user's and no library in use,
+    /// or no quick message for that shortcut.
     NoLines,
     /// Less than `comeback::SPACING` after the last comeback that went out.
     TooSoon,
@@ -1047,6 +1067,8 @@ pub enum ErrorCode {
     Unavailable,
     /// The client has no room for what winer would write (its list of item sets is full).
     Full,
+    /// The request named a view that has changed since: nothing was done.
+    Stale,
     Internal,
 }
 
@@ -1272,6 +1294,9 @@ pub struct HotkeyStatus {
     /// The one that sends the first quick phrase to the teammate asked to trade
     /// (`comeback.phrase_hotkey`).
     pub phrase: CalloutHotkeyStatus,
+    /// Each quick message's (`comeback.messages[i].hotkey`), in their order: always
+    /// `ComebackSettings::QUICK_LIMIT` of them, a slot without a message holding none.
+    pub messages: Vec<CalloutHotkeyStatus>,
 }
 
 /// The shortcut that sends the callout (`automation.callout.hotkey`), as the shell holds it.

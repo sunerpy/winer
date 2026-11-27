@@ -57,7 +57,13 @@ side: Side | null,
  * Champions worth considering for the local player's pick, best first (`recommend`); empty
  * where suggestions do not apply or are switched off.
  */
-recommendations: Array<Recommendation>, };
+recommendations: Array<Recommendation>, 
+/**
+ * The local player's champion's runes and spells (`loadout::LoadoutView`); absent where the
+ * kind of game has none to choose, or before a champion is in hand. Boxed: it is the largest
+ * part of the view, and the view travels inside every update.
+ */
+loadout?: LoadoutView, };
 
 export type TimerView = { phase: string, 
 /**
@@ -197,9 +203,9 @@ export type RecentMatch = { gameId: number, queueId: number, championId: number,
  */
 startedAt: number, 
 /**
- * 0–10, the game's score as the strength reads it: against the game's other players, or
- * against the mode's average where only this player's row is known (`RecentForm::source`).
- * Absent for a remake and a mode with no average.
+ * 0–10, the game's score as the strength reads it: against the game's other players, without
+ * the healing bonus, or against the mode's average where only this player's row is known
+ * (`RecentForm::source`). Absent for a remake and a mode with no average.
  */
 score: number | null, 
 /**
@@ -246,7 +252,16 @@ export type PlayerLine = { puuid: string, name: RiotId | null, iconId: number, c
 /**
  * Arena and Hextech ARAM augments, in the order picked.
  */
-augments: Array<number>, keystone: number, subStyle: number, kills: number, deaths: number, assists: number, cs: number, gold: number, damage: number, damageTaken: number, vision: number, largestMultiKill: number, win: boolean, remake: boolean, 
+augments: Array<number>, keystone: number, subStyle: number, kills: number, deaths: number, assists: number, cs: number, gold: number, damage: number, damageTaken: number, 
+/**
+ * Healing done, the champion's own included, as the client's scoreboard shows it.
+ */
+healing: number, 
+/**
+ * Healing and shielding on teammates, which the score's healing bonus reads; absent where the
+ * game came from the client's own documents, which do not carry it.
+ */
+healingOnTeammates: number | null, vision: number, largestMultiKill: number, win: boolean, remake: boolean, 
 /**
  * Arena placement, 1–8.
  */
@@ -274,7 +289,7 @@ feats: Array<Feat>, };
 
 export type Award = "mvp" | "svp";
 
-export type Feat = "afk" | "penta" | "quadra" | "legendary" | "triple" | "mostKills" | "mostDamage" | "firstBlood" | "mostTowers" | "mostAssists" | "mostGold" | "mostTaken" | "mostCs" | "double";
+export type Feat = "afk" | "penta" | "quadra" | "legendary" | "triple" | "mostKills" | "mostDamage" | "firstBlood" | "mostTowers" | "mostAssists" | "mostHealing" | "mostGold" | "mostTaken" | "mostCs" | "double";
 
 export type GameData = { champions: Array<ChampionInfo>, items: Array<AssetInfo>, spells: Array<AssetInfo>, 
 /**
@@ -316,19 +331,15 @@ export type Notice = {
  */
 at: number, kind: NoticeKind, };
 
-export type NoticeKind = { "kind": "accepted" } | { "kind": "declared", championId: number, } | { "kind": "picked", championId: number, locked: boolean, } | { "kind": "banned", championId: number, } | { "kind": "playedAgain" } | { "kind": "swapped", championId: number, } | { "kind": "calledOut", lines: number, } | { "kind": "presenceRestored", availability: string, } | { "kind": "presenceRefused" } | { "kind": "foreignLoader", program: string, yielded: boolean, } | { "kind": "diagnosticsFailed", version: string, failed: number, } | { "kind": "failed", action: string, message: string, } | { "kind": "loadoutApplied", championId: number, 
+export type NoticeKind = { "kind": "accepted" } | { "kind": "declared", championId: number, } | { "kind": "picked", championId: number, locked: boolean, } | { "kind": "banned", championId: number, } | { "kind": "playedAgain" } | { "kind": "swapped", championId: number, } | { "kind": "calledOut", lines: number, } | { "kind": "presenceRestored", availability: string, } | { "kind": "presenceRefused" } | { "kind": "foreignLoader", program: string, yielded: boolean, } | { "kind": "diagnosticsFailed", version: string, failed: number, } | { "kind": "failed", action: string, message: string, } | { "kind": "loadoutApplied", championId: number, runes: LoadoutOrigin | null, spells: LoadoutOrigin | null, 
 /**
- * The client's own recommendation: nothing was remembered for the champion.
+ * Runes were to go up, but no page could take them.
  */
-recommended: boolean, 
+noPage: boolean, 
 /**
- * What became of the rune page; absent where there were no runes to set up.
+ * Halves the player changed while winer looked up the recommendation: left as they are.
  */
-runes: PageOutcome | null, 
-/**
- * The two summoner spells are the ones set up.
- */
-spells: boolean, } | { "kind": "itemSetWritten", championId: number, } | { "kind": "itemSetsFull" } | { "kind": "rewardsClaimed", claimed: number, left: number, } | { "kind": "rewardsFailed", failed: number, } | { "kind": "typedInGame", lines: number, } | { "kind": "typingStopped", lines: number, reason: CalloutSkip, } | { "kind": "calloutSkipped", reason: CalloutSkip, } | { "kind": "comebackSent", place: ComebackPlace, messages: number, } | { "kind": "comebackStopped", place: ComebackPlace, sent: number, reason: CalloutSkip, } | { "kind": "comebackSkipped", place: ComebackPlace, reason: CalloutSkip, } | { "kind": "phraseSent", trigger: PhraseTrigger, } | { "kind": "phraseSkipped", reason: PhraseSkip, trigger: PhraseTrigger, };
+kept: Array<LoadoutPart>, } | { "kind": "itemSetWritten", championId: number, } | { "kind": "itemSetsFull" } | { "kind": "rewardsClaimed", claimed: number, left: number, } | { "kind": "rewardsFailed", failed: number, } | { "kind": "typedInGame", lines: number, } | { "kind": "typingStopped", lines: number, reason: CalloutSkip, } | { "kind": "calloutSkipped", reason: CalloutSkip, } | { "kind": "comebackSent", place: ComebackPlace, messages: number, message: number | null, } | { "kind": "comebackStopped", place: ComebackPlace, sent: number, reason: CalloutSkip, message: number | null, } | { "kind": "comebackSkipped", place: ComebackPlace, reason: CalloutSkip, message: number | null, } | { "kind": "phraseSent", trigger: PhraseTrigger, } | { "kind": "phraseSkipped", reason: PhraseSkip, trigger: PhraseTrigger, };
 
 export type PlayerProfile = { puuid: string, name: RiotId | null, level: number, iconId: number, private: boolean, ranked: Ranked, 
 /**
@@ -408,7 +419,7 @@ export type CheckFailure = { "kind": "timeout" } | { "kind": "connect" } | { "ki
 
 export type IpcError = { code: ErrorCode, message: string, };
 
-export type ErrorCode = "notConnected" | "notFound" | "invalid" | "busy" | "client" | "unavailable" | "full" | "internal";
+export type ErrorCode = "notConnected" | "notFound" | "invalid" | "busy" | "client" | "unavailable" | "full" | "stale" | "internal";
 
 export type FriendsView = { 
 /**
@@ -498,7 +509,12 @@ comebackAll: CalloutHotkeyStatus,
  * The one that sends the first quick phrase to the teammate asked to trade
  * (`comeback.phrase_hotkey`).
  */
-phrase: CalloutHotkeyStatus, };
+phrase: CalloutHotkeyStatus, 
+/**
+ * Each quick message's (`comeback.messages[i].hotkey`), in their order: always
+ * `ComebackSettings::QUICK_LIMIT` of them, a slot without a message holding none.
+ */
+messages: Array<CalloutHotkeyStatus>, };
 
 export type Settings = { appearance: Appearance, general: General, automation: Automation, plugin: PluginSettings, profile: ProfileSettings, 
 /**
@@ -559,7 +575,8 @@ playAgain: boolean, callout: CalloutRule, bench: BenchRule,
  */
 scopes: Scopes, 
 /**
- * Runes and summoner spells, remembered per champion and mode and set up again (`loadout`).
+ * Runes and summoner spells set up once a champion is the player's: the user's own setup, else
+ * the recommendation (`loadout`).
  */
 loadout: LoadoutRule, 
 /**
@@ -733,7 +750,12 @@ lobbyPanel: boolean,
  * A click on a player in the client's lobby or champ select shows their latest games in a
  * panel over the client page; off, the click opens their history in winer's window.
  */
-historyInClient: boolean, };
+historyInClient: boolean, 
+/**
+ * In the client's champ select, a panel at the bottom right with the runes and spells the
+ * player has, winer's recommendation and their own setup, and buttons that set them up.
+ */
+loadoutPanel: boolean, };
 
 export type ProfileSettings = { rankDisguise: RankDisguise, presence: PresenceRule, };
 
@@ -941,9 +963,9 @@ connected: number,
  */
 foreignActivation: string | null, };
 
-export type BridgeMessage = { "type": "hello", version: string, snapshot: Snapshot, settings: Settings, } | { "type": "event", event: Event, } | { "type": "historyResult", requestId: number, page: PanelHistory | null, error: IpcError | null, };
+export type BridgeMessage = { "type": "hello", version: string, snapshot: Snapshot, settings: Settings, } | { "type": "event", event: Event, } | { "type": "historyResult", requestId: number, page: PanelHistory | null, error: IpcError | null, } | { "type": "loadoutResult", requestId: number, done: LoadoutDone | null, error: IpcError | null, };
 
-export type PluginMessage = { "type": "hello", version: string, context: string, } | { "type": "log", level: LogLevel, message: string, } | { "type": "benchSwap", championId: number, } | { "type": "openHistory", puuid: string, } | { "type": "history", puuid: string, requestId: number, };
+export type PluginMessage = { "type": "hello", version: string, context: string, } | { "type": "log", level: LogLevel, message: string, } | { "type": "benchSwap", championId: number, } | { "type": "openHistory", puuid: string, } | { "type": "history", puuid: string, requestId: number, } | { "type": "loadout", requestId: number, target: LoadoutTarget, action: LoadoutAction, };
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -983,9 +1005,146 @@ export type RiftSource = "tencent" | "opGg";
 
 export type ModeSource = "opGg" | "off";
 
-export type LoadoutSummary = { remembered: number, };
+export type LoadoutSummary = { 
+/**
+ * Setups of the user's own (我的方案), one a champion, kind of game and lane.
+ */
+presets: number, 
+/**
+ * `loadouts.json`, where winer up to 0.0.24 remembered each game's setup by itself: `None`
+ * where there is no such file, else how many setups it holds (0 for one that does not read).
+ * Nothing reads it to set anything up any more.
+ */
+legacy: number | null, };
 
 export type PageOutcome = "written" | "noPage";
+
+export type LoadoutView = { gameId: number, 
+/**
+ * The champion held, or hovered before it is.
+ */
+championId: number, mode: Mode, 
+/**
+ * The lane assigned on the Rift.
+ */
+lane: Position | null, 
+/**
+ * The champion is the player's for the game (locked in, or handed out), not only hovered.
+ */
+held: boolean, 
+/**
+ * Taken from one counter for the whole run, the next one whenever anything else here
+ * changes: no two views with other contents share one.
+ */
+revision: number, 
+/**
+ * What the rule sets up once the champion is the player's, so the panels promise no more.
+ */
+auto: LoadoutAuto, 
+/**
+ * The kind of game takes a rune page ([`takes_runes`]): in Hextech ARAM the panels show the
+ * spells, augments and items, and nothing sets runes.
+ */
+takesRunes: boolean, current: LoadoutCurrent, 
+/**
+ * The user's own setup for the champion, kind of game and lane (我的方案).
+ */
+mine: Setup | null, recommendation: RecommendationState, 
+/**
+ * What winer set up for this champion in this champ select, by itself or when asked.
+ */
+applied: AppliedLoadout | null, 
+/**
+ * The runes, styles and spells the view names, with their names and icons: the client's
+ * panel has no catalog of its own.
+ */
+assets: Array<AssetInfo>, };
+
+export type LoadoutCurrent = { 
+/**
+ * The client's current rune page, where it is a full one; `None` until it has been read.
+ */
+runes: RunePage | null, 
+/**
+ * Its name: `winer · 烬`, or one of the player's.
+ */
+page: string, spells: [number, number], };
+
+export type LoadoutAuto = "off" | "mine" | "mineOrRecommended";
+
+export type AugmentPick = { id: number, 
+/**
+ * Silver, gold or prismatic, as the client's catalog has it: the panel draws its ring so.
+ */
+rarity: Rarity, tier: AugmentTier | null, 
+/**
+ * The share of the champion's games that took it, 0–1.
+ */
+pick: number | null, 
+/**
+ * What it does, in words, where ARAM.GG's descriptions are on (`Service::augment_details`).
+ */
+description: string | null, };
+
+export type Setup = { 
+/**
+ * `None` where there was no full page to keep.
+ */
+runes: RunePage | null, spells: [number, number] | null, 
+/**
+ * Epoch milliseconds the user saved it at.
+ */
+savedAt: number, };
+
+export type RecommendationState = { "state": "loading" } | { "state": "ready", recommendation: LoadoutRecommendation, } | { "state": "off" } | { "state": "nothing" } | { "state": "failed", message: string, };
+
+export type LoadoutRecommendation = { runes: Array<RuneOption>, spells: Array<SpellOption>, 
+/**
+ * Where the rune pages come from; `None` while there are none.
+ */
+runesFrom: RecommendedBy | null, spellsFrom: RecommendedBy | null, 
+/**
+ * The source's patch, `16.19`; empty where it says none or the client's pages are used.
+ */
+patch: string, 
+/**
+ * Hextech ARAM: the champion's augments, best first, at most [`ADVICE_AUGMENTS`].
+ */
+augments: Array<AugmentPick>, 
+/**
+ * Hextech ARAM: core builds, most taken first, at most [`ADVICE_BUILDS`], and boots.
+ */
+core: Array<ItemOption>, boots: Array<ItemOption>, 
+/**
+ * Where the augments and items come from.
+ */
+buildFrom: RecommendedBy | null, };
+
+export type RecommendedBy = "tencent" | "opGg" | "aramGg" | "client";
+
+export type LoadoutOrigin = "mine" | "recommended" | "client";
+
+export type AppliedLoadout = { 
+/**
+ * `None` where winer set no runes.
+ */
+runes: LoadoutOrigin | null, spells: LoadoutOrigin | null, 
+/**
+ * Runes were to go up, but no page could take them (`PageOutcome::NoPage`).
+ */
+noPage: boolean, };
+
+export type LoadoutPart = "runes" | "spells";
+
+export type LoadoutTarget = { gameId: number, championId: number, revision: number, };
+
+export type LoadoutAction = { "kind": "applyRunes", index: number, } | { "kind": "applySpells", index: number, } | { "kind": "applyMine" } | { "kind": "saveMine" } | { "kind": "restoreRecommended" } | { "kind": "writeItemSet" };
+
+export type LoadoutDone = { runes: PageOutcome | null, spells: boolean, 
+/**
+ * winer's item set was written.
+ */
+itemSet: boolean, };
 
 export type BuildSource = "tencent" | "tencentHextech" | "opGg" | "aramGg";
 
@@ -1273,7 +1432,27 @@ library: LibraryRule,
  * What champ select's trades (交换) send by themselves, off by default: the first quick phrase
  * when the user asks a teammate, a thank-you once the champions are swapped.
  */
-trade: TradeRule, };
+trade: TradeRule, 
+/**
+ * The Quick chat page's own messages (快捷消息), each sent whole by its own shortcut: at most
+ * [`Self::QUICK_LIMIT`], none blank, of [`Self::LINE_LENGTH`] characters. winer ships none.
+ */
+messages: Array<QuickMessage>, };
+
+export type QuickMessage = { 
+/**
+ * One line: control characters out, trimmed.
+ */
+text: string, 
+/**
+ * In [`normalize_hotkey`]'s form; never one the window, the callout, the comebacks, the quick
+ * phrase or an earlier message holds.
+ */
+hotkey: string | null, 
+/**
+ * In the game, to everyone (`/all ` before it) rather than the team.
+ */
+all: boolean, };
 
 export type LibraryRule = { 
 /**

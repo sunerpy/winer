@@ -10,8 +10,7 @@ export const en: Record<MessageKey, string> = {
   "nav.automation": "Automation",
   "nav.tools": "Tools",
   "nav.plugin": "In-client",
-  "nav.comeback": "Comebacks",
-  "nav.phrases": "Phrases",
+  "nav.comeback": "Quick chat",
   "nav.settings": "Settings",
   "nav.theme": "Theme",
   "nav.collapse": "Collapse sidebar",
@@ -292,6 +291,11 @@ export const en: Record<MessageKey, string> = {
   "history.player": "Player",
   "history.score": "Score",
   "history.taken": "Taken",
+  "history.healing": "Healing",
+  "history.healingHint":
+    "Healing done, as the client shows it, the champion's own healing included. The small figure under it is the healing and shields given to teammates, which only the match-history server's data has; the score's healing bonus reads only that part, adding for what goes beyond the game's average, more for support champions.",
+  "history.healingOnTeammates":
+    "Healed and shielded teammates for {value}, the only healing the score's bonus reads",
   "history.kp": "KP",
   "history.items": "Items",
   "augment.silver": "Silver",
@@ -299,7 +303,7 @@ export const en: Record<MessageKey, string> = {
   "augment.prismatic": "Prismatic",
   "history.share": "{p} of team",
   "history.scoreHint":
-    "winer score (0–10): gold, survival, kills, assists, damage and damage taken (on the Rift also farming and vision) against the game's average player, who scores 6.0; the weights are calibrated on WeGame's MVP and SVP.",
+    "winer score (0–10): gold, survival, kills, assists, damage and damage taken (on the Rift also farming and vision) against the game's average player, who scores 6.0, with weights calibrated on WeGame's MVP and SVP; healing and shielding teammates beyond the game's average adds to it, more for support champions.",
   "history.version": "Patch",
   "history.awardMvp": "MVP: the best score on the winning side",
   "history.awardSvp": "SVP: the best score on the losing side",
@@ -309,6 +313,7 @@ export const en: Record<MessageKey, string> = {
   "history.barons": "Barons",
   "history.best.damage": "Most damage in the game",
   "history.best.taken": "Most damage taken in the game",
+  "history.best.healing": "Most healing in the game",
   "history.best.gold": "Most gold in the game",
   "history.best.deaths": "Fewest deaths in the game",
   "history.best.score": "Best score in the game",
@@ -337,6 +342,8 @@ export const en: Record<MessageKey, string> = {
   "feat.mostTowersWhy": "Destroyed the most towers in the game.",
   "feat.mostAssists": "Most assists",
   "feat.mostAssistsWhy": "The most assists in the game.",
+  "feat.mostHealing": "Most healing",
+  "feat.mostHealingWhy": "Healed the most in the game, their own healing included.",
   "feat.mostGold": "Most gold",
   "feat.mostGoldWhy": "Earned the most gold in the game.",
   "feat.mostTaken": "Most damage taken",
@@ -639,11 +646,11 @@ export const en: Record<MessageKey, string> = {
     "Titles from the numbers, leaning the way the tier does: above the middle only praise, such as “Patch Champion” for three wins in a row; only below it a “Grey-screen Regular”. Kills, deaths and assists are set against the same mode's average player; from 8 games, how steady the games were too (“Rock Solid”, “Slot Machine”).",
   "rating.basis": "How it is rated",
   "rating.basis.form":
-    "Recent form (0–10): the score of each of the last 50 games (custom games, games against the computer and remakes left out; in champ select the mode being played only), set against its position or champion role and averaged, the newest weighed most; few games pull it toward the average and the win rate counts a twentieth; then it is read as a share of players, 5.0 the average.",
+    "Recent form (0–10): the score of each of the last 50 games (custom games, games against the computer and remakes left out; in champ select the mode being played only), before its healing bonus, set against its position or champion role and averaged, the newest weighed most; few games pull it toward the average and the win rate counts a twentieth; then it is read as a share of players, 5.0 the average.",
   "rating.basis.tiers":
     "Rift five, the horses, the food chain and custom names rank the team by recent form and split it evenly over the tiers, so five players in five tiers get one each; Rift grades use fixed bands and no comparison: S+ from 9.5, S 8.5, A 7.0, B 5.0, C 3.0, D 1.5, E 0.5, lower is F.",
   "rating.basis.game":
-    "One game's score (scoreboard): gold, survival, kills, assists, damage and damage taken, on the Rift also farming and vision, each against the game's average, which scores 6.0, with one set of weights for the Rift and one for ARAM, both calibrated on WeGame; its grade is S+ from 9.0, S 8.0, A 7.0, B 6.0, C 5.0, D 4.0, E 3.0.",
+    "One game's score (scoreboard): gold, survival, kills, assists, damage and damage taken, on the Rift also farming and vision, each against the game's average, which scores 6.0, with one set of weights for the Rift and one for ARAM, both calibrated on WeGame, and a bonus for healing and shielding teammates beyond the game's average, larger for support champions; its grade is S+ from 9.0, S 8.0, A 7.0, B 6.0, C 5.0, D 4.0, E 3.0.",
   "rating.basis.titles":
     "Titles: recent streaks, kills, deaths and assists per game and how much the game scores swing; on the scoreboard the game's damage share, kill participation, damage taken and gold share.",
   "rating.docs": "Full explanation",
@@ -834,7 +841,7 @@ export const en: Record<MessageKey, string> = {
   // Storage: what winer keeps on disk and in memory, and the cleanup (Settings › About).
   "storage.title": "Storage",
   "storage.hint":
-    "What winer keeps on this PC, and the limit of each. Clear cache removes caches, old logs and spent update installers only, never the game settings backups, the settings or the remembered setups.",
+    "What winer keeps on this PC, and the limit of each. Clear cache removes caches, old logs and spent update installers only, never the game settings backups, the settings or your own setups.",
   "storage.clear": "Clear cache",
   "storage.loadFailed": "Could not read what winer keeps",
   "storage.files": "{n} files",
@@ -850,7 +857,7 @@ export const en: Record<MessageKey, string> = {
   "storage.backupsNote": "{n} at most; Clear cache leaves them",
   "storage.pengu": "In-client components",
   "storage.penguNote": "Pengu Loader and winer's client plugin",
-  "storage.settings": "Settings and remembered setups",
+  "storage.settings": "Settings and my setups",
   "storage.settingsNote": "Clear cache leaves them",
   "storage.updates": "Update installers",
   "storage.updatesNote":
@@ -945,6 +952,30 @@ export const en: Record<MessageKey, string> = {
     "Not written: there is no room for winer's rune page and the current page is one of yours. Delete a page, or select the client's temporary page, and try again.",
   "loadout.spellsApplied": "These two summoner spells are taken.",
   "loadout.itemSetWritten": "Item set written; find it among the in-game shop's item sets.",
+  "loadout.mine": "My setup",
+  "loadout.mineNone":
+    "No setup of yours for this champion in this mode: the recommendation goes up once it is locked in.",
+  "loadout.mineNoneKeep":
+    "No setup of yours for this champion in this mode: nothing is set up once it is locked in.",
+  "loadout.mineNoneOff": "No setup of yours for this champion in this mode.",
+  "loadout.mineSaved":
+    "Your setup for this champion in this mode: {what}. It goes up first once the champion is locked in, the recommendation for what it lacks.",
+  "loadout.mineSavedOnly":
+    "Your setup for this champion in this mode: {what}. It goes up once the champion is locked in.",
+  "loadout.mineSavedOff":
+    "Your setup for this champion in this mode: {what}. With Set up runes and summoner spells on for this mode in Automation, it goes up first once the champion is locked in.",
+  "loadout.saveMine": "Save as my setup",
+  "loadout.saveMineHint":
+    "Keep the rune page and spells you have now as this champion's setup in this mode",
+  "loadout.applyMine": "Apply my setup",
+  "loadout.restore": "Back to recommended",
+  "loadout.restoreHint": "Delete the setup shown here and set up the recommended runes and spells",
+  "loadout.savedMine": "Saved as your setup: this champion uses it first in this mode from now on",
+  "loadout.savedMineOff":
+    "Saved as your setup; with Set up runes and summoner spells on for this mode in Automation, it goes up first once the champion is locked in",
+  "loadout.appliedMine": "Your setup is applied",
+  "loadout.restored": "Back to the recommendation",
+  "loadout.stale": "Champ select has changed; click again",
   "loadout.priority": "Max order",
   "loadout.sequence": "Points for the first {n} levels",
   "loadout.good": "Good matchups",
@@ -969,15 +1000,22 @@ export const en: Record<MessageKey, string> = {
   "loadout.section": "Runes and summoner spells",
   "loadout.rule": "Set up runes and summoner spells",
   "loadout.ruleHint":
-    "Once your champion is locked in (in the ARAMs, each time it changes), sets up the runes and summoner spells you last played it with in this mode. Once per champion, so a change you make afterwards stands.",
-  "loadout.recommended": "Use the client's recommendation",
+    "Once a champion is locked in (in ARAM, each time it changes), winer sets up its runes and summoner spells: your own setup where you saved one, else the recommendation. On ranked and normal games it comes from Tencent 101 (or OP.GG, as chosen in Settings), in ARAM from OP.GG, and in Hextech ARAM from the client's own recommended pages; other modes have no recommendation, so only your own setup goes up there. Once per champion, so a change you make afterwards stands.",
+  "loadout.recommended": "Use the recommendation without a setup of mine",
   "loadout.recommendedHint":
-    "With nothing remembered for the champion in this mode, uses the client's own recommended page and spells.",
-  "loadout.remembered": "{n} remembered",
-  "loadout.rememberedHint":
-    "When a game starts, the runes and spells you go in with are remembered, per champion and mode, on this computer only.",
-  "loadout.forget": "Forget them",
-  "loadout.forgotten": "Remembered runes and spells forgotten",
+    "Where you saved no setup for the champion in this mode, winer sets up the recommended runes and spells; off, it sets up only your own setups.",
+  "loadout.presets": "My setups: {n}",
+  "loadout.presetsHint":
+    "Save as my setup, on the Live page or in the runes panel at the bottom right of the client, keeps one per champion and mode (on ranked and normal games, per lane too), on this computer only.",
+  "loadout.legacy": "Last-game setups of older versions (no longer used)",
+  "loadout.legacyCount":
+    "{n} in all: what winer up to 0.0.24 noted at the start of each game. Nothing uses them any more; you can delete them.",
+  "loadout.legacyNone":
+    "The file where winer up to 0.0.24 noted each game's runes and spells. Nothing uses it any more; you can delete it.",
+  "loadout.legacyDelete": "Delete",
+  "loadout.legacyDeleted": "The old last-game setups are deleted",
+  "loadout.forget": "Clear my setups",
+  "loadout.forgotten": "Your setups are cleared",
   "loadout.pageNote":
     'winer uses one rune page, named "winer · <champion>". Without it and with no room for it, only the client\'s temporary page is written; your own pages never are.',
   "loadout.itemSetsSection": "Item sets",
@@ -1005,10 +1043,16 @@ export const en: Record<MessageKey, string> = {
     "Falls back to ARAM.GG (third-party; it asks programs not to read its data files) when the Tencent League app has nothing. Off, only Tencent's numbers are used.",
   "loadout.source.off": "Off",
   "loadout.sourceOff": "This mode's data source is switched off in Settings.",
-  "loadout.notice.remembered": "Set up the remembered {what} for {champion}",
-  "loadout.notice.recommended": "Set up the client's recommended {what} for {champion}",
   "loadout.notice.noPage": "{champion}'s runes unchanged: no room for winer's rune page",
   "loadout.notice.noPageToo": "{applied}; runes unchanged: no room for winer's rune page",
+  "loadout.notice.applied": "Set up {parts} for {champion}",
+  "loadout.notice.part": "{what} ({origin})",
+  "loadout.notice.and": " and ",
+  "loadout.notice.kept": "you had just changed the {what}, so they stay",
+  "loadout.notice.keptOnly": "You had just changed {champion}'s {what}, so they stay",
+  "loadout.origin.mine": "my setup",
+  "loadout.origin.recommended": "recommended",
+  "loadout.origin.client": "the client's recommendation",
   "loadout.notice.itemSet": "Wrote the item set for {champion}",
   "loadout.itemSetsFull":
     "The item set was not written: your own item sets fill the client's list (about 64 KB at most). Delete some in the client, then try again.",
@@ -1016,7 +1060,7 @@ export const en: Record<MessageKey, string> = {
   "loadout.what.runes": "runes",
   "loadout.what.spells": "summoner spells",
 
-  "status.shortcuts": "Ctrl 1–8 pages · Ctrl , settings · Ctrl B sidebar",
+  "status.shortcuts": "Ctrl 1–7 pages · Ctrl , settings · Ctrl B sidebar",
   "error.title": "This page hit an error",
   "error.hint":
     "Other pages are fine. Retry, or open the log folder and send the newest log to the developers.",
@@ -1064,6 +1108,9 @@ export const en: Record<MessageKey, string> = {
   "overlay.historyInClient": "Recent games inside the client",
   "overlay.historyInClientHint":
     "A click on a player in the lobby or in champ select shows their latest games in a panel inside the client; off, it opens their history in winer's window.",
+  "overlay.loadoutPanel": "Runes panel in champ select",
+  "overlay.loadoutPanelHint":
+    "In champ select, the client shows your runes and summoner spells and the recommended ones at the bottom right, with buttons that apply the recommendation, save your setup or go back to the recommendation. On, winer reads the recommendation for the champion you choose.",
   // Callout: the shortcut that sends it, and the enemy lines it types into the game's chat.
   "callout.hotkey": "Shortcut to send the callout",
   "callout.hotkeyHint":
@@ -1125,7 +1172,7 @@ export const en: Record<MessageKey, string> = {
   "callout.skip.needsAdmin":
     "the game runs as administrator and winer does not, so the system would drop its keys; restart winer as administrator and try again",
   "callout.skip.noLines":
-    "there is no comeback line yet: add some on the Comebacks page, or download the online library and turn it on",
+    "there is nothing to send: add some on the Quick chat page, or download the online library and turn it on",
   "callout.skip.tooSoon": "less than 3 seconds since the last line",
   // Typing into the game: a game started from WeGame runs as administrator, and Windows drops the
   // keys of a program that does not.
@@ -1137,35 +1184,52 @@ export const en: Record<MessageKey, string> = {
   "list.add": "Add",
   "list.full": "{n} at most.",
 
-  // The Comebacks page: the user's own lines, their two shortcuts, typing into the game and the
-  // library downloaded on request.
-  "comeback.title": "Comebacks",
-  "comeback.lines": "Comeback lines",
+  // The Quick chat page: the quick messages and their shortcuts, the random lines and their two
+  // shortcuts, typing into the game and the library downloaded on request.
+  "comeback.title": "Quick chat",
+  "comeback.tabs": "Quick chat and champ-select phrases",
+  "comeback.quick": "Quick messages",
+  "comeback.quickHint":
+    "Each message has a shortcut of its own: one press sends the whole message, 200 characters at most. In champ select it goes to the champ-select chat; in a game, with Type in the game on below, it is typed into the team chat or the all chat, as the message says. winer ships none.",
+  "comeback.quickEmpty": "No quick messages yet",
+  "comeback.quickEmptyHint": "Write a message you often send below, then give it a shortcut.",
+  "comeback.quickText": "Quick message {n}",
+  "comeback.quickTarget": "Where message {n} goes",
+  "comeback.quickRemove": "Remove quick message {n}",
+  "comeback.quickNew": "New quick message",
+  "comeback.quickNewPlaceholder": "Write a message and press Enter",
+  "comeback.quickFull": "{n} at most.",
+  "comeback.quickHotkey": "Shortcut",
+  "comeback.quickHotkeyHint": "Press it to send this message. None by default.",
+  "comeback.target.team": "Team",
+  "comeback.target.all": "Everyone",
+  "comeback.lines": "Random lines",
   "comeback.linesHint":
-    "One press sends one line, at random, never the same line twice in a row. A line goes out as one message of 200 characters at most. winer ships none: these are your own.",
+    "A press of a Send a random line shortcut picks one of these at random, never the same line twice in a row. A line goes out as one message of 200 characters at most. winer ships none: these are your own.",
   "comeback.linesEmpty": "No lines yet",
   "comeback.linesEmptyHint": "Write one below, then press Enter or Add.",
   "comeback.line": "Line {n}",
   "comeback.removeLine": "Remove line {n}",
-  "comeback.newLine": "New comeback line",
+  "comeback.newLine": "New random line",
   "comeback.newLinePlaceholder": "Write a line and press Enter",
-  "comeback.shortcuts": "Shortcuts",
-  "comeback.hotkey": "Send a comeback to the team",
+  "comeback.shortcuts": "Random line shortcuts",
+  "comeback.hotkey": "Send a random line to the team",
   "comeback.hotkeyHint":
     "In champ select it posts a random line to the champ-select chat; in a game, with Type in the game on below, it types the line into the game's team chat. None by default.",
-  "comeback.allHotkey": "Send a comeback to everyone",
+  "comeback.allHotkey": "Send a random line to everyone",
   "comeback.allHotkeyHint":
-    "In a game, with Type in the game on, it types the line into the all chat with /all before it, where the enemy reads it too; in champ select it posts to the champ-select chat, which only your team reads, as Send a comeback to the team does. None by default.",
-  "comeback.hotkeyTakenByTeam": "This combination sends a comeback to the team. Choose another.",
-  "comeback.hotkeyTakenByAll": "This combination sends a comeback to everyone. Choose another.",
+    "In a game, with Type in the game on, it types the line into the all chat with /all before it, where the enemy reads it too; in champ select it posts to the champ-select chat, which only your team reads, as Send a random line to the team does. None by default.",
+  "comeback.hotkeyTakenByTeam": "This combination sends a random line to the team. Choose another.",
+  "comeback.hotkeyTakenByAll": "This combination sends a random line to everyone. Choose another.",
+  "comeback.hotkeyTakenByMessage": "This combination sends quick message {n}. Choose another.",
   "comeback.spacing":
-    "Two lines go out at least 3 seconds apart, champ-select phrases included: a press within 3 seconds of the last line sends nothing, so the chat is never flooded.",
+    "Two lines go out at least 3 seconds apart, quick messages, random lines and champ-select phrases alike: a press within 3 seconds of the last line sends nothing, so the chat is never flooded.",
   "comeback.noLinesYet":
-    "There is no line to send yet, so these shortcuts send nothing: add lines under Comeback lines above, or download the online library below and turn on Use the online library.",
+    "There is no random line to send yet, so these shortcuts send nothing: add lines under Random lines above, or download the online library below and turn on Use the online library.",
   "comeback.gameSection": "In-game sending",
   "comeback.inGame": "Type in the game",
   "comeback.inGameHint":
-    "The game's chat has no API, so winer types for you with synthesized key presses: Enter opens the chat, the line goes in, Enter sends it, a long line in several messages. It types only while the game's window is already in front and stops the moment it is not; close the chat box before pressing a shortcut.",
+    "The game's chat has no API, so winer types for you with synthesized key presses: Enter opens the chat, the line goes in, Enter sends it, a long line in several messages. Quick messages and random lines alike. It types only while the game's window is already in front and stops the moment it is not; close the chat box before pressing a shortcut.",
   "comeback.inGameRisk":
     "Key presses another program sends to the game are third-party input and may break the game's terms of service, and abusive chat gets reported. Either can get the account muted or banned; you use it at your own risk. Off by default.",
   "comeback.library": "Online library",
@@ -1215,10 +1279,16 @@ export const en: Record<MessageKey, string> = {
   "comeback.level.strong": "Strong",
   "comeback.level.both": "Both",
   // The Comebacks page's shortcuts, which act while the window may be hidden.
-  "comeback.notice.sent": "Sent a comeback to {place}",
-  "comeback.notice.sentParts": "Sent a comeback to {place} in {n} messages",
-  "comeback.notice.stopped": "The comeback stopped part of the way: {reason} ({n} sent to {place})",
-  "comeback.notice.skipped": "Comeback not sent to {place}: {reason}",
+  "comeback.notice.sent": "Sent a random line to {place}",
+  "comeback.notice.sentParts": "Sent a random line to {place} in {n} messages",
+  "comeback.notice.stopped":
+    "The random line stopped part of the way: {reason} ({n} sent to {place})",
+  "comeback.notice.skipped": "Random line not sent to {place}: {reason}",
+  "comeback.notice.messageSent": "Sent quick message {m} to {place}",
+  "comeback.notice.messageSentParts": "Sent quick message {m} to {place} in {n} messages",
+  "comeback.notice.messageStopped":
+    "Quick message {m} stopped part of the way: {reason} ({n} sent to {place})",
+  "comeback.notice.messageSkipped": "Quick message {m} not sent to {place}: {reason}",
   "comeback.place.champSelect": "the champ-select chat",
   "comeback.place.team": "the team",
   "comeback.place.all": "everyone",
@@ -1252,7 +1322,7 @@ export const en: Record<MessageKey, string> = {
   "phrase.thanksReset": "Reset the thank-you",
   "phrase.thanksPreview": "Once the trade goes through: {text}",
   "phrase.spacing":
-    "Lines in the champ-select chat go out at least 3 seconds apart, comebacks and phrases alike: a press within 3 seconds sends nothing, an automatic message waits out the rest.",
+    "Lines in the champ-select chat go out at least 3 seconds apart, quick chat and phrases alike: a press within 3 seconds sends nothing, an automatic message waits out the rest.",
   // The quick phrase's shortcut and the trade's messages, which act while the window may be hidden.
   "phrase.notice.sent": "Sent the phrase to the champ-select chat",
   "phrase.notice.asked": "Sent the phrase to the teammate you asked to trade",

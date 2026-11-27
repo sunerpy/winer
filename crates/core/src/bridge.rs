@@ -8,7 +8,8 @@
 //!
 //! The plugin can also ask for a player's latest games ([`PluginMessage::History`]); the answer
 //! comes back on the same socket ([`BridgeMessage::HistoryResult`]), for the history panel the
-//! plugin draws over the client page.
+//! plugin draws over the client page. Its champ-select runes panel asks winer to set up runes and
+//! spells, or keep the player's own ([`PluginMessage::Loadout`], [`BridgeMessage::LoadoutResult`]).
 
 use std::{
     net::Ipv4Addr,
@@ -38,6 +39,7 @@ use ts_rs::TS;
 
 use crate::{
     CoreError, Service,
+    loadout::{LoadoutAction, LoadoutDone, LoadoutTarget},
     settings::Settings,
     view::{Award, Event, GameData, GameKind, IpcError, MatchPage, Snapshot},
 };
@@ -66,6 +68,14 @@ pub enum BridgeMessage {
     HistoryResult {
         request_id: u32,
         page: Option<PanelHistory>,
+        error: Option<IpcError>,
+    },
+    // The runes panel in the client.
+    /// The answer to [`PluginMessage::Loadout`] under its `request_id`: what went up, or why
+    /// nothing did (`stale` for a request made against an older view). Exactly one is set.
+    LoadoutResult {
+        request_id: u32,
+        done: Option<LoadoutDone>,
         error: Option<IpcError>,
     },
 }
@@ -103,6 +113,15 @@ pub enum PluginMessage {
     History {
         puuid: String,
         request_id: u32,
+    },
+    // The runes panel in the client.
+    /// A button of the runes panel in champ select: `action` on the view `target` names, carried
+    /// out only while `plugin.loadoutPanel` is on. The runes and spells are worked out by winer from
+    /// its view; the answer is a [`BridgeMessage::LoadoutResult`] with the same `request_id`.
+    Loadout {
+        request_id: u32,
+        target: LoadoutTarget,
+        action: LoadoutAction,
     },
 }
 
@@ -180,6 +199,7 @@ impl Bridge {
             Err(error) => return debug!(%error, "plugin connection refused"),
         };
         self.connected.fetch_add(1, Ordering::Relaxed);
+        service.plugin_attached();
         let (mut sink, mut incoming) = socket.split();
         let mut events = service.subscribe();
         let hello = || BridgeMessage::Hello {
@@ -189,9 +209,12 @@ impl Bridge {
         };
         let mut outgoing = Some(hello());
         let mut context = String::from("?");
-        // The history panel: lookups run off the loop and hand their answers back through here.
-        let (answers, mut answered) = mpsc::channel::<BridgeMessage>(PANEL_LOOKUPS);
+        // The history panel's lookups and the runes panel's requests run off the loop and hand
+        // their answers back through here.
+        let (answers, mut answered) =
+            mpsc::channel::<BridgeMessage>(PANEL_LOOKUPS + LOADOUT_REQUESTS);
         let mut lookups: usize = 0;
+        let mut requests: usize = 0;
 
         loop {
             if let Some(message) = outgoing.take() {
@@ -208,7 +231,10 @@ impl Bridge {
                     Err(RecvError::Closed) => break,
                 },
                 Some(answer) = answered.recv() => {
-                    lookups = lookups.saturating_sub(1);
+                    match answer {
+                        BridgeMessage::LoadoutResult { .. } => requests = requests.saturating_sub(1),
+                        _ => lookups = lookups.saturating_sub(1),
+                    }
                     outgoing = Some(answer);
                 }
                 message = incoming.next() => match message {
@@ -233,6 +259,14 @@ impl Bridge {
                         Ok(PluginMessage::History { request_id, .. }) => {
                             outgoing = Some(history_busy(request_id));
                         }
+                        Ok(PluginMessage::Loadout { request_id, target, action }) if requests < LOADOUT_REQUESTS => {
+                            requests += 1;
+                            answer_loadout(&service, request_id, target, action, answers.clone());
+                        }
+                        Ok(PluginMessage::Loadout { request_id, .. }) => {
+                            let busy = CoreError::Busy("winer is still setting up the last one".into());
+                            outgoing = Some(BridgeMessage::loadout_result(request_id, Err(busy.into())));
+                        }
                         Err(error) => debug!(%error, "unreadable plugin message"),
                     },
                     Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
@@ -241,6 +275,7 @@ impl Bridge {
             }
         }
         self.connected.fetch_sub(1, Ordering::Relaxed);
+        service.plugin_detached();
         info!(%context, "plugin disconnected");
     }
 }
@@ -395,6 +430,57 @@ async fn panel_lookup(service: &Service, puuid: &str) -> Result<PanelHistory, Ip
 fn history_busy(request_id: u32) -> BridgeMessage {
     let busy = CoreError::Busy("winer is still reading other games".into());
     BridgeMessage::history_result(request_id, Err(busy.into()))
+}
+
+// ---- The runes panel in the client ----
+
+/// Requests one connection may have under way at once; one more is answered as busy.
+const LOADOUT_REQUESTS: usize = 2;
+
+impl BridgeMessage {
+    /// The answer to the runes panel's request `request_id`.
+    fn loadout_result(request_id: u32, result: Result<LoadoutDone, IpcError>) -> Self {
+        let (done, error) = match result {
+            Ok(done) => (Some(done), None),
+            Err(error) => (None, Some(error)),
+        };
+        Self::LoadoutResult {
+            request_id,
+            done,
+            error,
+        }
+    }
+}
+
+/// Carries the runes panel's request out off the socket's loop, while its switch is on, and hands
+/// the answer back to it.
+fn answer_loadout(
+    service: &Service,
+    request_id: u32,
+    target: LoadoutTarget,
+    action: LoadoutAction,
+    answers: mpsc::Sender<BridgeMessage>,
+) {
+    let service = service.clone();
+    tokio::spawn(async move {
+        let result = if service.settings().plugin.loadout_panel {
+            service.loadout_action(target, action).await
+        } else {
+            Err(CoreError::Invalid(
+                "the runes panel in the client is switched off".into(),
+            ))
+        };
+        match &result {
+            Ok(done) => info!(?action, ?done, "runes panel in the client"),
+            Err(error) => info!(%error, ?action, "the runes panel's request did nothing"),
+        }
+        let _ = answers
+            .send(BridgeMessage::loadout_result(
+                request_id,
+                result.map_err(IpcError::from),
+            ))
+            .await;
+    });
 }
 
 /// Looks the player up off the socket's loop and hands the answer back to it.
@@ -559,6 +645,110 @@ mod tests {
             .await
             .expect("the hello reached the service")
             .unwrap();
+    }
+
+    // ---- The runes panel in the client ----
+
+    #[test]
+    fn the_runes_panels_requests_decode_with_their_target_and_never_carry_runes() {
+        let asked: PluginMessage = serde_json::from_str(
+            r#"{"type":"loadout","requestId":3,"target":{"gameId":9,"championId":202,"revision":4},"action":{"kind":"applyRunes","index":1}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            asked,
+            PluginMessage::Loadout {
+                request_id: 3,
+                target: LoadoutTarget {
+                    game_id: 9,
+                    champion_id: 202,
+                    revision: 4
+                },
+                action: LoadoutAction::ApplyRunes { index: 1 }
+            }
+        );
+        for unit in ["applyMine", "saveMine", "restoreRecommended"] {
+            let message = format!(
+                r#"{{"type":"loadout","requestId":1,"target":{{"gameId":1,"championId":1,"revision":1}},"action":{{"kind":"{unit}"}}}}"#
+            );
+            assert!(
+                serde_json::from_str::<PluginMessage>(&message).is_ok(),
+                "{unit}"
+            );
+        }
+        assert!(
+            serde_json::from_str::<PluginMessage>(
+                r#"{"type":"loadout","requestId":1,"action":{"kind":"saveMine"}}"#
+            )
+            .is_err(),
+            "a request names the view it was made on"
+        );
+        assert!(
+            serde_json::from_str::<PluginMessage>(
+                r#"{"type":"loadout","requestId":1,"target":{"gameId":1,"championId":1,"revision":1},"action":{"kind":"applyPage","page":{"primaryStyle":8000}}}"#
+            )
+            .is_err(),
+            "no runes come from the page"
+        );
+        let stale = BridgeMessage::loadout_result(5, Err(CoreError::Stale("old".into()).into()));
+        assert_eq!(
+            serde_json::to_value(&stale).unwrap(),
+            serde_json::json!({
+                "type": "loadoutResult",
+                "requestId": 5,
+                "done": null,
+                "error": {"code": "stale", "message": "old"},
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn a_request_of_the_runes_panel_is_answered_and_refused_with_its_switch_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Service::new(
+            dir.path().join("settings.json"),
+            tokio::runtime::Handle::current(),
+        );
+        let bridge = Bridge::start(service.clone(), "9.9.9").await.unwrap();
+        let url = format!("ws://127.0.0.1:{}/?token={}", bridge.port(), bridge.token());
+        let (mut socket, _) = connect_async(url).await.unwrap();
+        socket.next().await.unwrap().unwrap(); // hello
+        let ask = |id: u32| {
+            Message::text(
+                serde_json::json!({
+                    "type": "loadout",
+                    "requestId": id,
+                    "target": {"gameId": 9, "championId": 202, "revision": 1},
+                    "action": {"kind": "saveMine"},
+                })
+                .to_string(),
+            )
+        };
+        let answer = |message: Message| -> serde_json::Value {
+            serde_json::from_str(message.to_text().unwrap()).unwrap()
+        };
+        socket.send(ask(1)).await.unwrap();
+        let first = answer(socket.next().await.unwrap().unwrap());
+        assert_eq!(
+            (&first["type"], &first["requestId"], &first["error"]["code"]),
+            (
+                &serde_json::json!("loadoutResult"),
+                &serde_json::json!(1),
+                &serde_json::json!("notConnected")
+            )
+        );
+
+        let mut settings = service.settings();
+        settings.plugin.loadout_panel = false;
+        service.set_settings(settings).unwrap();
+        socket.next().await.unwrap().unwrap(); // the settings event
+        socket.send(ask(2)).await.unwrap();
+        let off = answer(socket.next().await.unwrap().unwrap());
+        assert_eq!(
+            (&off["requestId"], &off["error"]["code"]),
+            (&serde_json::json!(2), &serde_json::json!("invalid")),
+            "the switch is checked here too"
+        );
     }
 
     // ---- The history panel in the client ----

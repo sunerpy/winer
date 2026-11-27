@@ -1,5 +1,6 @@
-// The Automation page's rune and spell memory and its item sets: each a rule card like the others,
-// with what is remembered and a way to take winer's own changes back out.
+// The Automation page's runes and spells and its item sets: each a rule card like the others, with
+// the user's own setups (我的方案), the setups an older winer remembered, and a way to take winer's
+// own changes back out.
 import type { LoadoutRule } from "@winer/shared";
 import { Eraser, Trash2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -23,21 +24,23 @@ export function LoadoutPanel({
 }) {
   const t = useT();
   const store = useStore();
-  // A game starting remembers one more; the phase moving is when to count again.
+  // A setup saved in champ select is one more: champ select's view moving is when to count again.
+  const revision = useLive((snapshot) => snapshot.champSelect?.loadout?.revision ?? 0);
   const phase = useLive((snapshot) => snapshot.phase);
-  const summary = useAsync(() => store.backend.call("get_loadout_summary"), [phase]);
-  const [busy, setBusy] = useState(false);
-  const remembered = summary.data?.remembered ?? 0;
-  const forget = async () => {
-    setBusy(true);
+  const summary = useAsync(() => store.backend.call("get_loadout_summary"), [phase, revision]);
+  const [busy, setBusy] = useState<"presets" | "legacy" | null>(null);
+  const presets = summary.data?.presets ?? 0;
+  const legacy = summary.data?.legacy ?? null;
+  const clear = async (what: "presets" | "legacy") => {
+    setBusy(what);
     try {
-      await store.backend.call("clear_loadouts");
+      await store.backend.call(what === "presets" ? "clear_loadout_presets" : "clear_loadouts");
       summary.reload();
-      toast(t("loadout.forgotten"), "ok");
+      toast(t(what === "presets" ? "loadout.forgotten" : "loadout.legacyDeleted"), "ok");
     } catch (error) {
       toast(errorMessage(error), "danger");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
   return (
@@ -57,18 +60,35 @@ export function LoadoutPanel({
           label={t("loadout.recommended")}
         />
       </Row>
-      <Row label={t("loadout.remembered", { n: remembered })} help={t("loadout.rememberedHint")}>
+      <Row label={t("loadout.presets", { n: presets })} help={t("loadout.presetsHint")}>
         <Button
           size="sm"
           variant="ghost"
           icon={Eraser}
-          loading={busy}
-          disabled={remembered === 0}
-          onClick={() => void forget()}
+          loading={busy === "presets"}
+          disabled={presets === 0 || busy !== null}
+          onClick={() => void clear("presets")}
         >
           {t("loadout.forget")}
         </Button>
       </Row>
+      {legacy !== null && (
+        <Row
+          label={t("loadout.legacy")}
+          help={legacy > 0 ? t("loadout.legacyCount", { n: legacy }) : t("loadout.legacyNone")}
+        >
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={Trash2}
+            loading={busy === "legacy"}
+            disabled={busy !== null}
+            onClick={() => void clear("legacy")}
+          >
+            {t("loadout.legacyDelete")}
+          </Button>
+        </Row>
+      )}
       <p className="pt-3 text-[12px] leading-4 text-fg-muted">{t("loadout.pageNote")}</p>
     </Panel>
   );

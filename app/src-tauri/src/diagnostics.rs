@@ -92,10 +92,18 @@ fn plugin_check(status: &PluginStatus, auto: bool, connected: bool) -> Check {
     check(CheckId::Plugin, state, reason, detail)
 }
 
-/// The window's shortcut, the callout's and the Comebacks page's two: refused when the system
-/// refused any of them, with the first refusal's words.
+/// The window's shortcut, the callout's, the Quick chat page's two and its messages', and the
+/// quick phrase's: refused when the system refused any of them, with the first refusal's words.
 fn hotkey_check(status: &HotkeyStatus) -> Check {
-    let others = [&status.callout, &status.comeback, &status.comeback_all];
+    let others: Vec<_> = [
+        &status.callout,
+        &status.comeback,
+        &status.comeback_all,
+        &status.phrase,
+    ]
+    .into_iter()
+    .chain(&status.messages)
+    .collect();
     if status.shortcut.is_none() && others.iter().all(|other| other.shortcut.is_none()) {
         return check(
             CheckId::Hotkey,
@@ -292,6 +300,45 @@ mod tests {
             (CheckStatus::Fail, CheckReason::HotkeyRefused)
         );
         assert_eq!(shown.detail.as_deref(), Some("HotKey already registered"));
+
+        // So do the quick messages' and the quick phrase's.
+        let comeback = CalloutHotkeyStatus {
+            shortcut: Some("Alt+1".into()),
+            active: true,
+            error: None,
+        };
+        let only_message = HotkeyStatus {
+            messages: vec![CalloutHotkeyStatus::default(), comeback.clone()],
+            ..HotkeyStatus::default()
+        };
+        assert_eq!(
+            outcome(&hotkey_check(&only_message)),
+            (CheckStatus::Ok, CheckReason::Fine)
+        );
+        let refused_message = HotkeyStatus {
+            messages: vec![CalloutHotkeyStatus {
+                active: false,
+                error: Some("taken by another program".into()),
+                ..comeback.clone()
+            }],
+            ..HotkeyStatus::default()
+        };
+        assert_eq!(
+            hotkey_check(&refused_message).detail.as_deref(),
+            Some("taken by another program")
+        );
+        let refused_phrase = HotkeyStatus {
+            phrase: CalloutHotkeyStatus {
+                active: false,
+                error: Some("taken".into()),
+                ..comeback
+            },
+            ..HotkeyStatus::default()
+        };
+        assert_eq!(
+            outcome(&hotkey_check(&refused_phrase)),
+            (CheckStatus::Fail, CheckReason::HotkeyRefused)
+        );
     }
 
     /// A quiet check that fails after one that worked is what the self-check reports, though the

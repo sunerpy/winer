@@ -134,14 +134,14 @@ updates by itself after it starts and while it runs; this checks again on demand
 **Join the QQ group** opens its invitation link, **Copy the number** copies the number.
 
 **Storage** lists what winer keeps on your PC, how large each is and its limit: the logs, the
-window's WebView data, the game settings backups, the in-client components, the settings and
-remembered setups, update installers and the cache in memory. Where each lives is in
+window's WebView data, the game settings backups, the in-client components, the settings and your
+setups of runes and spells, update installers and the cache in memory. Where each lives is in
 [Data and privacy](/en/privacy).
 
 - **Clear cache**: removes the old logs (not the one being written), the installers an update left
   behind and the caches in memory; the WebView's cache is in use while the window is open, so it goes
-  the next time winer starts. The game settings backups, the settings and the remembered runes and
-  spells stay. Afterwards a line under the list says what went, and how large it was.
+  the next time winer starts. The game settings backups, the settings and your own setups of runes
+  and spells stay. Afterwards a line under the list says what went, and how large it was.
 - Without a cleanup nothing grows past its limit either: logs keep the last 7 days and 50 MB in all,
   the caches in memory let go of what expires, the WebView's page cache holds 32 MB at most, and
   update installers go at the next start.
@@ -157,14 +157,16 @@ connects after an update, winer runs them by itself and sends a notice when one 
 
 | Keys             | Does                             |
 | ---------------- | -------------------------------- |
-| `Ctrl` + `1`…`8` | switches pages                   |
+| `Ctrl` + `1`…`7` | switches pages                   |
 | `Ctrl` + `,`     | opens settings                   |
 | `Ctrl` + `B`     | collapses or expands the sidebar |
 
 `Alt` + `` ` `` (changed in **Settings › General**) works everywhere, a game included: it
 shows or hides winer. The others work inside winer's window only. The shortcut to send the callout
 has no combination by default; it is set in **Automation › Callout**, works everywhere as well, and
-is described in [Automation](/en/guide/automation#callout). So do **Send a comeback to the team** and
-**Send a comeback to everyone**, set on the **Comebacks** page (see [Comebacks](/en/guide/live#comebacks)),
-and the phrases' **Send to the teammate you asked to trade**, set on the **Phrases** page (see
+is described in [Automation](/en/guide/automation#callout). So do each quick message's shortcut,
+**Send a random line to the team** and **Send a random line to everyone**, set on the **Quick chat**
+page (see [Quick chat](/en/guide/live#quick-chat)),
+and the phrases' **Send to the teammate you asked to trade**, set on the same page's
+**Champ-select phrases** tab (see
 [Champ-select phrases](/en/guide/live#champ-select-phrases)).

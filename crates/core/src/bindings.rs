@@ -147,6 +147,21 @@ pub fn typescript() -> String {
         settings::ModeSource,
         loadout::LoadoutSummary,
         loadout::PageOutcome,
+        // Champ select's runes and spells: the view, the user's own setups, the requests.
+        loadout::LoadoutView,
+        loadout::LoadoutCurrent,
+        loadout::LoadoutAuto,
+        loadout::AugmentPick,
+        loadout::Setup,
+        loadout::RecommendationState,
+        loadout::LoadoutRecommendation,
+        loadout::RecommendedBy,
+        loadout::LoadoutOrigin,
+        loadout::AppliedLoadout,
+        loadout::LoadoutPart,
+        loadout::LoadoutTarget,
+        loadout::LoadoutAction,
+        loadout::LoadoutDone,
         builds::BuildSource,
         builds::Build,
         builds::Rates,
@@ -186,9 +201,10 @@ pub fn typescript() -> String {
         view::PlayerStanding,
         settings::HistorySettings,
     );
-    // The Comebacks and Phrases pages (`comeback`).
+    // The Quick chat and Phrases pages (`comeback`).
     declare!(
         settings::ComebackSettings,
+        settings::QuickMessage,
         settings::LibraryRule,
         settings::LibraryLevel,
         view::ComebackPlace,

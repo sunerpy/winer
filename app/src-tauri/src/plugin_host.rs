@@ -68,6 +68,23 @@ pub(crate) struct Outcome {
     pub foreign: Option<String>,
     /// And winer stepped aside for it: the experimental switch is on, so no loader was linked.
     pub yielded: bool,
+    /// The plugin was written just now: an interface already running keeps the one before until
+    /// it starts again (`docs/platform-notes.md`).
+    pub installed: bool,
+}
+
+impl Outcome {
+    /// What the client's interface has to start again for, if anything: a loader linked just now,
+    /// or a plugin written over the one it loaded.
+    pub(crate) fn reload_for(&self) -> Option<&'static str> {
+        if self.linked {
+            Some("the new loader")
+        } else if self.installed {
+            Some("the updated plugin")
+        } else {
+            None
+        }
+    }
 }
 
 impl Host {
@@ -374,7 +391,10 @@ pub(crate) fn refresh(service: &Service, bridge: &Bridge, host: &Host) -> Outcom
     let stale = plugin::is_current(&loader.dir, PLUGIN_BUNDLE) != Some(true);
     if stale && (auto || installed.is_some()) {
         match plugin::install(&loader.dir, PLUGIN_BUNDLE) {
-            Ok(()) => info!(from = ?installed, to = ?bundled, "plugin installed"),
+            Ok(()) => {
+                info!(from = ?installed, to = ?bundled, "plugin installed");
+                outcome.installed = true;
+            }
             Err(error) => warn!(%error, "plugin not installed"),
         }
     }
@@ -386,22 +406,27 @@ pub(crate) fn refresh(service: &Service, bridge: &Bridge, host: &Host) -> Outcom
     outcome
 }
 
-/// Starts a loader linked just now. The client loads it only as its interface starts, so the
+/// Starts `what` (`Outcome::reload_for`): a loader linked just now, or a plugin written over the
+/// one the running interface loaded. The client loads both only as its interface starts, so the
 /// interface is restarted for it once the client has finished starting with the player idle, and
 /// brought up again afterwards (`Service::restart_client_ui_when_idle`). That can take minutes, so
 /// it runs on a task of its own: the caller may be a command the window waits on.
-pub(crate) fn start_loader(service: &Service) {
+pub(crate) fn start_loader(service: &Service, what: &'static str) {
     let service = service.clone();
     tauri::async_runtime::spawn(async move {
         match service.restart_client_ui_when_idle().await {
             Ok(UiRestart { plugin_back, shown }) => info!(
                 plugin_back = plugin_back,
                 shown = shown,
-                "client interface restarted to load the new loader"
+                what,
+                "client interface restarted to load it"
             ),
-            // The client went away first: its next launch loads the loader.
+            // The client went away first: its next launch loads it.
             Err(CoreError::NotConnected) => {
-                info!("the client closed before it settled; the loader starts with its next launch")
+                info!(
+                    what,
+                    "the client closed before it settled; its next launch loads it"
+                )
             }
             Err(error) => warn!(%error, "client interface not restarted"),
         }
@@ -536,6 +561,17 @@ mod tests {
         let outcome = refresh(&service, &bridge, &host);
         assert_eq!(outcome.foreign, None);
         assert!(plugin::installed_version(&configured).is_some());
+        assert_eq!(
+            outcome.reload_for(),
+            Some("the updated plugin"),
+            "an interface already running has the plugin before"
+        );
+        let again = refresh(&service, &bridge, &host);
+        assert_eq!(
+            again.reload_for(),
+            None,
+            "the same plugin twice: nothing to restart for"
+        );
         let shown = status(&service, &bridge, &host);
         assert_eq!(
             shown.loader_dir.as_deref(),

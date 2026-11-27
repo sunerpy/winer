@@ -17,6 +17,7 @@ import {
 } from "./history";
 import { type HomeState, PROMOTIONS, decorateHome, forgetHub } from "./home";
 import { text } from "./i18n";
+import { LOADOUT_PANEL, LoadoutPanel } from "./loadout";
 import {
   type FloatingPanel,
   clearLobby,
@@ -62,6 +63,8 @@ export class Controller {
   #lobbyKey = "";
   // The history panel.
   readonly history: HistoryPanel;
+  // The runes panel in champ select.
+  readonly loadout: LoadoutPanel;
 
   constructor(private readonly doc: Document = document) {
     this.bridge = new Bridge(
@@ -70,6 +73,13 @@ export class Controller {
         onEvent: (event) => this.state.event(event),
         onConnection: (connected) => this.state.connection(connected),
         onHistory: (result) => this.#answered(result),
+        onLoadout: (result) => {
+          if (this.loadout.answer(result) && this.state.connected)
+            this.bridge.log(
+              "info",
+              `runes panel: ${result.error ? `not done (${result.error.code})` : "done"}`,
+            );
+        },
       },
       { version: WINER_PLUGIN_VERSION, context: this.context },
     );
@@ -77,6 +87,16 @@ export class Controller {
       request: (puuid) => this.bridge.history(puuid),
       openInWiner: (puuid) => void this.openHistory(puuid),
     });
+    this.loadout = new LoadoutPanel(
+      this.doc,
+      this.context,
+      // Only the drawing context asks, so one click is one request.
+      (target, action) =>
+        this.doc.documentElement.dataset.winerOwner === this.context
+          ? this.bridge.loadout(target, action)
+          : null,
+      () => this.schedule(),
+    );
   }
 
   start(): void {
@@ -132,6 +152,7 @@ export class Controller {
     this.#bench(Boolean(settings?.plugin.benchNoCooldown) && snapshot?.phase === "ChampSelect");
     this.#social(snapshot, settings);
     this.#historyPanel();
+    this.#loadoutPanel(snapshot, settings);
 
     const view =
       settings?.plugin.teamPanel && snapshot?.phase === "ChampSelect" ? snapshot.champSelect : null;
@@ -188,7 +209,8 @@ export class Controller {
         "friends",
       );
 
-    // The core sends the lobby only while the client shows it.
+    // The core sends the lobby while the client is in one (in it, searching, the match-found
+    // dialog), whichever of its screens is up.
     const lobby = settings?.plugin.lobbyPanel ? (snapshot?.lobby ?? null) : null;
     if (!lobby) {
       clearLobby(this.doc);
@@ -197,13 +219,13 @@ export class Controller {
     }
     const open = (puuid: string, anchor: Element) => void this.pick(puuid, anchor);
     const cards = decorateLobby(this.doc, lobby, language, open);
-    // The match-found dialog has the screen to itself: the panel would only sit in its way.
-    if (cards > 0 || snapshot?.phase === "ReadyCheck") this.#hideLobbyPanel();
+    // The panel lists the party on every screen, the lobby's own too, beside the lines on the
+    // member cards. The match-found dialog has the screen to itself: the panel would only sit in
+    // its way.
+    if (snapshot?.phase === "ReadyCheck") this.#hideLobbyPanel();
     else this.#showLobbyPanel(lobby, language, open);
     this.#log(
-      cards > 0
-        ? `lobby: ${cards} member cards decorated`
-        : "lobby: member cards not found, showing the panel",
+      cards > 0 ? `lobby: ${cards} member cards decorated` : "lobby: member cards not found",
       "lobby",
     );
   }
@@ -313,6 +335,7 @@ export class Controller {
       head.addEventListener("click", () => {
         panel.collapsed = !panel.collapsed;
         host.dataset.collapsed = String(panel.collapsed);
+        this.#markTeamPanel(host);
       });
       this.doc.body.append(host);
       this.#panel = panel;
@@ -325,12 +348,27 @@ export class Controller {
       this.#panelKey = key;
       const open = (puuid: string, anchor: Element) => void this.pick(puuid, anchor);
       this.#panel.body.replaceChildren(panelRows(view, language, open));
+      this.#markTeamPanel(this.#panel.host);
     }
+  }
+
+  /** Where the team panel ends, so the runes panel below it on the same edge stays clear of it
+   *  (style.css). Read only when the panel changed. */
+  #markTeamPanel(host: HTMLElement): void {
+    const root = this.doc.documentElement;
+    root.dataset.winerTeamPanel = "true";
+    root.style.setProperty(
+      "--winer-team-bottom",
+      `${Math.ceil(host.getBoundingClientRect().bottom)}px`,
+    );
   }
 
   #hidePanel(): void {
     removePanels(this.doc, "team");
     this.#panel = null;
+    const root = this.doc.documentElement;
+    delete root.dataset.winerTeamPanel;
+    root.style.removeProperty("--winer-team-bottom");
   }
 
   // ---- The history panel: a player's latest games over the client page ----
@@ -406,6 +444,24 @@ export class Controller {
       rating: seat.rating,
       score: seat.rating?.score ?? null,
     };
+  }
+
+  /** 选人时显示符文面板: champ select's runes and spells at the bottom right while the option is on
+   *  and the view has them; the page's other context's panel goes. */
+  #loadoutPanel(snapshot: Snapshot | null, settings: Settings | null): void {
+    const view =
+      settings?.plugin.loadoutPanel && snapshot?.phase === "ChampSelect"
+        ? (snapshot.champSelect?.loadout ?? null)
+        : null;
+    if (!view || !settings) {
+      // The page's other context may have drawn the last one: it goes whichever drew it.
+      if (this.loadout.isShown) this.loadout.hide();
+      else removePanels(this.doc, LOADOUT_PANEL);
+      this.#reports.delete("loadout");
+      return;
+    }
+    this.loadout.show(view, settings.general.language);
+    this.#log(`runes panel: shown (${view.mode}, ${view.recommendation.state})`, "loadout");
   }
 
   /** Keeps the panel to the screen it was opened on: it closes when the client leaves that screen,

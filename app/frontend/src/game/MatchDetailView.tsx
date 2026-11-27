@@ -1,6 +1,6 @@
 // The scoreboard of one game: both teams, every player's line with winer's score, grade, MVP and
-// SVP, damage share and kill participation, the game's best values picked out and, while titles
-// are on, the roast title each line earned.
+// SVP, damage share, healing (with what went to teammates under it) and kill participation, the
+// game's best values picked out and, while titles are on, the roast title each line earned.
 import {
   GRADE_LETTERS,
   compact,
@@ -12,6 +12,7 @@ import {
   type PlayerLine,
   type TeamDetail,
 } from "@winer/shared";
+import { HandHeart } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cx } from "../lib/cx";
@@ -21,10 +22,11 @@ import { FeatMarks } from "./Feats";
 import { AssetIcon, AugmentIcon, ChampionIcon } from "./icons";
 import { KdaValue, TitleChip } from "./stats";
 
-// Player · KDA · score · damage · taken · KP · gold · CS · items. Taken and gold give way first
-// when the scoreboard is narrow.
+// Player · KDA · score · damage · taken · healing · KP · gold · CS · items. Taken, healing and gold
+// give way first when the scoreboard is narrow; where they show, the other columns keep their
+// narrow widths, which leaves the player's column 172px at 860px of scoreboard.
 const COLUMNS =
-  "grid-cols-[minmax(0,1fr)_76px_44px_116px_40px_36px_148px] @[860px]:grid-cols-[minmax(0,1fr)_80px_48px_128px_52px_44px_52px_40px_148px]";
+  "grid-cols-[minmax(0,1fr)_76px_44px_116px_40px_36px_148px] @[860px]:grid-cols-[minmax(0,1fr)_76px_44px_116px_48px_48px_40px_48px_36px_148px]";
 const WIDE_ONLY = "hidden @[860px]:block";
 
 function AwardBadge({ award }: { award: Award }) {
@@ -44,6 +46,8 @@ function AwardBadge({ award }: { award: Award }) {
 export interface Standouts {
   damage?: number;
   taken?: number;
+  /** Healing done, as the client counts it. */
+  healing?: number;
   gold?: number;
   /** The fewest. */
   deaths?: number;
@@ -64,6 +68,7 @@ export function standouts(detail: MatchDetail): Standouts {
   return {
     damage: best(lines.map((line) => line.damage)),
     taken: best(lines.map((line) => line.damageTaken)),
+    healing: best(lines.map((line) => line.healing)),
     gold: best(lines.map((line) => line.gold)),
     deaths: best(
       lines.map((line) => line.deaths),
@@ -98,6 +103,23 @@ function Grade({ grade }: { grade: number }) {
     <span title={label} className="relative block text-[10.5px] font-semibold text-fg-subtle">
       <span aria-hidden>{letter}</span>
       <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+/** What a line healed and shielded on teammates, under its healing: the part the score's healing
+ *  bonus reads. */
+function TeammatesHealed({ value }: { value: number }) {
+  const t = useT();
+  const language = useLanguage();
+  const label = t("history.healingOnTeammates", { value: value.toLocaleString(language) });
+  return (
+    // Inline, the hidden label first: it then sits inside the cell, where a flex row's end would
+    // push it a pixel past it.
+    <span title={label} className="relative block text-[10.5px] text-fg-subtle">
+      <span className="sr-only">{label}</span>
+      <HandHeart size={10} strokeWidth={2} aria-hidden className="mr-0.5 inline-block" />
+      <span aria-hidden>{compact(value)}</span>
     </span>
   );
 }
@@ -139,6 +161,9 @@ function HeaderRow() {
       </span>
       <span className={cx(cell, "pl-3")}>{t("history.damage")}</span>
       <span className={cx(cell, WIDE_ONLY, "text-right")}>{t("history.taken")}</span>
+      <span className={cx(cell, WIDE_ONLY, "text-right")} title={t("history.healingHint")}>
+        {t("history.healing")}
+      </span>
       <span className={cx(cell, "text-right")}>{t("history.kp")}</span>
       <span className={cx(cell, WIDE_ONLY, "text-right")}>{t("history.gold")}</span>
       <span className={cx(cell, "text-right")}>{t("history.cs")}</span>
@@ -244,6 +269,10 @@ function PlayerRow({
       </span>
       <span className={cx("mono text-right text-fg-muted", WIDE_ONLY)}>
         {stat("taken", player.damageTaken)}
+      </span>
+      <span className={cx("mono text-right text-fg-muted", WIDE_ONLY)}>
+        {stat("healing", player.healing)}
+        {!!player.healingOnTeammates && <TeammatesHealed value={player.healingOnTeammates} />}
       </span>
       <span className="mono text-right text-fg-muted">{percent(player.killParticipation)}</span>
       <span className={cx("mono text-right text-fg-muted", WIDE_ONLY)}>

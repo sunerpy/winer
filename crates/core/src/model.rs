@@ -172,6 +172,8 @@ pub struct ChampSelectPlayer {
     /// `top`, `jungle`, `middle`, `bottom`, `utility`, or empty outside draft.
     pub assigned_position: String,
     pub puuid: String,
+    /// The real PUUID XORed with a fixed mask while champ select anonymises this player.
+    pub obfuscated_puuid: String,
     pub summoner_id: i64,
     pub game_name: String,
     pub tag_line: String,
@@ -316,6 +318,12 @@ pub struct Stats {
     #[serde(rename = "timeCCingOthers")]
     pub time_ccing_others: i64,
     pub vision_score: i64,
+    /// Healing done, the champion's own included: the healing the client's scoreboard shows. Both
+    /// the client's own documents and the shard's server send it.
+    pub total_heal: i64,
+    /// Healing and shielding on teammates. Only the shard's server sends them.
+    pub total_heals_on_teammates: Option<i64>,
+    pub total_damage_shielded_on_teammates: Option<i64>,
     pub item0: i64,
     pub item1: i64,
     pub item2: i64,
@@ -350,6 +358,17 @@ pub struct Stats {
 }
 
 impl Stats {
+    /// Healing and shielding on teammates together; `None` where the game's data says neither.
+    pub fn healing_on_teammates(&self) -> Option<i64> {
+        match (
+            self.total_heals_on_teammates,
+            self.total_damage_shielded_on_teammates,
+        ) {
+            (None, None) => None,
+            (heals, shields) => Some(heals.unwrap_or(0) + shields.unwrap_or(0)),
+        }
+    }
+
     pub fn items(&self) -> [i64; 7] {
         [
             self.item0, self.item1, self.item2, self.item3, self.item4, self.item5, self.item6,

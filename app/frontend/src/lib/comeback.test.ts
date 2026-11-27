@@ -21,6 +21,7 @@ describe("the Phrases page's quick phrases", () => {
     phraseHotkey: null,
     library: { enabled: false, level: "mild" },
     trade: { onAsk: false, onDone: false, thanks: "" },
+    messages: [],
   };
 
   it("offers the language's own phrase while the user has none, as the core numbers them", () => {

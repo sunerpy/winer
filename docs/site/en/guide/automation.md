@@ -32,27 +32,64 @@ there. The automation switches on the overview list their modes too.
 
 ## Runes and summoner spells
 
-- **Set up runes and summoner spells**: once your champion is locked in, sets up the runes and
-  summoner spells you last played it with in this mode. The two ARAMs have no lock-in, so it happens
-  each time your champion changes (a bench swap, a reroll). Each champion is set up once per champ
-  select, so a change you make afterwards stands; a champion swapped away and back is set up again.
-  Arena has no rune page and gives everyone the same spells, so it is not one of the modes.
-- **What is remembered**: when a game starts, the rune page and the two summoner spells you go in
-  with, per champion and mode, Ranked and Normal apart, even if you changed nothing. They stay on
-  this computer.
-- **Use the client's recommendation** (on by default): with nothing remembered for the champion in
-  this mode, uses the client's own recommended page and spells, for your assigned position on the
-  Rift and for no position in the ARAMs.
+- **Set up runes and summoner spells**: once your champion is locked in, sets up its runes and
+  summoner spells: [your own setup](#my-setup) where you saved one, else the recommendation. The two
+  ARAMs have no lock-in, so it happens each time your champion changes (a bench swap, a reroll).
+  Each champion is set up once per champ select, so a change you make afterwards stands; a champion
+  swapped away and back is set up again. If you change the runes or the spells yourself in the few
+  seconds winer spends reading the recommendation, what you changed stays as you left it, and the
+  activity feed says so; runes and spells you put up with **Apply** in the panel or on the Live game
+  page stay too once the champion is locked in. Hextech ARAM has no rune page, so only the spells
+  are set up there. Arena has no rune page and gives everyone the same spells, so it is not one
+  of the modes.
+- **Where the recommendation comes from**:
+
+  | Mode           | Recommended runes and spells                                                                    |
+  | -------------- | ----------------------------------------------------------------------------------------------- |
+  | Ranked, Normal | Tencent 101, for your assigned position; OP.GG instead in **Settings › General › Data sources** |
+  | ARAM           | OP.GG; the client's own recommended pages with that source off                                  |
+  | Hextech ARAM   | spells only, from the client's own recommended pages: the mode has no rune page                 |
+  | Other modes    | no recommendation: only your own setup goes up                                                  |
+
+  When the numbers cannot be read, or with **Builds** off in **Settings › General**, the client's own
+  recommended pages are used.
+
+- **Use the recommendation without a setup of mine** (on by default): off, only your own setups are
+  set up, and a champion without one is left as it is.
 - **The rune page**: winer uses one page, named after the champion ("winer · Jhin" for Jhin), and
   rewrites it each time. Without one it creates it while there is room; without room it only writes
   over the temporary page the client made for the champion in hand, never one of your own pages.
   Where neither can take it, the spells are still set and the activity feed says why the runes were
   not.
 - **Spells**: a spell you already hold stays on its key: Flash on F stays on F.
-- **N remembered** and **Forget them**: how many setups are remembered, and forgetting them all.
+- **My setups: N** and **Clear my setups**: how many setups you saved, and deleting them all.
+- **Last-game setups of older versions**: up to 0.0.24, winer noted the runes and spells of every
+  game as it started; they are neither noted nor used any more. While that file is on your PC, a row
+  here offers **Delete**.
 
-Each setup is noted in **Activity** on the overview, for example "Set up the remembered runes and
-summoner spells for Jhin"; a failure says why. Nothing is posted to chat.
+Each setup is noted in **Activity** on the overview, saying where the runes and the spells came
+from, for example "Set up runes (recommended) and summoner spells (my setup) for Jhin"; a failure
+says why. Nothing is posted to chat.
+
+### My setup
+
+When the recommendation is not how you play a champion, change its runes and spells in champ
+select, then press **Save as my setup** above the build panel on the Live game page, or the same
+button in the [runes panel](/en/guide/client#what-you-see-in-the-client) at the client's bottom
+right. A setup is kept per champion and mode, and on the Rift per lane as well; one saved with no
+lane assigned serves every lane. It stays on this computer. Say Hextech ARAM recommends Flash and
+Mark (the snowball), and you take Flash and Ghost instead and save: from then on that champion gets
+Flash and Ghost in Hextech ARAM. In Hextech ARAM a setup keeps the spells only; elsewhere, saved
+while the rune page is not a full one, it keeps the spells only too, and the runes still follow the
+recommendation.
+
+- **Apply my setup**: sets up the saved setup at once.
+- **Back to recommended**: deletes the setup the panel shows and sets up the recommendation at
+  once. When that was a lane's own setup in Ranked or Normal and one saved with no lane remains,
+  that lane uses the lane-less one from then on; the panel shows it, and a second press deletes it
+  too.
+- Each button acts on what the panel showed when you pressed it: if champ select changed before
+  (another champion or lane, say), winer changes nothing and asks you to press again.
 
 ## Item sets
 
@@ -98,8 +135,9 @@ summoner spells for Jhin"; a failure says why. Nothing is posted to chat.
   **In-game sending** on, it types the in-game lines chosen below into the game's team chat. It
   works while winer's window is hidden, and what it did is noted in **Activity** on the overview. It
   is set the way the shortcut that brings up winer is (see [Settings](/en/guide/settings)); it cannot
-  share a combination with that one, nor can the [Comebacks](/en/guide/live#comebacks) page's two
-  shortcuts or the [Phrases](/en/guide/live#champ-select-phrases) page's one share one with either.
+  share a combination with that one, nor can the [Quick chat](/en/guide/live#quick-chat) page's
+  shortcuts ([champ-select phrases](/en/guide/live#champ-select-phrases)' one included) share one
+  with either.
 
 ### Lines in game
 
@@ -110,7 +148,7 @@ by line, and a line too long for one message goes out as several.
 
 - With the game's window in front, Windows' system shortcuts do not reach winer, so while a game
   runs winer also listens for your combinations (the shortcuts that bring up winer, send the callout
-  and send comebacks) through a keyboard hook: only with the game's window in front, and only an
+  and send quick chat) through a keyboard hook: only with the game's window in front, and only an
   exact one of those combinations, is a press winer's, and that press no longer reaches the game.
   Every other key goes to the game untouched, and winer keeps no record of it. The hook goes as the
   game ends.
@@ -127,7 +165,7 @@ by line, and a line too long for one message goes out as several.
   are simply lost. A client started from WeGame runs as administrator, and so does the game it
   starts. winer checks before it types, types nothing when its rights fall short and says in
   **Activity** that it needs to run as administrator. With in-game sending on and a shortcut set (the
-  callout's or a [comeback's](/en/guide/live#comebacks)), winer asks once to restart as administrator
+  callout's or one of [Quick chat](/en/guide/live#quick-chat)'s), winer asks once to restart as administrator
   when it connects to a client that runs that way; once a run at most, and not again after **No**.
   While winer does not run as administrator, **In-game sending** also offers
   **Restart as administrator**.

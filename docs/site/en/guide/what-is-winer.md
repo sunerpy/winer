@@ -29,12 +29,13 @@ It has two parts:
 - **Automation**: accept matches, pick and ban by position, post the callout when champ select
   starts, go back to the lobby after a game and take wished-for ARAM bench champions, each limited to
   the modes you choose. See [Automation](/en/guide/automation).
-- **Comebacks**: a shortcut sends one of your own lines at random, to champ select's chat or, in a
-  game, typed into the team or the all chat; an open online library is used only once you download
-  it and turn it on. See [Comebacks](/en/guide/live#comebacks).
+- **Quick chat**: up to 10 messages of your own, each sent by a shortcut of its own, and a shortcut
+  that sends one of your own lines at random; to champ select's chat or, in a game, typed into the
+  team or the all chat. An open online library is used only once you download it and turn it on.
+  See [Quick chat](/en/guide/live#quick-chat).
 - **Champ-select phrases**: a quick phrase goes to one teammate with their seat and champion filled
   in, by itself too when you ask them to trade, and a thank-you once the trade goes through, if you
-  switch those on; set apart from the comebacks. See
+  switch those on; set apart from quick chat. See
   [Champ-select phrases](/en/guide/live#champ-select-phrases).
 - **Tools**: switch your status (online, away, invisible), edit your status message, restart the
   client's interface, and claim the rewards the client holds for you in one click. See

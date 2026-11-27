@@ -12,6 +12,7 @@ import type {
   MatchSummary,
   Mode,
   Seat,
+  Settings,
   Snapshot,
 } from "@winer/shared";
 
@@ -60,7 +61,6 @@ describe("App", () => {
       ["nav.tools", "tools.title"],
       ["nav.plugin", "plugin.title"],
       ["nav.comeback", "comeback.title"],
-      ["nav.phrases", "phrase.title"],
       ["nav.overview", "overview.title"],
     ] as const;
     for (const [entry, title] of pages) {
@@ -1286,6 +1286,76 @@ describe("loadout", () => {
     return rendered;
   }
 
+  it("keeps the player's own setup from champ select, each request naming the view it was made on", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openLive(backend);
+    const bar = await screen.findByRole("group", { name: zhCN["loadout.mine"] });
+    expect(within(bar).getByText(zhCN["loadout.mineNone"])).toBeInTheDocument();
+    expect(within(bar).queryByRole("button", { name: zhCN["loadout.restore"] })).toBeNull();
+
+    await user.click(within(bar).getByRole("button", { name: zhCN["loadout.saveMine"] }));
+    expect(call).toHaveBeenCalledWith("loadout_action", {
+      target: { gameId: 1, championId: 103, revision: 1 },
+      action: { kind: "saveMine" },
+    });
+    expect(await screen.findByText(zhCN["loadout.savedMine"])).toBeInTheDocument();
+    // The core draws champ select again with the setup, under the next revision.
+    expect(
+      await within(bar).findByText(
+        "已保存这个英雄在这个模式的方案：符文和召唤师技能。锁定后先用它，没有的部分用推荐。",
+      ),
+    ).toBeInTheDocument();
+    await user.click(within(bar).getByRole("button", { name: zhCN["loadout.restore"] }));
+    expect(call).toHaveBeenCalledWith("loadout_action", {
+      target: { gameId: 1, championId: 103, revision: 2 },
+      action: { kind: "restoreRecommended" },
+    });
+    expect(await screen.findByText(zhCN["loadout.restored"])).toBeInTheDocument();
+    expect(await within(bar).findByText(zhCN["loadout.mineNone"])).toBeInTheDocument();
+  });
+
+  it("keeps the setup bar with builds off, and promises nothing at lock-in while the rule is off", async () => {
+    const base = demoBackend();
+    const call = base.call.bind(base) as (
+      command: CommandName,
+      ...args: unknown[]
+    ) => Promise<unknown>;
+    const backend: Backend = {
+      ...base,
+      call: (async (command: CommandName, ...args: unknown[]) => {
+        const answer = await call(command, ...args);
+        if (command === "get_settings") {
+          const settings = answer as Settings;
+          return { ...settings, builds: { ...settings.builds, enabled: false } };
+        }
+        if (command === "get_snapshot") {
+          const snapshot = answer as Snapshot;
+          const view = snapshot.champSelect;
+          return view?.loadout
+            ? { ...snapshot, champSelect: { ...view, loadout: { ...view.loadout, auto: "off" } } }
+            : snapshot;
+        }
+        return answer;
+      }) as Backend["call"],
+    };
+    const { user } = await openLive(backend);
+    const bar = await screen.findByRole("group", { name: zhCN["loadout.mine"] });
+    expect(within(bar).getByText(zhCN["loadout.mineNoneOff"])).toBeInTheDocument();
+    await user.click(within(bar).getByRole("button", { name: zhCN["loadout.saveMine"] }));
+    expect(await screen.findByText(zhCN["loadout.savedMineOff"])).toBeInTheDocument();
+  });
+
+  it("says a request made before champ select changed did nothing", async () => {
+    const backend = demoWith({
+      loadout_action: () => Promise.reject({ code: "stale", message: "champ select has changed" }),
+    });
+    const { user } = await openLive(backend);
+    const bar = await screen.findByRole("group", { name: zhCN["loadout.mine"] });
+    await user.click(within(bar).getByRole("button", { name: zhCN["loadout.saveMine"] }));
+    expect(await screen.findByText(zhCN["loadout.stale"])).toBeInTheDocument();
+  });
+
   it("shows the build of the champion in champ select, Hextech ARAM's augments by rarity", async () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");
@@ -1532,7 +1602,14 @@ describe("loadout", () => {
     expect(call).not.toHaveBeenCalledWith("get_build", expect.anything());
   });
 
-  it("scopes the rune and spell memory and the item sets, and takes back what winer wrote", async () => {
+  it("names the old file without calling it unreadable when it holds nothing", async () => {
+    const backend = demoWith({ get_loadout_summary: () => ({ presets: 0, legacy: 0 }) });
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.automation"] }));
+    expect(await screen.findByText(zhCN["loadout.legacyNone"])).toBeInTheDocument();
+  });
+
+  it("scopes the runes and spells and the item sets, and takes back what winer wrote", async () => {
     const backend = demoBackend();
     const call = vi.spyOn(backend, "call");
     const { user, nav } = await renderApp(backend);
@@ -1561,10 +1638,15 @@ describe("loadout", () => {
       ]),
     );
 
-    expect(await screen.findByText("已记住 3 套")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: zhCN["loadout.forget"] }));
+    // The user's own setups: none yet in the demo, so nothing to clear.
+    expect(await screen.findByText("我的方案 0 套")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: zhCN["loadout.forget"] })).toBeDisabled();
+    // The setups an older winer remembered: only counted, and deleted when asked.
+    expect(await screen.findByText(zhCN["loadout.legacy"])).toBeInTheDocument();
+    expect(screen.getByText(/^共 3 条。/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: zhCN["loadout.legacyDelete"] }));
     expect(call).toHaveBeenCalledWith("clear_loadouts");
-    expect(await screen.findByText("已记住 0 套")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(zhCN["loadout.legacy"])).toBeNull());
 
     expect(screen.getByText(zhCN["loadout.experimental"])).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: zhCN["loadout.itemSets"] })).not.toBeChecked();
@@ -1682,6 +1764,24 @@ describe("the history panel in the client", () => {
       }),
     );
     expect(screen.getByRole("switch", { name: zhCN["social.pluginLobby"] })).toBeChecked();
+  });
+
+  it("switches the runes panel in champ select on its own, on to begin with", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user, nav } = await renderApp(backend);
+    await user.click(within(nav).getByRole("button", { name: zhCN["nav.plugin"] }));
+    const toggle = await screen.findByRole("switch", { name: zhCN["overlay.loadoutPanel"] });
+    expect(toggle).toBeChecked();
+    expect(screen.getByText(zhCN["overlay.loadoutPanelHint"])).toBeInTheDocument();
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({
+          plugin: expect.objectContaining({ loadoutPanel: false, historyInClient: true }),
+        }),
+      }),
+    );
   });
 });
 
@@ -1809,6 +1909,7 @@ describe("callout", () => {
         comeback: { shortcut: null, active: false, error: null },
         comebackAll: { shortcut: null, active: false, error: null },
         phrase: { shortcut: null, active: false, error: null },
+        messages: [],
       }),
     );
     expect(panel().getByText(zhCN["callout.liveHotkeyFailed"])).toBeInTheDocument();
@@ -2397,7 +2498,7 @@ describe("history", () => {
   });
 });
 
-// The Comebacks page (反击), the Phrases page (快捷语) and its phrases on the Live page, and the QQ
+// The Quick chat page (快捷喊话, once 反击), the Phrases page (快捷语) and its phrases on the Live page, and the QQ
 // group in About.
 describe("comebacks", () => {
   async function openComebacks(backend: Backend = demoBackend()) {
@@ -2409,12 +2510,11 @@ describe("comebacks", () => {
     return rendered;
   }
 
+  /** The Quick chat page's second tab, champ select's phrases. */
   async function openPhrases(backend: Backend = demoBackend()) {
-    const rendered = await renderApp(backend);
-    await rendered.user.click(
-      within(rendered.nav).getByRole("button", { name: zhCN["nav.phrases"] }),
-    );
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(zhCN["phrase.title"]);
+    const rendered = await openComebacks(backend);
+    const tabs = screen.getByRole("radiogroup", { name: zhCN["comeback.tabs"] });
+    await rendered.user.click(within(tabs).getByRole("radio", { name: zhCN["phrase.title"] }));
     return rendered;
   }
 
@@ -2444,7 +2544,7 @@ describe("comebacks", () => {
     return demoWith({ get_app_info: () => ({ ...info, elevated: false }) });
   }
 
-  it("opens from the sidebar and with Ctrl+7, the Phrases page with Ctrl+8, the pages before them keeping their numbers", async () => {
+  it("opens from the sidebar and with Ctrl+7, champ select's phrases on its second tab, the pages before it keeping their numbers", async () => {
     const { user, nav } = await renderApp();
     const entry = within(nav).getByRole("button", { name: zhCN["nav.comeback"] });
     await user.click(entry);
@@ -2457,14 +2557,13 @@ describe("comebacks", () => {
     expect(title).toHaveTextContent(zhCN["nav.automation"]);
     fireEvent.keyDown(window, { key: "7", ctrlKey: true });
     expect(title).toHaveTextContent(zhCN["comeback.title"]);
-    fireEvent.keyDown(window, { key: "8", ctrlKey: true });
-    expect(title).toHaveTextContent(zhCN["phrase.title"]);
-    expect(within(nav).getByRole("button", { name: zhCN["nav.phrases"] })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    const tabs = screen.getByRole("radiogroup", { name: zhCN["comeback.tabs"] });
+    await user.click(within(tabs).getByRole("radio", { name: zhCN["phrase.title"] }));
+    expect(title, "one page with two tabs").toHaveTextContent(zhCN["comeback.title"]);
+    expect(screen.getByText(zhCN["phrase.spacing"])).toBeInTheDocument();
+    expect(entry).toHaveAttribute("aria-current", "page");
     expect(screen.queryByText(zhCN["error.title"])).toBeNull();
-    expect(screen.getByText(/^Ctrl 1–8 切换页面/)).toBeInTheDocument();
+    expect(screen.getByText(/^Ctrl 1–7 切换页面/)).toBeInTheDocument();
   });
 
   it("adds, edits and removes the user's own lines, saving each change", async () => {
@@ -2472,7 +2571,7 @@ describe("comebacks", () => {
     const call = vi.spyOn(backend, "call");
     const { user } = await openComebacks(backend);
     expect(screen.getByText(zhCN["comeback.linesEmpty"])).toBeInTheDocument();
-    expect(screen.getByText(/^按一次发一句，随机，不会连着两次同一句。/)).toBeInTheDocument();
+    expect(screen.getByText(/^按「随机发一句」的快捷键时，从这里随机挑一句/)).toBeInTheDocument();
     expect(screen.getByText("0 / 100")).toBeInTheDocument();
 
     const field = screen.getByRole("textbox", { name: zhCN["comeback.newLine"] });
@@ -2544,6 +2643,127 @@ describe("comebacks", () => {
     fireEvent.keyDown(window, { code: "KeyG", key: "G", ctrlKey: true, shiftKey: true });
     await saved(call, { hotkey: "Ctrl+Shift+F", allHotkey: "Ctrl+Shift+G" });
     await waitFor(() => expect(resumed()).toBe(before + 1));
+  });
+
+  it("adds quick messages, each with its target and a shortcut no other shortcut holds, and removes one with its shortcut", async () => {
+    const backend = demoBackend();
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openComebacks(backend);
+    expect(screen.getByText(zhCN["comeback.quickEmpty"])).toBeInTheDocument();
+    expect(screen.getByText("0 / 10")).toBeInTheDocument();
+    expect(screen.getByText(zhCN["comeback.spacing"])).toBeInTheDocument();
+
+    const field = screen.getByRole("textbox", { name: zhCN["comeback.quickNew"] });
+    await user.type(field, "  集合打龙  {Enter}");
+    await saved(call, { messages: [{ text: "集合打龙", hotkey: null, all: false }] });
+    expect(field).toHaveValue("");
+    const list = () => within(screen.getByRole("list", { name: zhCN["comeback.quick"] }));
+    expect(list().getByRole("textbox", { name: "第 1 条快捷消息" })).toHaveValue("集合打龙");
+
+    // Its target: the team's chat until everyone is chosen.
+    const target = list().getByRole("radiogroup", { name: "第 1 条发到哪里" });
+    expect(within(target).getByRole("radio", { name: zhCN["comeback.target.team"] })).toBeChecked();
+    await user.click(within(target).getByRole("radio", { name: zhCN["comeback.target.all"] }));
+    await saved(call, { messages: [{ text: "集合打龙", hotkey: null, all: true }] });
+
+    // Its shortcut, which takes neither the window's nor another's.
+    await user.click(list().getByRole("button", { name: zhCN["social.hotkeyRecord"] }));
+    fireEvent.keyDown(window, { code: "Backquote", key: "`", altKey: true });
+    expect(screen.getByText(zhCN["callout.hotkeyTakenByWindow"])).toBeInTheDocument();
+    fireEvent.keyDown(window, { code: "Digit1", key: "1", altKey: true });
+    await saved(call, { messages: [{ text: "集合打龙", hotkey: "Alt+1", all: true }] });
+    expect(await list().findByText(zhCN["social.hotkeyActive"])).toBeInTheDocument();
+
+    await user.type(field, "撤退{Enter}");
+    await saved(call, {
+      messages: [
+        { text: "集合打龙", hotkey: "Alt+1", all: true },
+        { text: "撤退", hotkey: null, all: false },
+      ],
+    });
+    const second = list().getAllByRole("listitem")[1] as HTMLElement;
+    await user.click(within(second).getByRole("button", { name: zhCN["social.hotkeyRecord"] }));
+    fireEvent.keyDown(window, { code: "Digit1", key: "1", altKey: true });
+    expect(screen.getByText("这个组合键已用于发送第 1 条快捷消息，请换一个。")).toBeInTheDocument();
+    fireEvent.keyDown(window, { code: "Digit2", key: "2", altKey: true });
+    await saved(call, {
+      messages: [
+        { text: "集合打龙", hotkey: "Alt+1", all: true },
+        { text: "撤退", hotkey: "Alt+2", all: false },
+      ],
+    });
+
+    // The random line's shortcuts take no message's combination either.
+    // The row is the one around its label.
+    const random = screen.getByText(zhCN["comeback.hotkey"]).closest("div.flex") as HTMLElement;
+    await user.click(within(random).getByRole("button", { name: zhCN["social.hotkeyRecord"] }));
+    fireEvent.keyDown(window, { code: "Digit2", key: "2", altKey: true });
+    expect(screen.getByText("这个组合键已用于发送第 2 条快捷消息，请换一个。")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    // Removed, a message takes its shortcut with it; the next one moves up with its own.
+    await user.click(list().getByRole("button", { name: "删除第 1 条快捷消息" }));
+    await saved(call, { messages: [{ text: "撤退", hotkey: "Alt+2", all: false }] });
+    expect(list().getByRole("textbox", { name: "第 1 条快捷消息" })).toHaveValue("撤退");
+    expect(screen.getByText("1 / 10")).toBeInTheDocument();
+  });
+
+  it("ends a recording when a message is removed, so the next combination goes to no other message", async () => {
+    const backend = demoBackend();
+    const settings = await backend.call("get_settings");
+    await backend.call("set_settings", {
+      settings: {
+        ...settings,
+        comeback: {
+          ...settings.comeback,
+          messages: ["集合", "撤退", "GG"].map((text) => ({ text, hotkey: null, all: false })),
+        },
+      },
+    });
+    const call = vi.spyOn(backend, "call");
+    const { user } = await openComebacks(backend);
+    const list = () => within(screen.getByRole("list", { name: zhCN["comeback.quick"] }));
+    const second = list().getAllByRole("listitem")[1] as HTMLElement;
+    await user.click(within(second).getByRole("button", { name: zhCN["social.hotkeyRecord"] }));
+    await user.click(list().getByRole("button", { name: "删除第 1 条快捷消息" }));
+    await saved(call, {
+      messages: [
+        { text: "撤退", hotkey: null, all: false },
+        { text: "GG", hotkey: null, all: false },
+      ],
+    });
+    call.mockClear();
+    fireEvent.keyDown(window, { code: "Digit2", key: "2", altKey: true });
+    expect(
+      call.mock.calls.filter(([command]) => command === "set_settings"),
+      "GG, now in that row, gets nothing",
+    ).toEqual([]);
+    expect(
+      list().getAllByRole("button", { name: zhCN["social.hotkeyRecord"] }),
+      "no row is recording",
+    ).toHaveLength(3 - 1);
+  });
+
+  it("takes ten quick messages at most", async () => {
+    const backend = demoBackend();
+    const settings = await backend.call("get_settings");
+    await backend.call("set_settings", {
+      settings: {
+        ...settings,
+        comeback: {
+          ...settings.comeback,
+          messages: Array.from({ length: 10 }, (_, n) => ({
+            text: `第 ${n + 1} 句`,
+            hotkey: null,
+            all: false,
+          })),
+        },
+      },
+    });
+    await openComebacks(backend);
+    expect(screen.getByText("10 / 10")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: zhCN["comeback.quickNew"] })).toBeDisabled();
+    expect(screen.getByText("最多 10 条。")).toBeInTheDocument();
   });
 
   it("records the quick phrase's shortcut on its own page, apart from the comebacks', and says when to press it", async () => {
@@ -3038,7 +3258,9 @@ describe("comebacks", () => {
     // The menu's link opens the page the phrases are edited on.
     await user.click(screen.getByRole("button", { name: "给 峡谷清道夫#10004 发快捷语" }));
     await user.click(screen.getByRole("button", { name: zhCN["live.phrasesEdit"] }));
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(zhCN["phrase.title"]);
+    // The Quick chat page, on its phrases tab.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(zhCN["comeback.title"]);
+    expect(screen.getByRole("radio", { name: zhCN["phrase.title"] })).toBeChecked();
     expect(screen.getByRole("textbox", { name: "第 1 句快捷语" })).toHaveValue("{seat}换个英雄吗");
   });
 

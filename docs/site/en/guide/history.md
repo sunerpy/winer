@@ -103,6 +103,7 @@ summoner spells and runes (augments in Hextech ARAM and Arena), and items.
 | Legendary                          | eight kills or more without dying                   |
 | First blood                        | took the game's first kill                          |
 | Most kills, most assists           | the most kills or assists in the game               |
+| Most healing                       | healed the most in the game, own healing included   |
 | Most damage, most damage taken     | the most damage to champions, or taken, in the game |
 | Most gold, most CS                 | the most gold, or minions and monsters, in the game |
 | Most towers                        | destroyed the most towers in the game               |
@@ -119,9 +120,15 @@ Open a game for its scoreboard, one table per team:
 - Each player's champion, summoner spells, name and MVP or SVP; under the name, augments, feat
   marks and the game's roast title.
 - Kills/deaths/assists and KDA, the **score** (0–10) with the game's grade (S+ to F) under it,
-  damage and damage share, damage taken, kill participation, gold, CS and items.
-- The game's most damage, most damage taken, most gold, fewest deaths and best score are picked out
-  in amber.
+  damage and damage share, damage taken, **healing**, kill participation, gold, CS and items. In a
+  narrow window, damage taken, healing and gold are the first columns to fold away.
+- **Healing** is the player's healing done, the same figure the client shows, their own healing
+  (life steal, healing abilities and the like) included. The small figure with a hand icon under it
+  is the healing and shields they gave teammates; only the match-history server's data has it, so
+  from the client's own records it does not show. The score's healing bonus reads only that part:
+  what goes beyond the game's average adds to the score, more for support champions.
+- The game's most damage, most damage taken, most healing, most gold, fewest deaths and best score
+  are picked out in amber.
 - The row of the player whose history you are viewing has the accent's tint.
 
 Scores, grades and titles are explained in [How rating works](/en/rating). Roast titles can be

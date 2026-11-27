@@ -330,6 +330,9 @@ struct SgpParticipant {
     #[serde(rename = "timeCCingOthers")]
     time_ccing_others: i64,
     vision_score: i64,
+    total_heal: i64,
+    total_heals_on_teammates: Option<i64>,
+    total_damage_shielded_on_teammates: Option<i64>,
     item0: i64,
     item1: i64,
     item2: i64,
@@ -498,6 +501,9 @@ impl SgpParticipant {
                 damage_dealt_to_objectives: self.damage_dealt_to_objectives,
                 time_ccing_others: self.time_ccing_others,
                 vision_score: self.vision_score,
+                total_heal: self.total_heal,
+                total_heals_on_teammates: self.total_heals_on_teammates,
+                total_damage_shielded_on_teammates: self.total_damage_shielded_on_teammates,
                 item0: self.item0,
                 item1: self.item1,
                 item2: self.item2,
@@ -626,13 +632,27 @@ mod tests {
         // The same game as the client's own `/lol-match-history/v1/games/{id}` sends it.
         let from_client: Game = fixture("live/responses/match-history-game-sgp-twin.json");
         assert_eq!(from_server.game_id, from_client.game_id);
-        assert_eq!(
-            analysis::match_detail(from_server, &crate::rating::Roles::new()),
-            analysis::match_detail(&from_client, &crate::rating::Roles::new())
+        // Only the server's copy says what each player healed and shielded on teammates; set that
+        // aside and the two describe the game alike.
+        let mut set_aside = from_server.clone();
+        for row in &mut set_aside.participants {
+            assert!(row.stats.healing_on_teammates().is_some());
+            row.stats.total_heals_on_teammates = None;
+            row.stats.total_damage_shielded_on_teammates = None;
+        }
+        assert!(
+            from_client
+                .participants
+                .iter()
+                .all(|row| row.stats.healing_on_teammates().is_none())
         );
         let roles = crate::rating::Roles::new();
         assert_eq!(
-            analysis::match_summary("PUUID-0010", from_server, &roles, &kinds),
+            analysis::match_detail(&set_aside, &roles),
+            analysis::match_detail(&from_client, &roles)
+        );
+        assert_eq!(
+            analysis::match_summary("PUUID-0010", &set_aside, &roles, &kinds),
             analysis::match_summary("PUUID-0010", &from_client, &roles, &kinds)
         );
         let line = analysis::match_summary("PUUID-0010", from_server, &roles, &kinds)

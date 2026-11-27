@@ -99,24 +99,30 @@ Modes without sides, such as Arena, have no in-game lines and show no such panel
 from WeGame runs as administrator, and winer has to as well to type into it; see
 [Lines in game](/en/guide/automation#lines-in-game).
 
-## Comebacks
+## Quick chat
 
-The **Comebacks** page in the sidebar (`Ctrl` + `7`) keeps the lines its shortcuts send. You write
-the lines yourself; winer ships none. An open library can also be downloaded, as described below.
+The **Quick chat** page in the sidebar (`Ctrl` + `7`; **Comebacks** up to 0.0.24) has two tabs:
+**Quick chat** keeps what its shortcuts send, and **Champ-select phrases** is described in the
+[next section](#champ-select-phrases). You write it all yourself; winer ships none. An open library
+can also be downloaded, as described below.
 
-- **Lines**: one a row, 100 at most, each up to 200 characters. A press sends one at random, never
-  the same line twice in a row.
-- **Shortcuts**: **Send a comeback to the team** and **Send a comeback to everyone**, none by
-  default, and neither can share a combination with the shortcut that brings up winer, the one that
-  sends the callout or [the phrases'](#champ-select-phrases). In champ select both go to its chat,
-  which only your team reads; in a game, with **Type in the game** on, **Send a comeback to the
-  team** types into the team chat and **Send a comeback to everyone** types the line after `/all `
-  into the chat everyone sees, a line too long for one message going out as several. They work while
+- **Quick messages**: 10 at most, each up to 200 characters, each with a shortcut of its own, none
+  by default. A press sends the whole message: in champ select to its chat, which only your team
+  reads; in a game, with **Type in the game** below on, typed into the team chat or the all chat as
+  the message's **Team** or **Everyone** says, after `/all ` for **Everyone**. Removing a message
+  removes its shortcut with it, and the messages after it move up, each with its own shortcut.
+- **Random lines**: one a row, 100 at most, each up to 200 characters. **Send a random line to the
+  team** and **Send a random line to everyone** send one at random, never the same line twice in a
+  row. In champ select both go to its chat; in a game, with **Type in the game** on, the first types
+  into the team chat and the second types the line after `/all ` into the chat everyone sees. While
+  there is no line to send (none of your own, and the online library off), a line here says so.
+- None of these shortcuts can share a combination with the shortcut that brings up winer, the one
+  that sends the callout, [the phrases'](#champ-select-phrases) or one another. They work while
   winer's window is hidden, and what a press did is noted in **Activity** on the overview: sent
-  whole, sent in part, or not sent and why. While there is no line to send (none of your own, and
-  the online library off), a line here says so.
-- Two sends are at least 3 seconds apart, champ-select phrases included, so that a burst of them
-  does not flood the chat and get you reported.
+  whole, sent in part, or not sent and why; a quick message is named by its number. In a game, a
+  line too long for one message goes out as several.
+- Two sends are at least 3 seconds apart, quick messages, random lines and champ-select phrases
+  alike, so that a burst of them does not flood the chat and get you reported.
 - **In-game sending**: its **Type in the game** is off by default. With it on, a press in a game makes winer type on the
   keyboard's behalf, by the same rules as [Lines in game](/en/guide/automation#lines-in-game). While
   winer does not run as administrator, this says that a game started from WeGame drops its keys and
@@ -127,7 +133,7 @@ chose to send; the consequences are yours.
 
 ### Online library
 
-**Comebacks › Online library** downloads the library of the open project
+**Quick chat › Online library** downloads the library of the open project
 [祖安语录](https://github.com/cndiandian/zuanbot.com) (Apache-2.0): 1676 Chinese lines once cleaned
 up, in two sets, **Mild** (口吐芬芳, 682 lines) and **Strong** (火力全开, 994). They are crude and offensive,
 and sending them can get you reported, muted or banned; winer neither writes nor checks them.
@@ -137,8 +143,8 @@ and sending them can get you reported, muted or banned; winer neither writes nor
 - The file has to be exactly the one winer knows (checked by its SHA-256), or nothing is kept. It
   comes from jsDelivr's mirrors first and from GitHub when they all fail, through the system proxy.
 - After the download **Use the online library** is still off: you turn it on and choose a set, or
-  both. Then a press picks from your own lines and these. Every new download has to be turned on
-  again.
+  both. Then a random line's shortcut picks from your own lines and these; quick messages stay as
+  they are. Every new download has to be turned on again.
 - **View and edit** opens the downloaded library: **Mild** and **Strong** listed apart, 50 lines a
   page, with a search. Every line can be changed or removed in place, and a field above adds one.
   Changes are saved at once and only to your copy; a line repeated within a set is kept once, and
@@ -149,8 +155,9 @@ and sending them can get you reported, muted or banned; winer neither writes nor
 
 ## Champ-select phrases
 
-The **Phrases** page in the sidebar (`Ctrl` + `8`) keeps the phrases champ select sends one
-teammate and what goes out around a trade, set apart from the comebacks.
+The **Champ-select phrases** tab of the **Quick chat** page (a **Phrases** page of its own up to
+0.0.24) keeps the phrases champ select sends one teammate and what goes out around a trade, set
+apart from the quick messages and random lines.
 
 In champ select every teammate other than you has a menu of quick phrases beside them on the Live
 game page. Choosing one posts it to champ select's chat with that teammate's seat and champion
@@ -160,7 +167,7 @@ filled in, for instance to ask the player in seat 5 for their champion:
 P5, may I play Aurelion Sol? Thank you!
 ```
 
-The phrases are edited on the **Phrases** page: 20 at most, each up to 200 characters, with
+The phrases are edited on the **Champ-select phrases** tab: 20 at most, each up to 200 characters, with
 `{seat}` (P1 to P5), `{champion}` (that teammate's champion) and `{name}` (their name; empty where
 it is hidden, and the brackets around it go with it). Removing all of them brings the default back.
 Before sending, winer checks that it is still the same champ select and that the player is your
@@ -171,7 +178,7 @@ default. In champ select, click Trade in the client on the teammate whose champi
 press it: winer posts the first phrase to champ select's chat with that teammate's seat and champion
 filled in, without its window open. With no trade asked, one already answered, or less than 3
 seconds since the last line, it sends nothing, and **Activity** on the overview says why. It cannot
-share a combination with the shortcuts that bring up winer, send the callout or send comebacks.
+share a combination with the shortcuts that bring up winer, send the callout or send quick chat.
 
 Two switches in the same panel send a line around a trade by themselves, both off by default:
 
@@ -184,7 +191,7 @@ Two switches in the same panel send a line around a trade by themselves, both of
 
 Each goes to a teammate once per champ select: asking again after a cancel does not post the phrase
 a second time, though that trade is still thanked once it goes through. Lines in champ select's chat go out at
-least 3 seconds apart, comebacks and phrases alike: within 3 seconds of the last line a press sends
+least 3 seconds apart, quick chat and phrases alike: within 3 seconds of the last line a press sends
 nothing, and an automatic one waits out the rest rather than being dropped, and **Activity** lists each one
 sent. Only your own click on Trade sets them off: a trade a teammate asks of you, and pick-order or
 position swaps, send nothing.
@@ -235,9 +242,17 @@ mode at the bottom of the page. The panel has sections:
   ARAM.GG (it can be turned off in **Settings › General**). Augments are picked in the game, so this
   section opens first while the game runs.
 
-A section without numbers is left out; Hextech ARAM, for one, has no rune or spell statistics. On
-Summoner's Rift a switch on the right changes the lane; with no lane assigned (blind pick, a
-lookup), the lane the champion is played in most comes first.
+A section without numbers is left out; Hextech ARAM, for one, has no rune page and no spell
+statistics, so setting up runes and spells and the client's runes panel handle the spells alone
+there, from the client's own recommended pages. On Summoner's Rift a switch on the right changes the lane; with no lane assigned (blind pick,
+a lookup), the lane the champion is played in most comes first.
+
+In champ select, a **My setup** bar sits above the panel: **Save as my setup** keeps your current
+rune page and spells as the champion's setup for this mode, which winer sets up first once the
+champion is locked in while [Set up runes and summoner spells](/en/guide/automation#runes-and-summoner-spells)
+is on for this mode; once one is saved, **Apply my setup** and **Back to recommended** join it. With **Builds**
+off in **Settings › General** the panel is hidden, and the bar stays.
+See [My setup](/en/guide/automation#my-setup).
 
 ### Where the numbers come from
 
@@ -255,15 +270,16 @@ the games behind the numbers.
 All of these are switched in **Settings › General › Data sources**. OP.GG's terms do not allow
 automated collection, and ARAM.GG asks programs not to read its data files; if that matters to you,
 switch the row off. With ARAM's or Arena's source off, that mode's panel only says the source is
-switched off, and remembered runes and spells are still set up; with the Hextech fallback off, only
-Tencent's numbers are used.
+switched off, and in ARAM setting up runes and spells uses the client's own recommended pages; with
+the Hextech fallback off, only Tencent's numbers are used.
 
 These are public statistics from third parties and can lag a patch; in a patch's first days, when
 there are none yet, the previous patch's are used. When a source does not answer, the panel says so
 and offers **Retry**. Items and augments the client does not know (from another patch, say) are left
 out. winer reads the numbers of the champion on screen only, keeps them for a few hours, and never
-reads other champions ahead. With **Builds** off in **Settings › General**, the panel is hidden and
-nothing is fetched.
+reads other champions ahead. With runes and spells set up for you, or the client's runes panel showing,
+champ select also reads the recommendation once for the champion you hover or lock in, and only
+that one. With **Builds** off in **Settings › General**, the panel is hidden and nothing is fetched.
 
 ### Writing the item set
 

@@ -16,7 +16,6 @@ import {
 import { useT } from "../lib/i18n";
 import { useSettings, useStore } from "../lib/store";
 import { Badge, Button, CommitInput, Panel, Row, Toggle, toast } from "../ui";
-import { PageBody } from "./common";
 import { Count, TextList } from "./TextList";
 import { PhraseHotkeyRow } from "./settings/HotkeyRow";
 
@@ -180,11 +179,12 @@ function TradePanel() {
   );
 }
 
-export function PhrasesPage() {
+/** The Quick chat page's 选人快捷语 tab: the phrases and what goes out around a trade. */
+export function PhrasesTab() {
   return (
-    <PageBody className="grid grid-cols-12 gap-3">
+    <>
       <PhrasesPanel />
       <TradePanel />
-    </PageBody>
+    </>
   );
 }

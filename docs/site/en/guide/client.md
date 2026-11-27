@@ -12,7 +12,9 @@ The first time winer connects to the client, it:
    link in the client folder, the way Pengu Loader activates itself. Windows lets only an
    administrator create such a link, so the first activation needs administrator rights once (see
    the next section);
-2. installs winer's plugin, which then updates with winer;
+2. installs winer's plugin, which then updates with winer. The client's interface loads the plugin
+   only as it starts, so after each update of the plugin winer reloads the interface once more, as
+   in the next step, once the client is idle;
 3. reloads the client UI once, after the client has finished signing in and while it is idle (no
    lobby, queue, champ select or game), so the plugin starts at once, and brings the client's window
    back up afterwards. While the client is busy it waits, through a few games if need be, and reloads
@@ -57,8 +59,10 @@ has already asked for those rights to connect to it, so the activation asks noth
   second; friends in one game or one party carry a stripe of the same colour on the left.
 - **Lobby members' form**: in a lobby, recent win rate, KDA and form score above each member's
   banner. A click on that line or on the member's picture shows their history: see **Recent games
-  inside the client** below. Where the client's member cards cannot be found, a compact panel shows
-  the same, and its members open their history too.
+  inside the client** below. A compact **Lobby** panel at the client's top right lists the same for
+  each member: on the lobby screen, and on the client's other screens such as the store and the home
+  page. Its members open their history too, and a click on its title folds it; it is hidden while
+  the match-found prompt shows.
 - **Recent games inside the client**: a click on a player in the lobby or in champ select opens a
   card beside them in the client, with no need to switch to winer's window. At the top are their
   rank, recent win rate, KDA, form score and streak (in champ select also their tier and title);
@@ -69,6 +73,15 @@ has already asked for those rights to connect to it, so the activation asks noth
   closes the card; it also closes when the client leaves the lobby or champ select, or shows the
   match-found prompt. With this option off, a click on a player opens their history in winer's
   window instead.
+- **Runes panel in champ select**: in champ select, a panel at the client's bottom right shows the
+  runes and spells you have now (marked as your setup, the recommendation, or other), the
+  recommended runes and spells (each with **Apply**), and **Save as my setup**, **Apply my setup**
+  and **Back to recommended**, explained in [My setup](/en/guide/automation#my-setup). It sits above
+  the client's bottom bar, clear of the lock-in, rune and spell buttons; a click on its title folds
+  it, and it stays folded when the client restarts. Hextech ARAM has no rune page: there the panel
+  shows the spells, the champion's augment tiers (S to C and how often each is taken, its name on
+  hover; Riot's developer policy does not allow showing augment win rates), the core items and boots
+  (pick and win rates), and **Write the item set**. Arena has no rune page and shows no panel.
 - **Hide home-page promotions**: hides the esports pop-up and puts a short note in place of the
   news and events on the client's home page. **Show for now** on the note brings them back until the
   client restarts; with the option off, the home page shows as usual.
